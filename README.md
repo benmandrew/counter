@@ -39,11 +39,11 @@ For uniform propositional valuations, the executable currently reports:
 
 The counting routine follows:
 
-```text
-n^T * T_hat^(k - 1) * 1
-```
+$$
+\textbf{n}^T * \hat{T}^{k - 1} * \textbf{1}
+$$
 
-where `T_hat[s, s'] = T[s, s'] * n_s'` scales each transition by the number of
+where $\hat{T}[s, s'] = T[s, s'] * n_s'$ scales each transition by the number of
 valuations for the target state.
 
 ## Test

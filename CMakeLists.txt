@@ -12,6 +12,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
 set(COUNTER_LIBRARY_SOURCES
+    src/formula_dimacs.cpp
     src/ganak_runner.cpp
     src/model_counter.cpp
     src/requirement.cpp

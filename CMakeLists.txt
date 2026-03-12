@@ -10,7 +10,13 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
-set(COUNTER_SOURCES
+set(COUNTER_LIBRARY_SOURCES
+    src/model_counter.cpp
+    src/requirement.cpp
+    src/transfer_matrix.cpp
+)
+
+set(COUNTER_APP_SOURCES
     src/main.cpp
 )
 
@@ -37,11 +43,18 @@ FetchContent_Declare(
 
 FetchContent_MakeAvailable(eigen)
 
-add_executable(counter
-    ${COUNTER_SOURCES}
+add_library(counter_static STATIC
+    ${COUNTER_LIBRARY_SOURCES}
 )
 
-target_link_libraries(counter PRIVATE Eigen3::Eigen)
+target_include_directories(counter_static PUBLIC include)
+target_link_libraries(counter_static PUBLIC Eigen3::Eigen)
+
+add_executable(counter
+    ${COUNTER_APP_SOURCES}
+)
+
+target_link_libraries(counter PRIVATE counter_static)
 
 if(CLANG_FORMAT_EXE)
     add_custom_target(format
@@ -58,8 +71,10 @@ else()
     )
 endif()
 
-if(MSVC)
-    target_compile_options(counter PRIVATE /W4 /permissive-)
-else()
-    target_compile_options(counter PRIVATE -Wall -Wextra -Wpedantic)
-endif()
+foreach(counter_target counter_static counter)
+    if(MSVC)
+        target_compile_options(${counter_target} PRIVATE /W4 /permissive-)
+    else()
+        target_compile_options(${counter_target} PRIVATE -Wall -Wextra -Wpedantic)
+    endif()
+endforeach()

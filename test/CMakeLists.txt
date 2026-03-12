@@ -18,3 +18,11 @@ else()
 endif()
 
 add_test(NAME counter_tests COMMAND counter_tests)
+
+add_custom_target(tests
+    COMMAND ${CMAKE_CTEST_COMMAND} --output-on-failure
+    DEPENDS counter_tests
+    WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
+    COMMENT "Building and running all tests"
+    VERBATIM
+)

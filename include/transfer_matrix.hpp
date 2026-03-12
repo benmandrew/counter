@@ -14,6 +14,7 @@ struct TransferSystem {
     std::vector<State> states;
     CountVector valuation_counts;
     CountMatrix transition_matrix;
+    bool transition_matrix_is_weighted = false;
 };
 
 TransferSystem build_transfer_system(

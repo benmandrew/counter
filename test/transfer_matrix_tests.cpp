@@ -116,7 +116,67 @@ void test_next_timepoint_requirement() {
                         "next-timepoint trace counts");
 }
 
+void test_within_ticks_requirement() {
+    const Requirement requirement{"P", "Q", Timing::WithinTicks, 2};
+    const TransferSystem system = build_transfer_system(requirement);
+
+    expect(system.states.size() == 3,
+           "within-ticks: expected three countdown states for N=2");
+    expect(state_labels(system) == "c=0 c=1 c=2",
+           "within-ticks: unexpected state ordering");
+
+    const std::vector<std::vector<Count>> expected_weighted_matrix = {
+        {3, 0, 1},
+        {2, 0, 0},
+        {2, 1, 1},
+    };
+
+    const std::vector<std::vector<Count>> expected_initial = {
+        {3},
+        {0},
+        {1},
+    };
+
+    expect_matrix_equals(weighted_transition_matrix(system),
+                         expected_weighted_matrix,
+                         "within-ticks weighted transfer matrix");
+    expect_matrix_equals(system.valuation_counts, expected_initial,
+                         "within-ticks initial weights");
+    expect_trace_counts(system, {4, 16, 62, 240}, "within-ticks trace counts");
+}
+
+void test_for_ticks_requirement() {
+    const Requirement requirement{"P", "Q", Timing::ForTicks, 2};
+    const TransferSystem system = build_transfer_system(requirement);
+
+    expect(system.states.size() == 3,
+           "for-ticks: expected three countdown states for N=2");
+    expect(state_labels(system) == "c=0 c=1 c=2",
+           "for-ticks: unexpected state ordering");
+
+    const std::vector<std::vector<Count>> expected_weighted_matrix = {
+        {2, 0, 1},
+        {1, 0, 1},
+        {0, 1, 1},
+    };
+
+    const std::vector<std::vector<Count>> expected_initial = {
+        {2},
+        {0},
+        {1},
+    };
+
+    expect_matrix_equals(weighted_transition_matrix(system),
+                         expected_weighted_matrix,
+                         "for-ticks weighted transfer matrix");
+    expect_matrix_equals(system.valuation_counts, expected_initial,
+                         "for-ticks initial weights");
+    expect_trace_counts(system, {3, 8, 20, 49}, "for-ticks trace counts");
+}
+
 void run_transfer_matrix_tests() {
     test_immediately_requirement();
     test_next_timepoint_requirement();
+    test_within_ticks_requirement();
+    test_for_ticks_requirement();
 }

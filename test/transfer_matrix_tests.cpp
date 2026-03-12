@@ -174,9 +174,34 @@ void test_for_ticks_requirement() {
     expect_trace_counts(system, {3, 8, 20, 49}, "for-ticks trace counts");
 }
 
+void test_formula_valuation_counts() {
+    const Requirement requirement{"A | B", "A", Timing::NextTimepoint};
+    const TransferSystem system = build_transfer_system(requirement);
+
+    const std::vector<std::vector<Count>> expected_counts = {
+        {1},
+        {0},
+        {1},
+        {2},
+    };
+    const std::vector<std::vector<Count>> expected_weighted_matrix = {
+        {1, 0, 1, 2},
+        {1, 0, 1, 2},
+        {0, 0, 0, 2},
+        {0, 0, 0, 2},
+    };
+
+    expect_matrix_equals(system.valuation_counts, expected_counts,
+                         "formula valuation counts");
+    expect_matrix_equals(weighted_transition_matrix(system),
+                         expected_weighted_matrix,
+                         "formula weighted transfer matrix");
+}
+
 void run_transfer_matrix_tests() {
     test_immediately_requirement();
     test_next_timepoint_requirement();
     test_within_ticks_requirement();
     test_for_ticks_requirement();
+    test_formula_valuation_counts();
 }

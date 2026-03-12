@@ -21,4 +21,7 @@ TransferSystem build_transfer_system(
     const Requirement& requirement,
     const CountVector& canonical_valuation_counts = CountVector());
 
+CountVector count_canonical_valuation_counts(const Requirement& requirement,
+                                             unsigned seed = 1);
+
 CountMatrix weighted_transition_matrix(const TransferSystem& system);

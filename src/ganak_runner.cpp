@@ -7,15 +7,51 @@
 #include <cerrno>
 #include <cstring>
 #include <filesystem>
+#include <fstream>
 #include <regex>
 #include <stdexcept>
 #include <string>
 #include <vector>
 
+#include "formula_dimacs.hpp"
+
 struct ProcessResult {
     int exit_code;
     std::string output;
 };
+
+std::filesystem::path write_temporary_dimacs(const std::string& contents) {
+    std::filesystem::path template_path =
+        std::filesystem::temp_directory_path() / "counter-formula-XXXXXX.cnf";
+    std::string writable_template = template_path.string();
+    std::vector<char> buffer(writable_template.begin(),
+                             writable_template.end());
+    buffer.push_back('\0');
+
+    const int file_descriptor = mkstemps(buffer.data(), 4);
+    if (file_descriptor < 0) {
+        throw std::runtime_error(std::string("mkstemps() failed: ") +
+                                 std::strerror(errno));
+    }
+
+    close(file_descriptor);
+
+    const std::filesystem::path dimacs_path(buffer.data());
+    std::ofstream dimacs_file(dimacs_path);
+    if (!dimacs_file.good()) {
+        std::filesystem::remove(dimacs_path);
+        throw std::runtime_error("Failed to open temporary DIMACS file.");
+    }
+
+    dimacs_file << contents;
+    dimacs_file.close();
+    if (!dimacs_file) {
+        std::filesystem::remove(dimacs_path);
+        throw std::runtime_error("Failed to write temporary DIMACS file.");
+    }
+
+    return dimacs_path;
+}
 
 ProcessResult execute_and_capture(const std::vector<std::string>& arguments) {
     if (arguments.empty()) {
@@ -155,4 +191,19 @@ Count run_ganak_on_dimacs(const std::string& dimacs_path, unsigned seed) {
     }
 
     return parse_ganak_exact_count(result.output);
+}
+
+Count run_ganak_on_formula(const std::string& formula, unsigned seed) {
+    const DimacsCnf cnf = formula_to_dimacs(formula);
+    const std::filesystem::path dimacs_path =
+        write_temporary_dimacs(cnf.to_dimacs());
+
+    try {
+        const Count count = run_ganak_on_dimacs(dimacs_path.string(), seed);
+        std::filesystem::remove(dimacs_path);
+        return count;
+    } catch (...) {
+        std::filesystem::remove(dimacs_path);
+        throw;
+    }
 }

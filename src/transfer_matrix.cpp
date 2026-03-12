@@ -5,10 +5,29 @@
 #include <string>
 #include <vector>
 
+#include "ganak_runner.hpp"
+
 CountVector default_valuation_counts(Eigen::Index state_count) {
     CountVector counts(state_count);
     counts.setOnes();
     return counts;
+}
+
+std::string parenthesize(const std::string& formula) {
+    return "(" + formula + ")";
+}
+
+std::string valuation_formula(const Requirement& requirement,
+                              const State& valuation) {
+    const std::string trigger = parenthesize(requirement.trigger_name);
+    const std::string response = parenthesize(requirement.response_name);
+
+    const std::string trigger_clause =
+        valuation.trigger_holds ? trigger : "!" + trigger;
+    const std::string response_clause =
+        valuation.response_holds ? response : "!" + response;
+
+    return "(" + trigger_clause + ") & (" + response_clause + ")";
 }
 
 bool is_valid_state(const Requirement& requirement, const State& state) {
@@ -93,8 +112,7 @@ TransferSystem build_countdown_transfer_system(
     const std::vector<State> cells = canonical_states();
     CountVector cell_counts = canonical_valuation_counts;
     if (cell_counts.size() == 0) {
-        cell_counts =
-            default_valuation_counts(static_cast<Eigen::Index>(cells.size()));
+        cell_counts = count_canonical_valuation_counts(requirement);
     }
 
     if (cell_counts.size() != static_cast<Eigen::Index>(cells.size())) {
@@ -151,6 +169,22 @@ TransferSystem build_countdown_transfer_system(
     return {countdown_states, initial_counts, weighted_transitions, true};
 }
 
+CountVector count_canonical_valuation_counts(const Requirement& requirement,
+                                             unsigned seed) {
+    const std::vector<State> valuations = canonical_states();
+    CountVector counts(static_cast<Eigen::Index>(valuations.size()));
+
+    for (Eigen::Index index = 0;
+         index < static_cast<Eigen::Index>(valuations.size()); ++index) {
+        counts(index) = run_ganak_on_formula(
+            valuation_formula(requirement,
+                              valuations[static_cast<std::size_t>(index)]),
+            seed);
+    }
+
+    return counts;
+}
+
 TransferSystem build_transfer_system(
     const Requirement& requirement,
     const CountVector& canonical_valuation_counts) {
@@ -164,8 +198,7 @@ TransferSystem build_transfer_system(
 
     CountVector all_counts = canonical_valuation_counts;
     if (all_counts.size() == 0) {
-        all_counts = default_valuation_counts(
-            static_cast<Eigen::Index>(all_states.size()));
+        all_counts = count_canonical_valuation_counts(requirement);
     }
 
     if (all_counts.size() != static_cast<Eigen::Index>(all_states.size())) {

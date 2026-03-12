@@ -46,6 +46,11 @@ $$
 where $\hat{T}[s, s'] = T[s, s'] * n_s'$ scales each transition by the number of
 valuations for the target state.
 
+When no explicit valuation counts are provided, the library derives the
+canonical counts for `(~P & ~Q)`, `(~P & Q)`, `(P & ~Q)`, and `(P & Q)` by
+converting the trigger/response formulae to DIMACS CNF and counting them with
+Ganak.
+
 ## Test
 
 Unit tests live under `test/` and are registered with CTest.

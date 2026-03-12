@@ -3,6 +3,7 @@ cmake_minimum_required(VERSION 3.21)
 project(counter VERSION 0.1.0 LANGUAGES CXX)
 
 include(FetchContent)
+enable_testing()
 
 find_program(CLANG_FORMAT_EXE NAMES clang-format)
 
@@ -24,6 +25,9 @@ set(COUNTER_FORMAT_GLOBS
     ${CMAKE_CURRENT_SOURCE_DIR}/src/*.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/*.hpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/*.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/test/*.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/test/*.hpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/test/*.h
     ${CMAKE_CURRENT_SOURCE_DIR}/include/*.hpp
     ${CMAKE_CURRENT_SOURCE_DIR}/include/*.h
 )
@@ -55,6 +59,8 @@ add_executable(counter
 )
 
 target_link_libraries(counter PRIVATE counter_static)
+
+add_subdirectory(test)
 
 if(CLANG_FORMAT_EXE)
     add_custom_target(format

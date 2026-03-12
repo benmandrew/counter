@@ -19,14 +19,14 @@ across:
 ## Build
 
 ```sh
-cmake -S . -B build/debug
-cmake --build build/debug
+cmake -S . -B build
+cmake --build build
 ```
 
 ## Run
 
 ```sh
-./build/debug/counter
+./build/counter
 ```
 
 The demo prints the transfer matrix, weighted transfer matrix, and exact counts
@@ -46,9 +46,19 @@ n^T * T_hat^(k - 1) * 1
 where `T_hat[s, s'] = T[s, s'] * n_s'` scales each transition by the number of
 valuations for the target state.
 
+## Test
+
+Unit tests live under `test/` and are registered with CTest.
+
+```sh
+cmake -S . -B build
+cmake --build build
+ctest --test-dir build --output-on-failure
+```
+
 ## Format
 
 ```sh
-cmake -S . -B build/debug
-cmake --build build/debug --target format
+cmake -S . -B build
+cmake --build build --target format
 ```

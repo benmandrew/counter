@@ -17,6 +17,9 @@ jobs:
       - name: Configure project
         run: cmake -S . -B build
 
+      - name: Check formatting
+        run: cmake --build build --target format-ci
+
       - name: Build project
         run: cmake --build build
 

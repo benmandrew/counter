@@ -19,11 +19,24 @@ if(CLANG_FORMAT_EXE)
         COMMENT "Formatting C++ sources with clang-format"
         VERBATIM
     )
+
+    add_custom_target(format-ci
+        COMMAND ${CLANG_FORMAT_EXE} --dry-run --Werror ${COUNTER_FORMAT_FILES}
+        COMMENT "Checking C++ sources are formatted with clang-format"
+        VERBATIM
+    )
 else()
     add_custom_target(format
         COMMAND ${CMAKE_COMMAND} -E echo "clang-format was not found on PATH"
         COMMAND ${CMAKE_COMMAND} -E false
         COMMENT "Formatting requires clang-format"
+        VERBATIM
+    )
+
+    add_custom_target(format-ci
+        COMMAND ${CMAKE_COMMAND} -E echo "clang-format was not found on PATH"
+        COMMAND ${CMAKE_COMMAND} -E false
+        COMMENT "Format check requires clang-format"
         VERBATIM
     )
 endif()

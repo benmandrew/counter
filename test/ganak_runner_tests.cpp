@@ -1,15 +1,20 @@
-#include <filesystem>
+#include <unistd.h>
+
+#include <cstdio>
+#include <cstdlib>
 #include <fstream>
+#include <string>
 
 #include "ganak_runner.hpp"
 #include "test_suite.hpp"
 #include "test_support.hpp"
 
 void test_ganak_runner_on_trivial_cnf() {
-    const std::filesystem::path temp_dir =
-        std::filesystem::temp_directory_path();
-    const std::filesystem::path dimacs_path =
-        temp_dir / "counter-ganak-test.cnf";
+    char dimacs_path[] = "/tmp/counter-ganak-test-XXXXXX";
+    const int file_descriptor = mkstemp(dimacs_path);
+    expect(file_descriptor >= 0,
+           "ganak-runner: failed to create temporary DIMACS file");
+    close(file_descriptor);
 
     {
         std::ofstream dimacs_file(dimacs_path);
@@ -19,11 +24,11 @@ void test_ganak_runner_on_trivial_cnf() {
         dimacs_file << "1 0\n";
     }
 
-    const Count count = run_ganak_on_dimacs(dimacs_path.string(), 1);
+    const Count count = run_ganak_on_dimacs(dimacs_path, 1);
     expect(count == 1,
            "ganak-runner: expected count 1 for single-literal SAT CNF");
 
-    std::filesystem::remove(dimacs_path);
+    std::remove(dimacs_path);
 }
 
 void run_ganak_runner_tests() { test_ganak_runner_on_trivial_cnf(); }

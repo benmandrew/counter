@@ -1,5 +1,8 @@
 #include "requirement.hpp"
 
+#include <string>
+#include <vector>
+
 std::string State::label() const {
     if (m_countdown_state) {
         return "c=" + std::to_string(m_countdown_ticks);

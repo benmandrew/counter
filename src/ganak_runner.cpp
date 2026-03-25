@@ -6,8 +6,8 @@
 
 #include <cctype>
 #include <cerrno>
+#include <cstdlib>
 #include <cstring>
-#include <filesystem>
 #include <fstream>
 #include <stdexcept>
 #include <string>
@@ -22,29 +22,36 @@ struct ProcessResult {
     std::string m_output;
 };
 
-std::filesystem::path write_temporary_dimacs(const std::string& contents) {
-    std::filesystem::path template_path =
-        std::filesystem::temp_directory_path() / "counter-formula-XXXXXX.cnf";
-    std::string writable_template = template_path.string();
+std::string temp_directory() {
+    const char* env_tmpdir = std::getenv("TMPDIR");
+    if (env_tmpdir != nullptr && env_tmpdir[0] != '\0') {
+        return std::string(env_tmpdir);
+    }
+    return "/tmp";
+}
+
+std::string write_temporary_dimacs(const std::string& contents) {
+    std::string writable_template =
+        temp_directory() + "/counter-formula-XXXXXX";
     std::vector<char> buffer(writable_template.begin(),
                              writable_template.end());
     buffer.push_back('\0');
-    const int file_descriptor = mkstemps(buffer.data(), 4);
+    const int file_descriptor = mkstemp(buffer.data());
     if (file_descriptor < 0) {
-        throw std::runtime_error(std::string("mkstemps() failed: ") +
+        throw std::runtime_error(std::string("mkstemp() failed: ") +
                                  std::strerror(errno));
     }
     close(file_descriptor);
-    const std::filesystem::path dimacs_path(buffer.data());
+    const std::string dimacs_path(buffer.data());
     std::ofstream dimacs_file(dimacs_path);
     if (!dimacs_file.good()) {
-        std::filesystem::remove(dimacs_path);
+        std::remove(dimacs_path.c_str());
         throw std::runtime_error("Failed to open temporary DIMACS file.");
     }
     dimacs_file << contents;
     dimacs_file.close();
     if (!dimacs_file) {
-        std::filesystem::remove(dimacs_path);
+        std::remove(dimacs_path.c_str());
         throw std::runtime_error("Failed to write temporary DIMACS file.");
     }
     return dimacs_path;
@@ -152,13 +159,12 @@ std::string ganak_executable_path() {
 }
 
 Count run_ganak_on_dimacs(const std::string& dimacs_path, unsigned seed) {
-    const std::filesystem::path input_path(dimacs_path);
-    if (!std::filesystem::exists(input_path)) {
+    if (access(dimacs_path.c_str(), F_OK) != 0) {
         throw std::invalid_argument("DIMACS file does not exist: " +
                                     dimacs_path);
     }
     const std::string ganak_path = ganak_executable_path();
-    if (!std::filesystem::exists(ganak_path)) {
+    if (access(ganak_path.c_str(), F_OK) != 0) {
         throw std::runtime_error("Ganak executable does not exist: " +
                                  ganak_path);
     }
@@ -179,15 +185,14 @@ Count run_ganak_on_dimacs(const std::string& dimacs_path, unsigned seed) {
 
 Count run_ganak_on_formula(const std::string& formula, unsigned seed) {
     const DimacsCnf cnf = formula_to_dimacs(formula);
-    const std::filesystem::path formula_dimacs_path =
+    const std::string formula_dimacs_path =
         write_temporary_dimacs(cnf.to_dimacs());
     try {
-        const Count count =
-            run_ganak_on_dimacs(formula_dimacs_path.string(), seed);
-        std::filesystem::remove(formula_dimacs_path);
+        const Count count = run_ganak_on_dimacs(formula_dimacs_path, seed);
+        std::remove(formula_dimacs_path.c_str());
         return count;
     } catch (...) {
-        std::filesystem::remove(formula_dimacs_path);
+        std::remove(formula_dimacs_path.c_str());
         throw;
     }
 }

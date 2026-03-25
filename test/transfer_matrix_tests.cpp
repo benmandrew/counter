@@ -10,11 +10,11 @@
 
 std::string state_labels(const TransferSystem& system) {
     std::ostringstream stream;
-    for (std::size_t index = 0; index < system.states.size(); ++index) {
+    for (std::size_t index = 0; index < system.m_states.size(); ++index) {
         if (index > 0) {
             stream << ' ';
         }
-        stream << system.states[index].label();
+        stream << system.m_states[index].label();
     }
     return stream.str();
 }
@@ -73,7 +73,7 @@ void test_immediately_requirement() {
     const Requirement requirement{"P", "Q", Timing::Immediately};
     const TransferSystem system = build_transfer_system(requirement);
 
-    expect(system.states.size() == 3,
+    expect(system.m_states.size() == 3,
            "immediately: expected three valid states after filtering");
     expect(state_labels(system) == "~P~Q ~PQ PQ",
            "immediately: unexpected state ordering");
@@ -84,7 +84,7 @@ void test_immediately_requirement() {
         {1, 1, 1},
     };
 
-    expect_matrix_equals(system.transition_matrix, expected_matrix,
+    expect_matrix_equals(system.m_transition_matrix, expected_matrix,
                          "immediately transfer matrix");
     expect_matrix_equals(weighted_transition_matrix(system), expected_matrix,
                          "immediately weighted transfer matrix");
@@ -96,7 +96,7 @@ void test_next_timepoint_requirement() {
     const Requirement requirement{"P", "Q", Timing::NextTimepoint};
     const TransferSystem system = build_transfer_system(requirement);
 
-    expect(system.states.size() == 4,
+    expect(system.m_states.size() == 4,
            "next-timepoint: expected four canonical states");
     expect(state_labels(system) == "~P~Q ~PQ P~Q PQ",
            "next-timepoint: unexpected state ordering");
@@ -108,7 +108,7 @@ void test_next_timepoint_requirement() {
         {0, 1, 0, 1},
     };
 
-    expect_matrix_equals(system.transition_matrix, expected_matrix,
+    expect_matrix_equals(system.m_transition_matrix, expected_matrix,
                          "next-timepoint transfer matrix");
     expect_matrix_equals(weighted_transition_matrix(system), expected_matrix,
                          "next-timepoint weighted transfer matrix");
@@ -120,7 +120,7 @@ void test_within_ticks_requirement() {
     const Requirement requirement{"P", "Q", Timing::WithinTicks, 2};
     const TransferSystem system = build_transfer_system(requirement);
 
-    expect(system.states.size() == 3,
+    expect(system.m_states.size() == 3,
            "within-ticks: expected three countdown states for N=2");
     expect(state_labels(system) == "c=0 c=1 c=2",
            "within-ticks: unexpected state ordering");
@@ -140,7 +140,7 @@ void test_within_ticks_requirement() {
     expect_matrix_equals(weighted_transition_matrix(system),
                          expected_weighted_matrix,
                          "within-ticks weighted transfer matrix");
-    expect_matrix_equals(system.valuation_counts, expected_initial,
+    expect_matrix_equals(system.m_valuation_counts, expected_initial,
                          "within-ticks initial weights");
     expect_trace_counts(system, {4, 16, 62, 240}, "within-ticks trace counts");
 }
@@ -149,7 +149,7 @@ void test_for_ticks_requirement() {
     const Requirement requirement{"P", "Q", Timing::ForTicks, 2};
     const TransferSystem system = build_transfer_system(requirement);
 
-    expect(system.states.size() == 3,
+    expect(system.m_states.size() == 3,
            "for-ticks: expected three countdown states for N=2");
     expect(state_labels(system) == "c=0 c=1 c=2",
            "for-ticks: unexpected state ordering");
@@ -169,7 +169,7 @@ void test_for_ticks_requirement() {
     expect_matrix_equals(weighted_transition_matrix(system),
                          expected_weighted_matrix,
                          "for-ticks weighted transfer matrix");
-    expect_matrix_equals(system.valuation_counts, expected_initial,
+    expect_matrix_equals(system.m_valuation_counts, expected_initial,
                          "for-ticks initial weights");
     expect_trace_counts(system, {3, 8, 20, 49}, "for-ticks trace counts");
 }
@@ -191,7 +191,7 @@ void test_formula_valuation_counts() {
         {0, 0, 0, 2},
     };
 
-    expect_matrix_equals(system.valuation_counts, expected_counts,
+    expect_matrix_equals(system.m_valuation_counts, expected_counts,
                          "formula valuation counts");
     expect_matrix_equals(weighted_transition_matrix(system),
                          expected_weighted_matrix,

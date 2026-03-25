@@ -97,10 +97,10 @@ using CountdownTransitionFn = std::size_t (*)(std::size_t, bool, bool,
 // Selects the countdown transition function for the requested timing.
 CountdownTransitionFn countdown_transition_fn_or_throw(
     const Requirement& requirement) {
-    if (requirement.timing == Timing::WithinTicks) {
+    if (requirement.m_timing == Timing::WithinTicks) {
         return &within_next_countdown;
     }
-    if (requirement.timing == Timing::ForTicks) {
+    if (requirement.m_timing == Timing::ForTicks) {
         return &for_next_countdown;
     }
     throw std::invalid_argument("Invalid timing for countdown automaton.");
@@ -123,8 +123,8 @@ CountMatrix build_countdown_weighted_transitions(
             const State& cell = cells[static_cast<std::size_t>(cell_index)];
             bool valid_transition = false;
             const std::size_t next_countdown = transition_fn(
-                countdown, cell.trigger_holds, cell.response_holds, max_ticks,
-                &valid_transition);
+                countdown, cell.m_trigger_holds, cell.m_response_holds,
+                max_ticks, &valid_transition);
             if (!valid_transition) {
                 continue;
             }
@@ -144,8 +144,8 @@ CountVector countdown_initial_counts(const CountMatrix& weighted_transitions) {
 
 // Returns true when a canonical valuation satisfies the state invariant.
 bool is_valid_state(const Requirement& requirement, const State& state) {
-    if (requirement.timing == Timing::Immediately) {
-        return !state.trigger_holds || state.response_holds;
+    if (requirement.m_timing == Timing::Immediately) {
+        return !state.m_trigger_holds || state.m_response_holds;
     }
     return true;
 }
@@ -153,8 +153,8 @@ bool is_valid_state(const Requirement& requirement, const State& state) {
 // Returns true when a transition between live states is allowed by timing.
 bool is_valid_transition(const Requirement& requirement, const State& current,
                          const State& next) {
-    if (requirement.timing == Timing::NextTimepoint) {
-        return !current.trigger_holds || next.response_holds;
+    if (requirement.m_timing == Timing::NextTimepoint) {
+        return !current.m_trigger_holds || next.m_response_holds;
     }
     return true;
 }
@@ -221,11 +221,11 @@ CountMatrix build_unweighted_transition_matrix(
 std::string valuation_formula(const Requirement& requirement,
                               const State& valuation) {
     const std::string trigger_clause =
-        valuation.trigger_holds ? requirement.trigger_name
-                                : "!(" + requirement.trigger_name + ")";
+        valuation.m_trigger_holds ? requirement.m_trigger_name
+                                  : "!(" + requirement.m_trigger_name + ")";
     const std::string response_clause =
-        valuation.response_holds ? requirement.response_name
-                                 : "!(" + requirement.response_name + ")";
+        valuation.m_response_holds ? requirement.m_response_name
+                                   : "!(" + requirement.m_response_name + ")";
     return "(" + trigger_clause + ") & (" + response_clause + ")";
 }
 
@@ -240,7 +240,7 @@ TransferSystem build_countdown_transfer_system(
     const CountVector cell_counts = canonical_valuation_counts_or_throw(
         requirement, canonical_valuation_counts,
         static_cast<Eigen::Index>(cells.size()));
-    const std::size_t max_ticks = requirement.tick_count;
+    const std::size_t max_ticks = requirement.m_tick_count;
     const std::vector<State> states = countdown_states(max_ticks);
     const CountMatrix weighted_transitions =
         build_countdown_weighted_transitions(transition_fn, max_ticks, cells,
@@ -272,7 +272,7 @@ CountVector count_canonical_valuation_counts(const Requirement& requirement,
 TransferSystem build_transfer_system(
     const Requirement& requirement,
     const CountVector& canonical_valuation_counts) {
-    if (is_countdown_timing(requirement.timing)) {
+    if (is_countdown_timing(requirement.m_timing)) {
         return build_countdown_transfer_system(requirement,
                                                canonical_valuation_counts);
     }
@@ -294,12 +294,12 @@ TransferSystem build_transfer_system(
 // pass-through; otherwise each destination column is multiplied by its
 // valuation count.
 CountMatrix weighted_transition_matrix(const TransferSystem& system) {
-    if (system.transition_matrix_is_weighted) {
-        return system.transition_matrix;
+    if (system.m_transition_matrix_is_weighted) {
+        return system.m_transition_matrix;
     }
-    CountMatrix weighted = system.transition_matrix;
+    CountMatrix weighted = system.m_transition_matrix;
     for (Eigen::Index column = 0; column < weighted.cols(); ++column) {
-        weighted.col(column) *= system.valuation_counts(column);
+        weighted.col(column) *= system.m_valuation_counts(column);
     }
     return weighted;
 }

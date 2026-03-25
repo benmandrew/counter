@@ -11,10 +11,10 @@ using CountMatrix = Eigen::Matrix<Count, Eigen::Dynamic, Eigen::Dynamic>;
 using CountVector = Eigen::Matrix<Count, Eigen::Dynamic, 1>;
 
 struct TransferSystem {
-    std::vector<State> states;
-    CountVector valuation_counts;
-    CountMatrix transition_matrix;
-    bool transition_matrix_is_weighted = false;
+    std::vector<State> m_states;
+    CountVector m_valuation_counts;
+    CountMatrix m_transition_matrix;
+    bool m_transition_matrix_is_weighted = false;
 };
 
 TransferSystem build_transfer_system(

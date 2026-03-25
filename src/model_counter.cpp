@@ -30,7 +30,7 @@ Count count_traces(const TransferSystem& system, std::size_t trace_length) {
     }
     const CountMatrix weighted = weighted_transition_matrix(system);
     const CountMatrix propagated = matrix_power(weighted, trace_length - 1);
-    CountVector ones(system.states.size());
+    CountVector ones(system.m_states.size());
     ones.setOnes();
-    return (system.valuation_counts.transpose() * propagated * ones)(0, 0);
+    return (system.m_valuation_counts.transpose() * propagated * ones)(0, 0);
 }

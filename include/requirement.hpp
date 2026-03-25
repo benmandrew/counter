@@ -12,17 +12,17 @@ enum class Timing {
 };
 
 struct Requirement {
-    std::string trigger_name;
-    std::string response_name;
-    Timing timing;
-    std::size_t tick_count = 0;
+    std::string m_trigger_name;
+    std::string m_response_name;
+    Timing m_timing;
+    std::size_t m_tick_count = 0;
 };
 
 struct State {
-    bool trigger_holds = false;
-    bool response_holds = false;
-    bool countdown_state = false;
-    std::size_t countdown_ticks = 0;
+    bool m_trigger_holds = false;
+    bool m_response_holds = false;
+    bool m_countdown_state = false;
+    std::size_t m_countdown_ticks = 0;
 
     std::string label() const;
 };

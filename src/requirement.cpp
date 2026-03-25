@@ -1,12 +1,12 @@
 #include "requirement.hpp"
 
 std::string State::label() const {
-    if (countdown_state) {
-        return "c=" + std::to_string(countdown_ticks);
+    if (m_countdown_state) {
+        return "c=" + std::to_string(m_countdown_ticks);
     }
     std::string rendered;
-    rendered += trigger_holds ? "P" : "~P";
-    rendered += response_holds ? "Q" : "~Q";
+    rendered += m_trigger_holds ? "P" : "~P";
+    rendered += m_response_holds ? "Q" : "~Q";
     return rendered;
 }
 

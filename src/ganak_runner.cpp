@@ -18,8 +18,8 @@
 namespace {
 
 struct ProcessResult {
-    int exit_code;
-    std::string output;
+    int m_exit_code;
+    std::string m_output;
 };
 
 std::filesystem::path write_temporary_dimacs(const std::string& contents) {
@@ -162,24 +162,25 @@ Count run_ganak_on_dimacs(const std::string& dimacs_path, unsigned seed) {
         dimacs_path,
     };
     const ProcessResult result = execute_and_capture(command);
-    if (result.exit_code != 0) {
+    if (result.m_exit_code != 0) {
         throw std::runtime_error("Ganak execution failed with exit code " +
-                                 std::to_string(result.exit_code) + "\n" +
-                                 result.output);
+                                 std::to_string(result.m_exit_code) + "\n" +
+                                 result.m_output);
     }
-    return parse_ganak_exact_count(result.output);
+    return parse_ganak_exact_count(result.m_output);
 }
 
 Count run_ganak_on_formula(const std::string& formula, unsigned seed) {
     const DimacsCnf cnf = formula_to_dimacs(formula);
-    const std::filesystem::path dimacs_path =
+    const std::filesystem::path formula_dimacs_path =
         write_temporary_dimacs(cnf.to_dimacs());
     try {
-        const Count count = run_ganak_on_dimacs(dimacs_path.string(), seed);
-        std::filesystem::remove(dimacs_path);
+        const Count count =
+            run_ganak_on_dimacs(formula_dimacs_path.string(), seed);
+        std::filesystem::remove(formula_dimacs_path);
         return count;
     } catch (...) {
-        std::filesystem::remove(dimacs_path);
+        std::filesystem::remove(formula_dimacs_path);
         throw;
     }
 }

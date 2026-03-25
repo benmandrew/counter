@@ -4,8 +4,8 @@
 #include <vector>
 
 struct DimacsCnf {
-    int variable_count;
-    std::vector<std::vector<int>> clauses;
+    int m_variable_count;
+    std::vector<std::vector<int>> m_clauses;
 
     std::string to_dimacs() const;
 };

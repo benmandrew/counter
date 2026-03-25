@@ -5,6 +5,8 @@
 #include "requirement.hpp"
 #include "transfer_matrix.hpp"
 
+namespace {
+
 void print_state_labels(const TransferSystem& system) {
     std::cout << "States:";
     for (const State& state : system.states) {
@@ -25,7 +27,6 @@ void print_trace_counts(const TransferSystem& system,
 void print_requirement_report(const Requirement& requirement) {
     const TransferSystem system = build_transfer_system(requirement);
     const CountMatrix weighted = weighted_transition_matrix(system);
-
     std::cout << "Requirement timing: " << to_string(requirement.timing)
               << "\n";
     print_state_labels(system);
@@ -35,15 +36,15 @@ void print_requirement_report(const Requirement& requirement) {
     std::cout << "\n";
 }
 
+}  // namespace
+
 int main() {
     const std::vector<Requirement> requirements = {
         {"P", "Q", Timing::Immediately},
         {"P", "Q", Timing::NextTimepoint},
     };
-
     for (const Requirement& requirement : requirements) {
         print_requirement_report(requirement);
     }
-
     return 0;
 }

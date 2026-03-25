@@ -8,6 +8,8 @@
 #include <utility>
 #include <vector>
 
+namespace {
+
 enum class NodeType {
     Variable,
     Not,
@@ -35,11 +37,9 @@ class Parser {
         if (!at_end()) {
             throw parse_error("Unexpected token at end of formula");
         }
-
         if (nodes.empty()) {
             throw std::invalid_argument("Formula must not be empty.");
         }
-
         if (root != nodes.size() - 1) {
             const Node root_node = nodes[root];
             nodes.erase(nodes.begin() + static_cast<std::ptrdiff_t>(root));
@@ -91,7 +91,6 @@ class Parser {
             const std::size_t child = parse_unary(nodes);
             return push_unary(nodes, NodeType::Not, child);
         }
-
         if (try_consume("(")) {
             const std::size_t expression = parse_iff(nodes);
             if (!try_consume(")")) {
@@ -99,7 +98,6 @@ class Parser {
             }
             return expression;
         }
-
         return parse_variable(nodes);
     }
 
@@ -108,17 +106,14 @@ class Parser {
         if (at_end()) {
             throw parse_error("Expected variable, but reached end of formula");
         }
-
         const char first = text_[position_];
         if (!(std::isalpha(static_cast<unsigned char>(first)) ||
               first == '_')) {
             throw parse_error("Expected variable name");
         }
-
         std::string name;
         name.push_back(first);
         ++position_;
-
         while (!at_end()) {
             const char character = text_[position_];
             if (std::isalnum(static_cast<unsigned char>(character)) ||
@@ -183,10 +178,8 @@ class TseitinEncoder {
         if (nodes_.empty()) {
             throw std::invalid_argument("Formula must not be empty.");
         }
-
         const int root_literal = encode_node(nodes_.size() - 1);
         clauses_.push_back({root_literal});
-
         return DimacsCnf{next_variable_id_ - 1, clauses_};
     }
 
@@ -196,10 +189,8 @@ class TseitinEncoder {
         if (cache_it != node_literal_cache_.end()) {
             return cache_it->second;
         }
-
         const Node& node = nodes_[index];
         int literal = 0;
-
         switch (node.type) {
             case NodeType::Variable: {
                 literal = get_or_create_symbol(node.variable);
@@ -250,7 +241,6 @@ class TseitinEncoder {
                 break;
             }
         }
-
         node_literal_cache_[index] = literal;
         return literal;
     }
@@ -284,6 +274,8 @@ class TseitinEncoder {
     std::vector<std::vector<int>> clauses_;
 };
 
+}  // namespace
+
 std::string DimacsCnf::to_dimacs() const {
     std::ostringstream stream;
     stream << "p cnf " << variable_count << ' ' << clauses.size() << "\n";
@@ -299,7 +291,6 @@ std::string DimacsCnf::to_dimacs() const {
 DimacsCnf formula_to_dimacs(const std::string& formula) {
     Parser parser(formula);
     const std::vector<Node> nodes = parser.parse();
-
     TseitinEncoder encoder(nodes);
     return encoder.encode();
 }

@@ -14,6 +14,11 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@v4
 
+      - name: Install cpplint
+        run: |
+          python3 -m pip install --upgrade pip
+          python3 -m pip install cpplint
+
       - name: Configure project
         run: cmake -S . -B build
 

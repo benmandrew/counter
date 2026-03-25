@@ -1,6 +1,6 @@
 # Counter
 
-Small C++ project for k-bounded counting of traces that satisfy simple FRET-like
+Small C++ project for $k$-bounded counting of traces that satisfy simple FRET-like
 requirements using transfer matrices.
 
 The current implementation supports propositional trigger/response requirements of

@@ -27,81 +27,87 @@ struct Node {
 };
 
 class Parser {
+   private:
+    std::string m_text;
+    std::size_t m_position = 0;
+    std::vector<Node> m_nodes;
+
    public:
     explicit Parser(std::string text) : m_text(std::move(text)) {}
 
     std::vector<Node> parse() {
-        std::vector<Node> nodes;
-        const std::size_t root = parse_iff(nodes);
+        m_position = 0;
+        m_nodes.clear();
+        const std::size_t root = parse_iff();
         skip_whitespace();
         if (!at_end()) {
             throw parse_error("Unexpected token at end of formula");
         }
-        if (nodes.empty()) {
+        if (m_nodes.empty()) {
             throw std::invalid_argument("Formula must not be empty.");
         }
-        if (root != nodes.size() - 1) {
-            const Node root_node = nodes[root];
-            nodes.erase(nodes.begin() + static_cast<std::ptrdiff_t>(root));
-            nodes.push_back(root_node);
+        if (root != m_nodes.size() - 1) {
+            const Node root_node = m_nodes[root];
+            m_nodes.erase(m_nodes.begin() + static_cast<std::ptrdiff_t>(root));
+            m_nodes.push_back(root_node);
         }
 
-        return nodes;
+        return m_nodes;
     }
 
    private:
-    std::size_t parse_iff(std::vector<Node>& nodes) {
-        std::size_t lhs = parse_implies(nodes);
+    std::size_t parse_iff() {
+        std::size_t lhs = parse_implies();
         while (try_consume("<->")) {
-            const std::size_t rhs = parse_implies(nodes);
-            lhs = push_binary(nodes, NodeType::Iff, lhs, rhs);
+            const std::size_t rhs = parse_implies();
+            lhs = push_binary(NodeType::Iff, lhs, rhs);
         }
         return lhs;
     }
 
-    std::size_t parse_implies(std::vector<Node>& nodes) {
-        std::size_t lhs = parse_or(nodes);
+    std::size_t parse_implies() {
+        std::size_t lhs = parse_or();
         if (try_consume("->")) {
-            const std::size_t rhs = parse_implies(nodes);
-            lhs = push_binary(nodes, NodeType::Implies, lhs, rhs);
+            const std::size_t rhs = parse_implies();
+            lhs = push_binary(NodeType::Implies, lhs, rhs);
         }
         return lhs;
     }
 
-    std::size_t parse_or(std::vector<Node>& nodes) {
-        std::size_t lhs = parse_and(nodes);
+    std::size_t parse_or() {
+        std::size_t lhs = parse_and();
         while (try_consume("|")) {
-            const std::size_t rhs = parse_and(nodes);
-            lhs = push_binary(nodes, NodeType::Or, lhs, rhs);
+            const std::size_t rhs = parse_and();
+            lhs = push_binary(NodeType::Or, lhs, rhs);
         }
         return lhs;
     }
 
-    std::size_t parse_and(std::vector<Node>& nodes) {
-        std::size_t lhs = parse_unary(nodes);
+    std::size_t parse_and() {
+        std::size_t lhs = parse_unary();
         while (try_consume("&")) {
-            const std::size_t rhs = parse_unary(nodes);
-            lhs = push_binary(nodes, NodeType::And, lhs, rhs);
+            const std::size_t rhs = parse_unary();
+            lhs = push_binary(NodeType::And, lhs, rhs);
         }
         return lhs;
     }
 
-    std::size_t parse_unary(std::vector<Node>& nodes) {
+    std::size_t parse_unary() {
         if (try_consume("!") || try_consume("~")) {
-            const std::size_t child = parse_unary(nodes);
-            return push_unary(nodes, NodeType::Not, child);
+            const std::size_t child = parse_unary();
+            return push_unary(NodeType::Not, child);
         }
         if (try_consume("(")) {
-            const std::size_t expression = parse_iff(nodes);
+            const std::size_t expression = parse_iff();
             if (!try_consume(")")) {
                 throw parse_error("Expected ')' to close sub-expression");
             }
             return expression;
         }
-        return parse_variable(nodes);
+        return parse_variable();
     }
 
-    std::size_t parse_variable(std::vector<Node>& nodes) {
+    std::size_t parse_variable() {
         skip_whitespace();
         if (at_end()) {
             throw parse_error("Expected variable, but reached end of formula");
@@ -125,20 +131,18 @@ class Parser {
             break;
         }
 
-        nodes.push_back(Node{NodeType::Variable, name, 0, 0});
-        return nodes.size() - 1;
+        m_nodes.push_back(Node{NodeType::Variable, name, 0, 0});
+        return m_nodes.size() - 1;
     }
 
-    std::size_t push_unary(std::vector<Node>& nodes, NodeType type,
-                           std::size_t child) {
-        nodes.push_back(Node{type, "", child, 0});
-        return nodes.size() - 1;
+    std::size_t push_unary(NodeType type, std::size_t child) {
+        m_nodes.push_back(Node{type, "", child, 0});
+        return m_nodes.size() - 1;
     }
 
-    std::size_t push_binary(std::vector<Node>& nodes, NodeType type,
-                            std::size_t lhs, std::size_t rhs) {
-        nodes.push_back(Node{type, "", lhs, rhs});
-        return nodes.size() - 1;
+    std::size_t push_binary(NodeType type, std::size_t lhs, std::size_t rhs) {
+        m_nodes.push_back(Node{type, "", lhs, rhs});
+        return m_nodes.size() - 1;
     }
 
     bool try_consume(const std::string& token) {
@@ -165,12 +169,16 @@ class Parser {
         stream << message << " at position " << m_position << ".";
         return std::invalid_argument(stream.str());
     }
-
-    std::string m_text;
-    std::size_t m_position = 0;
 };
 
 class TseitinEncoder {
+   private:
+    const std::vector<Node>& m_nodes;
+    int m_next_variable_id = 1;
+    std::unordered_map<std::string, int> m_symbol_to_variable;
+    std::unordered_map<std::size_t, int> m_node_literal_cache;
+    std::vector<std::vector<int>> m_clauses;
+
    public:
     explicit TseitinEncoder(const std::vector<Node>& nodes) : m_nodes(nodes) {}
 
@@ -267,12 +275,6 @@ class TseitinEncoder {
     void add_clause(std::vector<int> clause) {
         m_clauses.push_back(std::move(clause));
     }
-
-    const std::vector<Node>& m_nodes;
-    int m_next_variable_id = 1;
-    std::unordered_map<std::string, int> m_symbol_to_variable;
-    std::unordered_map<std::size_t, int> m_node_literal_cache;
-    std::vector<std::vector<int>> m_clauses;
 };
 
 }  // namespace

@@ -4,11 +4,11 @@
 #include <sys/wait.h>
 #include <unistd.h>
 
+#include <cctype>
 #include <cerrno>
 #include <cstring>
 #include <filesystem>
 #include <fstream>
-#include <regex>
 #include <stdexcept>
 #include <string>
 #include <vector>
@@ -118,12 +118,19 @@ ProcessResult execute_and_capture(const std::vector<std::string>& arguments) {
 }
 
 Count parse_ganak_exact_count(const std::string& output) {
-    const std::regex exact_count_pattern(
-        R"(c\s+s\s+exact\s+arb\s+int\s+([0-9]+))");
-    std::smatch match;
-    if (std::regex_search(output, match, exact_count_pattern) &&
-        match.size() >= 2) {
-        return static_cast<Count>(std::stoull(match[1].str()));
+    const std::string prefix = "c s exact arb int ";
+    const std::size_t prefix_position = output.find(prefix);
+    if (prefix_position != std::string::npos) {
+        const std::size_t number_start = prefix_position + prefix.size();
+        std::size_t number_end = number_start;
+        while (number_end < output.size() &&
+               std::isdigit(static_cast<unsigned char>(output[number_end]))) {
+            ++number_end;
+        }
+        if (number_end > number_start) {
+            return static_cast<Count>(std::stoull(
+                output.substr(number_start, number_end - number_start)));
+        }
     }
     if (output.find("s UNSATISFIABLE") != std::string::npos) {
         return 0;

@@ -39,6 +39,7 @@ add_subdirectory(test)
 install(PROGRAMS "${GANAK_EXECUTABLE}" DESTINATION bin RENAME ganak)
 
 include(cmake/format.cmake)
+include(cmake/lint.cmake)
 
 foreach(counter_target counter_static counter)
     if(MSVC)

@@ -20,6 +20,9 @@ jobs:
       - name: Check formatting
         run: cmake --build build --target format-ci
 
+      - name: Check linting
+        run: cmake --build build --target lint-ci
+
       - name: Build project
         run: cmake --build build
 

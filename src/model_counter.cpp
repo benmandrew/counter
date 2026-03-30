@@ -115,15 +115,22 @@ CountMatrix matrix_power(const CountMatrix& matrix, std::size_t exponent) {
 
 }  // namespace
 
-Count count_traces(const TransferSystem& system, std::size_t trace_length) {
-    if (trace_length == 0) {
-        throw std::invalid_argument("Trace length must be at least 1.");
+Count count_traces(const TransferSystem& system, std::size_t step_count) {
+    const CountMatrix weighted_transition = weighted_transition_matrix(system);
+    if (weighted_transition.rows() != weighted_transition.cols()) {
+        throw std::invalid_argument("Transfer matrices must be square.");
     }
-    const CountMatrix weighted = weighted_transition_matrix(system);
-    const CountMatrix propagated = matrix_power(weighted, trace_length - 1);
-    CountVector ones(system.m_states.size());
+    if (weighted_transition.rows() == 0) {
+        throw std::invalid_argument("Transfer matrix must not be empty.");
+    }
+    const CountMatrix propagated =
+        matrix_power(weighted_transition, step_count);
+    CountVector start(weighted_transition.rows());
+    start.setZero();
+    start(0) = 1;
+    CountVector ones(weighted_transition.rows());
     ones.setOnes();
     const CountVector propagated_ones =
         checked_matrix_vector_multiply(propagated, ones);
-    return checked_dot_product(system.m_valuation_counts, propagated_ones);
+    return checked_dot_product(start, propagated_ones);
 }

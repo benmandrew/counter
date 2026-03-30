@@ -160,19 +160,16 @@ RequirementAutomaton build_requirement_automaton(
     const Requirement& requirement) {
     RequirementAutomaton automaton;
     automaton.m_requirement = requirement;
-
     if (is_countdown_timing(requirement.m_timing)) {
         automaton.m_states = countdown_states(requirement.m_tick_count);
         automaton.m_countdown_transition =
             countdown_transition_fn_or_throw(requirement);
         return automaton;
     }
-
     const std::vector<State> cells = canonical_states();
     const std::vector<Eigen::Index> active_indices =
         active_state_indices(requirement, cells);
     automaton.m_states = gather_states(cells, active_indices);
-
     for (Eigen::Index state_index = 0;
          state_index < static_cast<Eigen::Index>(automaton.m_states.size());
          ++state_index) {
@@ -180,13 +177,11 @@ RequirementAutomaton build_requirement_automaton(
             automaton.m_states[static_cast<std::size_t>(state_index)]);
         automaton.m_cell_to_state[index] = state_index;
     }
-
     if (requirement.m_timing == Timing::NextTimepoint &&
         automaton.m_states.size() != cells.size()) {
         throw std::logic_error(
             "Failed to build next-timepoint automaton states.");
     }
-
     return automaton;
 }
 
@@ -206,13 +201,11 @@ bool next_state_from_cell(const RequirementAutomaton& automaton,
         next_state_index = static_cast<Eigen::Index>(next_countdown);
         return true;
     }
-
     const Eigen::Index destination =
         automaton.m_cell_to_state[canonical_cell_index(cell_valuation)];
     if (destination < 0) {
         return false;
     }
-
     const State& current =
         automaton.m_states[static_cast<std::size_t>(current_state_index)];
     const State& next =
@@ -252,7 +245,6 @@ CountMatrix build_countdown_weighted_transitions(
     const Eigen::Index state_count = static_cast<Eigen::Index>(max_ticks + 1U);
     CountMatrix weighted_transitions(state_count, state_count);
     weighted_transitions.setZero();
-
     for (Eigen::Index row = 0; row < state_count; ++row) {
         const std::size_t countdown = static_cast<std::size_t>(row);
         for (Eigen::Index cell_index = 0;
@@ -277,7 +269,6 @@ CountMatrix build_countdown_weighted_transitions(
             weighted_transitions(row, column) = updated;
         }
     }
-
     return weighted_transitions;
 }
 
@@ -484,21 +475,17 @@ CountMatrix build_combined_weighted_transition_matrix(
     const CountVector cell_counts = joint_valuation_counts_or_throw(
         requirement1, requirement2, joint_valuation_counts);
     const std::vector<State> cells = canonical_states();
-
     const Eigen::Index left_state_count =
         static_cast<Eigen::Index>(left.m_states.size());
     const Eigen::Index right_state_count =
         static_cast<Eigen::Index>(right.m_states.size());
     const Eigen::Index state_count = left_state_count * right_state_count;
-
     CountMatrix weighted(state_count, state_count);
     weighted.setZero();
-
     for (Eigen::Index left_row = 0; left_row < left_state_count; ++left_row) {
         for (Eigen::Index right_row = 0; right_row < right_state_count;
              ++right_row) {
             const Eigen::Index row = left_row * right_state_count + right_row;
-
             for (std::size_t left_cell_index = 0; left_cell_index < 4U;
                  ++left_cell_index) {
                 const State& left_cell = cells[left_cell_index];
@@ -507,7 +494,6 @@ CountMatrix build_combined_weighted_transition_matrix(
                                           left_next)) {
                     continue;
                 }
-
                 for (std::size_t right_cell_index = 0; right_cell_index < 4U;
                      ++right_cell_index) {
                     const State& right_cell = cells[right_cell_index];
@@ -516,7 +502,6 @@ CountMatrix build_combined_weighted_transition_matrix(
                                               right_next)) {
                         continue;
                     }
-
                     const std::size_t cell_index =
                         joint_cell_index(left_cell_index, right_cell_index);
                     const Count weight =
@@ -524,7 +509,6 @@ CountMatrix build_combined_weighted_transition_matrix(
                     if (weight == 0) {
                         continue;
                     }
-
                     const Eigen::Index column =
                         left_next * right_state_count + right_next;
                     Count updated = 0;

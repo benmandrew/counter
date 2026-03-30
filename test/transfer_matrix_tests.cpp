@@ -466,6 +466,32 @@ void test_combined_weighted_transition_matrix_immediately_immediately() {
     expect_matrix_equals(
         combined, expected,
         "combined weighted transfer matrix (immediately/immediately)");
+
+    TransferSystem combined_system;
+    combined_system.m_states.assign(9, State{});
+    combined_system.m_transition_matrix = combined;
+    combined_system.m_transition_matrix_is_weighted = true;
+
+    expect(count_traces(combined_system, 0) == 1,
+           "combined start-state trace count for k=0");
+    expect(count_traces(combined_system, 1) == 7,
+           "combined start-state trace count for k=1");
+    expect(count_traces(combined_system, 2) == 49,
+           "combined start-state trace count for k=2");
+}
+
+void test_count_traces_formula() {
+    CountMatrix weighted(2, 2);
+    weighted << 1, 2, 3, 4;
+
+    TransferSystem system;
+    system.m_states.assign(2, State{});
+    system.m_transition_matrix = weighted;
+    system.m_transition_matrix_is_weighted = true;
+
+    expect(count_traces(system, 0) == 1, "start-state trace count for k=0");
+    expect(count_traces(system, 1) == 3, "start-state trace count for k=1");
+    expect(count_traces(system, 2) == 17, "start-state trace count for k=2");
 }
 
 void run_transfer_matrix_tests() {
@@ -476,4 +502,5 @@ void run_transfer_matrix_tests() {
     test_weighted_transition_matrix_applies_column_weights();
     test_weighted_transition_matrix_passthrough();
     test_combined_weighted_transition_matrix_immediately_immediately();
+    test_count_traces_formula();
 }

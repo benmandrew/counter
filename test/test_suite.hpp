@@ -3,3 +3,4 @@
 void run_transfer_matrix_tests();
 void run_ganak_runner_tests();
 void run_formula_dimacs_tests();
+void run_semantic_similarity_tests();

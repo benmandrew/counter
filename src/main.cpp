@@ -1,4 +1,6 @@
 #include <iostream>
+#include <sstream>
+#include <string>
 #include <vector>
 
 #include "model_counter.hpp"
@@ -20,8 +22,25 @@ void print_trace_counts(const TransferSystem& system,
     for (std::size_t trace_length = 1; trace_length <= max_trace_length;
          ++trace_length) {
         const Count count = count_traces(system, trace_length);
-        std::cout << "Length " << trace_length << ": " << count << "\n";
+        std::cout << "Length " << trace_length << ": " << count_to_string(count)
+                  << "\n";
     }
+}
+
+std::string matrix_to_string(const CountMatrix& matrix) {
+    std::ostringstream stream;
+    for (Eigen::Index row = 0; row < matrix.rows(); ++row) {
+        for (Eigen::Index column = 0; column < matrix.cols(); ++column) {
+            if (column > 0) {
+                stream << ' ';
+            }
+            stream << count_to_string(matrix(row, column));
+        }
+        if (row + 1 < matrix.rows()) {
+            stream << '\n';
+        }
+    }
+    return stream.str();
 }
 
 void print_requirement_report(const Requirement& requirement) {
@@ -30,8 +49,10 @@ void print_requirement_report(const Requirement& requirement) {
     std::cout << "Requirement timing: " << to_string(requirement.m_timing)
               << "\n";
     print_state_labels(system);
-    std::cout << "Transfer matrix:\n" << system.m_transition_matrix << "\n\n";
-    std::cout << "Weighted transfer matrix:\n" << weighted << "\n\n";
+    std::cout << "Transfer matrix:\n"
+              << matrix_to_string(system.m_transition_matrix) << "\n\n";
+    std::cout << "Weighted transfer matrix:\n"
+              << matrix_to_string(weighted) << "\n\n";
     print_trace_counts(system, 5);
     std::cout << "\n";
 }

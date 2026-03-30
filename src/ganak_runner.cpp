@@ -138,8 +138,9 @@ Count parse_ganak_exact_count(const std::string& output) {
             ++number_end;
         }
         if (number_end > number_start) {
-            return static_cast<Count>(std::stoull(
-                output.substr(number_start, number_end - number_start)));
+            const std::string number_text =
+                output.substr(number_start, number_end - number_start);
+            return parse_count_decimal_or_throw(number_text);
         }
     }
     if (output.find("s UNSATISFIABLE") != std::string::npos) {

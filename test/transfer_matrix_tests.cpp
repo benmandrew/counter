@@ -231,8 +231,8 @@ void expect_matrix_equals(const CountMatrix& actual,
             if (actual_value != expected_value) {
                 std::ostringstream message;
                 message << label << ": mismatch at (" << row << ", " << column
-                        << "), expected " << expected_value << " but found "
-                        << actual_value;
+                        << "), expected " << count_to_string(expected_value)
+                        << " but found " << count_to_string(actual_value);
                 fail(message.str());
             }
         }
@@ -249,8 +249,9 @@ void expect_trace_counts(const TransferSystem& system,
         if (actual_count != expected_count) {
             std::ostringstream message;
             message << label << ": count mismatch for trace length "
-                    << trace_length << ", expected " << expected_count
-                    << " but found " << actual_count;
+                    << trace_length << ", expected "
+                    << count_to_string(expected_count) << " but found "
+                    << count_to_string(actual_count);
             fail(message.str());
         }
     }

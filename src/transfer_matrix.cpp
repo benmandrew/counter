@@ -131,7 +131,13 @@ CountMatrix build_countdown_weighted_transitions(
             }
             const Eigen::Index column =
                 static_cast<Eigen::Index>(next_countdown);
-            weighted_transitions(row, column) += cell_counts(cell_index);
+            Count updated = 0;
+            if (count_add_overflow(weighted_transitions(row, column),
+                                   cell_counts(cell_index), updated)) {
+                throw std::overflow_error(
+                    "Count overflow while building weighted transitions.");
+            }
+            weighted_transitions(row, column) = updated;
         }
     }
 
@@ -300,7 +306,16 @@ CountMatrix weighted_transition_matrix(const TransferSystem& system) {
     }
     CountMatrix weighted = system.m_transition_matrix;
     for (Eigen::Index column = 0; column < weighted.cols(); ++column) {
-        weighted.col(column) *= system.m_valuation_counts(column);
+        for (Eigen::Index row = 0; row < weighted.rows(); ++row) {
+            Count updated = 0;
+            if (count_mul_overflow(weighted(row, column),
+                                   system.m_valuation_counts(column),
+                                   updated)) {
+                throw std::overflow_error(
+                    "Count overflow while weighting transition matrix.");
+            }
+            weighted(row, column) = updated;
+        }
     }
     return weighted;
 }

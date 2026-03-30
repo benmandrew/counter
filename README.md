@@ -23,6 +23,9 @@ cmake -S . -B build
 cmake --build build
 ```
 
+When supported by the compiler/platform, `Count` automatically uses
+`unsigned __int128`; otherwise it falls back to `std::uint64_t`.
+
 ## Run
 
 ```sh
@@ -45,6 +48,10 @@ $$
 
 where $\hat{T}[s, s'] = T[s, s'] * n_s'$ scales each transition by the number of
 valuations for the target state.
+
+Arithmetic in transfer matrix weighting and trace counting is overflow-checked.
+If an operation exceeds the selected `Count` range, the code throws
+`std::overflow_error` instead of silently wrapping.
 
 When no explicit valuation counts are provided, the library derives the
 canonical counts for `(~P & ~Q)`, `(~P & Q)`, `(P & ~Q)`, and `(P & Q)` by

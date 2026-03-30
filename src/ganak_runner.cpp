@@ -8,7 +8,7 @@
 #include <cerrno>
 #include <cstdlib>
 #include <cstring>
-#include <filesystem>
+#include <filesystem>  // NOLINT(build/c++17)
 #include <fstream>
 #include <memory>
 #include <stdexcept>

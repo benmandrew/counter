@@ -5,6 +5,7 @@
 
 int main() {
     try {
+        run_transfer_system_tests();
         run_transfer_matrix_tests();
         run_ganak_runner_tests();
         run_formula_dimacs_tests();

@@ -8,7 +8,9 @@
 #include <cerrno>
 #include <cstdlib>
 #include <cstring>
+#include <filesystem>
 #include <fstream>
+#include <memory>
 #include <stdexcept>
 #include <string>
 #include <vector>
@@ -23,11 +25,12 @@ struct ProcessResult {
 };
 
 std::string temp_directory() {
-    const char* env_tmpdir = std::getenv("TMPDIR");
-    if (env_tmpdir != nullptr && env_tmpdir[0] != '\0') {
-        return std::string(env_tmpdir);
+    try {
+        return std::filesystem::temp_directory_path().string();
+    } catch (const std::filesystem::filesystem_error&) {
+        // Keep a deterministic fallback when no system temp directory resolves.
+        return "/tmp";
     }
-    return "/tmp";
 }
 
 std::string write_temporary_dimacs(const std::string& contents) {
@@ -81,13 +84,13 @@ ProcessResult execute_and_capture(const std::vector<std::string>& arguments) {
             _exit(127);
         }
         close(pipe_fds[1]);
-        std::vector<char*> argv;
-        argv.reserve(arguments.size() + 1);
-        for (const std::string& argument : arguments) {
-            argv.push_back(const_cast<char*>(argument.c_str()));
+        std::unique_ptr<char*[]> argv =
+            std::make_unique<char*[]>(arguments.size() + 1);
+        for (std::size_t index = 0; index < arguments.size(); ++index) {
+            argv[index] = const_cast<char*>(arguments[index].c_str());
         }
-        argv.push_back(nullptr);
-        execv(arguments[0].c_str(), argv.data());
+        argv[arguments.size()] = nullptr;
+        execv(arguments[0].c_str(), argv.get());
         _exit(127);
     }
     close(pipe_fds[1]);

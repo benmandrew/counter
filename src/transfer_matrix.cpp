@@ -1,6 +1,7 @@
 #include "transfer_matrix.hpp"
 
 #include <cstddef>
+#include <functional>
 #include <stdexcept>
 #include <string>
 #include <vector>
@@ -45,24 +46,24 @@ std::vector<State> countdown_states(std::size_t max_ticks) {
 // Invalid transitions correspond to entering the omitted dead state.
 std::size_t within_next_countdown(std::size_t countdown, bool trigger_holds,
                                   bool response_holds, std::size_t max_ticks,
-                                  bool* valid) {
+                                  bool& valid) {
     if (response_holds) {
-        *valid = true;
+        valid = true;
         return 0;
     }
     if (countdown == 0) {
-        *valid = true;
+        valid = true;
         return trigger_holds ? max_ticks : 0;
     }
     if (countdown == 1) {
-        *valid = false;
+        valid = false;
         return 0;
     }
     if (trigger_holds) {
-        *valid = true;
+        valid = true;
         return max_ticks;
     }
-    *valid = true;
+    valid = true;
     return countdown - 1;
 }
 
@@ -70,29 +71,29 @@ std::size_t within_next_countdown(std::size_t countdown, bool trigger_holds,
 // Invalid transitions correspond to entering the omitted dead state.
 std::size_t for_next_countdown(std::size_t countdown, bool trigger_holds,
                                bool response_holds, std::size_t max_ticks,
-                               bool* valid) {
+                               bool& valid) {
     if (!response_holds) {
         if (countdown > 0 || trigger_holds) {
-            *valid = false;
+            valid = false;
             return 0;
         }
-        *valid = true;
+        valid = true;
         return 0;
     }
     if (trigger_holds) {
-        *valid = true;
+        valid = true;
         return max_ticks;
     }
     if (countdown > 0) {
-        *valid = true;
+        valid = true;
         return countdown - 1;
     }
-    *valid = true;
+    valid = true;
     return 0;
 }
 
-using CountdownTransitionFn = std::size_t (*)(std::size_t, bool, bool,
-                                              std::size_t, bool*);
+using CountdownTransitionFn =
+    std::function<std::size_t(std::size_t, bool, bool, std::size_t, bool&)>;
 
 // Selects the countdown transition function for the requested timing.
 CountdownTransitionFn countdown_transition_fn_or_throw(
@@ -124,7 +125,7 @@ CountMatrix build_countdown_weighted_transitions(
             bool valid_transition = false;
             const std::size_t next_countdown = transition_fn(
                 countdown, cell.m_trigger_holds, cell.m_response_holds,
-                max_ticks, &valid_transition);
+                max_ticks, valid_transition);
             if (!valid_transition) {
                 continue;
             }

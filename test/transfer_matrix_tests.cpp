@@ -446,6 +446,28 @@ void test_weighted_transition_matrix_passthrough() {
                          "weighted transition passthrough");
 }
 
+void test_combined_weighted_transition_matrix_immediately_immediately() {
+    const Requirement requirement1{"A", "B", Timing::Immediately};
+    const Requirement requirement2{"C", "D", Timing::Immediately};
+
+    CountVector joint_counts(16);
+    joint_counts.setZero();
+    // cell index: left (~P,Q)=1, right (P,Q)=3 -> 1*4+3=7
+    joint_counts(7) = 7;
+
+    const CountMatrix combined = build_combined_weighted_transition_matrix(
+        requirement1, requirement2, joint_counts);
+
+    std::vector<std::vector<Count>> expected(9, std::vector<Count>(9, 0));
+    for (std::size_t row = 0; row < 9; ++row) {
+        expected[row][5] = 7;
+    }
+
+    expect_matrix_equals(
+        combined, expected,
+        "combined weighted transfer matrix (immediately/immediately)");
+}
+
 void run_transfer_matrix_tests() {
     test_transfer_system_cases();
     test_transfer_matrix_cases();
@@ -453,4 +475,5 @@ void run_transfer_matrix_tests() {
     test_trace_acceptance_cases();
     test_weighted_transition_matrix_applies_column_weights();
     test_weighted_transition_matrix_passthrough();
+    test_combined_weighted_transition_matrix_immediately_immediately();
 }

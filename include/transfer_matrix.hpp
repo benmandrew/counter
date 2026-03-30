@@ -96,4 +96,12 @@ TransferSystem build_transfer_system(
 CountVector count_canonical_valuation_counts(const Requirement& requirement,
                                              unsigned seed = 1);
 
+CountVector count_joint_valuation_counts(const Requirement& requirement1,
+                                         const Requirement& requirement2,
+                                         unsigned seed = 1);
+
 CountMatrix weighted_transition_matrix(const TransferSystem& system);
+
+CountMatrix build_combined_weighted_transition_matrix(
+    const Requirement& requirement1, const Requirement& requirement2,
+    const CountVector& joint_valuation_counts = CountVector());

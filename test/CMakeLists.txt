@@ -2,7 +2,6 @@ set(COUNTER_TEST_SOURCES
     formula_dimacs_tests.cpp
     ganak_runner_tests.cpp
     main.cpp
-    transfer_system_tests.cpp
     transfer_matrix_tests.cpp
 )
 

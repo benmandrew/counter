@@ -18,7 +18,6 @@ set(COUNTER_LIBRARY_SOURCES
     src/ganak_runner.cpp
     src/model_counter.cpp
     src/requirement.cpp
-    src/transfer_system.cpp
     src/transfer_matrix.cpp
 )
 

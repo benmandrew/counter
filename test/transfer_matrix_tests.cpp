@@ -30,6 +30,12 @@ CountVector one_hot_counts(std::size_t index) {
     return counts;
 }
 
+CountVector filled_counts(Eigen::Index size, Count value) {
+    CountVector counts(size);
+    counts.setConstant(value);
+    return counts;
+}
+
 std::vector<TransferSystem> one_hot_transfer_systems(
     const Requirement& requirement) {
     std::vector<TransferSystem> systems;
@@ -257,6 +263,20 @@ void expect_trace_counts(const TransferSystem& system,
     }
 }
 
+void expect_matrix_size(const CountMatrix& matrix, Eigen::Index expected_rows,
+                        Eigen::Index expected_columns,
+                        const std::string& label) {
+    expect(matrix.rows() == expected_rows, label + ": unexpected row count");
+    expect(matrix.cols() == expected_columns,
+           label + ": unexpected column count");
+}
+
+void expect_square_matrix_size(const CountMatrix& matrix,
+                               Eigen::Index expected_size,
+                               const std::string& label) {
+    expect_matrix_size(matrix, expected_size, expected_size, label);
+}
+
 struct TransferSystemCase {
     std::string m_label;
     Requirement m_requirement;
@@ -321,6 +341,10 @@ void test_transfer_system_cases() {
                test_case.m_label + ": unexpected state count");
         expect(state_labels(system) == test_case.m_expected_state_labels,
                test_case.m_label + ": unexpected state ordering");
+        expect_square_matrix_size(
+            system.m_transition_matrix,
+            static_cast<Eigen::Index>(test_case.m_expected_state_count),
+            test_case.m_label + ": transfer matrix size");
 
         if (test_case.m_check_valuation_counts) {
             expect_matrix_equals(system.m_valuation_counts,
@@ -328,8 +352,99 @@ void test_transfer_system_cases() {
                                  test_case.m_label + " valuation counts");
         }
 
+        expect_square_matrix_size(
+            weighted_transition_matrix(system),
+            static_cast<Eigen::Index>(test_case.m_expected_state_count),
+            test_case.m_label + ": weighted transfer matrix size");
+
         expect_trace_counts(system, test_case.m_expected_trace_counts,
                             test_case.m_label + " trace counts");
+    }
+}
+
+void test_single_requirement_transfer_matrix_sizes() {
+    struct MatrixSizeCase {
+        std::string m_label;
+        Requirement m_requirement;
+        std::size_t m_expected_state_count;
+    };
+
+    const std::vector<MatrixSizeCase> cases = {
+        {"immediately", {"P", "Q", Timing::Immediately}, 3},
+        {"next-timepoint", {"P", "Q", Timing::NextTimepoint}, 4},
+        {"within-ticks N=2", {"P", "Q", Timing::WithinTicks, 2}, 3},
+        {"within-ticks N=4", {"P", "Q", Timing::WithinTicks, 4}, 5},
+        {"for-ticks N=2", {"P", "Q", Timing::ForTicks, 2}, 3},
+        {"for-ticks N=4", {"P", "Q", Timing::ForTicks, 4}, 5},
+    };
+
+    const CountVector canonical_counts = filled_counts(4, 1);
+    for (const MatrixSizeCase& test_case : cases) {
+        const TransferSystem system =
+            build_transfer_system(test_case.m_requirement, canonical_counts);
+        const Eigen::Index expected_size =
+            static_cast<Eigen::Index>(test_case.m_expected_state_count);
+
+        expect(system.m_states.size() == test_case.m_expected_state_count,
+               test_case.m_label + ": state count mismatch");
+        expect_square_matrix_size(
+            system.m_transition_matrix, expected_size,
+            test_case.m_label + ": transfer matrix size mismatch");
+        expect_square_matrix_size(
+            weighted_transition_matrix(system), expected_size,
+            test_case.m_label + ": weighted matrix size mismatch");
+    }
+}
+
+void test_joint_requirement_transfer_matrix_sizes() {
+    struct JointMatrixSizeCase {
+        std::string m_label;
+        Requirement m_left_requirement;
+        Requirement m_right_requirement;
+        std::size_t m_expected_left_state_count;
+        std::size_t m_expected_right_state_count;
+    };
+
+    const std::vector<JointMatrixSizeCase> cases = {
+        {"immediately/immediately",
+         {"A", "B", Timing::Immediately},
+         {"C", "D", Timing::Immediately},
+         3,
+         3},
+        {"immediately/next-timepoint",
+         {"A", "B", Timing::Immediately},
+         {"C", "D", Timing::NextTimepoint},
+         3,
+         4},
+        {"next-timepoint/next-timepoint",
+         {"A", "B", Timing::NextTimepoint},
+         {"C", "D", Timing::NextTimepoint},
+         4,
+         4},
+        {"within-ticks/for-ticks",
+         {"A", "B", Timing::WithinTicks, 2},
+         {"C", "D", Timing::ForTicks, 2},
+         3,
+         3},
+        {"within-ticks N=4/next-timepoint",
+         {"A", "B", Timing::WithinTicks, 4},
+         {"C", "D", Timing::NextTimepoint},
+         5,
+         4},
+    };
+
+    const CountVector joint_counts = filled_counts(16, 1);
+    for (const JointMatrixSizeCase& test_case : cases) {
+        const CountMatrix combined = build_combined_weighted_transition_matrix(
+            test_case.m_left_requirement, test_case.m_right_requirement,
+            joint_counts);
+        const Eigen::Index expected_size =
+            static_cast<Eigen::Index>(test_case.m_expected_left_state_count *
+                                      test_case.m_expected_right_state_count);
+
+        expect_square_matrix_size(
+            combined, expected_size,
+            test_case.m_label + ": combined matrix size mismatch");
     }
 }
 
@@ -496,11 +611,13 @@ void test_count_traces_formula() {
 
 void run_transfer_matrix_tests() {
     test_transfer_system_cases();
+    test_single_requirement_transfer_matrix_sizes();
     test_transfer_matrix_cases();
     test_formula_valuation_cases();
     test_trace_acceptance_cases();
     test_weighted_transition_matrix_applies_column_weights();
     test_weighted_transition_matrix_passthrough();
     test_combined_weighted_transition_matrix_immediately_immediately();
+    test_joint_requirement_transfer_matrix_sizes();
     test_count_traces_formula();
 }

@@ -47,10 +47,11 @@ SemanticSimilarityCounts count_semantic_similarity_terms(
 }
 
 double semantic_similarity_from_counts(const SemanticSimilarityCounts& counts) {
-    return ratio_or_throw(counts.m_conjunction_count,
-                          counts.m_requirement_count) +
-           ratio_or_throw(counts.m_conjunction_count,
-                          counts.m_other_requirement_count);
+    double first =
+        ratio_or_throw(counts.m_conjunction_count, counts.m_requirement_count);
+    double second = ratio_or_throw(counts.m_conjunction_count,
+                                   counts.m_other_requirement_count);
+    return (first + second) * 0.5;
 }
 
 }  // namespace

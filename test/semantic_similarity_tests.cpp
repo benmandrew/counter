@@ -11,16 +11,16 @@ namespace {
 void test_semantic_similarity_identical_requirements_score_two() {
     const Requirement requirement{"P", "Q", Timing::Immediately};
     const double score = semantic_similarity(requirement, requirement, 1);
-    expect(std::fabs(score - 2.0) < 1e-12,
-           "semantic-similarity: identical requirements should have score 2");
+    expect(std::fabs(score - 1.0) < 1e-12,
+           "semantic-similarity: identical requirements should have score 1");
 }
 
 void test_semantic_similarity_formula_value_explicit_step_count() {
     const Requirement requirement{"P", "Q", Timing::Immediately};
     const Requirement other_requirement{"P", "P|Q", Timing::Immediately};
     const double score = semantic_similarity(requirement, other_requirement, 1);
-    expect(std::fabs(score - 1.75) < 1e-12,
-           "semantic-similarity: expected score 1.75 from formula");
+    expect(std::fabs(score - 0.875) < 1e-12,
+           "semantic-similarity: expected score 0.875 from formula");
 }
 
 void test_semantic_similarity_default_overload_matches_explicit_step_count() {

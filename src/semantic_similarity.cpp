@@ -19,7 +19,11 @@ double ratio_or_throw(Count numerator, Count denominator) {
                                static_cast<long double>(denominator));
 }
 
-}  // namespace
+struct SemanticSimilarityCounts {
+    Count m_requirement_count;
+    Count m_other_requirement_count;
+    Count m_conjunction_count;
+};
 
 SemanticSimilarityCounts count_semantic_similarity_terms(
     const Requirement& requirement, const Requirement& other_requirement,
@@ -48,6 +52,8 @@ double semantic_similarity_from_counts(const SemanticSimilarityCounts& counts) {
            ratio_or_throw(counts.m_conjunction_count,
                           counts.m_other_requirement_count);
 }
+
+}  // namespace
 
 double semantic_similarity(const Requirement& requirement,
                            const Requirement& other_requirement,

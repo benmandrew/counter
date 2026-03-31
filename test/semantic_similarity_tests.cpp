@@ -8,42 +8,40 @@
 
 namespace {
 
-void test_semantic_similarity_counts_identical_requirements() {
+void test_semantic_similarity_identical_requirements_score_two() {
     const Requirement requirement{"P", "Q", Timing::Immediately};
-    const SemanticSimilarityCounts counts =
-        count_semantic_similarity_terms(requirement, requirement, 1);
-
-    expect(counts.m_requirement_count == 3,
-           "semantic-similarity: expected #(S,1)=3 for P->Q immediately");
-    expect(counts.m_other_requirement_count == 3,
-           "semantic-similarity: expected #(S',1)=3 for identical requirement");
-    expect(counts.m_conjunction_count == 3,
-           "semantic-similarity: expected #(S and S',1)=3 for identical "
-           "requirements");
+    const double score = semantic_similarity(requirement, requirement, 1);
+    expect(std::fabs(score - 2.0) < 1e-12,
+           "semantic-similarity: identical requirements should have score 2");
 }
 
-void test_semantic_similarity_formula_value() {
+void test_semantic_similarity_formula_value_explicit_step_count() {
     const Requirement requirement{"P", "Q", Timing::Immediately};
     const Requirement other_requirement{"P", "P|Q", Timing::Immediately};
-    const SemanticSimilarityCounts counts =
-        count_semantic_similarity_terms(requirement, other_requirement, 1);
-
-    expect(counts.m_requirement_count == 3,
-           "semantic-similarity: expected #(S,1)=3 for P->Q immediately");
-    expect(counts.m_other_requirement_count == 4,
-           "semantic-similarity: expected #(S',1)=4 for P->(P|Q) immediately");
-    expect(counts.m_conjunction_count == 3,
-           "semantic-similarity: expected #(S and S',1)=3");
-
-    const double score = semantic_similarity_from_counts(counts);
+    const double score = semantic_similarity(requirement, other_requirement, 1);
     expect(std::fabs(score - 1.75) < 1e-12,
            "semantic-similarity: expected score 1.75 from formula");
 }
 
+void test_semantic_similarity_default_overload_matches_explicit_step_count() {
+    const Requirement requirement{"P", "Q", Timing::Immediately};
+    const Requirement other_requirement{"P", "P|Q", Timing::Immediately};
+    const double with_default =
+        semantic_similarity(requirement, other_requirement);
+    const double with_explicit_step_count =
+        semantic_similarity(requirement, other_requirement, 5);
+    expect(std::fabs(with_default - with_explicit_step_count) < 1e-12,
+           "semantic-similarity: default overload should use step_count=5");
+}
+
 void test_semantic_similarity_rejects_zero_denominator() {
+    const Requirement unsatisfiable_requirement{"A|!A", "A&!A",
+                                                Timing::Immediately};
+    const Requirement other_requirement{"A", "A", Timing::Immediately};
     bool threw = false;
     try {
-        (void)semantic_similarity_from_counts({0, 1, 0});
+        (void)semantic_similarity(unsatisfiable_requirement, other_requirement,
+                                  1);
     } catch (const std::domain_error&) {
         threw = true;
     }
@@ -54,7 +52,8 @@ void test_semantic_similarity_rejects_zero_denominator() {
 }  // namespace
 
 void run_semantic_similarity_tests() {
-    test_semantic_similarity_counts_identical_requirements();
-    test_semantic_similarity_formula_value();
+    test_semantic_similarity_identical_requirements_score_two();
+    test_semantic_similarity_formula_value_explicit_step_count();
+    test_semantic_similarity_default_overload_matches_explicit_step_count();
     test_semantic_similarity_rejects_zero_denominator();
 }

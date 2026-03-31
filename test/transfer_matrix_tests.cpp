@@ -11,6 +11,8 @@
 
 namespace {
 
+using CountGrid = std::vector<std::vector<Count>>;
+
 struct TraceStep {
     bool m_trigger_holds;
     bool m_response_holds;
@@ -34,6 +36,36 @@ CountVector filled_counts(Eigen::Index size, Count value) {
     CountVector counts(size);
     counts.setConstant(value);
     return counts;
+}
+
+CountVector count_vector_from_values(const std::vector<Count>& values) {
+    CountVector counts(static_cast<Eigen::Index>(values.size()));
+    for (Eigen::Index index = 0; index < counts.size(); ++index) {
+        counts(index) = values[static_cast<std::size_t>(index)];
+    }
+    return counts;
+}
+
+CountMatrix count_matrix_from_rows(const CountGrid& rows) {
+    const Eigen::Index row_count = static_cast<Eigen::Index>(rows.size());
+    const Eigen::Index column_count =
+        rows.empty() ? 0 : static_cast<Eigen::Index>(rows.front().size());
+    CountMatrix matrix(row_count, column_count);
+    for (Eigen::Index row = 0; row < row_count; ++row) {
+        for (Eigen::Index column = 0; column < column_count; ++column) {
+            matrix(row, column) =
+                rows[static_cast<std::size_t>(row)]
+                    [static_cast<std::size_t>(column)];
+        }
+    }
+    return matrix;
+}
+
+template <typename CaseType, typename Fn>
+void run_cases(const std::vector<CaseType>& cases, Fn run_case) {
+    for (const CaseType& test_case : cases) {
+        run_case(test_case);
+    }
 }
 
 std::vector<TransferSystem> one_hot_transfer_systems(
@@ -192,11 +224,11 @@ void test_trace_acceptance_cases() {
          false},
     };
 
-    for (const TraceAcceptanceCase& test_case : cases) {
+    run_cases(cases, [](const TraceAcceptanceCase& test_case) {
         expect_trace_acceptance(test_case.m_requirement, test_case.m_trace,
                                 test_case.m_expected_acceptance,
                                 test_case.m_label);
-    }
+    });
 }
 
 }  // namespace
@@ -213,7 +245,7 @@ std::string state_labels(const TransferSystem& system) {
 }
 
 void expect_matrix_equals(const CountMatrix& actual,
-                          const std::vector<std::vector<Count>>& expected,
+                          const CountGrid& expected,
                           const std::string& label) {
     expect(actual.rows() == static_cast<Eigen::Index>(expected.size()),
            label + ": unexpected row count");
@@ -277,13 +309,26 @@ void expect_square_matrix_size(const CountMatrix& matrix,
     expect_matrix_size(matrix, expected_size, expected_size, label);
 }
 
+void expect_system_matrix_dimensions(const TransferSystem& system,
+                                     std::size_t expected_state_count,
+                                     const std::string& label) {
+    expect(system.m_states.size() == expected_state_count,
+           label + ": unexpected state count");
+    const Eigen::Index expected_size =
+        static_cast<Eigen::Index>(expected_state_count);
+    expect_square_matrix_size(system.m_transition_matrix, expected_size,
+                              label + ": transfer matrix size");
+    expect_square_matrix_size(weighted_transition_matrix(system), expected_size,
+                              label + ": weighted transfer matrix size");
+}
+
 struct TransferSystemCase {
     std::string m_label;
     Requirement m_requirement;
     std::size_t m_expected_state_count;
     std::string m_expected_state_labels;
     bool m_check_valuation_counts;
-    std::vector<std::vector<Count>> m_expected_valuation_counts;
+    CountGrid m_expected_valuation_counts;
     std::vector<Count> m_expected_trace_counts;
 };
 
@@ -333,18 +378,14 @@ void test_transfer_system_cases() {
          {4, 14, 46, 148}},
     };
 
-    for (const TransferSystemCase& test_case : cases) {
+    run_cases(cases, [](const TransferSystemCase& test_case) {
         const TransferSystem system =
             build_transfer_system(test_case.m_requirement);
 
-        expect(system.m_states.size() == test_case.m_expected_state_count,
-               test_case.m_label + ": unexpected state count");
+        expect_system_matrix_dimensions(system, test_case.m_expected_state_count,
+                                        test_case.m_label);
         expect(state_labels(system) == test_case.m_expected_state_labels,
                test_case.m_label + ": unexpected state ordering");
-        expect_square_matrix_size(
-            system.m_transition_matrix,
-            static_cast<Eigen::Index>(test_case.m_expected_state_count),
-            test_case.m_label + ": transfer matrix size");
 
         if (test_case.m_check_valuation_counts) {
             expect_matrix_equals(system.m_valuation_counts,
@@ -352,14 +393,9 @@ void test_transfer_system_cases() {
                                  test_case.m_label + " valuation counts");
         }
 
-        expect_square_matrix_size(
-            weighted_transition_matrix(system),
-            static_cast<Eigen::Index>(test_case.m_expected_state_count),
-            test_case.m_label + ": weighted transfer matrix size");
-
         expect_trace_counts(system, test_case.m_expected_trace_counts,
                             test_case.m_label + " trace counts");
-    }
+    });
 }
 
 void test_single_requirement_transfer_matrix_sizes() {
@@ -379,21 +415,14 @@ void test_single_requirement_transfer_matrix_sizes() {
     };
 
     const CountVector canonical_counts = filled_counts(4, 1);
-    for (const MatrixSizeCase& test_case : cases) {
+    run_cases(cases, [&canonical_counts](const MatrixSizeCase& test_case) {
         const TransferSystem system =
             build_transfer_system(test_case.m_requirement, canonical_counts);
-        const Eigen::Index expected_size =
-            static_cast<Eigen::Index>(test_case.m_expected_state_count);
 
-        expect(system.m_states.size() == test_case.m_expected_state_count,
-               test_case.m_label + ": state count mismatch");
-        expect_square_matrix_size(
-            system.m_transition_matrix, expected_size,
-            test_case.m_label + ": transfer matrix size mismatch");
-        expect_square_matrix_size(
-            weighted_transition_matrix(system), expected_size,
-            test_case.m_label + ": weighted matrix size mismatch");
-    }
+        expect_system_matrix_dimensions(
+            system, test_case.m_expected_state_count,
+            test_case.m_label + ": state/matrix size mismatch");
+    });
 }
 
 void test_joint_requirement_transfer_matrix_sizes() {
@@ -434,7 +463,7 @@ void test_joint_requirement_transfer_matrix_sizes() {
     };
 
     const CountVector joint_counts = filled_counts(16, 1);
-    for (const JointMatrixSizeCase& test_case : cases) {
+    run_cases(cases, [&joint_counts](const JointMatrixSizeCase& test_case) {
         const CountMatrix combined = build_combined_weighted_transition_matrix(
             test_case.m_left_requirement, test_case.m_right_requirement,
             joint_counts);
@@ -445,15 +474,15 @@ void test_joint_requirement_transfer_matrix_sizes() {
         expect_square_matrix_size(
             combined, expected_size,
             test_case.m_label + ": combined matrix size mismatch");
-    }
+    });
 }
 
 struct TransferMatrixCase {
     std::string m_label;
     Requirement m_requirement;
     bool m_check_transition_matrix;
-    std::vector<std::vector<Count>> m_expected_transition_matrix;
-    std::vector<std::vector<Count>> m_expected_weighted_matrix;
+    CountGrid m_expected_transition_matrix;
+    CountGrid m_expected_weighted_matrix;
 };
 
 void test_transfer_matrix_cases() {
@@ -495,7 +524,7 @@ void test_transfer_matrix_cases() {
          {{1, 0, 1, 2}, {1, 0, 1, 2}, {0, 0, 0, 2}, {0, 0, 0, 2}}},
     };
 
-    for (const TransferMatrixCase& test_case : cases) {
+    run_cases(cases, [](const TransferMatrixCase& test_case) {
         const TransferSystem system =
             build_transfer_system(test_case.m_requirement);
 
@@ -508,13 +537,13 @@ void test_transfer_matrix_cases() {
         expect_matrix_equals(weighted_transition_matrix(system),
                              test_case.m_expected_weighted_matrix,
                              test_case.m_label + " weighted transfer matrix");
-    }
+    });
 }
 
 struct FormulaValuationCase {
     std::string m_label;
     Requirement m_requirement;
-    std::vector<std::vector<Count>> m_expected_valuation_counts;
+    CountGrid m_expected_valuation_counts;
 };
 
 void test_formula_valuation_cases() {
@@ -524,41 +553,52 @@ void test_formula_valuation_cases() {
          {{1}, {0}, {1}, {2}}},
     };
 
-    for (const FormulaValuationCase& test_case : cases) {
+    run_cases(cases, [](const FormulaValuationCase& test_case) {
         const TransferSystem system =
             build_transfer_system(test_case.m_requirement);
         expect_matrix_equals(system.m_valuation_counts,
                              test_case.m_expected_valuation_counts,
                              test_case.m_label);
-    }
+    });
 }
 
-void test_weighted_transition_matrix_applies_column_weights() {
-    TransferSystem system;
-    system.m_states = {{false, false}, {true, true}};
-    system.m_valuation_counts = CountVector(2);
-    system.m_valuation_counts << 5, 7;
-    system.m_transition_matrix = CountMatrix(2, 2);
-    system.m_transition_matrix << 1, 2, 3, 4;
-    system.m_transition_matrix_is_weighted = false;
+void test_weighted_transition_matrix_cases() {
+    struct WeightedTransitionCase {
+        std::string m_label;
+        std::vector<Count> m_valuation_counts;
+        CountGrid m_transition_matrix;
+        bool m_transition_matrix_is_weighted;
+        CountGrid m_expected_weighted_matrix;
+    };
 
-    const CountMatrix weighted = weighted_transition_matrix(system);
-    expect_matrix_equals(weighted, {{5, 14}, {15, 28}},
-                         "weighted transition column scaling");
-}
+    const std::vector<WeightedTransitionCase> cases = {
+        {"weighted transition column scaling",
+         {5, 7},
+         {{1, 2}, {3, 4}},
+         false,
+         {{5, 14}, {15, 28}}},
+        {"weighted transition passthrough",
+         {3, 9},
+         {{2, 4}, {6, 8}},
+         true,
+         {{2, 4}, {6, 8}}},
+    };
 
-void test_weighted_transition_matrix_passthrough() {
-    TransferSystem system;
-    system.m_states = {{false, false}, {true, true}};
-    system.m_valuation_counts = CountVector(2);
-    system.m_valuation_counts << 3, 9;
-    system.m_transition_matrix = CountMatrix(2, 2);
-    system.m_transition_matrix << 2, 4, 6, 8;
-    system.m_transition_matrix_is_weighted = true;
+    run_cases(cases, [](const WeightedTransitionCase& test_case) {
+        TransferSystem system;
+        const std::size_t state_count = test_case.m_valuation_counts.size();
+        system.m_states.assign(state_count, State{});
+        system.m_valuation_counts =
+            count_vector_from_values(test_case.m_valuation_counts);
+        system.m_transition_matrix =
+            count_matrix_from_rows(test_case.m_transition_matrix);
+        system.m_transition_matrix_is_weighted =
+            test_case.m_transition_matrix_is_weighted;
 
-    const CountMatrix weighted = weighted_transition_matrix(system);
-    expect_matrix_equals(weighted, {{2, 4}, {6, 8}},
-                         "weighted transition passthrough");
+        const CountMatrix weighted = weighted_transition_matrix(system);
+        expect_matrix_equals(weighted, test_case.m_expected_weighted_matrix,
+                             test_case.m_label);
+    });
 }
 
 void test_combined_weighted_transition_matrix_immediately_immediately() {
@@ -615,8 +655,7 @@ void run_transfer_matrix_tests() {
     test_transfer_matrix_cases();
     test_formula_valuation_cases();
     test_trace_acceptance_cases();
-    test_weighted_transition_matrix_applies_column_weights();
-    test_weighted_transition_matrix_passthrough();
+    test_weighted_transition_matrix_cases();
     test_combined_weighted_transition_matrix_immediately_immediately();
     test_joint_requirement_transfer_matrix_sizes();
     test_count_traces_formula();

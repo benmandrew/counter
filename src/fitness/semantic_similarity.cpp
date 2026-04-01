@@ -1,9 +1,9 @@
-#include "semantic_similarity.hpp"
+#include "fitness/semantic_similarity.hpp"
 
 #include <stdexcept>
 
-#include "model_counter.hpp"
-#include "transfer_matrix.hpp"
+#include "fitness/model_counter.hpp"
+#include "fitness/transfer_matrix.hpp"
 
 namespace {
 

@@ -1,4 +1,4 @@
-#include "model_counter.hpp"
+#include "fitness/model_counter.hpp"
 
 #include <stdexcept>
 #include <string>

@@ -1,4 +1,4 @@
-#include "transfer_matrix.hpp"
+#include "fitness/transfer_matrix.hpp"
 
 #include <array>
 #include <cstddef>
@@ -7,7 +7,7 @@
 #include <string>
 #include <vector>
 
-#include "ganak_runner.hpp"
+#include "fitness/ganak_runner.hpp"
 
 namespace {
 

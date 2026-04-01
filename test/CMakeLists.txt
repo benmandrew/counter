@@ -1,17 +1,14 @@
-set(COUNTER_TEST_SOURCES
-    prop_formula_tests.cpp
-    ganak_runner_tests.cpp
-    main.cpp
-    semantic_similarity_tests.cpp
-    syntactic_similarity_tests.cpp
-    transfer_matrix_tests.cpp
-)
-
 add_executable(counter_tests
-    ${COUNTER_TEST_SOURCES}
+    prop_formula_tests.cpp
+    fitness/ganak_runner_tests.cpp
+    main.cpp
+    fitness/semantic_similarity_tests.cpp
+    fitness/syntactic_similarity_tests.cpp
+    fitness/transfer_matrix_tests.cpp
 )
 
-target_link_libraries(counter_tests PRIVATE counter_static)
+target_include_directories(counter_tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+target_link_libraries(counter_tests PRIVATE counter_fitness)
 
 if(MSVC)
     target_compile_options(counter_tests PRIVATE /W4 /permissive-)

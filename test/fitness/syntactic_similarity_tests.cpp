@@ -1,9 +1,9 @@
 #include <stdexcept>
 #include <string>
 
+#include "fitness/syntactic_similarity.hpp"
 #include "prop_formula.hpp"
 #include "requirement.hpp"
-#include "syntactic_similarity.hpp"
 #include "test_suite.hpp"
 #include "test_support.hpp"
 

@@ -1,4 +1,4 @@
-#include "ganak_runner.hpp"
+#include "fitness/ganak_runner.hpp"
 
 #include <sys/types.h>
 #include <sys/wait.h>

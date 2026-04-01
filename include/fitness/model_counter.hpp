@@ -2,7 +2,7 @@
 
 #include <cstddef>
 
-#include "transfer_matrix.hpp"
+#include "fitness/transfer_matrix.hpp"
 
 /// Counts the number of valid traces of length step_count in a requirement
 /// automaton using transfer matrix exponentiation. Computes: e^T * T^k * 1

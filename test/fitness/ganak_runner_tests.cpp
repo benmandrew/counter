@@ -5,7 +5,7 @@
 #include <fstream>
 #include <string>
 
-#include "ganak_runner.hpp"
+#include "fitness/ganak_runner.hpp"
 #include "test_suite.hpp"
 #include "test_support.hpp"
 

@@ -1,9 +1,9 @@
 #include <cmath>
 #include <stdexcept>
 
+#include "fitness/semantic_similarity.hpp"
 #include "prop_formula.hpp"
 #include "requirement.hpp"
-#include "semantic_similarity.hpp"
 #include "test_suite.hpp"
 #include "test_support.hpp"
 

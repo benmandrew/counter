@@ -3,9 +3,9 @@
 #include <string>
 #include <vector>
 
-#include "model_counter.hpp"
+#include "fitness/model_counter.hpp"
+#include "fitness/transfer_matrix.hpp"
 #include "requirement.hpp"
-#include "transfer_matrix.hpp"
 
 namespace {
 

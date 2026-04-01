@@ -2,8 +2,8 @@
 
 #include <cstddef>
 
+#include "fitness/transfer_matrix.hpp"
 #include "requirement.hpp"
-#include "transfer_matrix.hpp"
 
 /// Computes the semantic similarity between two requirements using bounded
 /// model counting of satisfying traces. The similarity metric is defined as:

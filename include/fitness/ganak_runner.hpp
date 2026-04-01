@@ -2,7 +2,7 @@
 
 #include <string>
 
-#include "transfer_matrix.hpp"
+#include "fitness/transfer_matrix.hpp"
 
 std::string ganak_executable_path();
 

@@ -1,4 +1,4 @@
-#include "syntactic_similarity.hpp"
+#include "fitness/syntactic_similarity.hpp"
 
 #include <stdexcept>
 

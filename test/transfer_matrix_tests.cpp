@@ -53,9 +53,8 @@ CountMatrix count_matrix_from_rows(const CountGrid& rows) {
     CountMatrix matrix(row_count, column_count);
     for (Eigen::Index row = 0; row < row_count; ++row) {
         for (Eigen::Index column = 0; column < column_count; ++column) {
-            matrix(row, column) =
-                rows[static_cast<std::size_t>(row)]
-                    [static_cast<std::size_t>(column)];
+            matrix(row, column) = rows[static_cast<std::size_t>(row)]
+                                      [static_cast<std::size_t>(column)];
         }
     }
     return matrix;
@@ -244,8 +243,7 @@ std::string state_labels(const TransferSystem& system) {
     return stream.str();
 }
 
-void expect_matrix_equals(const CountMatrix& actual,
-                          const CountGrid& expected,
+void expect_matrix_equals(const CountMatrix& actual, const CountGrid& expected,
                           const std::string& label) {
     expect(actual.rows() == static_cast<Eigen::Index>(expected.size()),
            label + ": unexpected row count");
@@ -382,8 +380,8 @@ void test_transfer_system_cases() {
         const TransferSystem system =
             build_transfer_system(test_case.m_requirement);
 
-        expect_system_matrix_dimensions(system, test_case.m_expected_state_count,
-                                        test_case.m_label);
+        expect_system_matrix_dimensions(
+            system, test_case.m_expected_state_count, test_case.m_label);
         expect(state_labels(system) == test_case.m_expected_state_labels,
                test_case.m_label + ": unexpected state ordering");
 

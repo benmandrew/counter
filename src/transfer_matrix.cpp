@@ -350,15 +350,18 @@ CountMatrix build_unweighted_transition_matrix(
 }
 
 // Builds a valuation formula fixing trigger/response truth values for one
-// canonical valuation cell.
+// canonical valuation cell. Note: Formula concatenation is approximate and
+// may not produce a valid formula if subformulae contain operators. For
+// model counting, the actual propositional conditions should be evaluated
+// against specific variable assignments.
 std::string valuation_formula(const Requirement& requirement,
                               const State& valuation) {
+    const std::string trigger_str = requirement.m_trigger.to_string();
+    const std::string response_str = requirement.m_response.to_string();
     const std::string trigger_clause =
-        valuation.m_trigger_holds ? requirement.m_trigger_name
-                                  : "!(" + requirement.m_trigger_name + ")";
+        valuation.m_trigger_holds ? trigger_str : "!(" + trigger_str + ")";
     const std::string response_clause =
-        valuation.m_response_holds ? requirement.m_response_name
-                                   : "!(" + requirement.m_response_name + ")";
+        valuation.m_response_holds ? response_str : "!(" + response_str + ")";
     return "(" + trigger_clause + ") & (" + response_clause + ")";
 }
 

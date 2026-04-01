@@ -13,6 +13,10 @@
 /// representation) from the public interface.
 class Formula {
    public:
+    /// Default constructor creates a formula representing the logical constant
+    /// "true" (implemented as a single variable named "⊤").
+    Formula();
+
     /// Constructs a Formula by parsing a string representation.
     /// Supports operators: ! or ~ (negation), & (and), | (or), -> (implies),
     /// <-> (iff). Variables are alphanumeric identifiers (including _).
@@ -50,6 +54,12 @@ class Formula {
     /// @param other The formula to compare with
     /// @return The number of shared subformulae
     size_t shared_subformulae(const Formula& other) const;
+
+    /// Converts the formula back to its string representation.
+    /// Returns a string that, when parsed as a new Formula, produces an
+    /// equivalent formula (minus whitespace and parentheses variations).
+    /// @return A string representation of the formula
+    std::string to_string() const;
 
    private:
     struct Impl;

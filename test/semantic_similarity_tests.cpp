@@ -1,6 +1,7 @@
 #include <cmath>
 #include <stdexcept>
 
+#include "prop_formula.hpp"
 #include "requirement.hpp"
 #include "semantic_similarity.hpp"
 #include "test_suite.hpp"
@@ -9,23 +10,28 @@
 namespace {
 
 void test_semantic_similarity_identical_requirements_score_two() {
-    const Requirement requirement{"P", "Q", Timing::Immediately};
+    const Requirement requirement{Formula("P"), Formula("Q"),
+                                  Timing::Immediately};
     const double score = semantic_similarity(requirement, requirement, 1);
     expect(std::fabs(score - 1.0) < 1e-12,
            "semantic-similarity: identical requirements should have score 1");
 }
 
 void test_semantic_similarity_formula_value_explicit_step_count() {
-    const Requirement requirement{"P", "Q", Timing::Immediately};
-    const Requirement other_requirement{"P", "P|Q", Timing::Immediately};
+    const Requirement requirement{Formula("P"), Formula("Q"),
+                                  Timing::Immediately};
+    const Requirement other_requirement{Formula("P"), Formula("P|Q"),
+                                        Timing::Immediately};
     const double score = semantic_similarity(requirement, other_requirement, 1);
     expect(std::fabs(score - 0.875) < 1e-12,
            "semantic-similarity: expected score 0.875 from formula");
 }
 
 void test_semantic_similarity_default_overload_matches_explicit_step_count() {
-    const Requirement requirement{"P", "Q", Timing::Immediately};
-    const Requirement other_requirement{"P", "P|Q", Timing::Immediately};
+    const Requirement requirement{Formula("P"), Formula("Q"),
+                                  Timing::Immediately};
+    const Requirement other_requirement{Formula("P"), Formula("P|Q"),
+                                        Timing::Immediately};
     const double with_default =
         semantic_similarity(requirement, other_requirement);
     const double with_explicit_step_count =
@@ -35,9 +41,10 @@ void test_semantic_similarity_default_overload_matches_explicit_step_count() {
 }
 
 void test_semantic_similarity_rejects_zero_denominator() {
-    const Requirement unsatisfiable_requirement{"A|!A", "A&!A",
-                                                Timing::Immediately};
-    const Requirement other_requirement{"A", "A", Timing::Immediately};
+    const Requirement unsatisfiable_requirement{
+        Formula("A|!A"), Formula("A&!A"), Timing::Immediately};
+    const Requirement other_requirement{Formula("A"), Formula("A"),
+                                        Timing::Immediately};
     bool threw = false;
     try {
         (void)semantic_similarity(unsatisfiable_requirement, other_requirement,

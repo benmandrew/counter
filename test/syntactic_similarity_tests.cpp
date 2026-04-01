@@ -1,6 +1,7 @@
 #include <stdexcept>
 #include <string>
 
+#include "prop_formula.hpp"
 #include "requirement.hpp"
 #include "syntactic_similarity.hpp"
 #include "test_suite.hpp"
@@ -9,8 +10,10 @@
 namespace {
 
 void test_syntactic_similarity_not_implemented() {
-    const Requirement requirement{"P", "Q", Timing::Immediately};
-    const Requirement other_requirement{"P", "P|Q", Timing::Immediately};
+    const Requirement requirement{Formula("P"), Formula("Q"),
+                                  Timing::Immediately};
+    const Requirement other_requirement{Formula("P"), Formula("P|Q"),
+                                        Timing::Immediately};
 
     bool threw = false;
     try {

@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cctype>
+#include <functional>
 #include <memory>
 #include <sstream>
 #include <stdexcept>
@@ -295,6 +296,8 @@ struct Formula::Impl {
     }
 };
 
+Formula::Formula() : m_impl(std::make_unique<Impl>("true")) {}
+
 Formula::Formula(const std::string& formula)
     : m_impl(std::make_unique<Impl>(formula)) {}
 
@@ -389,4 +392,46 @@ size_t Formula::shared_subformulae(const Formula& other) const {
         shared_subformulae += std::min(count, other_it->second);
     }
     return shared_subformulae;
+}
+
+std::string Formula::to_string() const {
+    if (m_impl->m_nodes.empty()) {
+        return "";
+    }
+
+    std::function<std::string(std::size_t)> to_string_recursive =
+        [this, &to_string_recursive](std::size_t index) -> std::string {
+        const Node& node = m_impl->m_nodes[index];
+        switch (node.m_type) {
+            case NodeType::Variable:
+                return node.m_variable;
+            case NodeType::Not: {
+                const std::string child = to_string_recursive(node.m_left);
+                return "!(" + child + ")";
+            }
+            case NodeType::And: {
+                const std::string left = to_string_recursive(node.m_left);
+                const std::string right = to_string_recursive(node.m_right);
+                return "(" + left + ") & (" + right + ")";
+            }
+            case NodeType::Or: {
+                const std::string left = to_string_recursive(node.m_left);
+                const std::string right = to_string_recursive(node.m_right);
+                return "(" + left + ") | (" + right + ")";
+            }
+            case NodeType::Implies: {
+                const std::string left = to_string_recursive(node.m_left);
+                const std::string right = to_string_recursive(node.m_right);
+                return "(" + left + ") -> (" + right + ")";
+            }
+            case NodeType::Iff: {
+                const std::string left = to_string_recursive(node.m_left);
+                const std::string right = to_string_recursive(node.m_right);
+                return "(" + left + ") <-> (" + right + ")";
+            }
+        }
+        return "";
+    };
+
+    return to_string_recursive(m_impl->m_nodes.size() - 1);
 }

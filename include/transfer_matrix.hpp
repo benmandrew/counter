@@ -114,13 +114,14 @@ inline Count parse_count_decimal_or_throw(std::string_view text) {
 /// counts for the propositional conditions and a transition matrix for
 /// computing the number of satisfying traces via matrix exponentiation.
 struct TransferSystem {
-    std::vector<State> m_states;  ///< The states of the automaton
-    CountVector
-        m_valuation_counts;  ///< Counts of satisfying valuations for conditions
-    CountMatrix m_transition_matrix;  ///< Transition matrix T where T[i][j] is
-                                      ///< count from state i to j
-    bool m_transition_matrix_is_weighted =
-        false;  ///< Whether matrix represents weighted transitions
+    /// The states of the automaton
+    std::vector<State> m_states;
+    /// Counts of satisfying valuations for conditions
+    CountVector m_valuation_counts;
+    /// Transition matrix T where T[i][j] is count from state i to j
+    CountMatrix m_transition_matrix;
+    /// Whether matrix represents weighted transitions
+    bool m_transition_matrix_is_weighted = false;
 };
 
 /// Constructs a TransferSystem automaton from a requirement. The automaton

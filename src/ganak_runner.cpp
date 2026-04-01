@@ -15,7 +15,7 @@
 #include <string>
 #include <vector>
 
-#include "formula_dimacs.hpp"
+#include "prop_formula.hpp"
 
 namespace {
 
@@ -188,9 +188,9 @@ Count run_ganak_on_dimacs(const std::string& dimacs_path, unsigned seed) {
 }
 
 Count run_ganak_on_formula(const std::string& formula, unsigned seed) {
-    const DimacsCnf cnf = formula_to_dimacs(formula);
+    const Formula f = Formula(formula);
     const std::string formula_dimacs_path =
-        write_temporary_dimacs(cnf.to_dimacs());
+        write_temporary_dimacs(f.to_dimacs());
     try {
         const Count count = run_ganak_on_dimacs(formula_dimacs_path, seed);
         std::remove(formula_dimacs_path.c_str());

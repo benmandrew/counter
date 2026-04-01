@@ -1,6 +1,8 @@
-#include "formula_dimacs.hpp"
+#include "prop_formula.hpp"
 
+#include <algorithm>
 #include <cctype>
+#include <memory>
 #include <sstream>
 #include <stdexcept>
 #include <string>
@@ -171,6 +173,11 @@ class Parser {
     }
 };
 
+struct DimacsCnf {
+    int m_variable_count;
+    std::vector<std::vector<int>> m_clauses;
+};
+
 class TseitinEncoder {
    private:
     const std::vector<Node>& m_nodes;
@@ -279,10 +286,41 @@ class TseitinEncoder {
 
 }  // namespace
 
-std::string DimacsCnf::to_dimacs() const {
+struct Formula::Impl {
+    std::vector<Node> m_nodes;
+
+    explicit Impl(const std::string& formula) {
+        Parser parser(formula);
+        m_nodes = parser.parse();
+    }
+};
+
+Formula::Formula(const std::string& formula)
+    : m_impl(std::make_unique<Impl>(formula)) {}
+
+Formula::Formula(const Formula& other)
+    : m_impl(std::make_unique<Impl>(*other.m_impl)) {}
+
+Formula::Formula(Formula&& other) noexcept = default;
+
+Formula& Formula::operator=(const Formula& other) {
+    if (this != &other) {
+        *m_impl = *other.m_impl;
+    }
+    return *this;
+}
+
+Formula& Formula::operator=(Formula&& other) noexcept = default;
+
+Formula::~Formula() = default;
+
+std::string Formula::to_dimacs() const {
+    TseitinEncoder encoder(m_impl->m_nodes);
+    DimacsCnf cnf = encoder.encode();
     std::ostringstream stream;
-    stream << "p cnf " << m_variable_count << ' ' << m_clauses.size() << "\n";
-    for (const std::vector<int>& clause : m_clauses) {
+    stream << "p cnf " << cnf.m_variable_count << ' ' << cnf.m_clauses.size()
+           << "\n";
+    for (const std::vector<int>& clause : cnf.m_clauses) {
         for (const int literal : clause) {
             stream << literal << ' ';
         }
@@ -291,9 +329,64 @@ std::string DimacsCnf::to_dimacs() const {
     return stream.str();
 }
 
-DimacsCnf formula_to_dimacs(const std::string& formula) {
-    Parser parser(formula);
-    const std::vector<Node> nodes = parser.parse();
-    TseitinEncoder encoder(nodes);
-    return encoder.encode();
+double Formula::syntactic_similarity(const Formula& other) const {
+    if (this->n_subformulae() == 0 || other.n_subformulae() == 0) {
+        return 1.0;
+    }
+    const double shared_subformulae =
+        static_cast<double>(this->shared_subformulae(other));
+    return 0.5 *
+           (shared_subformulae / static_cast<double>(this->n_subformulae()) +
+            shared_subformulae / static_cast<double>(other.n_subformulae()));
+}
+
+size_t Formula::n_subformulae() const { return m_impl->m_nodes.size(); }
+
+size_t Formula::shared_subformulae(const Formula& other) const {
+    auto collect_subformula_signatures = [](const std::vector<Node>& nodes) {
+        std::vector<std::string> signatures(nodes.size());
+        std::unordered_map<std::string, std::size_t> counts;
+        for (std::size_t index = 0; index < nodes.size(); ++index) {
+            const Node& node = nodes[index];
+            switch (node.m_type) {
+                case NodeType::Variable:
+                    signatures[index] = "V(" + node.m_variable + ")";
+                    break;
+                case NodeType::Not:
+                    signatures[index] = "N(" + signatures[node.m_left] + ")";
+                    break;
+                case NodeType::And:
+                    signatures[index] = "A(" + signatures[node.m_left] + "," +
+                                        signatures[node.m_right] + ")";
+                    break;
+                case NodeType::Or:
+                    signatures[index] = "O(" + signatures[node.m_left] + "," +
+                                        signatures[node.m_right] + ")";
+                    break;
+                case NodeType::Implies:
+                    signatures[index] = "I(" + signatures[node.m_left] + "," +
+                                        signatures[node.m_right] + ")";
+                    break;
+                case NodeType::Iff:
+                    signatures[index] = "E(" + signatures[node.m_left] + "," +
+                                        signatures[node.m_right] + ")";
+                    break;
+            }
+            ++counts[signatures[index]];
+        }
+
+        return counts;
+    };
+    const auto counts = collect_subformula_signatures(m_impl->m_nodes);
+    const auto other_counts =
+        collect_subformula_signatures(other.m_impl->m_nodes);
+    std::size_t shared_subformulae = 0;
+    for (const auto& [signature, count] : counts) {
+        const auto other_it = other_counts.find(signature);
+        if (other_it == other_counts.end()) {
+            continue;
+        }
+        shared_subformulae += std::min(count, other_it->second);
+    }
+    return shared_subformulae;
 }

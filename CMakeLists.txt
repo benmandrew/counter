@@ -20,10 +20,11 @@ check_cxx_source_compiles(
     COUNTER_HAS_UINT128)
 
 set(COUNTER_LIBRARY_SOURCES
-    src/formula_dimacs.cpp
+    src/prop_formula.cpp
     src/ganak_runner.cpp
     src/model_counter.cpp
     src/requirement.cpp
+    src/syntactic_similarity.cpp
     src/transfer_matrix.cpp
     src/semantic_similarity.cpp
 )

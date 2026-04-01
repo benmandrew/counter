@@ -1,8 +1,9 @@
 set(COUNTER_TEST_SOURCES
-    formula_dimacs_tests.cpp
+    prop_formula_tests.cpp
     ganak_runner_tests.cpp
     main.cpp
     semantic_similarity_tests.cpp
+    syntactic_similarity_tests.cpp
     transfer_matrix_tests.cpp
 )
 

@@ -20,9 +20,21 @@ using Count = unsigned __int128;
 #else
 using Count = std::uint64_t;
 #endif
+
+/// Alias for a dense matrix of Count values, used to represent transition
+/// matrices in automata for model counting.
 using CountMatrix = Eigen::Matrix<Count, Eigen::Dynamic, Eigen::Dynamic>;
+
+/// Alias for a dense vector of Count values, used to represent valuation
+/// counts and trace counts in model counting computations.
 using CountVector = Eigen::Matrix<Count, Eigen::Dynamic, 1>;
 
+/// Checks for overflow when adding two Count values and stores the result
+/// if no overflow occurs.
+/// @param lhs Left-hand side operand
+/// @param rhs Right-hand side operand
+/// @param result Output parameter to store the sum if no overflow
+/// @return true if overflow would occur, false otherwise
 inline bool count_add_overflow(Count lhs, Count rhs, Count& result) {
     const Count max_value = std::numeric_limits<Count>::max();
     if (lhs > max_value - rhs) {
@@ -32,6 +44,12 @@ inline bool count_add_overflow(Count lhs, Count rhs, Count& result) {
     return false;
 }
 
+/// Checks for overflow when multiplying two Count values and stores the result
+/// if no overflow occurs.
+/// @param lhs Left-hand side operand
+/// @param rhs Right-hand side operand
+/// @param result Output parameter to store the product if no overflow
+/// @return true if overflow would occur, false otherwise
 inline bool count_mul_overflow(Count lhs, Count rhs, Count& result) {
     if (lhs == 0 || rhs == 0) {
         result = 0;
@@ -45,6 +63,10 @@ inline bool count_mul_overflow(Count lhs, Count rhs, Count& result) {
     return false;
 }
 
+/// Converts a Count value to a decimal string representation. Handles both
+/// 64-bit and 128-bit Count types transparently.
+/// @param value The Count value to convert
+/// @return A string representation in decimal
 inline std::string count_to_string(Count value) {
 #if defined(COUNTER_USE_UINT128)
     if (value == 0) {
@@ -63,6 +85,11 @@ inline std::string count_to_string(Count value) {
 #endif
 }
 
+/// Parses a count value from a decimal string representation.
+/// @param text A string of decimal digits
+/// @return The parsed Count value
+/// @throws std::invalid_argument if the text contains non-digits
+/// @throws std::overflow_error if the parsed value exceeds Count::max
 inline Count parse_count_decimal_or_throw(std::string_view text) {
     if (text.empty()) {
         throw std::invalid_argument("Count text must not be empty.");
@@ -82,20 +109,50 @@ inline Count parse_count_decimal_or_throw(std::string_view text) {
     return value;
 }
 
+/// An automaton representation for model counting. Encodes a finite-state
+/// automaton that validates a requirement specification, along with valuation
+/// counts for the propositional conditions and a transition matrix for
+/// computing the number of satisfying traces via matrix exponentiation.
 struct TransferSystem {
-    std::vector<State> m_states;
-    CountVector m_valuation_counts;
-    CountMatrix m_transition_matrix;
-    bool m_transition_matrix_is_weighted = false;
+    std::vector<State> m_states;  ///< The states of the automaton
+    CountVector
+        m_valuation_counts;  ///< Counts of satisfying valuations for conditions
+    CountMatrix m_transition_matrix;  ///< Transition matrix T where T[i][j] is
+                                      ///< count from state i to j
+    bool m_transition_matrix_is_weighted =
+        false;  ///< Whether matrix represents weighted transitions
 };
 
+/// Constructs a TransferSystem automaton from a requirement. The automaton
+/// structure varies based on the requirement's Timing constraint and encodes
+/// the valid traces that satisfy the requirement specification.
+///
+/// @param requirement The requirement to build an automaton for
+/// @param canonical_valuation_counts Optional pre-computed valuation counts
+/// @return A TransferSystem representing the requirement automaton
 TransferSystem build_transfer_system(
     const Requirement& requirement,
     const CountVector& canonical_valuation_counts = CountVector());
 
+/// Counts the number of satisfying valuations for the canonical boolean
+/// conditions {T,R} ∈ {true, false} of a requirement using a propositional
+/// model counter (e.g., Ganak for bounded model counting).
+///
+/// @param requirement The requirement whose conditions to count
+/// @param seed Random seed for the model counter
+/// @return A vector of four counts: [¬T∧¬R, ¬T∧R, T∧¬R, T∧R]
 CountVector count_canonical_valuation_counts(const Requirement& requirement,
                                              unsigned seed = 1);
 
+/// Counts the joint satisfying valuations for the cross-product of conditions
+/// from two requirements, producing 16 counts for all combinations of
+/// {T₁,R₁,T₂,R₂} ∈ {true, false}. Used for computing model counts of
+/// requirement conjunctions in semantic similarity.
+///
+/// @param requirement1 The first requirement
+/// @param requirement2 The second requirement
+/// @param seed Random seed for the model counter
+/// @return A vector of 16 counts for all valuation combinations
 CountVector count_joint_valuation_counts(const Requirement& requirement1,
                                          const Requirement& requirement2,
                                          unsigned seed = 1);

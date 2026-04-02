@@ -4,6 +4,7 @@
 #include <cctype>
 #include <functional>
 #include <memory>
+#include <optional>
 #include <sstream>
 #include <stdexcept>
 #include <string>
@@ -28,6 +29,62 @@ struct Node {
     std::size_t m_left;
     std::size_t m_right;
 };
+
+Formula::Kind node_type_to_kind(NodeType type) {
+    switch (type) {
+        case NodeType::Variable:
+            return Formula::Kind::Atom;
+        case NodeType::Not:
+            return Formula::Kind::Not;
+        case NodeType::And:
+            return Formula::Kind::And;
+        case NodeType::Or:
+            return Formula::Kind::Or;
+        case NodeType::Implies:
+            return Formula::Kind::Implies;
+        case NodeType::Iff:
+            return Formula::Kind::Iff;
+    }
+    throw std::logic_error("Unknown formula node type.");
+}
+
+std::string node_to_string(const std::vector<Node>& nodes, std::size_t index) {
+    std::function<std::string(std::size_t)> to_string_recursive =
+        [&nodes, &to_string_recursive](std::size_t node_index) -> std::string {
+        const Node& node = nodes[node_index];
+        switch (node.m_type) {
+            case NodeType::Variable:
+                return node.m_variable;
+            case NodeType::Not: {
+                const std::string child = to_string_recursive(node.m_left);
+                return "!(" + child + ")";
+            }
+            case NodeType::And: {
+                const std::string left = to_string_recursive(node.m_left);
+                const std::string right = to_string_recursive(node.m_right);
+                return "(" + left + ") & (" + right + ")";
+            }
+            case NodeType::Or: {
+                const std::string left = to_string_recursive(node.m_left);
+                const std::string right = to_string_recursive(node.m_right);
+                return "(" + left + ") | (" + right + ")";
+            }
+            case NodeType::Implies: {
+                const std::string left = to_string_recursive(node.m_left);
+                const std::string right = to_string_recursive(node.m_right);
+                return "(" + left + ") -> (" + right + ")";
+            }
+            case NodeType::Iff: {
+                const std::string left = to_string_recursive(node.m_left);
+                const std::string right = to_string_recursive(node.m_right);
+                return "(" + left + ") <-> (" + right + ")";
+            }
+        }
+        throw std::logic_error("Unknown formula node type.");
+    };
+
+    return to_string_recursive(index);
+}
 
 class Parser {
    private:
@@ -317,6 +374,138 @@ Formula& Formula::operator=(Formula&& other) noexcept = default;
 
 Formula::~Formula() = default;
 
+Formula Formula::make_atom(const std::string& atom) { return Formula(atom); }
+
+Formula Formula::make_unary(Kind kind, const Formula& child) {
+    if (kind != Kind::Not) {
+        throw std::invalid_argument(
+            "make_unary supports only Kind::Not for propositional formulae.");
+    }
+    return Formula("!(" + child.to_string() + ")");
+}
+
+Formula Formula::make_binary(Kind kind, const Formula& left,
+                             const Formula& right) {
+    switch (kind) {
+        case Kind::And:
+            return Formula("(" + left.to_string() + ") & (" +
+                           right.to_string() + ")");
+        case Kind::Or:
+            return Formula("(" + left.to_string() + ") | (" +
+                           right.to_string() + ")");
+        case Kind::Implies:
+            return Formula("(" + left.to_string() + ") -> (" +
+                           right.to_string() + ")");
+        case Kind::Iff:
+            return Formula("(" + left.to_string() + ") <-> (" +
+                           right.to_string() + ")");
+        case Kind::Atom:
+        case Kind::Not:
+            throw std::invalid_argument(
+                "make_binary requires a binary operator kind.");
+    }
+    throw std::logic_error("Unknown formula kind.");
+}
+
+Formula::Kind Formula::kind() const {
+    if (m_impl->m_nodes.empty()) {
+        throw std::logic_error("Formula has no root node.");
+    }
+    return node_type_to_kind(m_impl->m_nodes.back().m_type);
+}
+
+std::optional<std::string> Formula::atom_name() const {
+    const Node& root = m_impl->m_nodes.back();
+    if (root.m_type != NodeType::Variable) {
+        return std::nullopt;
+    }
+    return root.m_variable;
+}
+
+std::optional<Formula> Formula::unary_child() const {
+    const Node& root = m_impl->m_nodes.back();
+    if (root.m_type != NodeType::Not) {
+        return std::nullopt;
+    }
+    return Formula(node_to_string(m_impl->m_nodes, root.m_left));
+}
+
+std::optional<std::pair<Formula, Formula>> Formula::binary_children() const {
+    const Node& root = m_impl->m_nodes.back();
+    switch (root.m_type) {
+        case NodeType::And:
+        case NodeType::Or:
+        case NodeType::Implies:
+        case NodeType::Iff:
+            return std::make_pair(
+                Formula(node_to_string(m_impl->m_nodes, root.m_left)),
+                Formula(node_to_string(m_impl->m_nodes, root.m_right)));
+        case NodeType::Variable:
+        case NodeType::Not:
+            return std::nullopt;
+    }
+    throw std::logic_error("Unknown formula node type.");
+}
+
+Formula Formula::rewrite_post_order(
+    const RewriteCallback& rewrite_callback) const {
+    if (!rewrite_callback) {
+        return *this;
+    }
+
+    std::function<Formula(std::size_t)> rewrite_subtree =
+        [this, &rewrite_subtree,
+         &rewrite_callback](std::size_t index) -> Formula {
+        const Node& node = m_impl->m_nodes[index];
+        Formula rewritten_subtree;
+        switch (node.m_type) {
+            case NodeType::Variable:
+                rewritten_subtree = Formula::make_atom(node.m_variable);
+                break;
+            case NodeType::Not: {
+                const Formula child = rewrite_subtree(node.m_left);
+                rewritten_subtree = Formula::make_unary(Kind::Not, child);
+                break;
+            }
+            case NodeType::And: {
+                const Formula left = rewrite_subtree(node.m_left);
+                const Formula right = rewrite_subtree(node.m_right);
+                rewritten_subtree =
+                    Formula::make_binary(Kind::And, left, right);
+                break;
+            }
+            case NodeType::Or: {
+                const Formula left = rewrite_subtree(node.m_left);
+                const Formula right = rewrite_subtree(node.m_right);
+                rewritten_subtree = Formula::make_binary(Kind::Or, left, right);
+                break;
+            }
+            case NodeType::Implies: {
+                const Formula left = rewrite_subtree(node.m_left);
+                const Formula right = rewrite_subtree(node.m_right);
+                rewritten_subtree =
+                    Formula::make_binary(Kind::Implies, left, right);
+                break;
+            }
+            case NodeType::Iff: {
+                const Formula left = rewrite_subtree(node.m_left);
+                const Formula right = rewrite_subtree(node.m_right);
+                rewritten_subtree = Formula::make_binary(Kind::Iff, left, right);
+                break;
+            }
+        }
+
+        if (const std::optional<Formula> replacement =
+                rewrite_callback(rewritten_subtree);
+            replacement.has_value()) {
+            return *replacement;
+        }
+        return rewritten_subtree;
+    };
+
+    return rewrite_subtree(m_impl->m_nodes.size() - 1);
+}
+
 std::string Formula::to_dimacs() const {
     TseitinEncoder encoder(m_impl->m_nodes);
     DimacsCnf cnf = encoder.encode();
@@ -399,39 +588,5 @@ std::string Formula::to_string() const {
         return "";
     }
 
-    std::function<std::string(std::size_t)> to_string_recursive =
-        [this, &to_string_recursive](std::size_t index) -> std::string {
-        const Node& node = m_impl->m_nodes[index];
-        switch (node.m_type) {
-            case NodeType::Variable:
-                return node.m_variable;
-            case NodeType::Not: {
-                const std::string child = to_string_recursive(node.m_left);
-                return "!(" + child + ")";
-            }
-            case NodeType::And: {
-                const std::string left = to_string_recursive(node.m_left);
-                const std::string right = to_string_recursive(node.m_right);
-                return "(" + left + ") & (" + right + ")";
-            }
-            case NodeType::Or: {
-                const std::string left = to_string_recursive(node.m_left);
-                const std::string right = to_string_recursive(node.m_right);
-                return "(" + left + ") | (" + right + ")";
-            }
-            case NodeType::Implies: {
-                const std::string left = to_string_recursive(node.m_left);
-                const std::string right = to_string_recursive(node.m_right);
-                return "(" + left + ") -> (" + right + ")";
-            }
-            case NodeType::Iff: {
-                const std::string left = to_string_recursive(node.m_left);
-                const std::string right = to_string_recursive(node.m_right);
-                return "(" + left + ") <-> (" + right + ")";
-            }
-        }
-        return "";
-    };
-
-    return to_string_recursive(m_impl->m_nodes.size() - 1);
+    return node_to_string(m_impl->m_nodes, m_impl->m_nodes.size() - 1);
 }

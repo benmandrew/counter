@@ -1,7 +1,10 @@
 #pragma once
 
+#include <functional>
 #include <memory>
+#include <optional>
 #include <string>
+#include <utility>
 #include <vector>
 
 /// A propositional formula represented as a parse tree. Supports standard
@@ -13,6 +16,18 @@
 /// representation) from the public interface.
 class Formula {
    public:
+    enum class Kind {
+        Atom,
+        Not,
+        And,
+        Or,
+        Implies,
+        Iff,
+    };
+
+    using RewriteCallback =
+        std::function<std::optional<Formula>(const Formula&)>;
+
     /// Default constructor creates a formula representing the logical constant
     /// "true" (implemented as a single variable named "⊤").
     Formula();
@@ -29,6 +44,47 @@ class Formula {
     Formula& operator=(const Formula& other);
     Formula& operator=(Formula&& other) noexcept;
     ~Formula();
+
+    /// Creates an atomic formula from an identifier.
+    /// @param atom The atom name
+    /// @return     A formula containing a single atom
+    static Formula make_atom(const std::string& atom);
+
+    /// Creates a unary formula.
+    /// @param kind  Unary operator kind (currently only Kind::Not)
+    /// @param child Operand formula
+    /// @return      A formula of the form op(child)
+    static Formula make_unary(Kind kind, const Formula& child);
+
+    /// Creates a binary formula.
+    /// @param kind  Binary operator kind
+    /// @param left  Left operand
+    /// @param right Right operand
+    /// @return      A formula of the form left op right
+    static Formula make_binary(Kind kind, const Formula& left,
+                               const Formula& right);
+
+    /// Returns the kind of this formula's root node.
+    Kind kind() const;
+
+    /// Returns this formula's atom name if it is atomic.
+    /// @return std::nullopt for non-atomic formulae
+    std::optional<std::string> atom_name() const;
+
+    /// Returns this formula's unary child if its root is unary.
+    /// @return std::nullopt for non-unary formulae
+    std::optional<Formula> unary_child() const;
+
+    /// Returns this formula's binary children if its root is binary.
+    /// @return std::nullopt for non-binary formulae
+    std::optional<std::pair<Formula, Formula>> binary_children() const;
+
+    /// Rewrites this formula using a post-order callback.
+    /// Children are rewritten before their parent; if the callback returns a
+    /// replacement, that replacement is used for the current subtree.
+    /// @param rewrite_callback Callback that can replace a subtree
+    /// @return                 The rewritten formula
+    Formula rewrite_post_order(const RewriteCallback& rewrite_callback) const;
 
     /// Converts the formula to DIMACS CNF format for use with SAT/model
     /// counters. Uses Tseitin encoding to transform the formula into CNF.

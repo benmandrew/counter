@@ -1,9 +1,12 @@
 #include "genetic/mutation.hpp"
 
 #include <cstdlib>
+#include <limits>
 #include <optional>
 #include <stdexcept>
 #include <string>
+#include <type_traits>
+#include <variant>
 
 namespace {
 
@@ -113,6 +116,82 @@ Formula mutate_formula(const Formula& formula,
     return formula.rewrite_post_order(mutation_function);
 }
 
+Timing pick_non_parameter_timing(const BooleanRandomSource& random_bool) {
+    return random_bool() ? timing::immediately() : timing::next_timepoint();
+}
+
+Timing pick_parameter_timing(std::size_t ticks,
+                             const BooleanRandomSource& random_bool) {
+    return random_bool() ? timing::within_ticks(ticks)
+                         : timing::for_ticks(ticks);
+}
+
+std::size_t pick_tick_count(const BooleanRandomSource& random_bool) {
+    const bool bit2 = random_bool();
+    const bool bit1 = random_bool();
+    const bool bit0 = random_bool();
+    return static_cast<std::size_t>((bit2 ? 4 : 0) + (bit1 ? 2 : 0) +
+                                    (bit0 ? 1 : 0) + 1);
+}
+
+std::size_t mutate_tick_count(std::size_t ticks,
+                              const BooleanRandomSource& random_bool) {
+    const std::size_t candidate = pick_tick_count(random_bool);
+    if (candidate != ticks) {
+        return candidate;
+    }
+    if (ticks < std::numeric_limits<std::size_t>::max()) {
+        return ticks + 1;
+    }
+    return ticks - 1;
+}
+
+Timing mutate_timing(const Timing& timing,
+                     const BooleanRandomSource& random_bool) {
+    if (!random_bool) {
+        throw std::invalid_argument("boolean_random_source must be callable.");
+    }
+    const auto mutation_function = [&](const auto& value) -> Timing {
+        using T = std::decay_t<decltype(value)>;
+        if constexpr (std::is_same_v<T, timing::Immediately> ||
+                      std::is_same_v<T, timing::NextTimepoint>) {
+            if (!random_bool()) {
+                // Replace with the other non-parameterized timing.
+                if constexpr (std::is_same_v<T, timing::Immediately>) {
+                    return timing::next_timepoint();
+                } else {
+                    return timing::immediately();
+                }
+            }
+            // Replace with a parameterized timing.
+            return pick_parameter_timing(pick_tick_count(random_bool),
+                                         random_bool);
+        } else {
+            if (!random_bool()) {
+                // Change operator only, preserve parameter.
+                if constexpr (std::is_same_v<T, timing::WithinTicks>) {
+                    return timing::for_ticks(value.m_ticks);
+                } else {
+                    return timing::within_ticks(value.m_ticks);
+                }
+            }
+            if (!random_bool()) {
+                // Change parameter only, preserve operator.
+                const std::size_t mutated_ticks =
+                    mutate_tick_count(value.m_ticks, random_bool);
+                if constexpr (std::is_same_v<T, timing::WithinTicks>) {
+                    return timing::within_ticks(mutated_ticks);
+                } else {
+                    return timing::for_ticks(mutated_ticks);
+                }
+            }
+            // Replace with a non-parameterized timing.
+            return pick_non_parameter_timing(random_bool);
+        }
+    };
+    return std::visit(mutation_function, timing);
+}
+
 Requirement mutate_requirement(
     const Requirement& requirement,
     const BooleanRandomSource& boolean_random_source) {
@@ -121,10 +200,7 @@ Requirement mutate_requirement(
         mutate_formula(requirement.m_response, boolean_random_source);
     mutated.m_trigger =
         mutate_formula(requirement.m_trigger, boolean_random_source);
+    mutated.m_timing =
+        mutate_timing(requirement.m_timing, boolean_random_source);
     return mutated;
-}
-
-Requirement mutate_requirement(const Requirement& requirement) {
-    return mutate_requirement(requirement,
-                              []() { return (std::rand() % 2) == 0; });
 }

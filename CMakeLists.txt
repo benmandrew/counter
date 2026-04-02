@@ -33,6 +33,8 @@ target_sources(counter_fitness PRIVATE
     src/fitness/semantic_similarity.cpp
     src/fitness/syntactic_similarity.cpp
     src/fitness/transfer_matrix.cpp
+    src/genetic/crossover.cpp
+    src/genetic/mutation.cpp
 )
 target_include_directories(counter_fitness PUBLIC include)
 target_link_libraries(counter_fitness PUBLIC counter_core Eigen3::Eigen)

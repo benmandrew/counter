@@ -36,12 +36,13 @@ class Formula {
     /// clauses)
     std::string to_dimacs() const;
 
-    /// Computes the syntactic similarity between this formula and another.
-    /// Counts the number of shared subformulae (including the root) based on
-    /// structural signature matching, with multiplicity for repeated
-    /// subformulae.
+    /// Computes a symmetric, normalized syntactic similarity score between
+    /// this formula and another.
+    /// Uses shared_subformulae(other) with multiplicity and returns
+    /// 0.5 * (shared / n_subformulae() + shared / other.n_subformulae()).
+    /// If either formula has zero subformulae, returns 1.0.
     /// @param other The formula to compare with
-    /// @return The number of structurally identical subformulae
+    /// @return A similarity score in [0, 1]
     double syntactic_similarity(const Formula& other) const;
 
     /// Returns the total number of subformulae (nodes) in this formula,
@@ -50,7 +51,6 @@ class Formula {
     size_t n_subformulae() const;
 
     /// Returns the number of subformulae shared with another formula.
-    /// This is equivalent to syntactic_similarity(other).
     /// @param other The formula to compare with
     /// @return The number of shared subformulae
     size_t shared_subformulae(const Formula& other) const;

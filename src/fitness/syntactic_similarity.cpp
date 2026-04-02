@@ -13,5 +13,7 @@ namespace {
 
 double syntactic_similarity(const Requirement& requirement,
                             const Requirement& other_requirement) {
+    (void)requirement;
+    (void)other_requirement;
     throw_not_implemented();
 }

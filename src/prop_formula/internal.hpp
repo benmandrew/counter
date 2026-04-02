@@ -4,7 +4,7 @@
 #include <string>
 #include <vector>
 
-#include "prop_formula/formula.hpp"
+#include "prop_formula.hpp"
 
 namespace prop_formula_internal {
 

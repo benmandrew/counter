@@ -7,6 +7,7 @@ int main() {
     try {
         run_transfer_matrix_tests();
         run_ganak_runner_tests();
+        run_mutation_tests();
         run_prop_formula_ast_tests();
         run_prop_formula_cnf_tests();
         run_prop_formula_rewrite_tests();

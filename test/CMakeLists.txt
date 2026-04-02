@@ -1,5 +1,6 @@
 add_executable(counter_tests
     fitness/ganak_runner_tests.cpp
+    genetic/mutation_tests.cpp
     main.cpp
     fitness/semantic_similarity_tests.cpp
     fitness/syntactic_similarity_tests.cpp

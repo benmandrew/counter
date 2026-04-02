@@ -1,7 +1,7 @@
 #include <stdexcept>
 #include <string>
 
-#include "prop_formula/ast.hpp"
+#include "prop_formula.hpp"
 #include "test_suite.hpp"
 #include "test_support.hpp"
 

@@ -2,6 +2,7 @@
 
 void run_transfer_matrix_tests();
 void run_ganak_runner_tests();
+void run_mutation_tests();
 void run_prop_formula_ast_tests();
 void run_prop_formula_cnf_tests();
 void run_prop_formula_rewrite_tests();

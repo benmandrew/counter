@@ -15,7 +15,7 @@
 #include <string>
 #include <vector>
 
-#include "prop_formula/formula.hpp"
+#include "prop_formula.hpp"
 
 namespace {
 

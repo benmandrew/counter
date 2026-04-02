@@ -4,7 +4,7 @@
 #include <string>
 #include <vector>
 
-#include "prop_formula/formula.hpp"
+#include "prop_formula.hpp"
 
 /// Timing constraints for FRET requirements, specifying when the response must
 /// be satisfied relative to the trigger. These map to specific automaton

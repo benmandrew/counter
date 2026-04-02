@@ -1,6 +1,8 @@
 #include <sstream>
 #include <stdexcept>
 #include <string>
+#include <type_traits>
+#include <variant>
 #include <vector>
 
 #include "fitness/model_counter.hpp"
@@ -102,66 +104,64 @@ bool trace_satisfies_requirement(const Requirement& requirement,
         throw std::invalid_argument("Trace must have at least one step.");
     }
 
-    switch (requirement.m_timing) {
-        case Timing::Immediately: {
-            for (const TraceStep& step : trace) {
-                if (step.m_trigger_holds && !step.m_response_holds) {
-                    return false;
-                }
-            }
-            return true;
-        }
-        case Timing::NextTimepoint: {
-            for (std::size_t index = 0; index + 1 < trace.size(); ++index) {
-                if (trace[index].m_trigger_holds &&
-                    !trace[index + 1].m_response_holds) {
-                    return false;
-                }
-            }
-            return true;
-        }
-        case Timing::WithinTicks: {
-            std::size_t countdown = 0;
-            for (const TraceStep& step : trace) {
-                if (step.m_response_holds) {
-                    countdown = 0;
-                    continue;
-                }
-                if (countdown == 0) {
-                    countdown =
-                        step.m_trigger_holds ? requirement.m_tick_count : 0;
-                    continue;
-                }
-                if (countdown == 1) {
-                    return false;
-                }
-                countdown = step.m_trigger_holds ? requirement.m_tick_count
-                                                 : countdown - 1;
-            }
-            return true;
-        }
-        case Timing::ForTicks: {
-            std::size_t countdown = 0;
-            for (const TraceStep& step : trace) {
-                if (!step.m_response_holds) {
-                    if (countdown > 0 || step.m_trigger_holds) {
+    return std::visit(
+        [&trace](const auto& timing_value) {
+            using T = std::decay_t<decltype(timing_value)>;
+            if constexpr (std::is_same_v<T, timing::Immediately>) {
+                for (const TraceStep& step : trace) {
+                    if (step.m_trigger_holds && !step.m_response_holds) {
                         return false;
                     }
-                    continue;
                 }
-                if (step.m_trigger_holds) {
-                    countdown = requirement.m_tick_count;
-                    continue;
+                return true;
+            } else if constexpr (std::is_same_v<T, timing::NextTimepoint>) {
+                for (std::size_t index = 0; index + 1 < trace.size(); ++index) {
+                    if (trace[index].m_trigger_holds &&
+                        !trace[index + 1].m_response_holds) {
+                        return false;
+                    }
                 }
-                if (countdown > 0) {
-                    --countdown;
+                return true;
+            } else if constexpr (std::is_same_v<T, timing::WithinTicks>) {
+                std::size_t countdown = 0;
+                for (const TraceStep& step : trace) {
+                    if (step.m_response_holds) {
+                        countdown = 0;
+                        continue;
+                    }
+                    if (countdown == 0) {
+                        countdown =
+                            step.m_trigger_holds ? timing_value.m_ticks : 0;
+                        continue;
+                    }
+                    if (countdown == 1) {
+                        return false;
+                    }
+                    countdown = step.m_trigger_holds ? timing_value.m_ticks
+                                                     : countdown - 1;
                 }
+                return true;
+            } else {
+                std::size_t countdown = 0;
+                for (const TraceStep& step : trace) {
+                    if (!step.m_response_holds) {
+                        if (countdown > 0 || step.m_trigger_holds) {
+                            return false;
+                        }
+                        continue;
+                    }
+                    if (step.m_trigger_holds) {
+                        countdown = timing_value.m_ticks;
+                        continue;
+                    }
+                    if (countdown > 0) {
+                        --countdown;
+                    }
+                }
+                return true;
             }
-            return true;
-        }
-    }
-
-    return false;
+        },
+        requirement.m_timing);
 }
 
 void expect_trace_acceptance(const Requirement& requirement,
@@ -190,35 +190,35 @@ struct TraceAcceptanceCase {
 void test_trace_acceptance_cases() {
     const std::vector<TraceAcceptanceCase> cases = {
         {"immediately positive trace",
-         {Formula("P"), Formula("Q"), Timing::Immediately},
+         {Formula("P"), Formula("Q"), timing::immediately()},
          {{false, false}, {false, true}, {true, true}, {false, false}},
          true},
         {"immediately negative trace",
-         {Formula("P"), Formula("Q"), Timing::Immediately},
+         {Formula("P"), Formula("Q"), timing::immediately()},
          {{false, true}, {true, false}, {false, true}},
          false},
         {"next-timepoint positive trace",
-         {Formula("P"), Formula("Q"), Timing::NextTimepoint},
+         {Formula("P"), Formula("Q"), timing::next_timepoint()},
          {{true, false}, {false, true}, {true, true}, {false, true}},
          true},
         {"next-timepoint negative trace",
-         {Formula("P"), Formula("Q"), Timing::NextTimepoint},
+         {Formula("P"), Formula("Q"), timing::next_timepoint()},
          {{true, false}, {false, false}},
          false},
         {"within-ticks positive trace",
-         {Formula("P"), Formula("Q"), Timing::WithinTicks, 2},
+         {Formula("P"), Formula("Q"), timing::within_ticks(2)},
          {{true, false}, {false, false}, {false, true}},
          true},
         {"within-ticks negative trace",
-         {Formula("P"), Formula("Q"), Timing::WithinTicks, 2},
+         {Formula("P"), Formula("Q"), timing::within_ticks(2)},
          {{true, false}, {false, false}, {false, false}},
          false},
         {"for-ticks positive trace",
-         {Formula("P"), Formula("Q"), Timing::ForTicks, 2},
+         {Formula("P"), Formula("Q"), timing::for_ticks(2)},
          {{true, true}, {false, true}, {false, true}, {false, false}},
          true},
         {"for-ticks negative trace",
-         {Formula("P"), Formula("Q"), Timing::ForTicks, 2},
+         {Formula("P"), Formula("Q"), timing::for_ticks(2)},
          {{true, true}, {false, true}, {false, false}},
          false},
     };
@@ -333,42 +333,42 @@ struct TransferSystemCase {
 void test_transfer_system_cases() {
     const std::vector<TransferSystemCase> cases = {
         {"immediately",
-         {Formula("P"), Formula("Q"), Timing::Immediately},
+         {Formula("P"), Formula("Q"), timing::immediately()},
          3,
          "~P~Q ~PQ PQ",
          false,
          {},
          {3, 9, 27, 81, 243}},
         {"next-timepoint",
-         {Formula("P"), Formula("Q"), Timing::NextTimepoint},
+         {Formula("P"), Formula("Q"), timing::next_timepoint()},
          4,
          "~P~Q ~PQ P~Q PQ",
          false,
          {},
          {4, 12, 36, 108, 324}},
         {"within-ticks (P,Q)",
-         {Formula("P"), Formula("Q"), Timing::WithinTicks, 2},
+         {Formula("P"), Formula("Q"), timing::within_ticks(2)},
          3,
          "c=0 c=1 c=2",
          true,
          {{3}, {0}, {1}},
          {4, 16, 62, 240}},
         {"within-ticks (P,P|Q)",
-         {Formula("P"), Formula("P|Q"), Timing::WithinTicks, 2},
+         {Formula("P"), Formula("P|Q"), timing::within_ticks(2)},
          3,
          "c=0 c=1 c=2",
          true,
          {{4}, {0}, {0}},
          {4, 16, 64, 256}},
         {"for-ticks (P,Q)",
-         {Formula("P"), Formula("Q"), Timing::ForTicks, 2},
+         {Formula("P"), Formula("Q"), timing::for_ticks(2)},
          3,
          "c=0 c=1 c=2",
          true,
          {{2}, {0}, {1}},
          {3, 8, 20, 49}},
         {"for-ticks (P,P|Q)",
-         {Formula("P"), Formula("P|Q"), Timing::ForTicks, 2},
+         {Formula("P"), Formula("P|Q"), timing::for_ticks(2)},
          3,
          "c=0 c=1 c=2",
          true,
@@ -404,18 +404,22 @@ void test_single_requirement_transfer_matrix_sizes() {
     };
 
     const std::vector<MatrixSizeCase> cases = {
-        {"immediately", {Formula("P"), Formula("Q"), Timing::Immediately}, 3},
+        {"immediately", {Formula("P"), Formula("Q"), timing::immediately()}, 3},
         {"next-timepoint",
-         {Formula("P"), Formula("Q"), Timing::NextTimepoint},
+         {Formula("P"), Formula("Q"), timing::next_timepoint()},
          4},
         {"within-ticks N=2",
-         {Formula("P"), Formula("Q"), Timing::WithinTicks, 2},
+         {Formula("P"), Formula("Q"), timing::within_ticks(2)},
          3},
         {"within-ticks N=4",
-         {Formula("P"), Formula("Q"), Timing::WithinTicks, 4},
+         {Formula("P"), Formula("Q"), timing::within_ticks(4)},
          5},
-        {"for-ticks N=2", {Formula("P"), Formula("Q"), Timing::ForTicks, 2}, 3},
-        {"for-ticks N=4", {Formula("P"), Formula("Q"), Timing::ForTicks, 4}, 5},
+        {"for-ticks N=2",
+         {Formula("P"), Formula("Q"), timing::for_ticks(2)},
+         3},
+        {"for-ticks N=4",
+         {Formula("P"), Formula("Q"), timing::for_ticks(4)},
+         5},
     };
 
     const CountVector canonical_counts = filled_counts(4, 1);
@@ -440,28 +444,28 @@ void test_joint_requirement_transfer_matrix_sizes() {
 
     const std::vector<JointMatrixSizeCase> cases = {
         {"immediately/immediately",
-         {Formula("A"), Formula("B"), Timing::Immediately},
-         {Formula("C"), Formula("D"), Timing::Immediately},
+         {Formula("A"), Formula("B"), timing::immediately()},
+         {Formula("C"), Formula("D"), timing::immediately()},
          3,
          3},
         {"immediately/next-timepoint",
-         {Formula("A"), Formula("B"), Timing::Immediately},
-         {Formula("C"), Formula("D"), Timing::NextTimepoint},
+         {Formula("A"), Formula("B"), timing::immediately()},
+         {Formula("C"), Formula("D"), timing::next_timepoint()},
          3,
          4},
         {"next-timepoint/next-timepoint",
-         {Formula("A"), Formula("B"), Timing::NextTimepoint},
-         {Formula("C"), Formula("D"), Timing::NextTimepoint},
+         {Formula("A"), Formula("B"), timing::next_timepoint()},
+         {Formula("C"), Formula("D"), timing::next_timepoint()},
          4,
          4},
         {"within-ticks/for-ticks",
-         {Formula("A"), Formula("B"), Timing::WithinTicks, 2},
-         {Formula("C"), Formula("D"), Timing::ForTicks, 2},
+         {Formula("A"), Formula("B"), timing::within_ticks(2)},
+         {Formula("C"), Formula("D"), timing::for_ticks(2)},
          3,
          3},
         {"within-ticks N=4/next-timepoint",
-         {Formula("A"), Formula("B"), Timing::WithinTicks, 4},
-         {Formula("C"), Formula("D"), Timing::NextTimepoint},
+         {Formula("A"), Formula("B"), timing::within_ticks(4)},
+         {Formula("C"), Formula("D"), timing::next_timepoint()},
          5,
          4},
     };
@@ -492,37 +496,37 @@ struct TransferMatrixCase {
 void test_transfer_matrix_cases() {
     const std::vector<TransferMatrixCase> cases = {
         {"immediately",
-         {Formula("P"), Formula("Q"), Timing::Immediately},
+         {Formula("P"), Formula("Q"), timing::immediately()},
          true,
          {{1, 1, 1}, {1, 1, 1}, {1, 1, 1}},
          {{1, 1, 1}, {1, 1, 1}, {1, 1, 1}}},
         {"next-timepoint",
-         {Formula("P"), Formula("Q"), Timing::NextTimepoint},
+         {Formula("P"), Formula("Q"), timing::next_timepoint()},
          true,
          {{1, 1, 1, 1}, {1, 1, 1, 1}, {0, 1, 0, 1}, {0, 1, 0, 1}},
          {{1, 1, 1, 1}, {1, 1, 1, 1}, {0, 1, 0, 1}, {0, 1, 0, 1}}},
         {"within-ticks (P,Q)",
-         {Formula("P"), Formula("Q"), Timing::WithinTicks, 2},
+         {Formula("P"), Formula("Q"), timing::within_ticks(2)},
          false,
          {},
          {{3, 0, 1}, {2, 0, 0}, {2, 1, 1}}},
         {"within-ticks (P,P|Q)",
-         {Formula("P"), Formula("P|Q"), Timing::WithinTicks, 2},
+         {Formula("P"), Formula("P|Q"), timing::within_ticks(2)},
          false,
          {},
          {{4, 0, 0}, {3, 0, 0}, {3, 1, 0}}},
         {"for-ticks (P,Q)",
-         {Formula("P"), Formula("Q"), Timing::ForTicks, 2},
+         {Formula("P"), Formula("Q"), timing::for_ticks(2)},
          false,
          {},
          {{2, 0, 1}, {1, 0, 1}, {0, 1, 1}}},
         {"for-ticks (P,P|Q)",
-         {Formula("P"), Formula("P|Q"), Timing::ForTicks, 2},
+         {Formula("P"), Formula("P|Q"), timing::for_ticks(2)},
          false,
          {},
          {{2, 0, 2}, {1, 0, 2}, {0, 1, 2}}},
         {"formula weighted matrix",
-         {Formula("A | B"), Formula("A"), Timing::NextTimepoint},
+         {Formula("A | B"), Formula("A"), timing::next_timepoint()},
          false,
          {},
          {{1, 0, 1, 2}, {1, 0, 1, 2}, {0, 0, 0, 2}, {0, 0, 0, 2}}},
@@ -553,7 +557,7 @@ struct FormulaValuationCase {
 void test_formula_valuation_cases() {
     const std::vector<FormulaValuationCase> cases = {
         {"formula valuation counts",
-         {Formula("A | B"), Formula("A"), Timing::NextTimepoint},
+         {Formula("A | B"), Formula("A"), timing::next_timepoint()},
          {{1}, {0}, {1}, {2}}},
     };
 
@@ -607,9 +611,9 @@ void test_weighted_transition_matrix_cases() {
 
 void test_combined_weighted_transition_matrix_immediately_immediately() {
     const Requirement requirement1{Formula("A"), Formula("B"),
-                                   Timing::Immediately};
+                                   timing::immediately()};
     const Requirement requirement2{Formula("C"), Formula("D"),
-                                   Timing::Immediately};
+                                   timing::immediately()};
 
     CountVector joint_counts(16);
     joint_counts.setZero();

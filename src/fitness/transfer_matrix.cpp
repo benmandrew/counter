@@ -5,6 +5,7 @@
 #include <functional>
 #include <stdexcept>
 #include <string>
+#include <variant>
 #include <vector>
 
 #include "fitness/ganak_runner.hpp"
@@ -13,8 +14,20 @@ namespace {
 
 // Returns true when the requirement uses the countdown automata used for
 // within-N-ticks and for-N-ticks semantics.
-bool is_countdown_timing(Timing timing) {
-    return timing == Timing::WithinTicks || timing == Timing::ForTicks;
+bool is_countdown_timing(const Timing& timing) {
+    return std::holds_alternative<timing::WithinTicks>(timing) ||
+           std::holds_alternative<timing::ForTicks>(timing);
+}
+
+std::size_t tick_count_or_throw(const Timing& timing) {
+    if (const auto* within = std::get_if<timing::WithinTicks>(&timing)) {
+        return within->m_ticks;
+    }
+    if (const auto* for_ticks = std::get_if<timing::ForTicks>(&timing)) {
+        return for_ticks->m_ticks;
+    }
+    throw std::invalid_argument(
+        "Tick count requested for non-countdown timing.");
 }
 
 CountVector counts_or_throw(const CountVector& provided_counts,
@@ -161,7 +174,8 @@ RequirementAutomaton build_requirement_automaton(
     RequirementAutomaton automaton;
     automaton.m_requirement = requirement;
     if (is_countdown_timing(requirement.m_timing)) {
-        automaton.m_states = countdown_states(requirement.m_tick_count);
+        automaton.m_states =
+            countdown_states(tick_count_or_throw(requirement.m_timing));
         automaton.m_countdown_transition =
             countdown_transition_fn_or_throw(requirement);
         return automaton;
@@ -177,7 +191,7 @@ RequirementAutomaton build_requirement_automaton(
             automaton.m_states[static_cast<std::size_t>(state_index)]);
         automaton.m_cell_to_state[index] = state_index;
     }
-    if (requirement.m_timing == Timing::NextTimepoint &&
+    if (std::holds_alternative<timing::NextTimepoint>(requirement.m_timing) &&
         automaton.m_states.size() != cells.size()) {
         throw std::logic_error(
             "Failed to build next-timepoint automaton states.");
@@ -194,7 +208,8 @@ bool next_state_from_cell(const RequirementAutomaton& automaton,
         const std::size_t next_countdown = automaton.m_countdown_transition(
             static_cast<std::size_t>(current_state_index),
             cell_valuation.m_trigger_holds, cell_valuation.m_response_holds,
-            automaton.m_requirement.m_tick_count, valid_transition);
+            tick_count_or_throw(automaton.m_requirement.m_timing),
+            valid_transition);
         if (!valid_transition) {
             return false;
         }
@@ -228,10 +243,10 @@ std::string joint_valuation_formula(const Requirement& requirement1,
 // Selects the countdown transition function for the requested timing.
 CountdownTransitionFn countdown_transition_fn_or_throw(
     const Requirement& requirement) {
-    if (requirement.m_timing == Timing::WithinTicks) {
+    if (std::holds_alternative<timing::WithinTicks>(requirement.m_timing)) {
         return &within_next_countdown;
     }
-    if (requirement.m_timing == Timing::ForTicks) {
+    if (std::holds_alternative<timing::ForTicks>(requirement.m_timing)) {
         return &for_next_countdown;
     }
     throw std::invalid_argument("Invalid timing for countdown automaton.");
@@ -279,7 +294,7 @@ CountVector countdown_initial_counts(const CountMatrix& weighted_transitions) {
 
 // Returns true when a canonical valuation satisfies the state invariant.
 bool is_valid_state(const Requirement& requirement, const State& state) {
-    if (requirement.m_timing == Timing::Immediately) {
+    if (std::holds_alternative<timing::Immediately>(requirement.m_timing)) {
         return !state.m_trigger_holds || state.m_response_holds;
     }
     return true;
@@ -288,7 +303,7 @@ bool is_valid_state(const Requirement& requirement, const State& state) {
 // Returns true when a transition between live states is allowed by timing.
 bool is_valid_transition(const Requirement& requirement, const State& current,
                          const State& next) {
-    if (requirement.m_timing == Timing::NextTimepoint) {
+    if (std::holds_alternative<timing::NextTimepoint>(requirement.m_timing)) {
         return !current.m_trigger_holds || next.m_response_holds;
     }
     return true;
@@ -376,7 +391,7 @@ TransferSystem build_countdown_transfer_system(
     const CountVector cell_counts = canonical_valuation_counts_or_throw(
         requirement, canonical_valuation_counts,
         static_cast<Eigen::Index>(cells.size()));
-    const std::size_t max_ticks = requirement.m_tick_count;
+    const std::size_t max_ticks = tick_count_or_throw(requirement.m_timing);
     const std::vector<State> states = countdown_states(max_ticks);
     const CountMatrix weighted_transitions =
         build_countdown_weighted_transitions(transition_fn, max_ticks, cells,

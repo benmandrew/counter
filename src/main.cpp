@@ -61,8 +61,8 @@ void print_requirement_report(const Requirement& requirement) {
 
 int main() {
     const std::vector<Requirement> requirements = {
-        {Formula("P"), Formula("Q"), Timing::Immediately},
-        {Formula("P"), Formula("Q"), Timing::NextTimepoint},
+        {Formula("P"), Formula("Q"), timing::immediately()},
+        {Formula("P"), Formula("Q"), timing::next_timepoint()},
     };
     for (const Requirement& requirement : requirements) {
         print_requirement_report(requirement);

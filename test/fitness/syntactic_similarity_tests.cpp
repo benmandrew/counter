@@ -11,9 +11,9 @@ namespace {
 
 void test_syntactic_similarity_not_implemented() {
     const Requirement requirement{Formula("P"), Formula("Q"),
-                                  Timing::Immediately};
+                                  timing::immediately()};
     const Requirement other_requirement{Formula("P"), Formula("P|Q"),
-                                        Timing::Immediately};
+                                        timing::immediately()};
 
     bool threw = false;
     try {

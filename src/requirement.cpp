@@ -1,6 +1,8 @@
 #include "requirement.hpp"
 
 #include <string>
+#include <type_traits>
+#include <variant>
 #include <vector>
 
 std::string State::label() const {
@@ -22,16 +24,19 @@ std::vector<State> canonical_states() {
     };
 }
 
-std::string to_string(Timing timing) {
-    switch (timing) {
-        case Timing::Immediately:
-            return "immediately";
-        case Timing::NextTimepoint:
-            return "at the next timepoint";
-        case Timing::WithinTicks:
-            return "within N ticks";
-        case Timing::ForTicks:
-            return "for N ticks";
-    }
-    return "unknown";
+std::string to_string(const Timing& timing) {
+    return std::visit(
+        [](const auto& value) -> std::string {
+            using T = std::decay_t<decltype(value)>;
+            if constexpr (std::is_same_v<T, timing::Immediately>) {
+                return "immediately";
+            } else if constexpr (std::is_same_v<T, timing::NextTimepoint>) {
+                return "at the next timepoint";
+            } else if constexpr (std::is_same_v<T, timing::WithinTicks>) {
+                return "within " + std::to_string(value.m_ticks) + " ticks";
+            } else {
+                return "for " + std::to_string(value.m_ticks) + " ticks";
+            }
+        },
+        timing);
 }

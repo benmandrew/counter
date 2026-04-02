@@ -2,23 +2,45 @@
 
 #include <cstddef>
 #include <string>
+#include <variant>
 #include <vector>
 
 #include "prop_formula.hpp"
 
-/// Timing constraints for FRET requirements, specifying when the response must
-/// be satisfied relative to the trigger. These map to specific automaton
-/// constructions for model counting in semantic similarity computations.
-enum class Timing {
-    /// Response must hold immediately when trigger is true
-    Immediately,
-    /// Response must hold at the next timepoint after trigger
-    NextTimepoint,
-    /// Response must hold within N ticks of trigger
-    WithinTicks,
-    /// Response must hold for N consecutive ticks after trigger
-    ForTicks,
+namespace timing {
+
+/// Response must hold immediately when trigger is true.
+struct Immediately {};
+
+/// Response must hold at the next timepoint after trigger.
+struct NextTimepoint {};
+
+/// Response must hold within `m_ticks` ticks of trigger, including the trigger
+/// tick.
+struct WithinTicks {
+    std::size_t m_ticks;
 };
+
+/// Response must hold for `m_ticks` consecutive ticks, including the trigger
+/// tick.
+struct ForTicks {
+    std::size_t m_ticks;
+};
+
+/// Algebraic data type for requirement timing.
+using Timing = std::variant<Immediately, NextTimepoint, WithinTicks, ForTicks>;
+
+inline Timing immediately() { return Immediately{}; }
+
+inline Timing next_timepoint() { return NextTimepoint{}; }
+
+inline Timing within_ticks(std::size_t ticks) { return WithinTicks{ticks}; }
+
+inline Timing for_ticks(std::size_t ticks) { return ForTicks{ticks}; }
+
+}  // namespace timing
+
+using Timing = timing::Timing;
 
 /// A FRET requirement specifying a system obligation. Consists of a trigger
 /// condition and a response that must be satisfied according to the specified
@@ -31,8 +53,6 @@ struct Requirement {
     Formula m_response;
     /// The timing constraint for satisfaction
     Timing m_timing;
-    /// Tick count parameter for WithinTicks/ForTicks timing
-    std::size_t m_tick_count = 0;
 };
 
 /// A state in the automaton used for transfer matrix model counting. Encodes
@@ -57,4 +77,4 @@ struct State {
 std::vector<State> canonical_states();
 
 /// Converts a Timing enum value to a human-readable string representation.
-std::string to_string(Timing timing);
+std::string to_string(const Timing& timing);

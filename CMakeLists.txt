@@ -21,7 +21,12 @@ check_cxx_source_compiles(
 
 add_library(counter_core STATIC)
 target_sources(counter_core PRIVATE
-    src/prop_formula.cpp
+    src/prop_formula/cnf.cpp
+    src/prop_formula/core.cpp
+    src/prop_formula/dimacs_api.cpp
+    src/prop_formula/parser.cpp
+    src/prop_formula/similarity.cpp
+    src/prop_formula/transform.cpp
     src/requirement.cpp
 )
 target_include_directories(counter_core PUBLIC include)

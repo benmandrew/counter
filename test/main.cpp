@@ -7,7 +7,10 @@ int main() {
     try {
         run_transfer_matrix_tests();
         run_ganak_runner_tests();
-        run_prop_formula_tests();
+        run_prop_formula_ast_tests();
+        run_prop_formula_cnf_tests();
+        run_prop_formula_rewrite_tests();
+        run_prop_formula_similarity_tests();
         run_semantic_similarity_tests();
         run_syntactic_similarity_tests();
     } catch (const std::exception& exception) {

@@ -39,4 +39,6 @@
 # clang-tidy output
 /clang-tidy-fixes.patch
 
+Temporary/
+
 .vscode/

@@ -2,7 +2,7 @@
 #include <string>
 
 #include "fitness/syntactic_similarity.hpp"
-#include "prop_formula.hpp"
+#include "prop_formula/formula.hpp"
 #include "requirement.hpp"
 #include "test_suite.hpp"
 #include "test_support.hpp"

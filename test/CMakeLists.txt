@@ -1,10 +1,13 @@
 add_executable(counter_tests
-    prop_formula_tests.cpp
     fitness/ganak_runner_tests.cpp
     main.cpp
     fitness/semantic_similarity_tests.cpp
     fitness/syntactic_similarity_tests.cpp
     fitness/transfer_matrix_tests.cpp
+    prop_formula/ast_tests.cpp
+    prop_formula/cnf_tests.cpp
+    prop_formula/rewrite_tests.cpp
+    prop_formula/similarity_tests.cpp
 )
 
 target_include_directories(counter_tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})

@@ -20,16 +20,16 @@ jobs:
           python3 -m pip install cpplint
 
       - name: Configure project
-        run: cmake -S . -B build
+        run: cmake --preset debug
 
       - name: Check formatting
-        run: cmake --build build --target format-ci
+        run: cmake --build --preset debug --target format-ci
 
       - name: Check linting
-        run: cmake --build build --target lint
+        run: cmake --build --preset debug --target lint
 
       - name: Build project
-        run: cmake --build build
+        run: cmake --build --preset debug
 
       - name: Run tests
-        run: cmake --build build --target tests
+        run: ctest --preset debug

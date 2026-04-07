@@ -49,8 +49,8 @@ void run_suite(std::string_view suite_name) {
         run_syntactic_similarity_tests();
         return;
     }
-
-    throw std::invalid_argument("Unknown test suite: " + std::string(suite_name));
+    throw std::invalid_argument("Unknown test suite: " +
+                                std::string(suite_name));
 }
 
 }  // namespace
@@ -70,7 +70,6 @@ int main(int argc, char* argv[]) {
             run_syntactic_similarity_tests();
             return 0;
         }
-
         if (argc != 2) {
             throw std::invalid_argument(
                 "Expected zero arguments or exactly one test suite name.");
@@ -80,6 +79,5 @@ int main(int argc, char* argv[]) {
         std::cerr << exception.what() << '\n';
         return 1;
     }
-
     return 0;
 }

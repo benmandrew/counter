@@ -114,7 +114,6 @@ Timing crossover_timing(const Timing& first_parent, const Timing& second_parent,
     if (!random_bool) {
         throw std::invalid_argument("random_bool must be callable.");
     }
-
     return std::visit(
         [&](const auto& first_value) -> Timing {
             return std::visit(

@@ -1,5 +1,6 @@
 add_executable(counter_tests
     fitness/ganak_runner_tests.cpp
+    genetic/crossover_tests.cpp
     genetic/mutation_tests.cpp
     main.cpp
     fitness/semantic_similarity_tests.cpp
@@ -20,7 +21,16 @@ else()
     target_compile_options(counter_tests PRIVATE -Wall -Wextra -Wpedantic)
 endif()
 
-add_test(NAME counter_tests COMMAND counter_tests)
+add_test(NAME counter_tests.transfer_matrix COMMAND counter_tests transfer_matrix)
+add_test(NAME counter_tests.ganak_runner COMMAND counter_tests ganak_runner)
+add_test(NAME counter_tests.crossover COMMAND counter_tests crossover)
+add_test(NAME counter_tests.mutation COMMAND counter_tests mutation)
+add_test(NAME counter_tests.prop_formula_ast COMMAND counter_tests prop_formula_ast)
+add_test(NAME counter_tests.prop_formula_cnf COMMAND counter_tests prop_formula_cnf)
+add_test(NAME counter_tests.prop_formula_rewrite COMMAND counter_tests prop_formula_rewrite)
+add_test(NAME counter_tests.prop_formula_similarity COMMAND counter_tests prop_formula_similarity)
+add_test(NAME counter_tests.semantic_similarity COMMAND counter_tests semantic_similarity)
+add_test(NAME counter_tests.syntactic_similarity COMMAND counter_tests syntactic_similarity)
 
 add_custom_target(tests
     COMMAND ${CMAKE_CTEST_COMMAND} --output-on-failure

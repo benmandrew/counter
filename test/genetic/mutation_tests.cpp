@@ -10,7 +10,7 @@
 
 namespace {
 
-BooleanRandomSource make_source(std::vector<bool> values, bool fallback) {
+RandomSource make_source(std::vector<bool> values, bool fallback) {
     return [values = std::move(values), fallback,
             index = std::size_t{0}]() mutable {
         if (index >= values.size()) {
@@ -40,7 +40,7 @@ void test_mutation_with_true_source_renames_atom() {
 void test_mutation_rejects_empty_random_source() {
     bool threw = false;
     try {
-        (void)mutate_formula(Formula("P"), BooleanRandomSource{});
+        (void)mutate_formula(Formula("P"), RandomSource{});
     } catch (const std::invalid_argument&) {
         threw = true;
     }
@@ -79,7 +79,7 @@ void test_timing_mutation_can_change_parameter_only() {
 void test_timing_mutation_rejects_empty_random_source() {
     bool threw = false;
     try {
-        (void)mutate_timing(timing::immediately(), BooleanRandomSource{});
+        (void)mutate_timing(timing::immediately(), RandomSource{});
     } catch (const std::invalid_argument&) {
         threw = true;
     }

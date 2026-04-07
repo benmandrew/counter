@@ -10,7 +10,7 @@
 
 namespace {
 
-Formula::Kind pick_binary_kind(const BooleanRandomSource& random_bool) {
+Formula::Kind pick_binary_kind(const RandomSource& random_bool) {
     const bool high_bit = random_bool();
     const bool low_bit = random_bool();
     const int selector = (high_bit ? 2 : 0) + (low_bit ? 1 : 0);
@@ -28,7 +28,7 @@ Formula::Kind pick_binary_kind(const BooleanRandomSource& random_bool) {
 }
 
 std::string mutate_atom_name(const std::string& atom,
-                             const BooleanRandomSource& random_bool) {
+                             const RandomSource& random_bool) {
     if (atom == "true") {
         return "false";
     }
@@ -47,7 +47,7 @@ std::string mutate_atom_name(const std::string& atom,
 }
 
 Formula mutate_atom_formula(const Formula& formula,
-                            const BooleanRandomSource& random_bool) {
+                            const RandomSource& random_bool) {
     const std::optional<std::string> atom = formula.atom_name();
     if (!atom.has_value()) {
         throw std::logic_error("Expected atomic formula for atom mutation.");
@@ -63,7 +63,7 @@ Formula mutate_atom_formula(const Formula& formula,
 }  // namespace
 
 Formula mutate_formula(const Formula& formula,
-                       const BooleanRandomSource& boolean_random_source) {
+                       const RandomSource& boolean_random_source) {
     if (!boolean_random_source) {
         throw std::invalid_argument("boolean_random_source must be callable.");
     }
@@ -116,17 +116,17 @@ Formula mutate_formula(const Formula& formula,
     return formula.rewrite_post_order(mutation_function);
 }
 
-Timing pick_non_parameter_timing(const BooleanRandomSource& random_bool) {
+Timing pick_non_parameter_timing(const RandomSource& random_bool) {
     return random_bool() ? timing::immediately() : timing::next_timepoint();
 }
 
 Timing pick_parameter_timing(std::size_t ticks,
-                             const BooleanRandomSource& random_bool) {
+                             const RandomSource& random_bool) {
     return random_bool() ? timing::within_ticks(ticks)
                          : timing::for_ticks(ticks);
 }
 
-std::size_t pick_tick_count(const BooleanRandomSource& random_bool) {
+std::size_t pick_tick_count(const RandomSource& random_bool) {
     const bool bit2 = random_bool();
     const bool bit1 = random_bool();
     const bool bit0 = random_bool();
@@ -135,7 +135,7 @@ std::size_t pick_tick_count(const BooleanRandomSource& random_bool) {
 }
 
 std::size_t mutate_tick_count(std::size_t ticks,
-                              const BooleanRandomSource& random_bool) {
+                              const RandomSource& random_bool) {
     const std::size_t candidate = pick_tick_count(random_bool);
     if (candidate != ticks) {
         return candidate;
@@ -146,8 +146,7 @@ std::size_t mutate_tick_count(std::size_t ticks,
     return ticks - 1;
 }
 
-Timing mutate_timing(const Timing& timing,
-                     const BooleanRandomSource& random_bool) {
+Timing mutate_timing(const Timing& timing, const RandomSource& random_bool) {
     if (!random_bool) {
         throw std::invalid_argument("boolean_random_source must be callable.");
     }
@@ -192,9 +191,8 @@ Timing mutate_timing(const Timing& timing,
     return std::visit(mutation_function, timing);
 }
 
-Requirement mutate_requirement(
-    const Requirement& requirement,
-    const BooleanRandomSource& boolean_random_source) {
+Requirement mutate_requirement(const Requirement& requirement,
+                               const RandomSource& boolean_random_source) {
     Requirement mutated = requirement;
     mutated.m_response =
         mutate_formula(requirement.m_response, boolean_random_source);

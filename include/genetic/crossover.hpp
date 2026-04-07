@@ -2,6 +2,7 @@
 
 #include <utility>
 
+#include "genetic/random_source.hpp"
 #include "requirement.hpp"
 
 /// Produces offspring requirements by crossing over two parent requirements.

@@ -26,7 +26,7 @@ jobs:
         run: cmake --build build --target format-ci
 
       - name: Check linting
-        run: cmake --build build --target lint-ci
+        run: cmake --build build --target lint
 
       - name: Build project
         run: cmake --build build

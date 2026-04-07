@@ -19,24 +19,11 @@ if(CPPLINT_EXE)
         COMMENT "Running cpplint on C++ sources"
         VERBATIM
     )
-
-    add_custom_target(lint-ci
-        COMMAND ${CPPLINT_EXE} ${COUNTER_CPPLINT_FILES}
-        COMMENT "Checking C++ sources with cpplint"
-        VERBATIM
-    )
 else()
     add_custom_target(lint
         COMMAND ${CMAKE_COMMAND} -E echo "cpplint was not found on PATH"
         COMMAND ${CMAKE_COMMAND} -E false
         COMMENT "Linting requires cpplint"
-        VERBATIM
-    )
-
-    add_custom_target(lint-ci
-        COMMAND ${CMAKE_COMMAND} -E echo "cpplint was not found on PATH"
-        COMMAND ${CMAKE_COMMAND} -E false
-        COMMENT "Lint check requires cpplint"
         VERBATIM
     )
 endif()

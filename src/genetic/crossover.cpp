@@ -7,9 +7,7 @@
 namespace {
 
 Formula::Kind pick_binary_kind(const RandomSource& random_bool) {
-    const bool high_bit = random_bool();
-    const bool low_bit = random_bool();
-    const int selector = (high_bit ? 2 : 0) + (low_bit ? 1 : 0);
+    const int selector = next_2bit_selector(random_bool);
     switch (selector) {
         case 0:
             return Formula::Kind::And;
@@ -88,16 +86,18 @@ Formula combine_subformula(const Formula& formula, const Formula& donor,
 Formula crossover_formula(const Formula& first_parent,
                           const Formula& second_parent,
                           const RandomSource& random_bool) {
-    if (!random_bool()) {
-        return first_parent;
+    const int selector = next_2bit_selector(random_bool);
+    switch (selector) {
+        case 0:
+            return first_parent;
+        case 1:
+            return second_parent;
+        case 2:
+            return replace_subformula(first_parent, second_parent, random_bool);
+        case 3:
+            return combine_subformula(first_parent, second_parent, random_bool);
     }
-    if (!random_bool()) {
-        return second_parent;
-    }
-    if (!random_bool()) {
-        return replace_subformula(first_parent, second_parent, random_bool);
-    }
-    return combine_subformula(first_parent, second_parent, random_bool);
+    throw std::logic_error("Failed to select formula crossover branch.");
 }
 
 template <typename TimingVariant>
@@ -118,16 +118,18 @@ template <typename First, typename Second>
 Timing crossover_parameterized_timing(const First& first_value,
                                       const Second& second_value,
                                       const RandomSource& random_bool) {
-    if (!random_bool()) {
-        return first_value;
+    const int selector = next_2bit_selector(random_bool);
+    switch (selector) {
+        case 0:
+            return first_value;
+        case 1:
+            return second_value;
+        case 2:
+            return make_parameterized_timing<First>(second_value.m_ticks);
+        case 3:
+            return make_parameterized_timing<Second>(first_value.m_ticks);
     }
-    if (!random_bool()) {
-        return second_value;
-    }
-    if (random_bool()) {
-        return make_parameterized_timing<First>(second_value.m_ticks);
-    }
-    return make_parameterized_timing<Second>(first_value.m_ticks);
+    throw std::logic_error("Failed to select timing crossover branch.");
 }
 
 template <typename First, typename Second>
@@ -157,9 +159,6 @@ Timing crossover_timing_values(const First& first_value,
 
 Timing crossover_timing(const Timing& first_parent, const Timing& second_parent,
                         const RandomSource& random_bool) {
-    if (!random_bool) {
-        throw std::invalid_argument("random_bool must be callable.");
-    }
     return std::visit(
         [&](const auto& first_value) -> Timing {
             return std::visit(

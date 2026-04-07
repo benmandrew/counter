@@ -43,7 +43,7 @@ void test_timing_crossover_can_swap_parameters() {
                                     timing::for_ticks(10)};
     const Requirement offspring = crossover_requirements(
         first_parent, second_parent,
-        make_source({false, false, true, true, true}, false));
+        make_source({false, false, false, false, true, false}, false));
     const auto* within = std::get_if<timing::WithinTicks>(&offspring.m_timing);
     expect(within != nullptr,
            "crossover: parameter crossover should preserve the operator from"
@@ -59,7 +59,8 @@ void test_formula_crossover_can_combine_atoms() {
                                     timing::next_timepoint()};
     const Requirement offspring = crossover_requirements(
         first_parent, second_parent,
-        make_source({true, true, true, true, true, false, false}, false));
+        make_source({true, true, true, true, false, false, false, false, false},
+                    false));
     expect(offspring.m_trigger.to_string() == "(P) & (R)",
            "crossover: trigger crossover should be able to combine atoms");
 }

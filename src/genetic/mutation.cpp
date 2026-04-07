@@ -11,9 +11,7 @@
 namespace {
 
 Formula::Kind pick_binary_kind(const RandomSource& random_bool) {
-    const bool high_bit = random_bool();
-    const bool low_bit = random_bool();
-    const int selector = (high_bit ? 2 : 0) + (low_bit ? 1 : 0);
+    const int selector = next_2bit_selector(random_bool);
     switch (selector) {
         case 0:
             return Formula::Kind::And;
@@ -77,16 +75,18 @@ Formula mutate_formula(const Formula& formula,
                 return mutate_atom_formula(subtree, boolean_random_source);
             case Formula::Kind::Not: {
                 const Formula child = subtree.unary_child().value();
-                if (!boolean_random_source()) {
-                    return child;
-                }
-                if (!boolean_random_source()) {
-                    return Formula::make_unary(Formula::Kind::Not, child);
-                }
-                if (!boolean_random_source()) {
-                    return Formula::make_unary(
-                        Formula::Kind::Not,
-                        Formula::make_unary(Formula::Kind::Not, child));
+                const int selector = next_2bit_selector(boolean_random_source);
+                switch (selector) {
+                    case 0:
+                        return child;
+                    case 1:
+                        return Formula::make_unary(Formula::Kind::Not, child);
+                    case 2:
+                        return Formula::make_unary(
+                            Formula::Kind::Not,
+                            Formula::make_unary(Formula::Kind::Not, child));
+                    case 3:
+                        break;
                 }
                 const Formula anchor = Formula::make_atom("p_mut");
                 return Formula::make_binary(

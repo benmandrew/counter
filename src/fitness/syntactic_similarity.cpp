@@ -1,19 +1,13 @@
 #include "fitness/syntactic_similarity.hpp"
 
-#include <stdexcept>
-
-namespace {
-
-[[noreturn]] void throw_not_implemented() {
-    throw std::logic_error(
-        "syntactic_similarity metric is not implemented yet.");
-}
-
-}  // namespace
-
 double syntactic_similarity(const Requirement& requirement,
                             const Requirement& other_requirement) {
-    (void)requirement;
-    (void)other_requirement;
-    throw_not_implemented();
+    double condition_similarity =
+        requirement.m_trigger.syntactic_similarity(other_requirement.m_trigger);
+    double response_similarity = requirement.m_response.syntactic_similarity(
+        other_requirement.m_response);
+    double timing_similarity =
+        1.0;  // Placeholder until timing similarity is implemented
+    return (condition_similarity + response_similarity + timing_similarity) /
+           3.0;
 }

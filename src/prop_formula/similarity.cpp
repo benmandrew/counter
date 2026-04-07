@@ -96,7 +96,8 @@ std::size_t count_shared_subformulae(
     std::size_t next_id = 1;
     id_pool.reserve((nodes.size() + other_nodes.size()) * 2);
     const auto counts = collect_subformula_ids(nodes, id_pool, next_id);
-    const auto other_counts = collect_subformula_ids(other_nodes, id_pool, next_id);
+    const auto other_counts =
+        collect_subformula_ids(other_nodes, id_pool, next_id);
     std::size_t shared_subformulae = 0;
     for (const auto& [signature, count] : counts) {
         const auto other_it = other_counts.find(signature);

@@ -1,5 +1,4 @@
-#include <stdexcept>
-#include <string>
+#include <cmath>
 
 #include "fitness/syntactic_similarity.hpp"
 #include "prop_formula.hpp"
@@ -9,30 +8,20 @@
 
 namespace {
 
-void test_syntactic_similarity_not_implemented() {
+void test_syntactic_similarity_averages_component_scores() {
     const Requirement requirement{Formula("P"), Formula("Q"),
                                   timing::immediately()};
     const Requirement other_requirement{Formula("P"), Formula("P|Q"),
                                         timing::immediately()};
 
-    bool threw = false;
-    try {
-        (void)syntactic_similarity(requirement, other_requirement);
-    } catch (const std::logic_error& exception) {
-        threw = true;
-        expect(std::string{exception.what()} ==
-                   "syntactic_similarity metric is not implemented yet.",
-               "syntactic-similarity: default overload should propagate the "
-               "not-implemented error");
-    }
-
-    expect(threw,
-           "syntactic-similarity: default overload should throw logic_error "
-           "until implemented");
+    const double synsim = syntactic_similarity(requirement, other_requirement);
+    expect(std::fabs(synsim - (8.0 / 9.0)) < 1e-12,
+           "syntactic-similarity: component averaging should produce the "
+           "expected score for 'P'/'Q' versus 'P'/'P|Q'");
 }
 
 }  // namespace
 
 void run_syntactic_similarity_tests() {
-    test_syntactic_similarity_not_implemented();
+    test_syntactic_similarity_averages_component_scores();
 }

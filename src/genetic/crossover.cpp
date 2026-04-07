@@ -109,6 +109,52 @@ Timing make_parameterized_timing(std::size_t ticks) {
     }
 }
 
+template <typename TimingVariant>
+constexpr bool is_parameterized_timing_v =
+    std::is_same_v<TimingVariant, timing::WithinTicks> ||
+    std::is_same_v<TimingVariant, timing::ForTicks>;
+
+template <typename First, typename Second>
+Timing crossover_parameterized_timing(const First& first_value,
+                                      const Second& second_value,
+                                      const RandomSource& random_bool) {
+    if (!random_bool()) {
+        return first_value;
+    }
+    if (!random_bool()) {
+        return second_value;
+    }
+    if (random_bool()) {
+        return make_parameterized_timing<First>(second_value.m_ticks);
+    }
+    return make_parameterized_timing<Second>(first_value.m_ticks);
+}
+
+template <typename First, typename Second>
+Timing crossover_timing_values(const First& first_value,
+                               const Second& second_value,
+                               const RandomSource& random_bool) {
+    if constexpr (std::is_same_v<First, Second>) {
+        if constexpr (is_parameterized_timing_v<First>) {
+            return crossover_parameterized_timing(first_value, second_value,
+                                                  random_bool);
+        }
+        if (!random_bool()) {
+            return first_value;
+        }
+        return second_value;
+    }
+    if constexpr (is_parameterized_timing_v<First> &&
+                  is_parameterized_timing_v<Second>) {
+        return crossover_parameterized_timing(first_value, second_value,
+                                              random_bool);
+    }
+    if (!random_bool()) {
+        return first_value;
+    }
+    return second_value;
+}
+
 Timing crossover_timing(const Timing& first_parent, const Timing& second_parent,
                         const RandomSource& random_bool) {
     if (!random_bool) {
@@ -118,63 +164,8 @@ Timing crossover_timing(const Timing& first_parent, const Timing& second_parent,
         [&](const auto& first_value) -> Timing {
             return std::visit(
                 [&](const auto& second_value) -> Timing {
-                    using First = std::decay_t<decltype(first_value)>;
-                    using Second = std::decay_t<decltype(second_value)>;
-
-                    if constexpr (std::is_same_v<First, Second>) {
-                        if constexpr (std::is_same_v<First,
-                                                     timing::WithinTicks> ||
-                                      std::is_same_v<First, timing::ForTicks>) {
-                            if (!random_bool()) {
-                                return first_value;
-                            }
-                            if (!random_bool()) {
-                                return second_value;
-                            }
-                            if (random_bool()) {
-                                return make_parameterized_timing<First>(
-                                    second_value.m_ticks);
-                            }
-                            return make_parameterized_timing<Second>(
-                                first_value.m_ticks);
-                        }
-                        if (!random_bool()) {
-                            return first_value;
-                        }
-                        return second_value;
-                    } else {
-                        if constexpr (
-                            (std::is_same_v<First, timing::WithinTicks> ||
-                             std::is_same_v<
-                                 First,
-                                 timing::
-                                     ForTicks>)&&(std::
-                                                      is_same_v<
-                                                          Second,
-                                                          timing::
-                                                              WithinTicks> ||
-                                                  std::is_same_v<
-                                                      Second,
-                                                      timing::ForTicks>)) {
-                            if (!random_bool()) {
-                                return first_value;
-                            }
-                            if (!random_bool()) {
-                                return second_value;
-                            }
-                            if (random_bool()) {
-                                return make_parameterized_timing<First>(
-                                    second_value.m_ticks);
-                            }
-                            return make_parameterized_timing<Second>(
-                                first_value.m_ticks);
-                        } else {
-                            if (!random_bool()) {
-                                return first_value;
-                            }
-                            return second_value;
-                        }
-                    }
+                    return crossover_timing_values(first_value, second_value,
+                                                   random_bool);
                 },
                 second_parent);
         },

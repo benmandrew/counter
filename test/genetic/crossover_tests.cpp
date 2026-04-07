@@ -9,15 +9,16 @@
 
 namespace {
 
-RandomSource make_source(std::vector<bool> values, bool fallback) {
+RandomSource make_source(std::vector<std::size_t> values,
+                         std::size_t fallback) {
     return [values = std::move(values), fallback,
-            index = std::size_t{0}]() mutable {
+            index = std::size_t{0}](std::size_t upper_bound) mutable {
         if (index >= values.size()) {
-            return fallback;
+            return fallback % upper_bound;
         }
-        const bool value = values[index];
+        const std::size_t value = values[index];
         ++index;
-        return value;
+        return value % upper_bound;
     };
 }
 
@@ -42,8 +43,7 @@ void test_timing_crossover_can_swap_parameters() {
     const Requirement second_parent{Formula("P"), Formula("Q"),
                                     timing::for_ticks(10)};
     const Requirement offspring = crossover_requirements(
-        first_parent, second_parent,
-        make_source({false, false, false, false, true, false}, false));
+        first_parent, second_parent, make_source({0, 0, 2}, 0));
     const auto* within = std::get_if<timing::WithinTicks>(&offspring.m_timing);
     expect(within != nullptr,
            "crossover: parameter crossover should preserve the operator from"
@@ -58,9 +58,7 @@ void test_formula_crossover_can_combine_atoms() {
     const Requirement second_parent{Formula("R"), Formula("S"),
                                     timing::next_timepoint()};
     const Requirement offspring = crossover_requirements(
-        first_parent, second_parent,
-        make_source({true, true, true, true, false, false, false, false, false},
-                    false));
+        first_parent, second_parent, make_source({3, 1, 1, 0}, 0));
     expect(offspring.m_trigger.to_string() == "(P) & (R)",
            "crossover: trigger crossover should be able to combine atoms");
 }

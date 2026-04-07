@@ -10,15 +10,16 @@
 
 namespace {
 
-RandomSource make_source(std::vector<bool> values, bool fallback) {
+RandomSource make_source(std::vector<std::size_t> values,
+                         std::size_t fallback) {
     return [values = std::move(values), fallback,
-            index = std::size_t{0}]() mutable {
+            index = std::size_t{0}](std::size_t upper_bound) mutable {
         if (index >= values.size()) {
-            return fallback;
+            return fallback % upper_bound;
         }
-        const bool value = values[index];
+        const std::size_t value = values[index];
         ++index;
-        return value;
+        return value % upper_bound;
     };
 }
 
@@ -56,8 +57,7 @@ void test_timing_mutation_replaces_non_parameterized_timing() {
 
 void test_timing_mutation_can_switch_to_parameterized_timing() {
     const Timing mutated =
-        mutate_timing(timing::immediately(),
-                      make_source({true, true, false, true, false}, false));
+        mutate_timing(timing::immediately(), make_source({1, 5, 0}, 0));
     const auto* for_ticks = std::get_if<timing::ForTicks>(&mutated);
     expect(for_ticks != nullptr,
            "mutation: non-parameterized timing should be able to become for");
@@ -66,8 +66,8 @@ void test_timing_mutation_can_switch_to_parameterized_timing() {
 }
 
 void test_timing_mutation_can_change_parameter_only() {
-    const Timing mutated = mutate_timing(timing::within_ticks(3),
-                                         make_source({true, false}, true));
+    const Timing mutated =
+        mutate_timing(timing::within_ticks(3), make_source({1, 0, 1}, 1));
     const auto* within = std::get_if<timing::WithinTicks>(&mutated);
     expect(within != nullptr,
            "mutation: within timing should remain within for parameter-only "

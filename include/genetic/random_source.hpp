@@ -1,11 +1,24 @@
 #pragma once
 
+#include <cstddef>
 #include <functional>
+#include <stdexcept>
 
-using RandomSource = std::function<bool()>;
+// Returns a pseudo-random value for the requested range [0, upper_bound).
+using RandomSource = std::function<std::size_t(std::size_t upper_bound)>;
 
-inline int next_2bit_selector(const RandomSource& random_source) {
-    const bool high_bit = random_source();
-    const bool low_bit = random_source();
-    return (high_bit ? 2 : 0) + (low_bit ? 1 : 0);
+inline std::size_t next_index(const RandomSource& random_source,
+                              std::size_t upper_bound) {
+    if (!random_source) {
+        throw std::invalid_argument("random source must be callable.");
+    }
+    if (upper_bound == 0) {
+        throw std::invalid_argument("upper_bound must be positive.");
+    }
+    // Normalize values into the requested range.
+    return random_source(upper_bound) % upper_bound;
+}
+
+inline bool next_bool(const RandomSource& random_source) {
+    return next_index(random_source, 2) == 1;
 }

@@ -10,8 +10,8 @@
 ///
 /// @param first_parent  First parent requirement
 /// @param second_parent Second parent requirement
-/// @param random_bool   Random boolean source used to select crossover paths
+/// @param random_source Random source for branch and selector choices
 /// @return              Offspring requirement
 Requirement crossover_requirements(const Requirement& first_parent,
                                    const Requirement& second_parent,
-                                   const RandomSource& random_bool);
+                                   const RandomSource& random_source);

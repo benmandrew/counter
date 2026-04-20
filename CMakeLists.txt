@@ -39,6 +39,7 @@ target_sources(counter_fitness PRIVATE
     src/fitness/syntactic_similarity.cpp
     src/fitness/transfer_matrix.cpp
     src/genetic/crossover.cpp
+    src/genetic/generation.cpp
     src/genetic/mutation.cpp
 )
 target_include_directories(counter_fitness PUBLIC include)

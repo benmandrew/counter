@@ -24,3 +24,11 @@ Formula& Formula::operator=(const Formula& other) {
 Formula& Formula::operator=(Formula&& other) noexcept = default;
 
 Formula::~Formula() = default;
+
+bool Formula::Impl::operator<(const Impl& rhs) const {
+    return m_nodes < rhs.m_nodes;
+}
+
+bool operator<(const Formula& lhs, const Formula& rhs) {
+    return *lhs.m_impl < *rhs.m_impl;
+}

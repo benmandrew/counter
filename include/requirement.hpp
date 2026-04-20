@@ -42,6 +42,11 @@ inline Timing for_ticks(std::size_t ticks) { return ForTicks{ticks}; }
 
 using Timing = timing::Timing;
 
+inline bool operator<(const Timing& lhs, const Timing& rhs) {
+    // Use std::variant's operator< for strict weak ordering
+    return static_cast<const Timing&>(lhs) < static_cast<const Timing&>(rhs);
+}
+
 /// A FRET requirement specifying a system obligation. Consists of a trigger
 /// condition and a response that must be satisfied according to the specified
 /// timing constraint. These are used as the basic units for repair and for
@@ -53,6 +58,14 @@ struct Requirement {
     Formula m_response;
     /// The timing constraint for satisfaction
     Timing m_timing;
+
+    friend bool operator<(const Requirement& lhs, const Requirement& rhs) {
+        if (lhs.m_trigger < rhs.m_trigger) return true;
+        if (rhs.m_trigger < lhs.m_trigger) return false;
+        if (lhs.m_response < rhs.m_response) return true;
+        if (rhs.m_response < lhs.m_response) return false;
+        return lhs.m_timing < rhs.m_timing;
+    }
 };
 
 /// A state in the automaton used for transfer matrix model counting. Encodes

@@ -120,4 +120,6 @@ class Formula {
    private:
     struct Impl;
     std::unique_ptr<Impl> m_impl;
+
+    friend bool operator<(const Formula& lhs, const Formula& rhs);
 };

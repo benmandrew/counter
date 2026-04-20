@@ -22,6 +22,14 @@ struct Node {
     std::string m_variable;
     std::size_t m_left;
     std::size_t m_right;
+
+    friend bool operator<(const Node& lhs, const Node& rhs) {
+        if (lhs.m_type != rhs.m_type) return lhs.m_type < rhs.m_type;
+        if (lhs.m_variable != rhs.m_variable)
+            return lhs.m_variable < rhs.m_variable;
+        if (lhs.m_left != rhs.m_left) return lhs.m_left < rhs.m_left;
+        return lhs.m_right < rhs.m_right;
+    }
 };
 
 struct DimacsCnf {
@@ -40,4 +48,6 @@ struct Formula::Impl {
     std::vector<prop_formula_internal::Node> m_nodes;
 
     explicit Impl(const std::string& formula);
+
+    bool operator<(const Impl& rhs) const;
 };

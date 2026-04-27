@@ -7,7 +7,7 @@
 namespace {
 
 Formula::Kind pick_binary_kind(const RandomSource& random_source) {
-    const int selector = static_cast<int>(next_index(random_source, 4));
+    const int selector = static_cast<int>(random_source.next_index(4));
     switch (selector) {
         case 0:
             return Formula::Kind::And;
@@ -28,7 +28,7 @@ Formula select_subformula(const Formula& formula,
             return formula;
         case Formula::Kind::Not: {
             const Formula child = formula.unary_child().value();
-            if (!next_bool(random_source)) {
+            if (!random_source.next_bool()) {
                 return formula;
             }
             return select_subformula(child, random_source);
@@ -38,10 +38,10 @@ Formula select_subformula(const Formula& formula,
         case Formula::Kind::Implies:
         case Formula::Kind::Iff: {
             const auto children = formula.binary_children().value();
-            if (!next_bool(random_source)) {
+            if (!random_source.next_bool()) {
                 return formula;
             }
-            if (!next_bool(random_source)) {
+            if (!random_source.next_bool()) {
                 return select_subformula(children.first, random_source);
             }
             return select_subformula(children.second, random_source);
@@ -56,7 +56,7 @@ Formula replace_subformula(const Formula& formula, const Formula& donor,
     bool replaced = false;
     return formula.rewrite_post_order(
         [&](const Formula&) -> std::optional<Formula> {
-            if (replaced || !next_bool(random_source)) {
+            if (replaced || !random_source.next_bool()) {
                 return std::nullopt;
             }
             replaced = true;
@@ -70,11 +70,11 @@ Formula combine_subformula(const Formula& formula, const Formula& donor,
     bool combined = false;
     return formula.rewrite_post_order(
         [&](const Formula& subtree) -> std::optional<Formula> {
-            if (combined || !next_bool(random_source)) {
+            if (combined || !random_source.next_bool()) {
                 return std::nullopt;
             }
             combined = true;
-            if (next_bool(random_source)) {
+            if (random_source.next_bool()) {
                 return Formula::make_binary(pick_binary_kind(random_source),
                                             subtree, donor_subformula);
             }
@@ -86,7 +86,7 @@ Formula combine_subformula(const Formula& formula, const Formula& donor,
 Formula crossover_formula(const Formula& first_parent,
                           const Formula& second_parent,
                           const RandomSource& random_source) {
-    const int selector = static_cast<int>(next_index(random_source, 4));
+    const int selector = static_cast<int>(random_source.next_index(4));
     switch (selector) {
         case 0:
             return first_parent;
@@ -120,7 +120,7 @@ template <typename First, typename Second>
 Timing crossover_parameterized_timing(const First& first_value,
                                       const Second& second_value,
                                       const RandomSource& random_source) {
-    const int selector = static_cast<int>(next_index(random_source, 4));
+    const int selector = static_cast<int>(random_source.next_index(4));
     switch (selector) {
         case 0:
             return first_value;
@@ -143,7 +143,7 @@ Timing crossover_timing_values(const First& first_value,
             return crossover_parameterized_timing(first_value, second_value,
                                                   random_source);
         }
-        if (!next_bool(random_source)) {
+        if (!random_source.next_bool()) {
             return first_value;
         }
         return second_value;
@@ -153,7 +153,7 @@ Timing crossover_timing_values(const First& first_value,
         return crossover_parameterized_timing(first_value, second_value,
                                               random_source);
     }
-    if (!next_bool(random_source)) {
+    if (!random_source.next_bool()) {
         return first_value;
     }
     return second_value;

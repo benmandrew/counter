@@ -1,6 +1,7 @@
 add_executable(counter_tests
     fitness/ganak_runner_tests.cpp
     genetic/crossover_tests.cpp
+    genetic/generation_tests.cpp
     genetic/mutation_tests.cpp
     main.cpp
     fitness/semantic_similarity_tests.cpp
@@ -24,6 +25,7 @@ endif()
 add_test(NAME counter_tests.transfer_matrix COMMAND counter_tests transfer_matrix)
 add_test(NAME counter_tests.ganak_runner COMMAND counter_tests ganak_runner)
 add_test(NAME counter_tests.crossover COMMAND counter_tests crossover)
+add_test(NAME counter_tests.generation COMMAND counter_tests generation)
 add_test(NAME counter_tests.mutation COMMAND counter_tests mutation)
 add_test(NAME counter_tests.prop_formula_ast COMMAND counter_tests prop_formula_ast)
 add_test(NAME counter_tests.prop_formula_cnf COMMAND counter_tests prop_formula_cnf)

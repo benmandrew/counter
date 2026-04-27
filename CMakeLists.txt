@@ -50,6 +50,11 @@ target_compile_definitions(counter_fitness
     $<$<BOOL:${COUNTER_HAS_UINT128}>:COUNTER_USE_UINT128=1>
 )
 
+if(DEFINED COUNTER_DEFAULT_FITNESS_WEIGHT)
+    target_compile_definitions(counter_fitness PUBLIC
+        COUNTER_DEFAULT_FITNESS_WEIGHT=${COUNTER_DEFAULT_FITNESS_WEIGHT})
+endif()
+
 add_executable(counter src/main.cpp)
 target_link_libraries(counter PRIVATE counter_fitness)
 

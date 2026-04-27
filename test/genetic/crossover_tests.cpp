@@ -11,15 +11,16 @@ namespace {
 
 RandomSource make_source(std::vector<std::size_t> values,
                          std::size_t fallback) {
-    return [values = std::move(values), fallback,
-            index = std::size_t{0}](std::size_t upper_bound) mutable {
-        if (index >= values.size()) {
-            return fallback % upper_bound;
-        }
-        const std::size_t value = values[index];
-        ++index;
-        return value % upper_bound;
-    };
+    return RandomSource(
+        [values = std::move(values), fallback,
+         index = std::size_t{0}](std::size_t upper_bound) mutable {
+            if (index >= values.size()) {
+                return fallback % upper_bound;
+            }
+            const std::size_t value = values[index];
+            ++index;
+            return value % upper_bound;
+        });
 }
 
 void test_crossover_prefers_first_parent_with_false_source() {

@@ -1,5 +1,6 @@
 add_executable(counter_tests
     fitness/ganak_runner_tests.cpp
+    fitness/spot_runner_tests.cpp
     genetic/crossover_tests.cpp
     genetic/generation_tests.cpp
     genetic/mutation_tests.cpp
@@ -24,6 +25,7 @@ endif()
 
 add_test(NAME counter_tests.transfer_matrix COMMAND counter_tests transfer_matrix)
 add_test(NAME counter_tests.ganak_runner COMMAND counter_tests ganak_runner)
+add_test(NAME counter_tests.spot_runner COMMAND counter_tests spot_runner)
 add_test(NAME counter_tests.crossover COMMAND counter_tests crossover)
 add_test(NAME counter_tests.generation COMMAND counter_tests generation)
 add_test(NAME counter_tests.mutation COMMAND counter_tests mutation)

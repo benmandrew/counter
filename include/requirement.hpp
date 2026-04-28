@@ -48,6 +48,20 @@ inline bool operator<(const Timing& lhs, const Timing& rhs) {
     return static_cast<const Timing&>(lhs) < static_cast<const Timing&>(rhs);
 }
 
+struct LtlSpec {
+    std::string m_ltl;
+    std::vector<std::string> m_in_atoms;
+    std::vector<std::string> m_out_atoms;
+
+    friend bool operator<(const LtlSpec& lhs, const LtlSpec& rhs) {
+        if (lhs.m_ltl < rhs.m_ltl) return true;
+        if (rhs.m_ltl < lhs.m_ltl) return false;
+        if (lhs.m_in_atoms < rhs.m_in_atoms) return true;
+        if (rhs.m_in_atoms < lhs.m_in_atoms) return false;
+        return lhs.m_out_atoms < rhs.m_out_atoms;
+    }
+};
+
 /// A FRET requirement specifying a system obligation. Consists of a trigger
 /// condition and a response that must be satisfied according to the specified
 /// timing constraint. These are used as the basic units for repair and for
@@ -60,7 +74,7 @@ struct Requirement {
     /// The timing constraint for satisfaction
     Timing m_timing;
     /// An LTL formula representing the requirement semantics
-    std::optional<std::string> ltl;
+    std::optional<LtlSpec> m_ltl;
 
     friend bool operator<(const Requirement& lhs, const Requirement& rhs) {
         if (lhs.m_trigger < rhs.m_trigger) return true;
@@ -69,13 +83,13 @@ struct Requirement {
         if (rhs.m_response < lhs.m_response) return false;
         if (lhs.m_timing < rhs.m_timing) return true;
         if (rhs.m_timing < lhs.m_timing) return false;
-        return lhs.ltl < rhs.ltl;
+        return lhs.m_ltl < rhs.m_ltl;
     }
 
     explicit Requirement(const Formula& trigger, const Formula& response,
                          const Timing& timing)
         : m_trigger(trigger), m_response(response), m_timing(timing) {
-        ltl = std::nullopt;
+        m_ltl = std::nullopt;
     }
 };
 

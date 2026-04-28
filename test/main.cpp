@@ -17,6 +17,10 @@ void run_suite(std::string_view suite_name) {
         run_ganak_runner_tests();
         return;
     }
+    if (suite_name == "spot_runner") {
+        run_spot_runner_tests();
+        return;
+    }
     if (suite_name == "crossover") {
         run_crossover_tests();
         return;
@@ -64,6 +68,7 @@ int main(int argc, char* argv[]) {
         if (argc == 1) {
             run_transfer_matrix_tests();
             run_ganak_runner_tests();
+            run_spot_runner_tests();
             run_crossover_tests();
             run_generation_tests();
             run_mutation_tests();

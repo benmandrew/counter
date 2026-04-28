@@ -7,8 +7,9 @@ Uses a genetic algorithm with a fitness function that takes into account whether
 ## Build and Run
 
 ```sh
-cmake --preset debug
-cmake --build --preset debug
+mkdir -p build
+cmake -S . -B build --preset debug
+cmake --build --parallel $(nproc) --preset debug
 ./build/counter
 ```
 
@@ -23,6 +24,5 @@ Ganak only has release binaries for Linux and MacOS, but its [`CMakeLists.txt`](
 ## Format, Lint, and Test
 
 ```sh
-cmake --preset debug
-cmake --build --preset debug --target format lint tests
+cmake --build --parallel $(nproc) --preset debug --target format lint tests
 ```

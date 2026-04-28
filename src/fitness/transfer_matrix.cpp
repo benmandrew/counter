@@ -134,13 +134,6 @@ std::size_t for_next_countdown(std::size_t countdown, bool trigger_holds,
 using CountdownTransitionFn =
     std::function<std::size_t(std::size_t, bool, bool, std::size_t, bool&)>;
 
-struct RequirementAutomaton {
-    Requirement m_requirement;
-    std::vector<State> m_states;
-    std::array<Eigen::Index, 4> m_cell_to_state = {-1, -1, -1, -1};
-    CountdownTransitionFn m_countdown_transition;
-};
-
 std::size_t canonical_cell_index(const State& valuation) {
     if (valuation.m_trigger_holds) {
         return valuation.m_response_holds ? 3U : 2U;
@@ -158,6 +151,42 @@ CountdownTransitionFn countdown_transition_fn_or_throw(
 std::string valuation_formula(const Requirement& requirement,
                               const State& valuation);
 
+struct RequirementAutomaton {
+    Requirement m_requirement;
+    std::vector<State> m_states;
+    std::array<Eigen::Index, 4> m_cell_to_state = {-1, -1, -1, -1};
+    CountdownTransitionFn m_countdown_transition;
+
+    explicit RequirementAutomaton(const Requirement& requirement)
+        : m_requirement(requirement) {
+        this->m_requirement = requirement;
+        if (is_countdown_timing(requirement.m_timing)) {
+            this->m_states =
+                countdown_states(tick_count_or_throw(requirement.m_timing));
+            this->m_countdown_transition =
+                countdown_transition_fn_or_throw(requirement);
+            return;
+        }
+        const std::vector<State> cells = canonical_states();
+        const std::vector<Eigen::Index> active_indices =
+            active_state_indices(requirement, cells);
+        this->m_states = gather_states(cells, active_indices);
+        for (Eigen::Index state_index = 0;
+             state_index < static_cast<Eigen::Index>(this->m_states.size());
+             ++state_index) {
+            const std::size_t index = canonical_cell_index(
+                this->m_states[static_cast<std::size_t>(state_index)]);
+            this->m_cell_to_state[index] = state_index;
+        }
+        if (std::holds_alternative<timing::NextTimepoint>(
+                requirement.m_timing) &&
+            this->m_states.size() != cells.size()) {
+            throw std::logic_error(
+                "Failed to build next-timepoint automaton states.");
+        }
+    }
+};
+
 CountVector joint_valuation_counts_or_throw(
     const Requirement& requirement1, const Requirement& requirement2,
     const CountVector& provided_counts) {
@@ -167,36 +196,6 @@ CountVector joint_valuation_counts_or_throw(
             return count_joint_valuation_counts(requirement1, requirement2);
         },
         "Expected one valuation count per joint canonical cell.");
-}
-
-RequirementAutomaton build_requirement_automaton(
-    const Requirement& requirement) {
-    RequirementAutomaton automaton;
-    automaton.m_requirement = requirement;
-    if (is_countdown_timing(requirement.m_timing)) {
-        automaton.m_states =
-            countdown_states(tick_count_or_throw(requirement.m_timing));
-        automaton.m_countdown_transition =
-            countdown_transition_fn_or_throw(requirement);
-        return automaton;
-    }
-    const std::vector<State> cells = canonical_states();
-    const std::vector<Eigen::Index> active_indices =
-        active_state_indices(requirement, cells);
-    automaton.m_states = gather_states(cells, active_indices);
-    for (Eigen::Index state_index = 0;
-         state_index < static_cast<Eigen::Index>(automaton.m_states.size());
-         ++state_index) {
-        const std::size_t index = canonical_cell_index(
-            automaton.m_states[static_cast<std::size_t>(state_index)]);
-        automaton.m_cell_to_state[index] = state_index;
-    }
-    if (std::holds_alternative<timing::NextTimepoint>(requirement.m_timing) &&
-        automaton.m_states.size() != cells.size()) {
-        throw std::logic_error(
-            "Failed to build next-timepoint automaton states.");
-    }
-    return automaton;
 }
 
 bool next_state_from_cell(const RequirementAutomaton& automaton,
@@ -487,9 +486,8 @@ CountMatrix weighted_transition_matrix(const TransferSystem& system) {
 CountMatrix build_combined_weighted_transition_matrix(
     const Requirement& requirement1, const Requirement& requirement2,
     const CountVector& joint_valuation_counts) {
-    const RequirementAutomaton left = build_requirement_automaton(requirement1);
-    const RequirementAutomaton right =
-        build_requirement_automaton(requirement2);
+    const RequirementAutomaton left(requirement1);
+    const RequirementAutomaton right(requirement2);
     const CountVector cell_counts = joint_valuation_counts_or_throw(
         requirement1, requirement2, joint_valuation_counts);
     const std::vector<State> cells = canonical_states();

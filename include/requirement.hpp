@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstddef>
+#include <optional>
 #include <string>
 #include <variant>
 #include <vector>
@@ -58,13 +59,23 @@ struct Requirement {
     Formula m_response;
     /// The timing constraint for satisfaction
     Timing m_timing;
+    /// An LTL formula representing the requirement semantics
+    std::optional<std::string> ltl;
 
     friend bool operator<(const Requirement& lhs, const Requirement& rhs) {
         if (lhs.m_trigger < rhs.m_trigger) return true;
         if (rhs.m_trigger < lhs.m_trigger) return false;
         if (lhs.m_response < rhs.m_response) return true;
         if (rhs.m_response < lhs.m_response) return false;
-        return lhs.m_timing < rhs.m_timing;
+        if (lhs.m_timing < rhs.m_timing) return true;
+        if (rhs.m_timing < lhs.m_timing) return false;
+        return lhs.ltl < rhs.ltl;
+    }
+
+    explicit Requirement(const Formula& trigger, const Formula& response,
+                         const Timing& timing)
+        : m_trigger(trigger), m_response(response), m_timing(timing) {
+        ltl = std::nullopt;
     }
 };
 

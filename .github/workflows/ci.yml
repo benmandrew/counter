@@ -14,10 +14,12 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@v4
 
-      - name: Install cpplint
+      - name: Install cpplint and upgrade CMake
         run: |
+          sudo apt-get remove --purge -y cmake
           python3 -m pip install --upgrade pip
           python3 -m pip install cpplint
+          python3 -m pip install cmake --upgrade
 
       - name: Configure project
         run: cmake --preset debug

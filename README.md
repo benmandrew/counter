@@ -7,11 +7,12 @@ Uses a genetic algorithm with a fitness function that takes into account whether
 ## Build and Run
 
 ```sh
-mkdir -p build
-cmake -S . -B build --preset debug
-cmake --build --parallel $(nproc) --preset debug
+cmake --preset debug
+cmake --build --preset debug
 ./build/counter
 ```
+
+Pass `--parallel N` to `cmake --build` to build with N parallel jobs.
 
 ### Dependencies
 
@@ -24,5 +25,11 @@ Ganak only has release binaries for Linux and MacOS, but its [`CMakeLists.txt`](
 ## Format, Lint, and Test
 
 ```sh
-cmake --build --parallel $(nproc) --preset debug --target format lint tests
+cmake --build --preset debug --target format lint tests
+```
+
+## Configure, Build, and Test in One Step
+
+```sh
+cmake --workflow --preset debug
 ```

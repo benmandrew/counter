@@ -21,6 +21,14 @@ jobs:
           python3 -m pip install cpplint
           python3 -m pip install cmake --upgrade
 
+      - name: Cache third-party dependencies
+        uses: actions/cache@v4
+        with:
+          path: build/third_party
+          key: ${{ runner.os }}-third-party-${{ hashFiles('cmake/spot.cmake', 'cmake/ganak.cmake') }}
+          restore-keys: |
+            ${{ runner.os }}-third-party-
+
       - name: Configure project
         run: cmake --preset debug
 

@@ -13,6 +13,10 @@ void run_suite(std::string_view suite_name) {
         run_transfer_matrix_tests();
         return;
     }
+    if (suite_name == "black_runner") {
+        run_black_runner_tests();
+        return;
+    }
     if (suite_name == "ganak_runner") {
         run_ganak_runner_tests();
         return;
@@ -67,6 +71,7 @@ int main(int argc, char* argv[]) {
     try {
         if (argc == 1) {
             run_transfer_matrix_tests();
+            run_black_runner_tests();
             run_ganak_runner_tests();
             run_spot_runner_tests();
             run_crossover_tests();

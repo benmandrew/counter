@@ -1,6 +1,7 @@
 #pragma once
 
 void run_transfer_matrix_tests();
+void run_black_runner_tests();
 void run_ganak_runner_tests();
 void run_spot_runner_tests();
 void run_crossover_tests();

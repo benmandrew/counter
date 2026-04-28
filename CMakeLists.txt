@@ -18,6 +18,7 @@ endif()
 
 include(cmake/ganak.cmake)
 include(cmake/spot.cmake)
+include(cmake/black.cmake)
 include(cmake/dependencies.cmake)
 
 set(CMAKE_CXX_STANDARD 17)
@@ -44,6 +45,7 @@ target_include_directories(counter_core PUBLIC include)
 
 add_library(counter_fitness STATIC)
 target_sources(counter_fitness PRIVATE
+    src/fitness/black_runner.cpp
     src/fitness/ganak_runner.cpp
     src/fitness/spot_runner.cpp
     src/fitness/model_counter.cpp
@@ -59,6 +61,7 @@ target_link_libraries(counter_fitness PUBLIC counter_core Eigen3::Eigen)
 target_compile_definitions(counter_fitness PRIVATE
     GANAK_EXECUTABLE_PATH="${GANAK_EXECUTABLE}"
     SPOT_BIN_DIR="${SPOT_BIN_DIR}"
+    BLACK_EXECUTABLE_PATH="${BLACK_EXECUTABLE}"
 )
 target_compile_definitions(counter_fitness
     PUBLIC
@@ -74,6 +77,7 @@ add_executable(counter src/main.cpp)
 target_link_libraries(counter PRIVATE counter_fitness)
 
 add_custom_target(ganak_binary ALL DEPENDS "${GANAK_EXECUTABLE}")
+add_custom_target(black_binary ALL DEPENDS "${BLACK_EXECUTABLE}")
 
 add_subdirectory(test)
 

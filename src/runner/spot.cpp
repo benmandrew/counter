@@ -123,17 +123,24 @@ std::string spot_bin_dir() {
 
 std::string ltlsynt_path() { return spot_bin_dir() + "/ltlsynt"; }
 
-bool check_realizability(const Requirement& requirement) {
+bool RealizabilityChecker::check_realizability(const Requirement& requirement) {
     if (!requirement.m_ltl.has_value()) {
         throw std::invalid_argument(
             "Requirement must have m_ltl set to check realizability.");
+    }
+    const LtlSpec& spec = *requirement.m_ltl;
+    const std::string cache_key = spec.m_ltl + "|" +
+                                  join_comma(spec.m_in_atoms) + "|" +
+                                  join_comma(spec.m_out_atoms);
+    const auto it = m_cache.find(cache_key);
+    if (it != m_cache.end()) {
+        return it->second;
     }
     const std::string ltlsynt = ltlsynt_path();
     if (access(ltlsynt.c_str(), F_OK) != 0) {
         throw std::runtime_error("ltlsynt executable does not exist: " +
                                  ltlsynt);
     }
-    const LtlSpec& spec = *requirement.m_ltl;
     std::vector<std::string> command = {ltlsynt, "--realizability", "-f",
                                         spec.m_ltl};
     // Specify only one side and let ltlsynt infer the other. Specifying both
@@ -147,13 +154,16 @@ bool check_realizability(const Requirement& requirement) {
     const ProcessResult result = execute_and_capture(command);
     // Check UNREALIZABLE before REALIZABLE: the former contains the latter as a
     // substring.
+    bool realizable = false;
     if (result.m_output.find("UNREALIZABLE") != std::string::npos) {
-        return false;
+        realizable = false;
+    } else if (result.m_output.find("REALIZABLE") != std::string::npos) {
+        realizable = true;
+    } else {
+        throw std::runtime_error(
+            "ltlsynt produced unexpected output (exit code " +
+            std::to_string(result.m_exit_code) + "): " + result.m_output);
     }
-    if (result.m_output.find("REALIZABLE") != std::string::npos) {
-        return true;
-    }
-    throw std::runtime_error("ltlsynt produced unexpected output (exit code " +
-                             std::to_string(result.m_exit_code) +
-                             "): " + result.m_output);
+    m_cache.emplace(cache_key, realizable);
+    return realizable;
 }

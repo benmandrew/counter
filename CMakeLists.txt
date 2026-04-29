@@ -50,6 +50,7 @@ target_sources(counter_fitness PRIVATE
     src/runner/spot.cpp
     src/fitness/model_counter.cpp
     src/fitness/semantic_similarity.cpp
+    src/fitness/status.cpp
     src/fitness/syntactic_similarity.cpp
     src/fitness/transfer_matrix.cpp
     src/genetic/crossover.cpp

@@ -96,7 +96,12 @@ std::string black_executable_path() {
 #endif
 }
 
-bool check_satisfiability(const std::string& ltl_formula) {
+bool SatisfiabilityChecker::check_satisfiability(
+    const std::string& ltl_formula) {
+    const auto it = m_cache.find(ltl_formula);
+    if (it != m_cache.end()) {
+        return it->second;
+    }
     const std::string black = black_executable_path();
     if (access(black.c_str(), F_OK) != 0) {
         throw std::runtime_error("black executable does not exist: " + black);
@@ -105,13 +110,16 @@ bool check_satisfiability(const std::string& ltl_formula) {
                                               ltl_formula};
     const ProcessResult result = execute_and_capture(command);
     // Check UNSAT before SAT: the former contains the latter as a substring.
+    bool sat = false;
     if (result.m_output.find("UNSAT") != std::string::npos) {
-        return false;
+        sat = false;
+    } else if (result.m_output.find("SAT") != std::string::npos) {
+        sat = true;
+    } else {
+        throw std::runtime_error(
+            "black produced unexpected output (exit code " +
+            std::to_string(result.m_exit_code) + "): " + result.m_output);
     }
-    if (result.m_output.find("SAT") != std::string::npos) {
-        return true;
-    }
-    throw std::runtime_error("black produced unexpected output (exit code " +
-                             std::to_string(result.m_exit_code) +
-                             "): " + result.m_output);
+    m_cache.emplace(ltl_formula, sat);
+    return sat;
 }

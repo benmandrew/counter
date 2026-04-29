@@ -26,3 +26,14 @@ Timing mutate_timing(const Timing& timing, const RandomSource& random_source);
 /// @return              A mutated requirement
 Requirement mutate_requirement(const Requirement& requirement,
                                const RandomSource& random_source);
+
+/// Mutates a specification by picking one requirement at random and replacing
+/// it with a mutated version.
+///
+/// @param specification The specification to mutate (must be non-empty)
+/// @param random_source Random source for index and mutation choices
+/// @return              A specification with one requirement mutated
+/// @throws std::invalid_argument if specification is empty or random_source is
+///         not callable
+Specification mutate_specification(const Specification& specification,
+                                   const RandomSource& random_source);

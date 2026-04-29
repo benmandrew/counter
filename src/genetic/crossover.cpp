@@ -1,8 +1,10 @@
 #include "genetic/crossover.hpp"
 
 #include <optional>
+#include <set>
 #include <stdexcept>
 #include <type_traits>
+#include <utility>
 
 namespace {
 
@@ -189,4 +191,34 @@ Requirement crossover_requirements(const Requirement& first_parent,
     offspring.m_timing = crossover_timing(
         first_parent.m_timing, second_parent.m_timing, random_source);
     return offspring;
+}
+
+Specification crossover_specifications(const Specification& first_parent,
+                                       const Specification& second_parent,
+                                       const RandomSource& random_source) {
+    if (!random_source) {
+        throw std::invalid_argument("random_source must be callable.");
+    }
+    if (first_parent.m_requirements.size() !=
+        second_parent.m_requirements.size()) {
+        throw std::invalid_argument(
+            "Specifications must have the same number of requirements for "
+            "crossover.");
+    }
+    if (first_parent.m_in_atoms != second_parent.m_in_atoms ||
+        first_parent.m_out_atoms != second_parent.m_out_atoms) {
+        throw std::invalid_argument(
+            "Specifications must have identical in/out atoms for crossover.");
+    }
+    std::set<Requirement> offspring_reqs;
+    auto it1 = first_parent.m_requirements.begin();
+    auto it2 = second_parent.m_requirements.begin();
+    while (it1 != first_parent.m_requirements.end()) {
+        offspring_reqs.insert(
+            crossover_requirements(*it1, *it2, random_source));
+        ++it1;
+        ++it2;
+    }
+    return Specification(std::move(offspring_reqs), first_parent.m_in_atoms,
+                         first_parent.m_out_atoms);
 }

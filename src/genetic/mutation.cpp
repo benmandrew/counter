@@ -3,10 +3,12 @@
 #include <cstdlib>
 #include <limits>
 #include <optional>
+#include <set>
 #include <stdexcept>
 #include <string>
 #include <type_traits>
 #include <variant>
+#include <vector>
 
 namespace {
 
@@ -196,4 +198,21 @@ Requirement mutate_requirement(const Requirement& requirement,
     mutated.m_trigger = mutate_formula(requirement.m_trigger, random_source);
     mutated.m_timing = mutate_timing(requirement.m_timing, random_source);
     return mutated;
+}
+
+Specification mutate_specification(const Specification& specification,
+                                   const RandomSource& random_source) {
+    if (!random_source) {
+        throw std::invalid_argument("random_source must be callable.");
+    }
+    if (specification.m_requirements.empty()) {
+        throw std::invalid_argument(
+            "Specification must not be empty to mutate.");
+    }
+    std::vector<Requirement> reqs(specification.m_requirements.begin(),
+                                  specification.m_requirements.end());
+    const std::size_t idx = random_source.next_index(reqs.size());
+    reqs[idx] = mutate_requirement(reqs[idx], random_source);
+    return Specification(std::set<Requirement>(reqs.begin(), reqs.end()),
+                         specification.m_in_atoms, specification.m_out_atoms);
 }

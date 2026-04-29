@@ -8,7 +8,9 @@ if(NOT BLACK_EXECUTABLE)
     set(BLACK_ARCHIVE_PATH
         "${BLACK_ROOT_DIR}/black-sat-${BLACK_VERSION}.ubuntu24.04.x86_64.deb")
     set(BLACK_EXTRACT_DIR "${BLACK_ROOT_DIR}/extracted")
-    set(BLACK_EXECUTABLE "${BLACK_EXTRACT_DIR}/usr/bin/black")
+    set(BLACK_BIN "${BLACK_EXTRACT_DIR}/usr/bin/black")
+    set(BLACK_LIB_DIR "${BLACK_EXTRACT_DIR}/usr/lib")
+    set(BLACK_WRAPPER "${BLACK_ROOT_DIR}/black")
 
     file(MAKE_DIRECTORY "${BLACK_ROOT_DIR}")
 
@@ -27,7 +29,7 @@ if(NOT BLACK_EXECUTABLE)
         endif()
     endif()
 
-    if(NOT EXISTS "${BLACK_EXECUTABLE}")
+    if(NOT EXISTS "${BLACK_BIN}")
         file(MAKE_DIRECTORY "${BLACK_EXTRACT_DIR}")
         message(STATUS "Extracting black-sat package")
         execute_process(
@@ -39,21 +41,21 @@ if(NOT BLACK_EXECUTABLE)
         endif()
     endif()
 
-    if(NOT EXISTS "${BLACK_EXECUTABLE}")
+    if(NOT EXISTS "${BLACK_BIN}")
         message(FATAL_ERROR
-            "black executable was not found after extraction: ${BLACK_EXECUTABLE}")
+            "black executable was not found after extraction: ${BLACK_BIN}")
     endif()
 
-    if(UNIX)
-        file(CHMOD
-            "${BLACK_EXECUTABLE}"
-            PERMISSIONS
-                OWNER_READ OWNER_WRITE OWNER_EXECUTE
-                GROUP_READ GROUP_EXECUTE
-                WORLD_READ WORLD_EXECUTE
-        )
-    endif()
+    file(WRITE "${BLACK_WRAPPER}"
+        "#!/bin/sh\nexport LD_LIBRARY_PATH=\"${BLACK_LIB_DIR}:\${LD_LIBRARY_PATH}\"\nexec \"${BLACK_BIN}\" \"$@\"\n")
+    file(CHMOD "${BLACK_WRAPPER}"
+        PERMISSIONS
+            OWNER_READ OWNER_WRITE OWNER_EXECUTE
+            GROUP_READ GROUP_EXECUTE
+            WORLD_READ WORLD_EXECUTE
+    )
+
+    set(BLACK_EXECUTABLE "${BLACK_WRAPPER}" CACHE FILEPATH "Path to black executable" FORCE)
 endif()
 
-set(BLACK_EXECUTABLE "${BLACK_EXECUTABLE}" CACHE FILEPATH "Path to black executable")
 message(STATUS "Using black executable: ${BLACK_EXECUTABLE}")

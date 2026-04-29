@@ -88,8 +88,8 @@ class Formula {
 
     /// Converts the formula to DIMACS CNF format for use with SAT/model
     /// counters. Uses Tseitin encoding to transform the formula into CNF.
-    /// @return A string in DIMACS format (p cnf <vars> <clauses> followed by
-    /// clauses)
+    /// @return A string in DIMACS format (p cnf &lt;vars&gt; &lt;clauses&gt;
+    /// followed by clauses)
     std::string to_dimacs() const;
 
     /// Computes a symmetric, normalized syntactic similarity score between

@@ -28,6 +28,14 @@ Pass `--parallel N` to `cmake --build` to build with N parallel jobs.
 cmake --build --preset debug --target format lint tests
 ```
 
+## Build Documentation
+
+```sh
+cmake --build --preset debug --target docs
+```
+
+Depends on Doxygen and Sphinx.
+
 ## Configure, Build, and Test in One Step
 
 ```sh

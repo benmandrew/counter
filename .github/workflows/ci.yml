@@ -17,14 +17,15 @@ jobs:
       - name: Install system dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y libfmt-dev
+          sudo apt-get install -y libfmt-dev doxygen
 
-      - name: Install cpplint and upgrade CMake
+      - name: Install cpplint, Sphinx, and upgrade CMake
         run: |
           sudo apt-get remove --purge -y cmake
           python3 -m pip install --upgrade pip
           python3 -m pip install cpplint
           python3 -m pip install cmake --upgrade
+          python3 -m pip install sphinx furo breathe
 
       - name: Cache third-party dependencies
         uses: actions/cache@v4
@@ -42,6 +43,9 @@ jobs:
 
       - name: Check linting
         run: cmake --build --preset debug --target lint
+
+      - name: Build docs
+        run: cmake --build --preset debug --target docs
 
       - name: Build project
         run: cmake --build --preset debug

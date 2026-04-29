@@ -8,15 +8,15 @@
 
 namespace {
 
-constexpr std::size_t kSelectionGranularity = 1'000'000;
-constexpr std::size_t kRateGranularity = 1'000'000;
+constexpr std::size_t k_selection_granularity = 1'000'000;
+constexpr std::size_t k_rate_granularity = 1'000'000;
 
 bool probability_check(double rate, const RandomSource& random_source) {
     if (rate <= 0.0) return false;
     if (rate >= 1.0) return true;
-    return random_source.next_index(kRateGranularity) <
+    return random_source.next_index(k_rate_granularity) <
            static_cast<std::size_t>(rate *
-                                    static_cast<double>(kRateGranularity));
+                                    static_cast<double>(k_rate_granularity));
 }
 
 }  // namespace
@@ -87,12 +87,12 @@ const Requirement& select_parent(
                                      scored_population.size())]
             .requirement;
     }
-    const std::size_t pick = random_source.next_index(kSelectionGranularity);
+    const std::size_t pick = random_source.next_index(k_selection_granularity);
     double cumulative = 0.0;
     for (const ScoredRequirement& scored : scored_population) {
         cumulative += scored.fitness / total;
         if (pick <
-            static_cast<std::size_t>(cumulative * kSelectionGranularity)) {
+            static_cast<std::size_t>(cumulative * k_selection_granularity)) {
             return scored.requirement;
         }
     }

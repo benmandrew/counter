@@ -1,0 +1,9 @@
+project = "@PROJECT_NAME@"
+release = "@PROJECT_VERSION@"
+
+extensions = ["breathe"]
+
+breathe_projects = {"@PROJECT_NAME@": "@DOXYGEN_XML_DIR@"}
+breathe_default_project = "@PROJECT_NAME@"
+
+html_theme = "furo"

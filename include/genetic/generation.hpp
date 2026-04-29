@@ -11,19 +11,20 @@
 /// Default weight for WeightedFitnessFunction when not explicitly specified.
 /// Override at compile time with -DCOUNTER_DEFAULT_FITNESS_WEIGHT=<value>.
 #ifndef COUNTER_DEFAULT_FITNESS_WEIGHT
-inline constexpr double kDefaultFitnessWeight = 1.0;
+inline constexpr double k_default_fitness_weight = 1.0;
 #else
-inline constexpr double kDefaultFitnessWeight = COUNTER_DEFAULT_FITNESS_WEIGHT;
+inline constexpr double k_default_fitness_weight =
+    COUNTER_DEFAULT_FITNESS_WEIGHT;
 #endif
 
 /// A fitness function scores a requirement, returning a value in [0, 1].
 using FitnessFunction = std::function<double(const Requirement&)>;
 
 /// A fitness function paired with a weight for weighted-average aggregation.
-/// The default weight is given by kDefaultFitnessWeight.
+/// The default weight is given by k_default_fitness_weight.
 struct WeightedFitnessFunction {
     FitnessFunction function;
-    double weight = kDefaultFitnessWeight;
+    double weight = k_default_fitness_weight;
 };
 
 /// A filter function transforms a population into a surviving subset.

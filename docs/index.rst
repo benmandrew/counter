@@ -4,9 +4,34 @@ Counter
 Repairing unrealisable FRETish specifications.
 
 .. toctree::
-   :maxdepth: 2
+   :maxdepth: 1
+   :caption: Core
 
-API Reference
--------------
+   api/prop_formula
+   api/requirement
 
-.. doxygenindex::
+.. toctree::
+   :maxdepth: 1
+   :caption: Fitness
+
+   api/fitness/model_counter
+   api/fitness/semantic_similarity
+   api/fitness/syntactic_similarity
+   api/fitness/transfer_matrix
+
+.. toctree::
+   :maxdepth: 1
+   :caption: Genetic
+
+   api/genetic/crossover
+   api/genetic/generation
+   api/genetic/mutation
+   api/genetic/random_source
+
+.. toctree::
+   :maxdepth: 1
+   :caption: Runners
+
+   api/runner/black
+   api/runner/ganak
+   api/runner/spot

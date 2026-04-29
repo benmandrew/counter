@@ -20,6 +20,7 @@ if(DOXYGEN_FOUND AND SPHINX_BUILD_EXE)
     add_custom_target(docs
         COMMAND ${CMAKE_COMMAND} -E make_directory "${DOXYGEN_OUTPUT_DIR}"
         COMMAND ${DOXYGEN_EXECUTABLE} "${CMAKE_BINARY_DIR}/docs/Doxyfile"
+        COMMAND ${CMAKE_COMMAND} -E remove_directory "${SPHINX_OUTPUT_DIR}"
         COMMAND ${SPHINX_BUILD_EXE} -q -b html
             -c "${CMAKE_BINARY_DIR}/docs"
             "${CMAKE_SOURCE_DIR}/docs"

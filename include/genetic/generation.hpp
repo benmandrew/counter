@@ -44,8 +44,8 @@ struct ScoredRequirement {
 struct EvolutionConfig {
     /// Probability in [0, 1] that an offspring is produced by crossing two
     /// selected parents. When crossover does not fire, the offspring is a copy
-    /// of the selected parent.
-    double crossover_rate = 1.0;
+    /// of its parent.
+    double crossover_rate = 0.1;
     /// Probability in [0, 1] that the result (crossover or copy) is mutated.
     double mutation_rate = 1.0;
 };
@@ -79,33 +79,23 @@ std::vector<Requirement> filter_population(
     const std::vector<Requirement>& population,
     const std::vector<FilterFunction>& filter_functions);
 
-/// Selects a parent using fitness-proportionate (roulette-wheel) selection.
-/// Falls back to uniform selection if all fitness scores are zero.
-///
-/// @param scored_population Non-empty scored population
-/// @param random_source     Random source for the draw
-/// @return                  Reference to a selected requirement
-/// @throws std::invalid_argument if scored_population is empty
-const Requirement& select_parent(
-    const std::vector<ScoredRequirement>& scored_population,
-    const RandomSource& random_source);
-
-/// Evolves a population for one generation:
+/// Evolves a population for one generation using truncation selection:
 ///   1. Apply filter functions sequentially to produce survivors
 ///   2. Score survivors with fitness functions
-///   3. Produce target_size offspring by repeating:
-///      - Select a parent by fitness-proportionate selection
-///      - With probability config.crossover_rate, select a second parent and
-///        crossover; otherwise copy the first parent
-///      - With probability config.mutation_rate, mutate the result
+///   3. Sort survivors by fitness (descending) and take the top target_size
+///   4. For each of the top candidates, apply crossover and mutation to produce
+///      an offspring
+///
+/// If fewer survivors remain after filtering than target_size, all survivors
+/// are used as parents.
 ///
 /// @param population        Current generation's requirements
 /// @param target_size       Number of offspring to produce
-/// @param fitness_functions Non-empty weighted fitness functions for selection
+/// @param fitness_functions Non-empty weighted fitness functions for scoring
 /// @param filter_functions  Filters applied to the population before scoring
 /// @param config            Crossover and mutation rates
-/// @param random_source     Random source for all stochastic operations
-/// @return                  Next generation of target_size requirements
+/// @param random_source     Random source for crossover and mutation
+/// @return                  Next generation of up to target_size requirements
 /// @throws std::invalid_argument if random_source is not callable, if
 ///                               fitness_functions is empty, if rates are
 ///                               outside [0, 1], or if the filtered population

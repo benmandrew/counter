@@ -181,76 +181,60 @@ void test_filter_population_population_level_maximal_elements() {
            "trigger");
 }
 
-// --- select_parent ---
-
-void test_select_parent_throws_on_empty_population() {
-    bool threw = false;
-    try {
-        select_parent({}, make_source({}, 0));
-    } catch (const std::invalid_argument&) {
-        threw = true;
-    }
-    expect(threw, "select_parent: should throw when population is empty");
-}
-
-void test_select_parent_uniform_fallback_on_zero_fitness() {
-    const std::vector<ScoredRequirement> scored = {{make_req("P", "Q"), 0.0},
-                                                   {make_req("R", "S"), 0.0}};
-    // Uniform fallback: random source returns 0, so index 0 is selected.
-    const auto& parent = select_parent(scored, make_source({0}, 0));
-    expect(parent.m_trigger.to_string() == "P",
-           "select_parent: zero-fitness fallback should select by raw index");
-}
-
-void test_select_parent_high_fitness_dominates() {
-    const std::vector<ScoredRequirement> scored = {{make_req("P", "Q"), 0.0},
-                                                   {make_req("R", "S"), 1.0}};
-    // Any roulette pick should land on the only non-zero-fitness requirement.
-    const auto& parent = select_parent(scored, make_source({}, 0));
-    expect(parent.m_trigger.to_string() == "R",
-           "select_parent: only requirement with non-zero fitness should be "
-           "selected");
-}
-
 // --- evolve_generation ---
 
 void test_evolve_generation_produces_target_size() {
-    const std::vector<Requirement> pop = {make_req("P", "Q"),
-                                          make_req("R", "S")};
-    const std::vector<WeightedFitnessFunction> fns = {
-        {[](const Requirement&) { return 0.5; }}};
-    const EvolutionConfig config{1.0, 1.0};
-    const auto next_gen =
-        evolve_generation(pop, 7, fns, {}, config, make_source({}, 0));
-    expect(
-        next_gen.size() == 7,
-        "evolve_generation: should produce the requested number of offspring");
-}
-
-void test_evolve_generation_zero_rates_copies_parent_exactly() {
-    // With crossover_rate=0 and mutation_rate=0 every offspring is an
-    // unmodified copy of its selected parent.
-    const Requirement req = make_req("P", "Q");
+    const std::vector<Requirement> pop = {
+        make_req("P", "Q"), make_req("R", "S"), make_req("T", "U")};
     const std::vector<WeightedFitnessFunction> fns = {
         {[](const Requirement&) { return 0.5; }}};
     const EvolutionConfig config{0.0, 0.0};
     const auto next_gen =
-        evolve_generation({req}, 3, fns, {}, config, make_source({}, 0));
-    expect(next_gen.size() == 3,
-           "evolve_generation: zero rates should still produce target_size "
-           "offspring");
-    for (const auto& offspring : next_gen) {
-        expect(offspring.m_trigger.to_string() == "P",
-               "evolve_generation: zero crossover + mutation rates should "
-               "preserve the parent trigger");
-        expect(offspring.m_response.to_string() == "Q",
-               "evolve_generation: zero crossover + mutation rates should "
-               "preserve the parent response");
-    }
+        evolve_generation(pop, 2, fns, {}, config, make_source({}, 0));
+    expect(
+        next_gen.size() == 2,
+        "evolve_generation: should produce the requested number of offspring");
+}
+
+void test_evolve_generation_selects_fittest() {
+    // P scores 0.9, R scores 0.1, T scores 0.5 — top 2 parents are P and T,
+    // so with zero rates the offspring are unmodified copies of P and T.
+    const std::vector<Requirement> pop = {
+        make_req("P", "Q"), make_req("R", "S"), make_req("T", "U")};
+    const std::vector<WeightedFitnessFunction> fns = {
+        {[](const Requirement& r) -> double {
+            const auto t = r.m_trigger.to_string();
+            if (t == "P") return 0.9;
+            if (t == "T") return 0.5;
+            return 0.1;
+        }}};
+    const EvolutionConfig config{0.0, 0.0};
+    const auto next_gen =
+        evolve_generation(pop, 2, fns, {}, config, make_source({}, 0));
+    expect(next_gen.size() == 2,
+           "evolve_generation: should return target_size offspring");
+    expect(
+        next_gen[0].m_trigger.to_string() == "P",
+        "evolve_generation: fittest candidate should produce first offspring");
+    expect(next_gen[1].m_trigger.to_string() == "T",
+           "evolve_generation: second fittest should produce second offspring");
+}
+
+void test_evolve_generation_caps_at_survivor_count() {
+    const std::vector<Requirement> pop = {make_req("P", "Q"),
+                                          make_req("R", "S")};
+    const std::vector<WeightedFitnessFunction> fns = {
+        {[](const Requirement&) { return 0.5; }}};
+    const EvolutionConfig config{0.0, 0.0};
+    const auto next_gen =
+        evolve_generation(pop, 5, fns, {}, config, make_source({}, 0));
+    expect(next_gen.size() == 2,
+           "evolve_generation: should return at most the number of survivors "
+           "when target_size exceeds population");
 }
 
 void test_evolve_generation_applies_filter_before_selection() {
-    // Filter removes R; only P survives, so every offspring must come from P.
+    // Filter removes R; only P survives, so the result must come from P.
     const std::vector<Requirement> pop = {make_req("P", "Q"),
                                           make_req("R", "S")};
     const std::vector<WeightedFitnessFunction> fns = {
@@ -260,11 +244,10 @@ void test_evolve_generation_applies_filter_before_selection() {
     const EvolutionConfig config{0.0, 0.0};
     const auto next_gen =
         evolve_generation(pop, 2, fns, filters, config, make_source({}, 0));
-    for (const auto& offspring : next_gen) {
-        expect(offspring.m_trigger.to_string() == "P",
-               "evolve_generation: filtered-out requirements must not appear "
-               "as parents");
-    }
+    expect(next_gen.size() == 1,
+           "evolve_generation: filtered-out requirements must not appear");
+    expect(next_gen[0].m_trigger.to_string() == "P",
+           "evolve_generation: only the surviving requirement should be used");
 }
 
 void test_evolve_generation_throws_with_no_fitness_functions() {
@@ -340,11 +323,9 @@ void run_generation_tests() {
     test_filter_population_removes_failing();
     test_filter_population_applies_sequentially();
     test_filter_population_population_level_maximal_elements();
-    test_select_parent_throws_on_empty_population();
-    test_select_parent_uniform_fallback_on_zero_fitness();
-    test_select_parent_high_fitness_dominates();
     test_evolve_generation_produces_target_size();
-    test_evolve_generation_zero_rates_copies_parent_exactly();
+    test_evolve_generation_selects_fittest();
+    test_evolve_generation_caps_at_survivor_count();
     test_evolve_generation_applies_filter_before_selection();
     test_evolve_generation_throws_with_no_fitness_functions();
     test_evolve_generation_throws_when_all_filtered_out();

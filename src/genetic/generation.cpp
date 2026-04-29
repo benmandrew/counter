@@ -8,7 +8,6 @@
 
 namespace {
 
-constexpr std::size_t k_selection_granularity = 1'000'000;
 constexpr std::size_t k_rate_granularity = 1'000'000;
 
 bool probability_check(double rate, const RandomSource& random_source) {
@@ -73,32 +72,6 @@ std::vector<Requirement> filter_population(
     return current;
 }
 
-const Requirement& select_parent(
-    const std::vector<ScoredRequirement>& scored_population,
-    const RandomSource& random_source) {
-    if (scored_population.empty()) {
-        throw std::invalid_argument("Cannot select from an empty population.");
-    }
-    const double total = std::accumulate(
-        scored_population.begin(), scored_population.end(), 0.0,
-        [](double acc, const ScoredRequirement& s) { return acc + s.fitness; });
-    if (total <= 0.0) {
-        return scored_population[random_source.next_index(
-                                     scored_population.size())]
-            .requirement;
-    }
-    const std::size_t pick = random_source.next_index(k_selection_granularity);
-    double cumulative = 0.0;
-    for (const ScoredRequirement& scored : scored_population) {
-        cumulative += scored.fitness / total;
-        if (pick <
-            static_cast<std::size_t>(cumulative * k_selection_granularity)) {
-            return scored.requirement;
-        }
-    }
-    return scored_population.back().requirement;
-}
-
 std::vector<Requirement> evolve_generation(
     const std::vector<Requirement>& population, std::size_t target_size,
     const std::vector<WeightedFitnessFunction>& fitness_functions,
@@ -123,18 +96,21 @@ std::vector<Requirement> evolve_generation(
         throw std::invalid_argument(
             "All requirements were filtered out; cannot evolve.");
     }
-    const std::vector<ScoredRequirement> scored =
+    std::vector<ScoredRequirement> scored =
         score_population(survivors, fitness_functions);
+    std::sort(scored.begin(), scored.end(),
+              [](const ScoredRequirement& a, const ScoredRequirement& b) {
+                  return a.fitness > b.fitness;
+              });
+    const std::size_t n = std::min(target_size, scored.size());
     std::vector<Requirement> next_generation;
-    next_generation.reserve(target_size);
-    for (std::size_t i = 0; i < target_size; ++i) {
-        const Requirement& first_parent = select_parent(scored, random_source);
-        Requirement offspring = first_parent;
+    next_generation.reserve(n);
+    for (std::size_t i = 0; i < n; ++i) {
+        Requirement offspring = scored[i].requirement;
         if (probability_check(config.crossover_rate, random_source)) {
-            const Requirement& second_parent =
-                select_parent(scored, random_source);
-            offspring = crossover_requirements(first_parent, second_parent,
-                                               random_source);
+            const std::size_t partner = random_source.next_index(n);
+            offspring = crossover_requirements(
+                offspring, scored[partner].requirement, random_source);
         }
         if (probability_check(config.mutation_rate, random_source)) {
             offspring = mutate_requirement(offspring, random_source);

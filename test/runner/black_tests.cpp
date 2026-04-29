@@ -1,4 +1,4 @@
-#include "fitness/black_runner.hpp"
+#include "runner/black.hpp"
 #include "test_suite.hpp"
 #include "test_support.hpp"
 

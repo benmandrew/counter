@@ -1,4 +1,4 @@
-#include "fitness/black_runner.hpp"
+#include "runner/black.hpp"
 
 #include <sys/types.h>
 #include <sys/wait.h>

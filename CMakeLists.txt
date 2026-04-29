@@ -45,9 +45,9 @@ target_include_directories(counter_core PUBLIC include)
 
 add_library(counter_fitness STATIC)
 target_sources(counter_fitness PRIVATE
-    src/fitness/black_runner.cpp
-    src/fitness/ganak_runner.cpp
-    src/fitness/spot_runner.cpp
+    src/runner/black.cpp
+    src/runner/ganak.cpp
+    src/runner/spot.cpp
     src/fitness/model_counter.cpp
     src/fitness/semantic_similarity.cpp
     src/fitness/syntactic_similarity.cpp

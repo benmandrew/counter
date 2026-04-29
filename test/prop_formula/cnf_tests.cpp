@@ -6,8 +6,8 @@
 #include <stdexcept>
 #include <string>
 
-#include "fitness/ganak_runner.hpp"
 #include "prop_formula.hpp"
+#include "runner/ganak.hpp"
 #include "test_suite.hpp"
 #include "test_support.hpp"
 

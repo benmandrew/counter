@@ -1,7 +1,7 @@
 add_executable(counter_tests
-    fitness/black_runner_tests.cpp
-    fitness/ganak_runner_tests.cpp
-    fitness/spot_runner_tests.cpp
+    runner/black_tests.cpp
+    runner/ganak_tests.cpp
+    runner/spot_tests.cpp
     genetic/crossover_tests.cpp
     genetic/generation_tests.cpp
     genetic/mutation_tests.cpp

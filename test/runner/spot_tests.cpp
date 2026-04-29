@@ -2,8 +2,8 @@
 #include <utility>
 #include <vector>
 
-#include "fitness/spot_runner.hpp"
 #include "requirement.hpp"
+#include "runner/spot.hpp"
 #include "test_suite.hpp"
 #include "test_support.hpp"
 

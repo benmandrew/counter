@@ -1,4 +1,4 @@
-#include "fitness/spot_runner.hpp"
+#include "runner/spot.hpp"
 
 #include <sys/types.h>
 #include <sys/wait.h>

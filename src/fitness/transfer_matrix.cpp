@@ -8,7 +8,7 @@
 #include <variant>
 #include <vector>
 
-#include "fitness/ganak_runner.hpp"
+#include "runner/ganak.hpp"
 
 namespace {
 

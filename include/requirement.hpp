@@ -1,8 +1,11 @@
 #pragma once
 
 #include <cstddef>
+#include <iostream>
 #include <optional>
+#include <set>
 #include <string>
+#include <utility>
 #include <variant>
 #include <vector>
 
@@ -48,20 +51,6 @@ inline bool operator<(const Timing& lhs, const Timing& rhs) {
     return static_cast<const Timing&>(lhs) < static_cast<const Timing&>(rhs);
 }
 
-struct LtlSpec {
-    std::string m_ltl;
-    std::vector<std::string> m_in_atoms;
-    std::vector<std::string> m_out_atoms;
-
-    friend bool operator<(const LtlSpec& lhs, const LtlSpec& rhs) {
-        if (lhs.m_ltl < rhs.m_ltl) return true;
-        if (rhs.m_ltl < lhs.m_ltl) return false;
-        if (lhs.m_in_atoms < rhs.m_in_atoms) return true;
-        if (rhs.m_in_atoms < lhs.m_in_atoms) return false;
-        return lhs.m_out_atoms < rhs.m_out_atoms;
-    }
-};
-
 /// A FRET requirement specifying a system obligation. Consists of a trigger
 /// condition and a response that must be satisfied according to the specified
 /// timing constraint. These are used as the basic units for repair and for
@@ -74,7 +63,7 @@ struct Requirement {
     /// The timing constraint for satisfaction
     Timing m_timing;
     /// An LTL formula representing the requirement semantics
-    std::optional<LtlSpec> m_ltl;
+    std::optional<std::string> m_ltl;
 
     friend bool operator<(const Requirement& lhs, const Requirement& rhs) {
         if (lhs.m_trigger < rhs.m_trigger) return true;
@@ -90,6 +79,48 @@ struct Requirement {
                          const Timing& timing)
         : m_trigger(trigger), m_response(response), m_timing(timing) {
         m_ltl = std::nullopt;
+    }
+};
+
+static bool atom_contains_uppercase(const std::string& atom) {
+    for (char c : atom) {
+        if (c >= 'A' && c <= 'Z') {
+            return true;
+        }
+    }
+    return false;
+}
+
+struct Specification {
+    std::set<Requirement> m_requirements;
+
+    std::vector<std::string> m_in_atoms;
+    std::vector<std::string> m_out_atoms;
+
+    explicit Specification(std::set<Requirement> requirements = {},
+                           std::vector<std::string> in_atoms = {},
+                           std::vector<std::string> out_atoms = {})
+        : m_requirements(std::move(requirements)),
+          m_in_atoms(std::move(in_atoms)),
+          m_out_atoms(std::move(out_atoms)) {
+        for (const auto& atom : m_in_atoms) {
+            if (atom_contains_uppercase(atom)) {
+                std::cerr
+                    << "[WARNING] in_atoms contains uppercase letter in atom '"
+                    << atom << ", this can cause issues with Spot'\n";
+            }
+        }
+        for (const auto& atom : m_out_atoms) {
+            if (atom_contains_uppercase(atom)) {
+                std::cerr
+                    << "[WARNING] out_atoms contains uppercase letter in atom '"
+                    << atom << ", this can cause issues with Spot'\n";
+            }
+        }
+    }
+
+    friend bool operator<(const Specification& lhs, const Specification& rhs) {
+        return lhs.m_requirements < rhs.m_requirements;
     }
 };
 

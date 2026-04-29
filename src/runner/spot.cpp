@@ -4,8 +4,10 @@
 #include <sys/wait.h>
 #include <unistd.h>
 
+#include <algorithm>
 #include <cerrno>
 #include <cstring>
+#include <iostream>
 #include <memory>
 #include <stdexcept>
 #include <string>
@@ -111,6 +113,43 @@ std::string join_comma(const std::vector<std::string>& items) {
     return result;
 }
 
+void check_specification_ltls_present(const Specification& specification) {
+    if (specification.m_requirements.empty()) {
+        throw std::invalid_argument("Specification must not be empty.");
+    }
+    for (const Requirement& req : specification.m_requirements) {
+        if (!req.m_ltl.has_value()) {
+            throw std::invalid_argument(
+                "All requirements in specification must have m_ltl set to "
+                "check realizability.");
+        }
+    }
+}
+
+void build_specification_conjunction(const Specification& specification,
+                                     std::string& conj_ltl) {
+    bool first = true;
+    for (const Requirement& req : specification.m_requirements) {
+        if (!first) {
+            conj_ltl += " & ";
+        }
+        conj_ltl += "(" + req.m_ltl.value() + ")";
+        first = false;
+    }
+}
+
+bool parse_realizability_output(const ProcessResult& result) {
+    if (result.m_output.find("UNREALIZABLE") != std::string::npos) {
+        return false;
+    } else if (result.m_output.find("REALIZABLE") != std::string::npos) {
+        return true;
+    } else {
+        throw std::runtime_error(
+            "ltlsynt produced unexpected output (exit code " +
+            std::to_string(result.m_exit_code) + "): " + result.m_output);
+    }
+}
+
 }  // namespace
 
 std::string spot_bin_dir() {
@@ -123,15 +162,14 @@ std::string spot_bin_dir() {
 
 std::string ltlsynt_path() { return spot_bin_dir() + "/ltlsynt"; }
 
-bool RealizabilityChecker::check_realizability(const Requirement& requirement) {
-    if (!requirement.m_ltl.has_value()) {
-        throw std::invalid_argument(
-            "Requirement must have m_ltl set to check realizability.");
-    }
-    const LtlSpec& spec = *requirement.m_ltl;
-    const std::string cache_key = spec.m_ltl + "|" +
-                                  join_comma(spec.m_in_atoms) + "|" +
-                                  join_comma(spec.m_out_atoms);
+bool RealizabilityChecker::check_realizability(
+    const Specification& specification) {
+    check_specification_ltls_present(specification);
+    std::string conj_ltl;
+    build_specification_conjunction(specification, conj_ltl);
+    const std::string cache_key = conj_ltl + "|" +
+                                  join_comma(specification.m_in_atoms) + "|" +
+                                  join_comma(specification.m_out_atoms);
     const auto it = m_cache.find(cache_key);
     if (it != m_cache.end()) {
         return it->second;
@@ -142,28 +180,19 @@ bool RealizabilityChecker::check_realizability(const Requirement& requirement) {
                                  ltlsynt);
     }
     std::vector<std::string> command = {ltlsynt, "--realizability", "-f",
-                                        spec.m_ltl};
-    // Specify only one side and let ltlsynt infer the other. Specifying both
-    // triggers a strict validation in ltlsynt that rejects atoms it considers
-    // not to match the formula.
-    if (!spec.m_in_atoms.empty()) {
-        command.push_back("--ins=" + join_comma(spec.m_in_atoms));
-    } else if (!spec.m_out_atoms.empty()) {
-        command.push_back("--outs=" + join_comma(spec.m_out_atoms));
+                                        conj_ltl};
+    if (!specification.m_in_atoms.empty()) {
+        command.push_back("--ins=" + join_comma(specification.m_in_atoms));
+    } else if (!specification.m_out_atoms.empty()) {
+        command.push_back("--outs=" + join_comma(specification.m_out_atoms));
     }
+    std::cout << "Executing command: ";
+    for (const auto& arg : command) {
+        std::cout << arg << " ";
+    }
+    std::cout << std::endl;
     const ProcessResult result = execute_and_capture(command);
-    // Check UNREALIZABLE before REALIZABLE: the former contains the latter as a
-    // substring.
-    bool realizable = false;
-    if (result.m_output.find("UNREALIZABLE") != std::string::npos) {
-        realizable = false;
-    } else if (result.m_output.find("REALIZABLE") != std::string::npos) {
-        realizable = true;
-    } else {
-        throw std::runtime_error(
-            "ltlsynt produced unexpected output (exit code " +
-            std::to_string(result.m_exit_code) + "): " + result.m_output);
-    }
+    bool realizable = parse_realizability_output(result);
     m_cache.emplace(cache_key, realizable);
     return realizable;
 }

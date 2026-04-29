@@ -10,23 +10,41 @@
 static SatisfiabilityChecker global_sat_checker;
 static RealizabilityChecker global_real_checker;
 
-double requirement_status(const Requirement& requirement) {
-    if (!requirement.m_ltl.has_value()) {
-        throw std::invalid_argument(
-            "Requirement must have m_ltl set to compute status.");
+double specification_status(const Specification& specification) {
+    for (const Requirement& req : specification.m_requirements) {
+        if (!req.m_ltl.has_value()) {
+            throw std::invalid_argument(
+                "All requirements in specification must have m_ltl set to "
+                "compute status.");
+        }
     }
-    const std::string a = requirement.m_trigger.to_string();
-    const std::string g = requirement.m_response.to_string();
-    if (!global_sat_checker.check_satisfiability(a)) {
+    // Build conjunctions of all triggers (assumptions) and all responses
+    // (guarantees)
+    std::string conj_a;
+    std::string conj_g;
+    bool first = true;
+    for (const Requirement& req : specification.m_requirements) {
+        if (!first) {
+            conj_a += " & ";
+            conj_g += " & ";
+        }
+        conj_a += "(" + req.m_trigger.to_string() + ")";
+        conj_g += "(" + req.m_response.to_string() + ")";
+        first = false;
+    }
+    std::string conj_ag = "(" + conj_a + ") & (" + conj_g + ")";
+    if (!global_sat_checker.check_satisfiability(conj_a)) {
         return 0.0;
     }
-    if (!global_sat_checker.check_satisfiability(g)) {
+    if (!global_sat_checker.check_satisfiability(conj_g)) {
         return 0.1;
     }
-    if (!global_sat_checker.check_satisfiability("(" + a + ") & (" + g + ")")) {
+    if (!global_sat_checker.check_satisfiability(conj_ag)) {
         return 0.2;
     }
-    if (!global_real_checker.check_realizability(requirement)) {
+    // For realizability, check the whole specification
+    if (!specification.m_requirements.empty() &&
+        !global_real_checker.check_realizability(specification)) {
         return 0.5;
     }
     return 1.0;

@@ -96,6 +96,22 @@ Formula Formula::make_binary(Kind kind, const Formula& left,
     assert(false);
 }
 
+void Formula::remove_double_negation() {
+    auto f = [](const Formula& f) -> std::optional<Formula> {
+        if (f.kind() == Formula::Kind::Not) {
+            auto child = f.unary_child();
+            if (child && child->kind() == Formula::Kind::Not) {
+                auto grandchild = child->unary_child();
+                if (grandchild) {
+                    return *grandchild;
+                }
+            }
+        }
+        return std::nullopt;
+    };
+    *this = this->rewrite_post_order(f);
+}
+
 Formula::Kind Formula::kind() const {
     assert(!m_impl->m_nodes.empty());
     return prop_formula_internal::node_type_to_kind(

@@ -64,6 +64,9 @@ class Formula {
     static Formula make_binary(Kind kind, const Formula& left,
                                const Formula& right);
 
+    /// Removes all double negations (!!A → A) from this formula in-place.
+    void remove_double_negation();
+
     /// Returns the kind of this formula's root node.
     Kind kind() const;
 

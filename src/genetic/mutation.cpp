@@ -27,7 +27,8 @@ Formula::Kind pick_binary_kind(const RandomSource& random_source) {
     assert(false);
 }
 
-std::string random_atom(const std::vector<std::string>& atoms, const RandomSource& random_source) {
+std::string random_atom(const std::vector<std::string>& atoms,
+                        const RandomSource& random_source) {
     assert(!atoms.empty());
     return atoms[random_source.next_index(atoms.size())];
 }
@@ -89,7 +90,8 @@ Formula mutate_formula(const Formula& formula,
                     case 3:
                         break;
                 }
-                const Formula anchor = Formula::make_atom(random_atom(atoms, random_source));
+                const Formula anchor =
+                    Formula::make_atom(random_atom(atoms, random_source));
                 return Formula::make_binary(
                     pick_binary_kind(random_source), anchor,
                     Formula::make_unary(Formula::Kind::Not, child));

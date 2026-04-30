@@ -47,8 +47,16 @@ inline Timing for_ticks(std::size_t ticks) { return ForTicks{ticks}; }
 using Timing = timing::Timing;
 
 inline bool operator<(const Timing& lhs, const Timing& rhs) {
-    // Use std::variant's operator< for strict weak ordering
-    return static_cast<const Timing&>(lhs) < static_cast<const Timing&>(rhs);
+    if (lhs.index() != rhs.index()) {
+        return lhs.index() < rhs.index();
+    }
+    if (const auto* l = std::get_if<timing::WithinTicks>(&lhs)) {
+        return l->m_ticks < std::get<timing::WithinTicks>(rhs).m_ticks;
+    }
+    if (const auto* l = std::get_if<timing::ForTicks>(&lhs)) {
+        return l->m_ticks < std::get<timing::ForTicks>(rhs).m_ticks;
+    }
+    return false;
 }
 
 /// A FRET requirement specifying a system obligation. Consists of a trigger

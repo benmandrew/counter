@@ -26,23 +26,46 @@ RandomSource make_source(std::vector<std::size_t> values,
 
 void test_mutation_with_false_source_leaves_formula_unchanged() {
     const Formula formula("P & Q");
-    const Formula mutated = mutate_formula(formula, make_source({}, false));
+    const Formula mutated = mutate_formula(formula, {}, make_source({}, false));
     expect(mutated.to_string() == "(P) & (Q)",
            "mutation: false source should leave formula unchanged");
 }
 
-void test_mutation_with_true_source_renames_atom() {
+void test_mutation_renames_atom_to_one_from_atoms_list() {
+    // True source forces the rename branch; atoms = {"Q"} so "P" becomes "Q".
     const Formula formula("P");
-    const Formula mutated = mutate_formula(formula, make_source({}, true));
-    expect(
-        mutated.to_string() == "P_mut",
-        "mutation: true source should force atomic mutation to renamed atom");
+    const Formula mutated =
+        mutate_formula(formula, {"Q"}, make_source({}, true));
+    expect(mutated.to_string() == "Q",
+           "mutation: true source should mutate atom to one from the provided "
+           "atoms list");
+}
+
+void test_mutation_atom_unchanged_when_no_atoms_provided() {
+    // True source forces the rename branch; empty atoms → name unchanged.
+    const Formula formula("P");
+    const Formula mutated = mutate_formula(formula, {}, make_source({}, true));
+    expect(mutated.to_string() == "P",
+           "mutation: atom name should be left unchanged when atoms list is "
+           "empty");
+}
+
+void test_mutation_atom_selected_from_atoms_list() {
+    // mutation_function consumes next_bool() = true (value 1),
+    // mutate_atom_formula consumes next_bool() = true (value 1) → rename
+    // branch, mutate_atom_name consumes next_index(3) = 2 → atoms[2] = "c".
+    const Formula formula("x");
+    const Formula mutated =
+        mutate_formula(formula, {"a", "b", "c"}, make_source({1, 1, 2}, 0));
+    expect(mutated.to_string() == "c",
+           "mutation: atom should be replaced by the atom at the index chosen "
+           "by the random source");
 }
 
 void test_mutation_rejects_empty_random_source() {
     bool threw = false;
     try {
-        (void)mutate_formula(Formula("P"), RandomSource{});
+        (void)mutate_formula(Formula("P"), {}, RandomSource{});
     } catch (const std::invalid_argument&) {
         threw = true;
     }
@@ -92,7 +115,9 @@ void test_timing_mutation_rejects_empty_random_source() {
 
 void run_mutation_tests() {
     test_mutation_with_false_source_leaves_formula_unchanged();
-    test_mutation_with_true_source_renames_atom();
+    test_mutation_renames_atom_to_one_from_atoms_list();
+    test_mutation_atom_unchanged_when_no_atoms_provided();
+    test_mutation_atom_selected_from_atoms_list();
     test_mutation_rejects_empty_random_source();
     test_timing_mutation_replaces_non_parameterized_timing();
     test_timing_mutation_can_switch_to_parameterized_timing();

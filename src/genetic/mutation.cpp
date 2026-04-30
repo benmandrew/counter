@@ -28,6 +28,7 @@ Formula::Kind pick_binary_kind(const RandomSource& random_source) {
 }
 
 std::string mutate_atom_name(const std::string& atom,
+                             const std::vector<std::string>& atoms,
                              const RandomSource& random_source) {
     if (atom == "true") {
         return "false";
@@ -35,18 +36,14 @@ std::string mutate_atom_name(const std::string& atom,
     if (atom == "false") {
         return "true";
     }
-
-    if (random_source.next_bool()) {
-        return atom + "_mut";
+    if (atoms.empty()) {
+        return atom;
     }
-
-    if (atom.size() > 4 && atom.substr(atom.size() - 4) == "_mut") {
-        return atom.substr(0, atom.size() - 4);
-    }
-    return "mut_" + atom;
+    return atoms[random_source.next_index(atoms.size())];
 }
 
 Formula mutate_atom_formula(const Formula& formula,
+                            const std::vector<std::string>& atoms,
                             const RandomSource& random_source) {
     const std::optional<std::string> atom = formula.atom_name();
     if (!atom.has_value()) {
@@ -54,7 +51,8 @@ Formula mutate_atom_formula(const Formula& formula,
     }
 
     if (random_source.next_bool()) {
-        return Formula::make_atom(mutate_atom_name(*atom, random_source));
+        return Formula::make_atom(
+            mutate_atom_name(*atom, atoms, random_source));
     }
 
     return Formula::make_unary(Formula::Kind::Not, formula);
@@ -63,6 +61,7 @@ Formula mutate_atom_formula(const Formula& formula,
 }  // namespace
 
 Formula mutate_formula(const Formula& formula,
+                       const std::vector<std::string>& atoms,
                        const RandomSource& random_source) {
     if (!random_source) {
         throw std::invalid_argument("random_source must be callable.");
@@ -74,7 +73,7 @@ Formula mutate_formula(const Formula& formula,
         }
         switch (subtree.kind()) {
             case Formula::Kind::Atom:
-                return mutate_atom_formula(subtree, random_source);
+                return mutate_atom_formula(subtree, atoms, random_source);
             case Formula::Kind::Not: {
                 const Formula child = subtree.unary_child().value();
                 const int selector =
@@ -192,10 +191,13 @@ Timing mutate_timing(const Timing& timing, const RandomSource& random_source) {
 }
 
 Requirement mutate_requirement(const Requirement& requirement,
+                               const std::vector<std::string>& atoms,
                                const RandomSource& random_source) {
     Requirement mutated = requirement;
-    mutated.m_response = mutate_formula(requirement.m_response, random_source);
-    mutated.m_trigger = mutate_formula(requirement.m_trigger, random_source);
+    mutated.m_response =
+        mutate_formula(requirement.m_response, atoms, random_source);
+    mutated.m_trigger =
+        mutate_formula(requirement.m_trigger, atoms, random_source);
     mutated.m_timing = mutate_timing(requirement.m_timing, random_source);
     return mutated;
 }
@@ -209,10 +211,15 @@ Specification mutate_specification(const Specification& specification,
         throw std::invalid_argument(
             "Specification must not be empty to mutate.");
     }
+    std::vector<std::string> atoms;
+    atoms.insert(atoms.end(), specification.m_in_atoms.begin(),
+                 specification.m_in_atoms.end());
+    atoms.insert(atoms.end(), specification.m_out_atoms.begin(),
+                 specification.m_out_atoms.end());
     std::vector<Requirement> reqs(specification.m_requirements.begin(),
                                   specification.m_requirements.end());
     const std::size_t idx = random_source.next_index(reqs.size());
-    reqs[idx] = mutate_requirement(reqs[idx], random_source);
+    reqs[idx] = mutate_requirement(reqs[idx], atoms, random_source);
     return Specification(std::set<Requirement>(reqs.begin(), reqs.end()),
                          specification.m_in_atoms, specification.m_out_atoms);
 }

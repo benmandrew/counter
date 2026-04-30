@@ -1,71 +1,82 @@
+#include <algorithm>
 #include <iostream>
-#include <sstream>
+#include <random>
+#include <set>
 #include <string>
 #include <vector>
 
-#include "fitness/model_counter.hpp"
-#include "fitness/transfer_matrix.hpp"
+#include "fitness/syntactic_similarity.hpp"
+#include "genetic/generation.hpp"
 #include "requirement.hpp"
 
-namespace {
-
-void print_state_labels(const TransferSystem& system) {
-    std::cout << "States:";
-    for (const State& state : system.m_states) {
-        std::cout << ' ' << state.label();
-    }
-    std::cout << "\n";
+std::vector<WeightedFitnessFunction> get_fitness_functions(
+    const Specification& original_spec) {
+    auto fitness_fn = [original_spec](const Specification& spec) -> double {
+        return syntactic_similarity(spec, original_spec);
+    };
+    return {{fitness_fn, 1.0}};
 }
-
-void print_trace_counts(const TransferSystem& system,
-                        std::size_t max_trace_length) {
-    for (std::size_t trace_length = 1; trace_length <= max_trace_length;
-         ++trace_length) {
-        const Count count = count_traces(system, trace_length);
-        std::cout << "Length " << trace_length << ": " << count_to_string(count)
-                  << "\n";
-    }
-}
-
-std::string matrix_to_string(const CountMatrix& matrix) {
-    std::ostringstream stream;
-    for (Eigen::Index row = 0; row < matrix.rows(); ++row) {
-        for (Eigen::Index column = 0; column < matrix.cols(); ++column) {
-            if (column > 0) {
-                stream << ' ';
-            }
-            stream << count_to_string(matrix(row, column));
-        }
-        if (row + 1 < matrix.rows()) {
-            stream << '\n';
-        }
-    }
-    return stream.str();
-}
-
-void print_requirement_report(const Requirement& requirement) {
-    const TransferSystem system = build_transfer_system(requirement);
-    const CountMatrix weighted = weighted_transition_matrix(system);
-    std::cout << "Requirement timing: " << to_string(requirement.m_timing)
-              << "\n";
-    print_state_labels(system);
-    std::cout << "Transfer matrix:\n"
-              << matrix_to_string(system.m_transition_matrix) << "\n\n";
-    std::cout << "Weighted transfer matrix:\n"
-              << matrix_to_string(weighted) << "\n\n";
-    print_trace_counts(system, 5);
-    std::cout << "\n";
-}
-
-}  // namespace
 
 int main() {
-    const std::vector<Requirement> requirements = {
-        Requirement(Formula("P"), Formula("Q"), timing::immediately()),
-        Requirement(Formula("P"), Formula("Q"), timing::next_timepoint()),
+    Specification original_spec(
+        {Requirement(Formula("p"), Formula("q"), timing::immediately()),
+         Requirement(Formula("p"), Formula("!q"), timing::immediately())},
+        {"p"}, {"q"});
+    // 1. Initial population — each requirement wrapped in a specification
+    std::vector<Specification> population = {
+        Specification{
+            {Requirement(Formula("p"), Formula("q"), timing::immediately()),
+             Requirement(Formula("p"), Formula("!q"), timing::immediately())},
+            {"p"},
+            {"q"}},
+        Specification{
+            {Requirement(Formula("p"), Formula("q"), timing::immediately()),
+             Requirement(Formula("p"), Formula("!q"), timing::immediately())},
+            {"p"},
+            {"q"}},
+        Specification{
+            {Requirement(Formula("p"), Formula("q"), timing::immediately()),
+             Requirement(Formula("p"), Formula("!q"), timing::immediately())},
+            {"p"},
+            {"q"}},
+        Specification{
+            {Requirement(Formula("p"), Formula("q"), timing::immediately()),
+             Requirement(Formula("p"), Formula("!q"), timing::immediately())},
+            {"p"},
+            {"q"}},
     };
-    for (const Requirement& requirement : requirements) {
-        print_requirement_report(requirement);
+    // 2. Fitness functions
+    std::vector<WeightedFitnessFunction> fitness_functions =
+        get_fitness_functions(original_spec);
+    // 3. No filtering for demo
+    std::vector<FilterFunction> filters;
+
+    // 4. Evolution config
+    EvolutionConfig config;
+    // 5. Random source
+    std::random_device rd;
+    RandomSource random_source = make_random_source_from_seed(rd());
+    // 6. Run genetic algorithm for a few generations
+    std::size_t generations = 10;
+    std::size_t pop_size = population.size();
+    for (std::size_t gen_idx = 0; gen_idx < generations; ++gen_idx) {
+        population = evolve_generation(population, pop_size, fitness_functions,
+                                       filters, config, random_source);
+    }
+    // 7. Score and print the best specification
+    auto scored = score_population(population, fitness_functions);
+    std::sort(scored.begin(), scored.end(), [](const auto& a, const auto& b) {
+        return a.fitness > b.fitness;
+    });
+    std::cout << "Best specification after " << generations
+              << " generations:\n";
+    if (!scored.empty()) {
+        const Requirement& best =
+            *scored.front().specification.m_requirements.begin();
+        std::cout << "Trigger: " << best.m_trigger.to_string()
+                  << "\nResponse: " << best.m_response.to_string()
+                  << "\nTiming: " << to_string(best.m_timing)
+                  << "\nFitness: " << scored.front().fitness << "\n";
     }
     return 0;
 }

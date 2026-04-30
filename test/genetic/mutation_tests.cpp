@@ -1,4 +1,3 @@
-#include <stdexcept>
 #include <utility>
 #include <vector>
 
@@ -62,16 +61,6 @@ void test_mutation_atom_selected_from_atoms_list() {
            "by the random source");
 }
 
-void test_mutation_rejects_empty_random_source() {
-    bool threw = false;
-    try {
-        (void)mutate_formula(Formula("P"), {}, RandomSource{});
-    } catch (const std::invalid_argument&) {
-        threw = true;
-    }
-    expect(threw, "mutation: empty boolean source should be rejected");
-}
-
 void test_timing_mutation_replaces_non_parameterized_timing() {
     const Timing mutated =
         mutate_timing(timing::next_timepoint(), make_source({}, false));
@@ -100,17 +89,6 @@ void test_timing_mutation_can_change_parameter_only() {
            "mutation: parameter-only mutation should change tick count");
 }
 
-void test_timing_mutation_rejects_empty_random_source() {
-    bool threw = false;
-    try {
-        (void)mutate_timing(timing::immediately(), RandomSource{});
-    } catch (const std::invalid_argument&) {
-        threw = true;
-    }
-    expect(threw,
-           "mutation: timing mutation should reject empty boolean source");
-}
-
 }  // namespace
 
 void run_mutation_tests() {
@@ -118,9 +96,7 @@ void run_mutation_tests() {
     test_mutation_renames_atom_to_one_from_atoms_list();
     test_mutation_atom_unchanged_when_no_atoms_provided();
     test_mutation_atom_selected_from_atoms_list();
-    test_mutation_rejects_empty_random_source();
     test_timing_mutation_replaces_non_parameterized_timing();
     test_timing_mutation_can_switch_to_parameterized_timing();
     test_timing_mutation_can_change_parameter_only();
-    test_timing_mutation_rejects_empty_random_source();
 }

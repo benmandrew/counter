@@ -94,19 +94,6 @@ void test_spec_similarity_partial_match_multi_req() {
            "score 5/9");
 }
 
-void test_spec_similarity_throws_on_empty_spec() {
-    bool threw = false;
-    try {
-        syntactic_similarity(Specification({}, {}, {}),
-                             make_spec({{"p", "q"}}));
-    } catch (const std::invalid_argument&) {
-        threw = true;
-    }
-    expect(threw,
-           "spec-similarity: empty specification should throw "
-           "invalid_argument");
-}
-
 }  // namespace
 
 void run_syntactic_similarity_tests() {
@@ -116,5 +103,4 @@ void run_syntactic_similarity_tests() {
     test_spec_similarity_same_trigger_different_response();
     test_spec_similarity_identical_multi_req();
     test_spec_similarity_partial_match_multi_req();
-    test_spec_similarity_throws_on_empty_spec();
 }

@@ -5,11 +5,11 @@
 #include <unistd.h>
 
 #include <algorithm>
+#include <cassert>
 #include <cerrno>
 #include <cstring>
 #include <iostream>
 #include <memory>
-#include <stdexcept>
 #include <string>
 #include <vector>
 
@@ -54,18 +54,14 @@ std::string read_from_fd(int read_fd) {
         if (errno == EINTR) {
             continue;
         }
-        throw std::runtime_error(std::string("read() failed: ") +
-                                 std::strerror(errno));
+        assert(false);
     }
     return output;
 }
 
 int wait_for_child(pid_t child_pid) {
     int wait_status = 0;
-    if (waitpid(child_pid, &wait_status, 0) < 0) {
-        throw std::runtime_error(std::string("waitpid() failed: ") +
-                                 std::strerror(errno));
-    }
+    assert(waitpid(child_pid, &wait_status, 0) >= 0);
     if (WIFEXITED(wait_status)) {
         return WEXITSTATUS(wait_status);
     } else if (WIFSIGNALED(wait_status)) {
@@ -75,21 +71,14 @@ int wait_for_child(pid_t child_pid) {
 }
 
 ProcessResult execute_and_capture(const std::vector<std::string>& arguments) {
-    if (arguments.empty()) {
-        throw std::invalid_argument(
-            "No command provided to execute_and_capture.");
-    }
+    assert(!arguments.empty());
     int pipe_fds[2] = {-1, -1};
-    if (pipe(pipe_fds) != 0) {
-        throw std::runtime_error(std::string("pipe() failed: ") +
-                                 std::strerror(errno));
-    }
+    assert(pipe(pipe_fds) == 0);
     const pid_t child_pid = fork();
     if (child_pid < 0) {
         close(pipe_fds[0]);
         close(pipe_fds[1]);
-        throw std::runtime_error(std::string("fork() failed: ") +
-                                 std::strerror(errno));
+        assert(false);
     }
     if (child_pid == 0) {
         close(pipe_fds[0]);
@@ -114,15 +103,9 @@ std::string join_comma(const std::vector<std::string>& items) {
 }
 
 void check_specification_ltls_present(const Specification& specification) {
-    if (specification.m_requirements.empty()) {
-        throw std::invalid_argument("Specification must not be empty.");
-    }
+    assert(!specification.m_requirements.empty());
     for (const Requirement& req : specification.m_requirements) {
-        if (!req.m_ltl.has_value()) {
-            throw std::invalid_argument(
-                "All requirements in specification must have m_ltl set to "
-                "check realizability.");
-        }
+        assert(req.m_ltl.has_value());
     }
 }
 
@@ -144,9 +127,8 @@ bool parse_realizability_output(const ProcessResult& result) {
     } else if (result.m_output.find("REALIZABLE") != std::string::npos) {
         return true;
     } else {
-        throw std::runtime_error(
-            "ltlsynt produced unexpected output (exit code " +
-            std::to_string(result.m_exit_code) + "): " + result.m_output);
+        assert(false);
+        return false;
     }
 }
 
@@ -156,7 +138,8 @@ std::string spot_bin_dir() {
 #ifdef SPOT_BIN_DIR
     return SPOT_BIN_DIR;
 #else
-    throw std::runtime_error("SPOT_BIN_DIR is not configured by CMake.");
+    assert(false);
+    return "";
 #endif
 }
 
@@ -175,10 +158,7 @@ bool RealizabilityChecker::check_realizability(
         return it->second;
     }
     const std::string ltlsynt = ltlsynt_path();
-    if (access(ltlsynt.c_str(), F_OK) != 0) {
-        throw std::runtime_error("ltlsynt executable does not exist: " +
-                                 ltlsynt);
-    }
+    assert(access(ltlsynt.c_str(), F_OK) == 0);
     std::vector<std::string> command = {ltlsynt, "--realizability", "-f",
                                         conj_ltl};
     if (!specification.m_in_atoms.empty()) {

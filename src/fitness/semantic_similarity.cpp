@@ -1,6 +1,6 @@
 #include "fitness/semantic_similarity.hpp"
 
-#include <stdexcept>
+#include <cassert>
 
 #include "fitness/model_counter.hpp"
 #include "fitness/transfer_matrix.hpp"
@@ -10,11 +10,7 @@ namespace {
 constexpr std::size_t kDefaultModelCountingBound = 5;
 
 double ratio_or_throw(Count numerator, Count denominator) {
-    if (denominator == 0) {
-        throw std::domain_error(
-            "Semantic similarity is undefined when a requirement model count "
-            "is zero.");
-    }
+    assert(denominator != 0);
     return static_cast<double>(static_cast<long double>(numerator) /
                                static_cast<long double>(denominator));
 }

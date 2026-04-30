@@ -1,6 +1,5 @@
+#include <cassert>
 #include <cctype>
-#include <sstream>
-#include <stdexcept>
 #include <string>
 #include <utility>
 #include <vector>
@@ -23,12 +22,8 @@ class Parser {
         m_nodes.clear();
         const std::size_t root = parse_iff();
         skip_whitespace();
-        if (!at_end()) {
-            throw parse_error("Unexpected token at end of formula");
-        }
-        if (m_nodes.empty()) {
-            throw std::invalid_argument("Formula must not be empty.");
-        }
+        assert(at_end());
+        assert(!m_nodes.empty());
         if (root != m_nodes.size() - 1) {
             const prop_formula_internal::Node root_node = m_nodes[root];
             m_nodes.erase(m_nodes.begin() + static_cast<std::ptrdiff_t>(root));
@@ -83,9 +78,7 @@ class Parser {
         }
         if (try_consume("(")) {
             const std::size_t expression = parse_iff();
-            if (!try_consume(")")) {
-                throw parse_error("Expected ')' to close sub-expression");
-            }
+            assert(try_consume(")"));
             return expression;
         }
         return parse_variable();
@@ -93,14 +86,9 @@ class Parser {
 
     std::size_t parse_variable() {
         skip_whitespace();
-        if (at_end()) {
-            throw parse_error("Expected variable, but reached end of formula");
-        }
+        assert(!at_end());
         const char first = m_text[m_position];
-        if (!(std::isalpha(static_cast<unsigned char>(first)) ||
-              first == '_')) {
-            throw parse_error("Expected variable name");
-        }
+        assert(std::isalpha(static_cast<unsigned char>(first)) || first == '_');
         std::string name;
         name.push_back(first);
         ++m_position;
@@ -149,13 +137,6 @@ class Parser {
     }
 
     [[nodiscard]] bool at_end() const { return m_position >= m_text.size(); }
-
-    [[nodiscard]] std::invalid_argument parse_error(
-        const std::string& message) const {
-        std::ostringstream stream;
-        stream << message << " at position " << m_position << ".";
-        return std::invalid_argument(stream.str());
-    }
 };
 
 }  // namespace

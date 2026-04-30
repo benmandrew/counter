@@ -1,5 +1,4 @@
 #include <cmath>
-#include <stdexcept>
 
 #include "fitness/semantic_similarity.hpp"
 #include "prop_formula.hpp"
@@ -40,27 +39,10 @@ void test_semantic_similarity_default_overload_matches_explicit_step_count() {
            "semantic-similarity: default overload should use step_count=5");
 }
 
-void test_semantic_similarity_rejects_zero_denominator() {
-    const Requirement unsatisfiable_requirement{
-        Formula("A|!A"), Formula("A&!A"), timing::immediately()};
-    const Requirement other_requirement{Formula("A"), Formula("A"),
-                                        timing::immediately()};
-    bool threw = false;
-    try {
-        (void)semantic_similarity(unsatisfiable_requirement, other_requirement,
-                                  1);
-    } catch (const std::domain_error&) {
-        threw = true;
-    }
-    expect(threw,
-           "semantic-similarity: zero denominator should throw domain_error");
-}
-
 }  // namespace
 
 void run_semantic_similarity_tests() {
     test_semantic_similarity_identical_requirements_score_two();
     test_semantic_similarity_formula_value_explicit_step_count();
     test_semantic_similarity_default_overload_matches_explicit_step_count();
-    test_semantic_similarity_rejects_zero_denominator();
 }

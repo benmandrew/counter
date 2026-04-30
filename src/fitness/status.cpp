@@ -1,6 +1,6 @@
 #include "fitness/status.hpp"
 
-#include <stdexcept>
+#include <cassert>
 #include <string>
 
 #include "requirement.hpp"
@@ -12,11 +12,7 @@ static RealizabilityChecker global_real_checker;
 
 double specification_status(const Specification& specification) {
     for (const Requirement& req : specification.m_requirements) {
-        if (!req.m_ltl.has_value()) {
-            throw std::invalid_argument(
-                "All requirements in specification must have m_ltl set to "
-                "compute status.");
-        }
+        assert(req.m_ltl.has_value());
     }
     // Build conjunctions of all triggers (assumptions) and all responses
     // (guarantees)

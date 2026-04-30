@@ -3,7 +3,6 @@
 #include <cstdio>
 #include <cstdlib>
 #include <fstream>
-#include <stdexcept>
 #include <string>
 
 #include "prop_formula.hpp"
@@ -51,20 +50,9 @@ void test_formula_to_dimacs_precedence_count() {
     std::remove(dimacs_path);
 }
 
-void test_formula_to_dimacs_rejects_invalid_formula() {
-    bool threw = false;
-    try {
-        (void)Formula("P &");
-    } catch (const std::invalid_argument&) {
-        threw = true;
-    }
-    expect(threw, "formula-dimacs: invalid formula should throw");
-}
-
 }  // namespace
 
 void run_prop_formula_cnf_tests() {
     test_formula_to_dimacs_implies_count();
     test_formula_to_dimacs_precedence_count();
-    test_formula_to_dimacs_rejects_invalid_formula();
 }

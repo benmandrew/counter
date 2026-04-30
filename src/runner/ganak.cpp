@@ -4,6 +4,7 @@
 #include <sys/wait.h>
 #include <unistd.h>
 
+#include <cassert>
 #include <cctype>
 #include <cerrno>
 #include <cstdlib>
@@ -11,7 +12,6 @@
 #include <filesystem>  // NOLINT(build/c++17)
 #include <fstream>
 #include <memory>
-#include <stdexcept>
 #include <string>
 #include <vector>
 
@@ -40,42 +40,26 @@ std::string write_temporary_dimacs(const std::string& contents) {
                              writable_template.end());
     buffer.push_back('\0');
     const int file_descriptor = mkstemp(buffer.data());
-    if (file_descriptor < 0) {
-        throw std::runtime_error(std::string("mkstemp() failed: ") +
-                                 std::strerror(errno));
-    }
+    assert(file_descriptor >= 0);
     close(file_descriptor);
     const std::string dimacs_path(buffer.data());
     std::ofstream dimacs_file(dimacs_path);
-    if (!dimacs_file.good()) {
-        std::remove(dimacs_path.c_str());
-        throw std::runtime_error("Failed to open temporary DIMACS file.");
-    }
+    assert(dimacs_file.good());
     dimacs_file << contents;
     dimacs_file.close();
-    if (!dimacs_file) {
-        std::remove(dimacs_path.c_str());
-        throw std::runtime_error("Failed to write temporary DIMACS file.");
-    }
+    assert(static_cast<bool>(dimacs_file));
     return dimacs_path;
 }
 
 ProcessResult execute_and_capture(const std::vector<std::string>& arguments) {
-    if (arguments.empty()) {
-        throw std::invalid_argument(
-            "No command provided to execute_and_capture.");
-    }
+    assert(!arguments.empty());
     int pipe_fds[2] = {-1, -1};
-    if (pipe(pipe_fds) != 0) {
-        throw std::runtime_error(std::string("pipe() failed: ") +
-                                 std::strerror(errno));
-    }
+    assert(pipe(pipe_fds) == 0);
     const pid_t child_pid = fork();
     if (child_pid < 0) {
         close(pipe_fds[0]);
         close(pipe_fds[1]);
-        throw std::runtime_error(std::string("fork() failed: ") +
-                                 std::strerror(errno));
+        assert(false);
     }
     if (child_pid == 0) {
         close(pipe_fds[0]);
@@ -95,11 +79,12 @@ ProcessResult execute_and_capture(const std::vector<std::string>& arguments) {
     }
     close(pipe_fds[1]);
     std::string output;
-    char buffer[4096];
+    char read_buffer[4096];
     while (true) {
-        const ssize_t bytes_read = read(pipe_fds[0], buffer, sizeof(buffer));
+        const ssize_t bytes_read =
+            read(pipe_fds[0], read_buffer, sizeof(read_buffer));
         if (bytes_read > 0) {
-            output.append(buffer, static_cast<std::size_t>(bytes_read));
+            output.append(read_buffer, static_cast<std::size_t>(bytes_read));
             continue;
         }
         if (bytes_read == 0) {
@@ -109,15 +94,11 @@ ProcessResult execute_and_capture(const std::vector<std::string>& arguments) {
             continue;
         }
         close(pipe_fds[0]);
-        throw std::runtime_error(std::string("read() failed: ") +
-                                 std::strerror(errno));
+        assert(false);
     }
     close(pipe_fds[0]);
     int wait_status = 0;
-    if (waitpid(child_pid, &wait_status, 0) < 0) {
-        throw std::runtime_error(std::string("waitpid() failed: ") +
-                                 std::strerror(errno));
-    }
+    assert(waitpid(child_pid, &wait_status, 0) >= 0);
     int exit_code = -1;
     if (WIFEXITED(wait_status)) {
         exit_code = WEXITSTATUS(wait_status);
@@ -146,9 +127,8 @@ Count parse_ganak_exact_count(const std::string& output) {
     if (output.find("s UNSATISFIABLE") != std::string::npos) {
         return 0;
     }
-    throw std::runtime_error(
-        "Failed to parse Ganak exact count from output. Expected line: 'c s "
-        "exact arb int <N>'.");
+    assert(false);
+    return 0;
 }
 
 }  // namespace
@@ -157,21 +137,15 @@ std::string ganak_executable_path() {
 #ifdef GANAK_EXECUTABLE_PATH
     return GANAK_EXECUTABLE_PATH;
 #else
-    throw std::runtime_error(
-        "GANAK_EXECUTABLE_PATH is not configured by CMake.");
+    assert(false);
+    return "";
 #endif
 }
 
 Count run_ganak_on_dimacs(const std::string& dimacs_path, unsigned seed) {
-    if (access(dimacs_path.c_str(), F_OK) != 0) {
-        throw std::invalid_argument("DIMACS file does not exist: " +
-                                    dimacs_path);
-    }
+    assert(access(dimacs_path.c_str(), F_OK) == 0);
     const std::string ganak_path = ganak_executable_path();
-    if (access(ganak_path.c_str(), F_OK) != 0) {
-        throw std::runtime_error("Ganak executable does not exist: " +
-                                 ganak_path);
-    }
+    assert(access(ganak_path.c_str(), F_OK) == 0);
     const std::vector<std::string> command = {
         ganak_path,
         "--seed",
@@ -179,11 +153,7 @@ Count run_ganak_on_dimacs(const std::string& dimacs_path, unsigned seed) {
         dimacs_path,
     };
     const ProcessResult result = execute_and_capture(command);
-    if (result.m_exit_code != 0) {
-        throw std::runtime_error("Ganak execution failed with exit code " +
-                                 std::to_string(result.m_exit_code) + "\n" +
-                                 result.m_output);
-    }
+    assert(result.m_exit_code == 0);
     return parse_ganak_exact_count(result.m_output);
 }
 
@@ -191,12 +161,7 @@ Count run_ganak_on_formula(const std::string& formula, unsigned seed) {
     const Formula f = Formula(formula);
     const std::string formula_dimacs_path =
         write_temporary_dimacs(f.to_dimacs());
-    try {
-        const Count count = run_ganak_on_dimacs(formula_dimacs_path, seed);
-        std::remove(formula_dimacs_path.c_str());
-        return count;
-    } catch (...) {
-        std::remove(formula_dimacs_path.c_str());
-        throw;
-    }
+    const Count count = run_ganak_on_dimacs(formula_dimacs_path, seed);
+    std::remove(formula_dimacs_path.c_str());
+    return count;
 }

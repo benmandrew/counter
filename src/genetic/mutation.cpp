@@ -1,10 +1,10 @@
 #include "genetic/mutation.hpp"
 
+#include <cassert>
 #include <cstdlib>
 #include <limits>
 #include <optional>
 #include <set>
-#include <stdexcept>
 #include <string>
 #include <type_traits>
 #include <variant>
@@ -24,7 +24,12 @@ Formula::Kind pick_binary_kind(const RandomSource& random_source) {
         case 3:
             return Formula::Kind::Iff;
     }
-    throw std::logic_error("Failed to select a binary operator kind.");
+    assert(false);
+}
+
+std::string random_atom(const std::vector<std::string>& atoms, const RandomSource& random_source) {
+    assert(!atoms.empty());
+    return atoms[random_source.next_index(atoms.size())];
 }
 
 std::string mutate_atom_name(const std::string& atom,
@@ -46,15 +51,11 @@ Formula mutate_atom_formula(const Formula& formula,
                             const std::vector<std::string>& atoms,
                             const RandomSource& random_source) {
     const std::optional<std::string> atom = formula.atom_name();
-    if (!atom.has_value()) {
-        throw std::logic_error("Expected atomic formula for atom mutation.");
-    }
-
+    assert(atom.has_value());
     if (random_source.next_bool()) {
         return Formula::make_atom(
             mutate_atom_name(*atom, atoms, random_source));
     }
-
     return Formula::make_unary(Formula::Kind::Not, formula);
 }
 
@@ -63,9 +64,7 @@ Formula mutate_atom_formula(const Formula& formula,
 Formula mutate_formula(const Formula& formula,
                        const std::vector<std::string>& atoms,
                        const RandomSource& random_source) {
-    if (!random_source) {
-        throw std::invalid_argument("random_source must be callable.");
-    }
+    assert(random_source);
     const auto mutation_function =
         [&](const Formula& subtree) -> std::optional<Formula> {
         if (!random_source.next_bool()) {
@@ -90,7 +89,7 @@ Formula mutate_formula(const Formula& formula,
                     case 3:
                         break;
                 }
-                const Formula anchor = Formula::make_atom("p_mut");
+                const Formula anchor = Formula::make_atom(random_atom(atoms, random_source));
                 return Formula::make_binary(
                     pick_binary_kind(random_source), anchor,
                     Formula::make_unary(Formula::Kind::Not, child));
@@ -146,9 +145,7 @@ std::size_t mutate_tick_count(std::size_t ticks,
 }
 
 Timing mutate_timing(const Timing& timing, const RandomSource& random_source) {
-    if (!random_source) {
-        throw std::invalid_argument("random_source must be callable.");
-    }
+    assert(random_source);
     const auto mutation_function = [&](const auto& value) -> Timing {
         using T = std::decay_t<decltype(value)>;
         if constexpr (std::is_same_v<T, timing::Immediately> ||
@@ -204,13 +201,8 @@ Requirement mutate_requirement(const Requirement& requirement,
 
 Specification mutate_specification(const Specification& specification,
                                    const RandomSource& random_source) {
-    if (!random_source) {
-        throw std::invalid_argument("random_source must be callable.");
-    }
-    if (specification.m_requirements.empty()) {
-        throw std::invalid_argument(
-            "Specification must not be empty to mutate.");
-    }
+    assert(random_source);
+    assert(!specification.m_requirements.empty());
     std::vector<std::string> atoms;
     atoms.insert(atoms.end(), specification.m_in_atoms.begin(),
                  specification.m_in_atoms.end());

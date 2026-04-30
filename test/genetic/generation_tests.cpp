@@ -81,29 +81,6 @@ void test_score_population_equal_weights_give_average() {
            "score_population: equal weights should give arithmetic average");
 }
 
-void test_score_population_throws_on_empty_functions() {
-    bool threw = false;
-    try {
-        score_population({make_spec("p", "q")}, {});
-    } catch (const std::invalid_argument&) {
-        threw = true;
-    }
-    expect(threw,
-           "score_population: should throw with no fitness functions provided");
-}
-
-void test_score_population_throws_on_zero_total_weight() {
-    bool threw = false;
-    try {
-        score_population({make_spec("p", "q")},
-                         {{[](const Specification&) { return 0.5; }, 0.0}});
-    } catch (const std::invalid_argument&) {
-        threw = true;
-    }
-    expect(threw,
-           "score_population: should throw when total weight is not positive");
-}
-
 // --- make_predicate_filter / filter_population ---
 
 void test_make_predicate_filter_keeps_matching() {
@@ -260,74 +237,12 @@ void test_evolve_generation_applies_filter_before_selection() {
         "evolve_generation: only the surviving specification should be used");
 }
 
-void test_evolve_generation_throws_with_no_fitness_functions() {
-    bool threw = false;
-    try {
-        evolve_generation({make_spec("p", "q")}, 1, {}, {},
-                          EvolutionConfig{1.0, 1.0}, make_source({}, 0));
-    } catch (const std::invalid_argument&) {
-        threw = true;
-    }
-    expect(threw,
-           "evolve_generation: should throw when no fitness functions are "
-           "provided");
-}
-
-void test_evolve_generation_throws_when_all_filtered_out() {
-    const std::vector<WeightedFitnessFunction> fns = {
-        {[](const Specification&) { return 0.5; }}};
-    const std::vector<FilterFunction> filters = {
-        [](const std::vector<Specification>&) {
-            return std::vector<Specification>{};
-        }};
-    bool threw = false;
-    try {
-        evolve_generation({make_spec("p", "q")}, 1, fns, filters,
-                          EvolutionConfig{1.0, 1.0}, make_source({}, 0));
-    } catch (const std::invalid_argument&) {
-        threw = true;
-    }
-    expect(threw,
-           "evolve_generation: should throw when all specifications are "
-           "filtered out");
-}
-
-void test_evolve_generation_throws_on_invalid_crossover_rate() {
-    const std::vector<WeightedFitnessFunction> fns = {
-        {[](const Specification&) { return 0.5; }}};
-    bool threw = false;
-    try {
-        evolve_generation({make_spec("p", "q")}, 1, fns, {},
-                          EvolutionConfig{1.5, 0.5}, make_source({}, 0));
-    } catch (const std::invalid_argument&) {
-        threw = true;
-    }
-    expect(threw,
-           "evolve_generation: crossover_rate outside [0,1] should throw");
-}
-
-void test_evolve_generation_throws_on_invalid_mutation_rate() {
-    const std::vector<WeightedFitnessFunction> fns = {
-        {[](const Specification&) { return 0.5; }}};
-    bool threw = false;
-    try {
-        evolve_generation({make_spec("p", "q")}, 1, fns, {},
-                          EvolutionConfig{0.5, -0.1}, make_source({}, 0));
-    } catch (const std::invalid_argument&) {
-        threw = true;
-    }
-    expect(threw,
-           "evolve_generation: mutation_rate outside [0,1] should throw");
-}
-
 }  // namespace
 
 void run_generation_tests() {
     test_score_population_single_function();
     test_score_population_weighted_aggregation();
     test_score_population_equal_weights_give_average();
-    test_score_population_throws_on_empty_functions();
-    test_score_population_throws_on_zero_total_weight();
     test_make_predicate_filter_keeps_matching();
     test_filter_population_empty_filter_list_keeps_all();
     test_filter_population_removes_failing();
@@ -337,8 +252,4 @@ void run_generation_tests() {
     test_evolve_generation_selects_fittest();
     test_evolve_generation_caps_at_survivor_count();
     test_evolve_generation_applies_filter_before_selection();
-    test_evolve_generation_throws_with_no_fitness_functions();
-    test_evolve_generation_throws_when_all_filtered_out();
-    test_evolve_generation_throws_on_invalid_crossover_rate();
-    test_evolve_generation_throws_on_invalid_mutation_rate();
 }

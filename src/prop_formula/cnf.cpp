@@ -1,4 +1,4 @@
-#include <stdexcept>
+#include <cassert>
 #include <string>
 #include <unordered_map>
 #include <utility>
@@ -22,9 +22,7 @@ class TseitinEncoder {
         : m_nodes(nodes) {}
 
     prop_formula_internal::DimacsCnf encode() {
-        if (m_nodes.empty()) {
-            throw std::invalid_argument("Formula must not be empty.");
-        }
+        assert(!m_nodes.empty());
         const int root_literal =
             encode_node(static_cast<std::size_t>(m_nodes.size() - 1));
         m_clauses.push_back({root_literal});

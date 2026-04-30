@@ -1,9 +1,9 @@
 #include "fitness/transfer_matrix.hpp"
 
 #include <array>
+#include <cassert>
 #include <cstddef>
 #include <functional>
-#include <stdexcept>
 #include <string>
 #include <variant>
 #include <vector>
@@ -23,11 +23,9 @@ std::size_t tick_count_or_throw(const Timing& timing) {
     if (const auto* within = std::get_if<timing::WithinTicks>(&timing)) {
         return within->m_ticks;
     }
-    if (const auto* for_ticks = std::get_if<timing::ForTicks>(&timing)) {
-        return for_ticks->m_ticks;
-    }
-    throw std::invalid_argument(
-        "Tick count requested for non-countdown timing.");
+    const auto* for_ticks = std::get_if<timing::ForTicks>(&timing);
+    assert(for_ticks != nullptr);
+    return for_ticks->m_ticks;
 }
 
 CountVector counts_or_throw(const CountVector& provided_counts,
@@ -60,14 +58,12 @@ CountVector canonical_valuation_counts_or_throw(
 CountVector counts_or_throw(const CountVector& provided_counts,
                             Eigen::Index expected_size,
                             const std::function<CountVector()>& loader,
-                            const char* size_error_message) {
+                            const char* /*size_error_message*/) {
     CountVector counts = provided_counts;
     if (counts.size() == 0) {
         counts = loader();
     }
-    if (counts.size() != expected_size) {
-        throw std::invalid_argument(size_error_message);
-    }
+    assert(counts.size() == expected_size);
     return counts;
 }
 
@@ -178,12 +174,9 @@ struct RequirementAutomaton {
                 this->m_states[static_cast<std::size_t>(state_index)]);
             this->m_cell_to_state[index] = state_index;
         }
-        if (std::holds_alternative<timing::NextTimepoint>(
-                requirement.m_timing) &&
-            this->m_states.size() != cells.size()) {
-            throw std::logic_error(
-                "Failed to build next-timepoint automaton states.");
-        }
+        assert(!std::holds_alternative<timing::NextTimepoint>(
+                   requirement.m_timing) ||
+               this->m_states.size() == cells.size());
     }
 };
 
@@ -245,10 +238,8 @@ CountdownTransitionFn countdown_transition_fn_or_throw(
     if (std::holds_alternative<timing::WithinTicks>(requirement.m_timing)) {
         return &within_next_countdown;
     }
-    if (std::holds_alternative<timing::ForTicks>(requirement.m_timing)) {
-        return &for_next_countdown;
-    }
-    throw std::invalid_argument("Invalid timing for countdown automaton.");
+    assert(std::holds_alternative<timing::ForTicks>(requirement.m_timing));
+    return &for_next_countdown;
 }
 
 // Constructs the weighted live-state transition matrix by aggregating all four
@@ -275,11 +266,10 @@ CountMatrix build_countdown_weighted_transitions(
             const Eigen::Index column =
                 static_cast<Eigen::Index>(next_countdown);
             Count updated = 0;
-            if (count_add_overflow(weighted_transitions(row, column),
-                                   cell_counts(cell_index), updated)) {
-                throw std::overflow_error(
-                    "Count overflow while building weighted transitions.");
-            }
+            [[maybe_unused]] const bool overflow =
+                count_add_overflow(weighted_transitions(row, column),
+                                   cell_counts(cell_index), updated);
+            assert(!overflow);
             weighted_transitions(row, column) = updated;
         }
     }
@@ -471,12 +461,10 @@ CountMatrix weighted_transition_matrix(const TransferSystem& system) {
     for (Eigen::Index column = 0; column < weighted.cols(); ++column) {
         for (Eigen::Index row = 0; row < weighted.rows(); ++row) {
             Count updated = 0;
-            if (count_mul_overflow(weighted(row, column),
-                                   system.m_valuation_counts(column),
-                                   updated)) {
-                throw std::overflow_error(
-                    "Count overflow while weighting transition matrix.");
-            }
+            [[maybe_unused]] const bool overflow =
+                count_mul_overflow(weighted(row, column),
+                                   system.m_valuation_counts(column), updated);
+            assert(!overflow);
             weighted(row, column) = updated;
         }
     }
@@ -528,12 +516,9 @@ CountMatrix build_combined_weighted_transition_matrix(
                     const Eigen::Index column =
                         left_next * right_state_count + right_next;
                     Count updated = 0;
-                    if (count_add_overflow(weighted(row, column), weight,
-                                           updated)) {
-                        throw std::overflow_error(
-                            "Count overflow while building combined weighted "
-                            "transfer matrix.");
-                    }
+                    [[maybe_unused]] const bool overflow = count_add_overflow(
+                        weighted(row, column), weight, updated);
+                    assert(!overflow);
                     weighted(row, column) = updated;
                 }
             }

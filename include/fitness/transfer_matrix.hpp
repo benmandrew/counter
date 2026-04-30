@@ -2,10 +2,10 @@
 
 #include <Eigen/Dense>
 #include <algorithm>
+#include <cassert>
 #include <cctype>
 #include <cstdint>
 #include <limits>
-#include <stdexcept>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -91,19 +91,13 @@ inline std::string count_to_string(Count value) {
 /// @throws std::invalid_argument if the text contains non-digits
 /// @throws std::overflow_error if the parsed value exceeds Count::max
 inline Count parse_count_decimal_or_throw(std::string_view text) {
-    if (text.empty()) {
-        throw std::invalid_argument("Count text must not be empty.");
-    }
+    assert(!text.empty());
     Count value = 0;
     const Count max_value = std::numeric_limits<Count>::max();
     for (const char character : text) {
-        if (!std::isdigit(static_cast<unsigned char>(character))) {
-            throw std::invalid_argument("Count text must contain only digits.");
-        }
+        assert(std::isdigit(static_cast<unsigned char>(character)));
         const Count digit = static_cast<Count>(character - '0');
-        if (value > (max_value - digit) / 10U) {
-            throw std::overflow_error("Parsed count does not fit Count type.");
-        }
+        assert(value <= (max_value - digit) / 10U);
         value = value * 10U + digit;
     }
     return value;

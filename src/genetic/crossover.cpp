@@ -1,8 +1,8 @@
 #include "genetic/crossover.hpp"
 
+#include <cassert>
 #include <optional>
 #include <set>
-#include <stdexcept>
 #include <type_traits>
 #include <utility>
 
@@ -20,7 +20,7 @@ Formula::Kind pick_binary_kind(const RandomSource& random_source) {
         case 3:
             return Formula::Kind::Iff;
     }
-    throw std::logic_error("Failed to select a binary operator kind.");
+    assert(false);
 }
 
 Formula select_subformula(const Formula& formula,
@@ -49,7 +49,7 @@ Formula select_subformula(const Formula& formula,
             return select_subformula(children.second, random_source);
         }
     }
-    throw std::logic_error("Failed to select a formula subformula.");
+    assert(false);
 }
 
 Formula replace_subformula(const Formula& formula, const Formula& donor,
@@ -101,7 +101,7 @@ Formula crossover_formula(const Formula& first_parent,
             return combine_subformula(first_parent, second_parent,
                                       random_source);
     }
-    throw std::logic_error("Failed to select formula crossover branch.");
+    assert(false);
 }
 
 template <typename TimingVariant>
@@ -133,7 +133,7 @@ Timing crossover_parameterized_timing(const First& first_value,
         case 3:
             return make_parameterized_timing<Second>(first_value.m_ticks);
     }
-    throw std::logic_error("Failed to select timing crossover branch.");
+    assert(false);
 }
 
 template <typename First, typename Second>
@@ -180,9 +180,7 @@ Timing crossover_timing(const Timing& first_parent, const Timing& second_parent,
 Requirement crossover_requirements(const Requirement& first_parent,
                                    const Requirement& second_parent,
                                    const RandomSource& random_source) {
-    if (!random_source) {
-        throw std::invalid_argument("random_source must be callable.");
-    }
+    assert(random_source);
     Requirement offspring = first_parent;
     offspring.m_trigger = crossover_formula(
         first_parent.m_trigger, second_parent.m_trigger, random_source);
@@ -196,20 +194,11 @@ Requirement crossover_requirements(const Requirement& first_parent,
 Specification crossover_specifications(const Specification& first_parent,
                                        const Specification& second_parent,
                                        const RandomSource& random_source) {
-    if (!random_source) {
-        throw std::invalid_argument("random_source must be callable.");
-    }
-    if (first_parent.m_requirements.size() !=
-        second_parent.m_requirements.size()) {
-        throw std::invalid_argument(
-            "Specifications must have the same number of requirements for "
-            "crossover.");
-    }
-    if (first_parent.m_in_atoms != second_parent.m_in_atoms ||
-        first_parent.m_out_atoms != second_parent.m_out_atoms) {
-        throw std::invalid_argument(
-            "Specifications must have identical in/out atoms for crossover.");
-    }
+    assert(random_source);
+    assert(first_parent.m_requirements.size() ==
+           second_parent.m_requirements.size());
+    assert(first_parent.m_in_atoms == second_parent.m_in_atoms &&
+           first_parent.m_out_atoms == second_parent.m_out_atoms);
     std::set<Requirement> offspring_reqs;
     auto it1 = first_parent.m_requirements.begin();
     auto it2 = second_parent.m_requirements.begin();

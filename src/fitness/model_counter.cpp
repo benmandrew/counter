@@ -1,34 +1,27 @@
 #include "fitness/model_counter.hpp"
 
-#include <stdexcept>
+#include <cassert>
 #include <string>
 
 namespace {
 
-Count checked_add_or_throw(Count lhs, Count rhs, const char* operation) {
+Count checked_add(Count lhs, Count rhs) {
     Count result = 0;
-    if (count_add_overflow(lhs, rhs, result)) {
-        throw std::overflow_error(std::string("Count overflow during ") +
-                                  operation + ".");
-    }
+    [[maybe_unused]] const bool overflow = count_add_overflow(lhs, rhs, result);
+    assert(!overflow);
     return result;
 }
 
-Count checked_mul_or_throw(Count lhs, Count rhs, const char* operation) {
+Count checked_mul(Count lhs, Count rhs) {
     Count result = 0;
-    if (count_mul_overflow(lhs, rhs, result)) {
-        throw std::overflow_error(std::string("Count overflow during ") +
-                                  operation + ".");
-    }
+    [[maybe_unused]] const bool overflow = count_mul_overflow(lhs, rhs, result);
+    assert(!overflow);
     return result;
 }
 
 CountMatrix checked_matrix_multiply(const CountMatrix& lhs,
                                     const CountMatrix& rhs) {
-    if (lhs.cols() != rhs.rows()) {
-        throw std::invalid_argument(
-            "Incompatible matrix dimensions for multiplication.");
-    }
+    assert(lhs.cols() == rhs.rows());
     CountMatrix product(lhs.rows(), rhs.cols());
     product.setZero();
     for (Eigen::Index row = 0; row < lhs.rows(); ++row) {
@@ -42,10 +35,8 @@ CountMatrix checked_matrix_multiply(const CountMatrix& lhs,
                 if (right == 0) {
                     continue;
                 }
-                const Count term =
-                    checked_mul_or_throw(left, right, "matrix multiplication");
-                product(row, column) = checked_add_or_throw(
-                    product(row, column), term, "matrix multiplication");
+                const Count term = checked_mul(left, right);
+                product(row, column) = checked_add(product(row, column), term);
             }
         }
     }
@@ -54,10 +45,7 @@ CountMatrix checked_matrix_multiply(const CountMatrix& lhs,
 
 CountVector checked_matrix_vector_multiply(const CountMatrix& matrix,
                                            const CountVector& vector) {
-    if (matrix.cols() != vector.rows()) {
-        throw std::invalid_argument(
-            "Incompatible dimensions for matrix-vector multiplication.");
-    }
+    assert(matrix.cols() == vector.rows());
     CountVector result(matrix.rows());
     result.setZero();
     for (Eigen::Index row = 0; row < matrix.rows(); ++row) {
@@ -68,10 +56,8 @@ CountVector checked_matrix_vector_multiply(const CountMatrix& matrix,
             if (lhs == 0 || rhs == 0) {
                 continue;
             }
-            const Count term =
-                checked_mul_or_throw(lhs, rhs, "matrix-vector multiplication");
-            sum =
-                checked_add_or_throw(sum, term, "matrix-vector multiplication");
+            const Count term = checked_mul(lhs, rhs);
+            sum = checked_add(sum, term);
         }
         result(row) = sum;
     }
@@ -79,9 +65,7 @@ CountVector checked_matrix_vector_multiply(const CountMatrix& matrix,
 }
 
 Count checked_dot_product(const CountVector& lhs, const CountVector& rhs) {
-    if (lhs.rows() != rhs.rows()) {
-        throw std::invalid_argument("Incompatible vector dimensions.");
-    }
+    assert(lhs.rows() == rhs.rows());
     Count sum = 0;
     for (Eigen::Index index = 0; index < lhs.rows(); ++index) {
         const Count left = lhs(index);
@@ -89,16 +73,14 @@ Count checked_dot_product(const CountVector& lhs, const CountVector& rhs) {
         if (left == 0 || right == 0) {
             continue;
         }
-        const Count term = checked_mul_or_throw(left, right, "dot product");
-        sum = checked_add_or_throw(sum, term, "dot product");
+        const Count term = checked_mul(left, right);
+        sum = checked_add(sum, term);
     }
     return sum;
 }
 
 CountMatrix matrix_power(const CountMatrix& matrix, std::size_t exponent) {
-    if (matrix.rows() != matrix.cols()) {
-        throw std::invalid_argument("Transfer matrices must be square.");
-    }
+    assert(matrix.rows() == matrix.cols());
     CountMatrix result = CountMatrix::Identity(matrix.rows(), matrix.cols());
     CountMatrix factor = matrix;
     while (exponent > 0) {
@@ -117,12 +99,8 @@ CountMatrix matrix_power(const CountMatrix& matrix, std::size_t exponent) {
 
 Count count_traces(const TransferSystem& system, std::size_t step_count) {
     const CountMatrix weighted_transition = weighted_transition_matrix(system);
-    if (weighted_transition.rows() != weighted_transition.cols()) {
-        throw std::invalid_argument("Transfer matrices must be square.");
-    }
-    if (weighted_transition.rows() == 0) {
-        throw std::invalid_argument("Transfer matrix must not be empty.");
-    }
+    assert(weighted_transition.rows() == weighted_transition.cols());
+    assert(weighted_transition.rows() != 0);
     const CountMatrix propagated =
         matrix_power(weighted_transition, step_count);
     CountVector start(weighted_transition.rows());

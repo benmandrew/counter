@@ -4,10 +4,10 @@
 #include <sys/wait.h>
 #include <unistd.h>
 
+#include <cassert>
 #include <cerrno>
 #include <cstring>
 #include <memory>
-#include <stdexcept>
 #include <string>
 #include <vector>
 
@@ -19,21 +19,14 @@ struct ProcessResult {
 };
 
 ProcessResult execute_and_capture(const std::vector<std::string>& arguments) {
-    if (arguments.empty()) {
-        throw std::invalid_argument(
-            "No command provided to execute_and_capture.");
-    }
+    assert(!arguments.empty());
     int pipe_fds[2] = {-1, -1};
-    if (pipe(pipe_fds) != 0) {
-        throw std::runtime_error(std::string("pipe() failed: ") +
-                                 std::strerror(errno));
-    }
+    assert(pipe(pipe_fds) == 0);
     const pid_t child_pid = fork();
     if (child_pid < 0) {
         close(pipe_fds[0]);
         close(pipe_fds[1]);
-        throw std::runtime_error(std::string("fork() failed: ") +
-                                 std::strerror(errno));
+        assert(false);
     }
     if (child_pid == 0) {
         close(pipe_fds[0]);
@@ -67,15 +60,11 @@ ProcessResult execute_and_capture(const std::vector<std::string>& arguments) {
             continue;
         }
         close(pipe_fds[0]);
-        throw std::runtime_error(std::string("read() failed: ") +
-                                 std::strerror(errno));
+        assert(false);
     }
     close(pipe_fds[0]);
     int wait_status = 0;
-    if (waitpid(child_pid, &wait_status, 0) < 0) {
-        throw std::runtime_error(std::string("waitpid() failed: ") +
-                                 std::strerror(errno));
-    }
+    assert(waitpid(child_pid, &wait_status, 0) >= 0);
     int exit_code = -1;
     if (WIFEXITED(wait_status)) {
         exit_code = WEXITSTATUS(wait_status);
@@ -91,8 +80,8 @@ std::string black_executable_path() {
 #ifdef BLACK_EXECUTABLE_PATH
     return BLACK_EXECUTABLE_PATH;
 #else
-    throw std::runtime_error(
-        "BLACK_EXECUTABLE_PATH is not configured by CMake.");
+    assert(false);
+    return "";
 #endif
 }
 
@@ -103,9 +92,7 @@ bool SatisfiabilityChecker::check_satisfiability(
         return it->second;
     }
     const std::string black = black_executable_path();
-    if (access(black.c_str(), F_OK) != 0) {
-        throw std::runtime_error("black executable does not exist: " + black);
-    }
+    assert(access(black.c_str(), F_OK) == 0);
     const std::vector<std::string> command = {black, "solve", "-f",
                                               ltl_formula};
     const ProcessResult result = execute_and_capture(command);
@@ -116,9 +103,7 @@ bool SatisfiabilityChecker::check_satisfiability(
     } else if (result.m_output.find("SAT") != std::string::npos) {
         sat = true;
     } else {
-        throw std::runtime_error(
-            "black produced unexpected output (exit code " +
-            std::to_string(result.m_exit_code) + "): " + result.m_output);
+        assert(false);
     }
     m_cache.emplace(ltl_formula, sat);
     return sat;

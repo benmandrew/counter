@@ -1,8 +1,8 @@
 #include "genetic/generation.hpp"
 
 #include <algorithm>
+#include <cassert>
 #include <numeric>
-#include <stdexcept>
 #include <utility>
 #include <vector>
 
@@ -38,18 +38,13 @@ FilterFunction make_predicate_filter(
 std::vector<ScoredSpecification> score_population(
     const std::vector<Specification>& population,
     const std::vector<WeightedFitnessFunction>& fitness_functions) {
-    if (fitness_functions.empty()) {
-        throw std::invalid_argument(
-            "At least one fitness function is required.");
-    }
+    assert(!fitness_functions.empty());
     const double total_weight =
         std::accumulate(fitness_functions.begin(), fitness_functions.end(), 0.0,
                         [](double acc, const WeightedFitnessFunction& wf) {
                             return acc + wf.weight;
                         });
-    if (total_weight <= 0.0) {
-        throw std::invalid_argument("Total fitness weight must be positive.");
-    }
+    assert(total_weight > 0.0);
     std::vector<ScoredSpecification> scored;
     scored.reserve(population.size());
     for (const Specification& spec : population) {
@@ -77,25 +72,13 @@ std::vector<Specification> evolve_generation(
     const std::vector<WeightedFitnessFunction>& fitness_functions,
     const std::vector<FilterFunction>& filter_functions,
     const EvolutionConfig& config, const RandomSource& random_source) {
-    if (!random_source) {
-        throw std::invalid_argument("random_source must be callable.");
-    }
-    if (fitness_functions.empty()) {
-        throw std::invalid_argument(
-            "At least one fitness function is required.");
-    }
-    if (config.crossover_rate < 0.0 || config.crossover_rate > 1.0) {
-        throw std::invalid_argument("crossover_rate must be in [0, 1].");
-    }
-    if (config.mutation_rate < 0.0 || config.mutation_rate > 1.0) {
-        throw std::invalid_argument("mutation_rate must be in [0, 1].");
-    }
+    assert(random_source);
+    assert(!fitness_functions.empty());
+    assert(config.crossover_rate >= 0.0 && config.crossover_rate <= 1.0);
+    assert(config.mutation_rate >= 0.0 && config.mutation_rate <= 1.0);
     const std::vector<Specification> survivors =
         filter_population(population, filter_functions);
-    if (survivors.empty()) {
-        throw std::invalid_argument(
-            "All specifications were filtered out; cannot evolve.");
-    }
+    assert(!survivors.empty());
     std::vector<ScoredSpecification> scored =
         score_population(survivors, fitness_functions);
     std::sort(scored.begin(), scored.end(),

@@ -1,6 +1,6 @@
+#include <cassert>
 #include <functional>
 #include <optional>
-#include <stdexcept>
 #include <string>
 #include <utility>
 #include <vector>
@@ -24,7 +24,7 @@ Formula::Kind node_type_to_kind(NodeType type) {
         case NodeType::Iff:
             return Formula::Kind::Iff;
     }
-    throw std::logic_error("Unknown formula node type.");
+    assert(false);
 }
 
 std::string node_to_string(const std::vector<Node>& nodes, std::size_t index) {
@@ -59,7 +59,7 @@ std::string node_to_string(const std::vector<Node>& nodes, std::size_t index) {
                 return "(" + left + ") <-> (" + right + ")";
             }
         }
-        throw std::logic_error("Unknown formula node type.");
+        assert(false);
     };
 
     return to_string_recursive(index);
@@ -70,10 +70,7 @@ std::string node_to_string(const std::vector<Node>& nodes, std::size_t index) {
 Formula Formula::make_atom(const std::string& atom) { return Formula(atom); }
 
 Formula Formula::make_unary(Kind kind, const Formula& child) {
-    if (kind != Kind::Not) {
-        throw std::invalid_argument(
-            "make_unary supports only Kind::Not for propositional formulae.");
-    }
+    assert(kind == Kind::Not);
     return Formula("!(" + child.to_string() + ")");
 }
 
@@ -94,16 +91,13 @@ Formula Formula::make_binary(Kind kind, const Formula& left,
                            right.to_string() + ")");
         case Kind::Atom:
         case Kind::Not:
-            throw std::invalid_argument(
-                "make_binary requires a binary operator kind.");
+            assert(false);
     }
-    throw std::logic_error("Unknown formula kind.");
+    assert(false);
 }
 
 Formula::Kind Formula::kind() const {
-    if (m_impl->m_nodes.empty()) {
-        throw std::logic_error("Formula has no root node.");
-    }
+    assert(!m_impl->m_nodes.empty());
     return prop_formula_internal::node_type_to_kind(
         m_impl->m_nodes.back().m_type);
 }
@@ -140,7 +134,7 @@ std::optional<std::pair<Formula, Formula>> Formula::binary_children() const {
         case prop_formula_internal::NodeType::Not:
             return std::nullopt;
     }
-    throw std::logic_error("Unknown formula node type.");
+    assert(false);
 }
 
 Formula Formula::rewrite_post_order(

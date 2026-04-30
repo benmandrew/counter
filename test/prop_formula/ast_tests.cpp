@@ -1,4 +1,3 @@
-#include <stdexcept>
 #include <string>
 
 #include "prop_formula.hpp"
@@ -49,32 +48,10 @@ void test_make_binary_and_inspect() {
            "prop-formula-ast: binary should stringify canonically");
 }
 
-void test_invalid_builder_kind_rejects() {
-    bool unary_threw = false;
-    try {
-        (void)Formula::make_unary(Formula::Kind::And, Formula::make_atom("P"));
-    } catch (const std::invalid_argument&) {
-        unary_threw = true;
-    }
-    expect(unary_threw,
-           "prop-formula-ast: make_unary should reject non-unary kinds");
-
-    bool binary_threw = false;
-    try {
-        (void)Formula::make_binary(Formula::Kind::Not, Formula::make_atom("P"),
-                                   Formula::make_atom("Q"));
-    } catch (const std::invalid_argument&) {
-        binary_threw = true;
-    }
-    expect(binary_threw,
-           "prop-formula-ast: make_binary should reject non-binary kinds");
-}
-
 }  // namespace
 
 void run_prop_formula_ast_tests() {
     test_make_atom_and_inspect();
     test_make_unary_and_inspect();
     test_make_binary_and_inspect();
-    test_invalid_builder_kind_rejects();
 }

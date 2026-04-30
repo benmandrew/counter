@@ -1,6 +1,6 @@
 #include "fitness/syntactic_similarity.hpp"
 
-#include <stdexcept>
+#include <cassert>
 
 #include "prop_formula.hpp"
 #include "requirement.hpp"
@@ -41,12 +41,8 @@ double syntactic_similarity(const Requirement& requirement,
 
 double syntactic_similarity(const Specification& specification,
                             const Specification& other_specification) {
-    if (specification.m_requirements.empty() ||
-        other_specification.m_requirements.empty()) {
-        throw std::invalid_argument(
-            "Specifications must be non-empty to compute syntactic "
-            "similarity.");
-    }
+    assert(!specification.m_requirements.empty() &&
+           !other_specification.m_requirements.empty());
     const double trigger_similarity =
         conjoin_triggers(specification)
             .syntactic_similarity(conjoin_triggers(other_specification));

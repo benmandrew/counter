@@ -65,3 +65,27 @@ double semantic_similarity(const Requirement& requirement1,
     return semantic_similarity(requirement1, requirement2,
                                kDefaultModelCountingBound);
 }
+
+double semantic_similarity(const Specification& specification,
+                           const Specification& other_specification,
+                           std::size_t step_count) {
+    assert(!specification.m_requirements.empty() &&
+           !other_specification.m_requirements.empty());
+    assert(specification.m_requirements.size() ==
+           other_specification.m_requirements.size());
+    double total = 0.0;
+    auto it1 = specification.m_requirements.begin();
+    auto it2 = other_specification.m_requirements.begin();
+    while (it1 != specification.m_requirements.end()) {
+        total += semantic_similarity(*it1, *it2, step_count);
+        ++it1;
+        ++it2;
+    }
+    return total / static_cast<double>(specification.m_requirements.size());
+}
+
+double semantic_similarity(const Specification& specification,
+                           const Specification& other_specification) {
+    return semantic_similarity(specification, other_specification,
+                               kDefaultModelCountingBound);
+}

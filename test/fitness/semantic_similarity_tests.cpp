@@ -39,10 +39,45 @@ void test_semantic_similarity_default_overload_matches_explicit_step_count() {
            "semantic-similarity: default overload should use step_count=5");
 }
 
+void test_semantic_similarity_identical_specifications_score_one() {
+    const Specification spec(
+        {Requirement{Formula("P"), Formula("Q"), timing::immediately()},
+         Requirement{Formula("P"), Formula("!Q"), timing::immediately()}},
+        {"P"}, {"Q"});
+    const double score = semantic_similarity(spec, spec, 1);
+    expect(std::fabs(score - 1.0) < 1e-12,
+           "semantic-similarity: identical specifications should have score 1");
+}
+
+void test_semantic_similarity_specification_averages_requirements() {
+    // Requirements ordered by timing variant index: immediately(0) < within(2)
+    const Requirement req_imm{Formula("P"), Formula("Q"),
+                              timing::immediately()};
+    const Requirement req_within{Formula("P"), Formula("Q"),
+                                 timing::within_ticks(3)};
+    // next_timepoint(1) falls between them, so ordering in spec2 is the same:
+    // req_next first, req_within second
+    const Requirement req_next{Formula("P"), Formula("Q"),
+                               timing::next_timepoint()};
+    // spec1 iteration order: req_imm, req_within
+    const Specification spec1({req_imm, req_within}, {"P"}, {"Q"});
+    // spec2 iteration order: req_next, req_within
+    const Specification spec2({req_next, req_within}, {"P"}, {"Q"});
+    const double score = semantic_similarity(spec1, spec2, 1);
+    const double expected = (semantic_similarity(req_imm, req_next, 1) +
+                             semantic_similarity(req_within, req_within, 1)) /
+                            2.0;
+    expect(std::fabs(score - expected) < 1e-12,
+           "semantic-similarity: specification score should average pairwise "
+           "requirement scores");
+}
+
 }  // namespace
 
 void run_semantic_similarity_tests() {
     test_semantic_similarity_identical_requirements_score_two();
     test_semantic_similarity_formula_value_explicit_step_count();
     test_semantic_similarity_default_overload_matches_explicit_step_count();
+    test_semantic_similarity_identical_specifications_score_one();
+    test_semantic_similarity_specification_averages_requirements();
 }

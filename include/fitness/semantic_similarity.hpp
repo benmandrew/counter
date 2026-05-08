@@ -29,3 +29,24 @@ double semantic_similarity(const Requirement& requirement,
 /// @return                  A semantic similarity score in [0, 1]
 double semantic_similarity(const Requirement& requirement,
                            const Requirement& other_requirement);
+
+/// Computes semantic similarity between two specifications by averaging the
+/// pairwise semantic similarities of corresponding requirements (matched in
+/// set order). Both specifications must be non-empty and have the same number
+/// of requirements.
+///
+/// @param specification       The first specification to compare (non-empty)
+/// @param other_specification The second specification to compare (non-empty)
+/// @param step_count          The bound k on trace length for model counting
+/// @return                    A semantic similarity score in [0, 1]
+double semantic_similarity(const Specification& specification,
+                           const Specification& other_specification,
+                           std::size_t step_count);
+
+/// Overload of specification-level semantic_similarity using the default
+/// model-counting bound.
+/// @param specification       The first specification to compare (non-empty)
+/// @param other_specification The second specification to compare (non-empty)
+/// @return                    A semantic similarity score in [0, 1]
+double semantic_similarity(const Specification& specification,
+                           const Specification& other_specification);

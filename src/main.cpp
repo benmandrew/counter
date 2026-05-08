@@ -5,6 +5,7 @@
 #include <string>
 #include <vector>
 
+#include "fitness/semantic_similarity.hpp"
 #include "fitness/status.hpp"
 #include "fitness/syntactic_similarity.hpp"
 #include "genetic/generation.hpp"
@@ -15,10 +16,13 @@ std::vector<WeightedFitnessFunction> get_fitness_functions(
     auto synsim = [original_spec](const Specification& spec) -> double {
         return syntactic_similarity(spec, original_spec);
     };
+    auto semsim = [original_spec](const Specification& spec) -> double {
+        return semantic_similarity(spec, original_spec);
+    };
     auto status = [](const Specification& spec) -> double {
         return specification_status(spec);
     };
-    return {{synsim, 0.5}, {status, 0.5}};
+    return {{synsim, 0.5}, {semsim, 0.3}, {status, 0.2}};
 }
 
 int main() {

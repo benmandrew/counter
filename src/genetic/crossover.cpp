@@ -2,9 +2,9 @@
 
 #include <cassert>
 #include <optional>
-#include <set>
 #include <type_traits>
 #include <utility>
+#include <vector>
 
 namespace {
 
@@ -199,11 +199,12 @@ Specification crossover_specifications(const Specification& first_parent,
            second_parent.m_requirements.size());
     assert(first_parent.m_in_atoms == second_parent.m_in_atoms &&
            first_parent.m_out_atoms == second_parent.m_out_atoms);
-    std::set<Requirement> offspring_reqs;
+    std::vector<Requirement> offspring_reqs;
+    offspring_reqs.reserve(first_parent.m_requirements.size());
     auto it1 = first_parent.m_requirements.begin();
     auto it2 = second_parent.m_requirements.begin();
     while (it1 != first_parent.m_requirements.end()) {
-        offspring_reqs.insert(
+        offspring_reqs.push_back(
             crossover_requirements(*it1, *it2, random_source));
         ++it1;
         ++it2;

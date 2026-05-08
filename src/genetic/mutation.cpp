@@ -4,7 +4,6 @@
 #include <cstdlib>
 #include <limits>
 #include <optional>
-#include <set>
 #include <string>
 #include <type_traits>
 #include <utility>
@@ -216,14 +215,15 @@ Specification mutate_specification(const Specification& specification,
                  specification.m_in_atoms.end());
     atoms.insert(atoms.end(), specification.m_out_atoms.begin(),
                  specification.m_out_atoms.end());
-    std::vector<Requirement> reqs(specification.m_requirements.begin(),
-                                  specification.m_requirements.end());
+    std::vector<Requirement> reqs = specification.m_requirements;
     const std::size_t idx = random_source.next_index(reqs.size());
     reqs[idx] = mutate_requirement(reqs[idx], atoms, random_source);
-    std::set<Requirement> mutated_reqs(reqs.begin(), reqs.end());
-    if (mutated_reqs.size() != specification.m_requirements.size()) {
-        return specification;
+    for (std::size_t i = 0; i < reqs.size(); ++i) {
+        if (i != idx) {
+            const bool equal = !(reqs[i] < reqs[idx]) && !(reqs[idx] < reqs[i]);
+            if (equal) return specification;
+        }
     }
-    return Specification(std::move(mutated_reqs), specification.m_in_atoms,
+    return Specification(std::move(reqs), specification.m_in_atoms,
                          specification.m_out_atoms);
 }

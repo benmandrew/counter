@@ -1,7 +1,7 @@
 #include <cmath>
-#include <set>
 #include <string>
 #include <utility>
+#include <vector>
 
 #include "fitness/syntactic_similarity.hpp"
 #include "prop_formula.hpp"
@@ -18,11 +18,12 @@ Requirement make_req(const std::string& trigger, const std::string& response) {
 
 Specification make_spec(
     std::initializer_list<std::pair<const char*, const char*>> reqs) {
-    std::set<Requirement> req_set;
+    std::vector<Requirement> req_vec;
+    req_vec.reserve(reqs.size());
     for (const auto& [t, r] : reqs) {
-        req_set.insert(make_req(t, r));
+        req_vec.push_back(make_req(t, r));
     }
-    return Specification(std::move(req_set), {}, {});
+    return Specification(std::move(req_vec), {}, {});
 }
 
 // --- requirement-level ---

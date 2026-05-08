@@ -106,17 +106,23 @@ static bool atom_contains_uppercase(const std::string& atom) {
 }
 
 struct Specification {
-    std::set<Requirement> m_requirements;
+    std::vector<Requirement> m_requirements;
 
     std::vector<std::string> m_in_atoms;
     std::vector<std::string> m_out_atoms;
 
-    explicit Specification(std::set<Requirement> requirements = {},
+    explicit Specification(std::vector<Requirement> requirements = {},
                            std::vector<std::string> in_atoms = {},
                            std::vector<std::string> out_atoms = {})
-        : m_requirements(std::move(requirements)),
-          m_in_atoms(std::move(in_atoms)),
-          m_out_atoms(std::move(out_atoms)) {
+        : m_in_atoms(std::move(in_atoms)), m_out_atoms(std::move(out_atoms)) {
+        // Preserve insertion order while deduplicating.
+        std::set<Requirement> seen;
+        m_requirements.reserve(requirements.size());
+        for (auto& req : requirements) {
+            if (seen.insert(req).second) {
+                m_requirements.push_back(std::move(req));
+            }
+        }
         for (const auto& atom : m_in_atoms) {
             if (atom_contains_uppercase(atom)) {
                 std::cerr

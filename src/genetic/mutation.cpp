@@ -214,6 +214,10 @@ Specification mutate_specification(const Specification& specification,
                                   specification.m_requirements.end());
     const std::size_t idx = random_source.next_index(reqs.size());
     reqs[idx] = mutate_requirement(reqs[idx], atoms, random_source);
-    return Specification(std::set<Requirement>(reqs.begin(), reqs.end()),
-                         specification.m_in_atoms, specification.m_out_atoms);
+    std::set<Requirement> mutated_reqs(reqs.begin(), reqs.end());
+    if (mutated_reqs.size() != specification.m_requirements.size()) {
+        return specification;
+    }
+    return Specification(std::move(mutated_reqs), specification.m_in_atoms,
+                         specification.m_out_atoms);
 }

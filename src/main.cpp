@@ -23,10 +23,10 @@ std::vector<WeightedFitnessFunction> get_fitness_functions(
 
 int main() {
     Specification original_spec(
-        {Requirement(Formula("p"), Formula("q"), timing::immediately(),
-                     "G(p -> q)"),
-         Requirement(Formula("p"), Formula("!q"), timing::immediately(),
-                     "G(p -> !q)")},
+        {Requirement(Formula("p"), Formula("q"), timing::next_timepoint(),
+                     "G(p -> X q)"),
+         Requirement(Formula("p"), Formula("!q"), timing::next_timepoint(),
+                     "G(p -> X (!q))")},
         {"p"}, {"q"});
     // 1. Initial population — each requirement wrapped in a specification
     std::vector<Specification> population = {
@@ -50,6 +50,7 @@ int main() {
     std::size_t generations = 10;
     std::size_t pop_size = population.size();
     for (std::size_t gen_idx = 0; gen_idx < generations; ++gen_idx) {
+        std::cout << "Generation " << gen_idx + 1 << ":\n";
         population = evolve_generation(population, pop_size, fitness_functions,
                                        filters, config, random_source);
     }

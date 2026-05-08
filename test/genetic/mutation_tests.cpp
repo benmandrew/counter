@@ -25,9 +25,12 @@ RandomSource make_source(std::vector<std::size_t> values,
 
 void test_mutation_with_false_source_leaves_formula_unchanged() {
     const Formula formula("P & Q");
-    const Formula mutated = mutate_formula(formula, {}, make_source({}, false));
+    // P & Q has 3 subformulae; fallback 1 gives next_index(3) = 1 != 0, so no
+    // subformula is selected and the formula is left unchanged.
+    const Formula mutated = mutate_formula(formula, {}, make_source({}, 1));
     expect(mutated.to_string() == "(P) & (Q)",
-           "mutation: false source should leave formula unchanged");
+           "mutation: source that never selects a subformula should leave "
+           "formula unchanged");
 }
 
 void test_mutation_renames_atom_to_one_from_atoms_list() {

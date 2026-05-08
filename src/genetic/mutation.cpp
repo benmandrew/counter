@@ -69,9 +69,10 @@ Formula mutate_formula(const Formula& formula,
                        const std::vector<std::string>& atoms,
                        const RandomSource& random_source) {
     assert(random_source);
+    const std::size_t n = formula.n_subformulae();
     const auto mutation_function =
         [&](const Formula& subtree) -> std::optional<Formula> {
-        if (!random_source.next_bool()) {
+        if (random_source.next_index(n) != 0) {
             return std::nullopt;
         }
         switch (subtree.kind()) {

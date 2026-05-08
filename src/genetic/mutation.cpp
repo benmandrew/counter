@@ -11,6 +11,8 @@
 #include <variant>
 #include <vector>
 
+#include "prop_formula.hpp"
+
 namespace {
 
 Formula::Kind pick_binary_kind(const RandomSource& random_source) {
@@ -117,7 +119,9 @@ Formula mutate_formula(const Formula& formula,
         }
         return std::nullopt;
     };
-    return formula.rewrite_post_order(mutation_function);
+    auto f = formula.rewrite_post_order(mutation_function);
+    f.remove_double_negation();
+    return f;
 }
 
 Timing pick_non_parameter_timing(const RandomSource& random_source) {

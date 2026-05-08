@@ -166,11 +166,6 @@ bool RealizabilityChecker::check_realizability(
     } else if (!specification.m_out_atoms.empty()) {
         command.push_back("--outs=" + join_comma(specification.m_out_atoms));
     }
-    std::cout << "Executing command: ";
-    for (const auto& arg : command) {
-        std::cout << arg << " ";
-    }
-    std::cout << std::endl;
     const ProcessResult result = execute_and_capture(command);
     bool realizable = parse_realizability_output(result);
     m_cache.emplace(cache_key, realizable);

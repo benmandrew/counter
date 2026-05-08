@@ -5,45 +5,35 @@
 #include <string>
 #include <vector>
 
+#include "fitness/status.hpp"
 #include "fitness/syntactic_similarity.hpp"
 #include "genetic/generation.hpp"
 #include "requirement.hpp"
 
 std::vector<WeightedFitnessFunction> get_fitness_functions(
     const Specification& original_spec) {
-    auto fitness_fn = [original_spec](const Specification& spec) -> double {
+    auto synsim = [original_spec](const Specification& spec) -> double {
         return syntactic_similarity(spec, original_spec);
     };
-    return {{fitness_fn, 1.0}};
+    auto status = [](const Specification& spec) -> double {
+        return specification_status(spec);
+    };
+    return {{synsim, 0.5}, {status, 0.5}};
 }
 
 int main() {
     Specification original_spec(
-        {Requirement(Formula("p"), Formula("q"), timing::immediately()),
-         Requirement(Formula("p"), Formula("!q"), timing::immediately())},
+        {Requirement(Formula("p"), Formula("q"), timing::immediately(),
+                     "G(p -> q)"),
+         Requirement(Formula("p"), Formula("!q"), timing::immediately(),
+                     "G(p -> !q)")},
         {"p"}, {"q"});
     // 1. Initial population — each requirement wrapped in a specification
     std::vector<Specification> population = {
-        Specification{
-            {Requirement(Formula("p"), Formula("q"), timing::immediately()),
-             Requirement(Formula("p"), Formula("!q"), timing::immediately())},
-            {"p"},
-            {"q"}},
-        Specification{
-            {Requirement(Formula("p"), Formula("q"), timing::immediately()),
-             Requirement(Formula("p"), Formula("!q"), timing::immediately())},
-            {"p"},
-            {"q"}},
-        Specification{
-            {Requirement(Formula("p"), Formula("q"), timing::immediately()),
-             Requirement(Formula("p"), Formula("!q"), timing::immediately())},
-            {"p"},
-            {"q"}},
-        Specification{
-            {Requirement(Formula("p"), Formula("q"), timing::immediately()),
-             Requirement(Formula("p"), Formula("!q"), timing::immediately())},
-            {"p"},
-            {"q"}},
+        original_spec,
+        original_spec,
+        original_spec,
+        original_spec,
     };
     // 2. Fitness functions
     std::vector<WeightedFitnessFunction> fitness_functions =
@@ -71,12 +61,14 @@ int main() {
     std::cout << "Best specification after " << generations
               << " generations:\n";
     if (!scored.empty()) {
-        const Requirement& best =
-            *scored.front().specification.m_requirements.begin();
-        std::cout << "Trigger: " << best.m_trigger.to_string()
-                  << "\nResponse: " << best.m_response.to_string()
-                  << "\nTiming: " << to_string(best.m_timing)
-                  << "\nFitness: " << scored.front().fitness << "\n";
+        for (const Requirement& req :
+             scored.front().specification.m_requirements) {
+            std::cout << "Requirement:\n  Trigger: "
+                      << req.m_trigger.to_string()
+                      << "\n  Response: " << req.m_response.to_string()
+                      << "\n  Timing: " << to_string(req.m_timing)
+                      << "\n  Fitness: " << scored.front().fitness << "\n";
+        }
     }
     return 0;
 }

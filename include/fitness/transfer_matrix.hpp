@@ -116,6 +116,9 @@ struct TransferSystem {
     CountMatrix m_transition_matrix;
     /// Whether matrix represents weighted transitions
     bool m_transition_matrix_is_weighted = false;
+    /// Optional mask of valid final states (1 = valid, 0 = invalid).
+    /// Empty means all states are valid final states.
+    CountVector m_final_state_mask;
 };
 
 /// Constructs a TransferSystem automaton from a requirement. The automaton
@@ -157,3 +160,10 @@ CountMatrix weighted_transition_matrix(const TransferSystem& system);
 CountMatrix build_combined_weighted_transition_matrix(
     const Requirement& requirement1, const Requirement& requirement2,
     const CountVector& joint_valuation_counts = CountVector());
+
+/// Returns the final-state mask for the product automaton of two requirements.
+/// Entry (i*n_right + j) is 1 iff both individual states i and j are valid
+/// final states. Returns an empty vector when all states are valid (no
+/// Eventually timing in either requirement).
+CountVector build_combined_final_state_mask(const Requirement& requirement1,
+                                            const Requirement& requirement2);

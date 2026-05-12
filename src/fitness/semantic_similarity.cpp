@@ -36,6 +36,8 @@ SemanticSimilarityCounts count_semantic_similarity_terms(
         static_cast<std::size_t>(conjunction_weighted.rows()), State{});
     conjunction_system.m_transition_matrix = conjunction_weighted;
     conjunction_system.m_transition_matrix_is_weighted = true;
+    conjunction_system.m_final_state_mask =
+        build_combined_final_state_mask(requirement, other_requirement);
     return {
         count_traces(system, step_count),
         count_traces(other_system, step_count),

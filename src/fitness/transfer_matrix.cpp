@@ -163,6 +163,12 @@ struct RequirementAutomaton {
                 countdown_transition_fn_or_throw(requirement);
             return;
         }
+        if (std::holds_alternative<timing::Eventually>(requirement.m_timing)) {
+            // 2 states: index 0 = not-pending, index 1 = pending
+            this->m_states = {State{false, false, false, 0},
+                              State{false, false, false, 0}};
+            return;
+        }
         const std::vector<State> cells = canonical_states();
         const std::vector<Eigen::Index> active_indices =
             active_state_indices(requirement, cells);
@@ -195,6 +201,15 @@ bool next_state_from_cell(const RequirementAutomaton& automaton,
                           Eigen::Index current_state_index,
                           const State& cell_valuation,
                           Eigen::Index& next_state_index) {
+    if (std::holds_alternative<timing::Eventually>(
+            automaton.m_requirement.m_timing)) {
+        // pending' = (pending || trigger) && !response
+        const bool pending = (current_state_index == 1);
+        const bool new_pending = (pending || cell_valuation.m_trigger_holds) &&
+                                 !cell_valuation.m_response_holds;
+        next_state_index = new_pending ? 1 : 0;
+        return true;
+    }
     if (is_countdown_timing(automaton.m_requirement.m_timing)) {
         bool valid_transition = false;
         const std::size_t next_countdown = automaton.m_countdown_transition(
@@ -387,7 +402,51 @@ TransferSystem build_countdown_transfer_system(
                                              cell_counts);
     const CountVector initial_counts =
         countdown_initial_counts(weighted_transitions);
-    return {states, initial_counts, weighted_transitions, true};
+    return {states, initial_counts, weighted_transitions, true, {}};
+}
+
+// Builds the transfer system for G(trigger -> F response).
+// States: {0: not-pending, 1: pending}. Only state 0 is a valid final state.
+TransferSystem build_eventually_transfer_system(
+    const Requirement& requirement,
+    const CountVector& canonical_valuation_counts) {
+    const std::vector<State> cells = canonical_states();
+    const CountVector cell_counts = canonical_valuation_counts_or_throw(
+        requirement, canonical_valuation_counts,
+        static_cast<Eigen::Index>(cells.size()));
+    // c[0]=¬T∧¬R  c[1]=¬T∧R  c[2]=T∧¬R  c[3]=T∧R
+    const Count c00 = cell_counts(0);
+    const Count c01 = cell_counts(1);
+    const Count c10 = cell_counts(2);
+    const Count c11 = cell_counts(3);
+    CountMatrix m(2, 2);
+    // From not-pending (0): go to not-pending unless (T∧¬R)
+    Count r00 = 0;
+    [[maybe_unused]] bool ov = false;
+    ov = count_add_overflow(c00, c01, r00);
+    assert(!ov);
+    ov = count_add_overflow(r00, c11, r00);
+    assert(!ov);
+    m(0, 0) = r00;
+    m(0, 1) = c10;
+    // From pending (1): go to not-pending when response holds
+    Count r10 = 0;
+    ov = count_add_overflow(c01, c11, r10);
+    assert(!ov);
+    m(1, 0) = r10;
+    Count r11 = 0;
+    ov = count_add_overflow(c00, c10, r11);
+    assert(!ov);
+    m(1, 1) = r11;
+    const std::vector<State> states = {State{false, false, false, 0},
+                                       State{false, false, false, 0}};
+    CountVector final_mask(2);
+    final_mask(0) = 1;
+    final_mask(1) = 0;
+    CountVector initial_counts(2);
+    initial_counts(0) = m(0, 0) + m(0, 1);
+    initial_counts(1) = m(1, 0) + m(1, 1);
+    return {states, initial_counts, m, true, final_mask};
 }
 
 }  // namespace
@@ -436,6 +495,10 @@ TransferSystem build_transfer_system(
         return build_countdown_transfer_system(requirement,
                                                canonical_valuation_counts);
     }
+    if (std::holds_alternative<timing::Eventually>(requirement.m_timing)) {
+        return build_eventually_transfer_system(requirement,
+                                                canonical_valuation_counts);
+    }
     const std::vector<State> all_states = canonical_states();
     const CountVector all_counts = canonical_valuation_counts_or_throw(
         requirement, canonical_valuation_counts,
@@ -447,7 +510,7 @@ TransferSystem build_transfer_system(
     const CountVector active_counts = gather_counts(all_counts, active_indices);
     const CountMatrix transition_matrix =
         build_unweighted_transition_matrix(requirement, active_states);
-    return {active_states, active_counts, transition_matrix, false};
+    return {active_states, active_counts, transition_matrix, false, {}};
 }
 
 // Returns a weighted transition matrix. If already weighted, this is a
@@ -526,4 +589,29 @@ CountMatrix build_combined_weighted_transition_matrix(
     }
 
     return weighted;
+}
+
+CountVector build_combined_final_state_mask(const Requirement& requirement1,
+                                            const Requirement& requirement2) {
+    const bool left_eventually =
+        std::holds_alternative<timing::Eventually>(requirement1.m_timing);
+    const bool right_eventually =
+        std::holds_alternative<timing::Eventually>(requirement2.m_timing);
+    if (!left_eventually && !right_eventually) {
+        return {};
+    }
+    const RequirementAutomaton left(requirement1);
+    const RequirementAutomaton right(requirement2);
+    const std::size_t n_left = left.m_states.size();
+    const std::size_t n_right = right.m_states.size();
+    CountVector mask(static_cast<Eigen::Index>(n_left * n_right));
+    for (std::size_t i = 0; i < n_left; ++i) {
+        const bool left_valid = !left_eventually || (i == 0);
+        for (std::size_t j = 0; j < n_right; ++j) {
+            const bool right_valid = !right_eventually || (j == 0);
+            mask(static_cast<Eigen::Index>(i * n_right + j)) =
+                (left_valid && right_valid) ? 1 : 0;
+        }
+    }
+    return mask;
 }

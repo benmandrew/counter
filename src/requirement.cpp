@@ -34,8 +34,10 @@ std::string to_string(const Timing& timing) {
                 return "at the next timepoint";
             } else if constexpr (std::is_same_v<T, timing::WithinTicks>) {
                 return "within " + std::to_string(value.m_ticks) + " ticks";
-            } else {
+            } else if constexpr (std::is_same_v<T, timing::ForTicks>) {
                 return "for " + std::to_string(value.m_ticks) + " ticks";
+            } else {
+                return "eventually";
             }
         },
         timing);

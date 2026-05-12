@@ -126,8 +126,10 @@ Formula mutate_formula(const Formula& formula,
 }
 
 Timing pick_non_parameter_timing(const RandomSource& random_source) {
-    return random_source.next_bool() ? timing::immediately()
-                                     : timing::next_timepoint();
+    const std::size_t choice = random_source.next_index(3);
+    if (choice == 0) return timing::immediately();
+    if (choice == 1) return timing::next_timepoint();
+    return timing::eventually();
 }
 
 Timing pick_parameter_timing(std::size_t ticks,
@@ -157,13 +159,20 @@ Timing mutate_timing(const Timing& timing, const RandomSource& random_source) {
     const auto mutation_function = [&](const auto& value) -> Timing {
         using T = std::decay_t<decltype(value)>;
         if constexpr (std::is_same_v<T, timing::Immediately> ||
-                      std::is_same_v<T, timing::NextTimepoint>) {
+                      std::is_same_v<T, timing::NextTimepoint> ||
+                      std::is_same_v<T, timing::Eventually>) {
             if (!random_source.next_bool()) {
-                // Replace with the other non-parameterized timing.
+                // Replace with one of the other two non-parameterized timings.
+                const std::size_t other = random_source.next_index(2);
                 if constexpr (std::is_same_v<T, timing::Immediately>) {
-                    return timing::next_timepoint();
+                    return other == 0 ? timing::next_timepoint()
+                                      : timing::eventually();
+                } else if constexpr (std::is_same_v<T, timing::NextTimepoint>) {
+                    return other == 0 ? timing::immediately()
+                                      : timing::eventually();
                 } else {
-                    return timing::immediately();
+                    return other == 0 ? timing::immediately()
+                                      : timing::next_timepoint();
                 }
             }
             // Replace with a parameterized timing.

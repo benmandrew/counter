@@ -56,6 +56,14 @@ void test_realizable_for_ticks() {
            "spot-runner: G(p -> q & Xq) should be realisable");
 }
 
+void test_realizable_eventually() {
+    RealizabilityChecker checker;
+    Requirement req =
+        make_req("p", "q", timing::eventually(), "G((p) -> (F(q)))");
+    expect(checker.check_realizability(Specification({}, {req}, {"p"}, {"q"})),
+           "spot-runner: G(p -> Fq) should be realisable");
+}
+
 void test_realizable_with_assumption() {
     RealizabilityChecker checker;
     // Assumption: p persists once set (environment constraint)
@@ -112,6 +120,7 @@ void test_individually_realizable_but_jointly_unrealizable() {
 }  // namespace
 
 void run_spot_runner_tests() {
+    test_realizable_eventually();
     test_realizable_immediately();
     test_unrealizable_immediately();
     test_realizable_next_timepoint();

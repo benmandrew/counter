@@ -81,6 +81,15 @@ void test_timing_mutation_can_switch_to_parameterized_timing() {
            "mutation: parameterized timing should use generated tick count");
 }
 
+void test_timing_mutation_replaces_eventually_with_non_parameterized() {
+    // false source → enters the "replace with other non-parameterized" branch;
+    // next_index(2) == 0 → picks immediately when current is eventually.
+    const Timing mutated =
+        mutate_timing(timing::eventually(), make_source({}, false));
+    expect(std::holds_alternative<timing::Immediately>(mutated),
+           "mutation: eventually should mutate to immediately on replace");
+}
+
 void test_timing_mutation_can_change_parameter_only() {
     const Timing mutated =
         mutate_timing(timing::within_ticks(3), make_source({1, 0, 1}, 1));
@@ -100,6 +109,7 @@ void run_mutation_tests() {
     test_mutation_atom_unchanged_when_no_atoms_provided();
     test_mutation_atom_selected_from_atoms_list();
     test_timing_mutation_replaces_non_parameterized_timing();
+    test_timing_mutation_replaces_eventually_with_non_parameterized();
     test_timing_mutation_can_switch_to_parameterized_timing();
     test_timing_mutation_can_change_parameter_only();
 }

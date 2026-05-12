@@ -106,9 +106,13 @@ Count count_traces(const TransferSystem& system, std::size_t step_count) {
     CountVector start(weighted_transition.rows());
     start.setZero();
     start(0) = 1;
-    CountVector ones(weighted_transition.rows());
-    ones.setOnes();
-    const CountVector propagated_ones =
-        checked_matrix_vector_multiply(propagated, ones);
-    return checked_dot_product(start, propagated_ones);
+    CountVector final_mask(weighted_transition.rows());
+    if (system.m_final_state_mask.size() == 0) {
+        final_mask.setOnes();
+    } else {
+        final_mask = system.m_final_state_mask;
+    }
+    const CountVector propagated_mask =
+        checked_matrix_vector_multiply(propagated, final_mask);
+    return checked_dot_product(start, propagated_mask);
 }

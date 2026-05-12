@@ -31,8 +31,12 @@ struct ForTicks {
     std::size_t m_ticks;
 };
 
+/// Response must hold at some timepoint at or after the trigger.
+struct Eventually {};
+
 /// Algebraic data type for requirement timing.
-using Timing = std::variant<Immediately, NextTimepoint, WithinTicks, ForTicks>;
+using Timing =
+    std::variant<Immediately, NextTimepoint, WithinTicks, ForTicks, Eventually>;
 
 inline Timing immediately() { return Immediately{}; }
 
@@ -41,6 +45,8 @@ inline Timing next_timepoint() { return NextTimepoint{}; }
 inline Timing within_ticks(std::size_t ticks) { return WithinTicks{ticks}; }
 
 inline Timing for_ticks(std::size_t ticks) { return ForTicks{ticks}; }
+
+inline Timing eventually() { return Eventually{}; }
 
 }  // namespace timing
 

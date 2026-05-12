@@ -141,7 +141,7 @@ bool trace_satisfies_requirement(const Requirement& requirement,
                                                      : countdown - 1;
                 }
                 return true;
-            } else {
+            } else if constexpr (std::is_same_v<T, timing::ForTicks>) {
                 std::size_t countdown = 0;
                 for (const TraceStep& step : trace) {
                     if (!step.m_response_holds) {
@@ -159,6 +159,16 @@ bool trace_satisfies_requirement(const Requirement& requirement,
                     }
                 }
                 return true;
+            } else {
+                bool pending = false;
+                for (const TraceStep& step : trace) {
+                    if (step.m_trigger_holds && !step.m_response_holds) {
+                        pending = true;
+                    } else if (step.m_response_holds) {
+                        pending = false;
+                    }
+                }
+                return !pending;
             }
         },
         requirement.m_timing);

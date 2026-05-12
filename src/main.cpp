@@ -25,14 +25,23 @@ std::vector<WeightedFitnessFunction> get_fitness_functions(
     return {{synsim, 0.5}, {semsim, 0.3}, {status, 0.2}};
 }
 
+Specification get_spec() {
+    std::vector<Requirement> assumptions = {};
+    std::vector<Requirement> guarantees = {
+        Requirement(Formula("r1"), Formula("g1"), timing::eventually(),
+                    "G(r1 -> F g1)"),
+        Requirement(Formula("r2"), Formula("g2"), timing::eventually(),
+                    "G(r2 -> F g2)"),
+        Requirement(Formula("!a"), Formula("!g1 & !g2"), timing::immediately(),
+                    "G(!a -> (!g1 & !g2))"),
+    };
+    std::vector<std::string> in_atoms = {"a", "r1", "r2"};
+    std::vector<std::string> out_atoms = {"g1", "g2"};
+    return Specification(assumptions, guarantees, in_atoms, out_atoms);
+}
+
 int main() {
-    Specification original_spec(
-        {},
-        {Requirement(Formula("p"), Formula("q"), timing::next_timepoint(),
-                     "G(p -> X q)"),
-         Requirement(Formula("p"), Formula("!q"), timing::next_timepoint(),
-                     "G(p -> X (!q))")},
-        {"p"}, {"q"});
+    Specification original_spec = get_spec();
     // 1. Initial population — each requirement wrapped in a specification
     std::vector<Specification> population = {
         original_spec,

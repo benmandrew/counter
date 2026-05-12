@@ -11,7 +11,7 @@
 #include "genetic/generation.hpp"
 #include "requirement.hpp"
 
-std::vector<WeightedFitnessFunction> get_fitness_functions(
+AggregateWeightedFitnessFunction get_fitness_function(
     const Specification& original_spec) {
     auto synsim = [original_spec](const Specification& spec) -> double {
         return syntactic_similarity(spec, original_spec);
@@ -22,7 +22,8 @@ std::vector<WeightedFitnessFunction> get_fitness_functions(
     auto status = [](const Specification& spec) -> double {
         return specification_status(spec);
     };
-    return {{synsim, 0.5}, {semsim, 0.3}, {status, 0.2}};
+    return AggregateWeightedFitnessFunction(
+        {{synsim, 0.5}, {semsim, 0.3}, {status, 0.2}});
 }
 
 Specification get_spec() {
@@ -50,8 +51,8 @@ int main() {
         original_spec,
     };
     // 2. Fitness functions
-    std::vector<WeightedFitnessFunction> fitness_functions =
-        get_fitness_functions(original_spec);
+    AggregateWeightedFitnessFunction fitness_function =
+        get_fitness_function(original_spec);
     // 3. No filtering for demo
     std::vector<FilterFunction> filters;
 
@@ -65,11 +66,11 @@ int main() {
     std::size_t pop_size = population.size();
     for (std::size_t gen_idx = 0; gen_idx < generations; ++gen_idx) {
         std::cout << "Generation " << gen_idx + 1 << ":\n";
-        population = evolve_generation(population, pop_size, fitness_functions,
+        population = evolve_generation(population, pop_size, fitness_function,
                                        filters, config, random_source);
     }
     // 7. Score and print the best specification
-    auto scored = score_population(population, fitness_functions);
+    auto scored = score_population(population, fitness_function);
     std::sort(scored.begin(), scored.end(), [](const auto& a, const auto& b) {
         return a.fitness > b.fitness;
     });

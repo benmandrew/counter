@@ -37,10 +37,10 @@ FilterFunction make_predicate_filter(
 
 std::vector<ScoredSpecification> score_population(
     const std::vector<Specification>& population,
-    const std::vector<WeightedFitnessFunction>& fitness_functions) {
-    assert(!fitness_functions.empty());
+    const AggregateWeightedFitnessFunction& fitness_function) {
+    assert(!fitness_function.empty());
     const double total_weight =
-        std::accumulate(fitness_functions.begin(), fitness_functions.end(), 0.0,
+        std::accumulate(fitness_function.begin(), fitness_function.end(), 0.0,
                         [](double acc, const WeightedFitnessFunction& wf) {
                             return acc + wf.weight;
                         });
@@ -49,7 +49,7 @@ std::vector<ScoredSpecification> score_population(
     scored.reserve(population.size());
     for (const Specification& spec : population) {
         double weighted_sum = 0.0;
-        for (const WeightedFitnessFunction& wf : fitness_functions) {
+        for (const WeightedFitnessFunction& wf : fitness_function) {
             weighted_sum += wf.function(spec) * wf.weight;
         }
         scored.push_back({spec, weighted_sum / total_weight});
@@ -69,7 +69,7 @@ std::vector<Specification> filter_population(
 
 std::vector<Specification> evolve_generation(
     const std::vector<Specification>& population, std::size_t target_size,
-    const std::vector<WeightedFitnessFunction>& fitness_functions,
+    const AggregateWeightedFitnessFunction& fitness_functions,
     const std::vector<FilterFunction>& filter_functions,
     const EvolutionConfig& config, const RandomSource& random_source) {
     assert(random_source);

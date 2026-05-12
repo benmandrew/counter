@@ -45,8 +45,9 @@ std::string first_trigger(const Specification& spec) {
 void test_score_population_single_function() {
     const std::vector<Specification> pop = {make_spec("p", "q"),
                                             make_spec("r", "s")};
-    const std::vector<WeightedFitnessFunction> fns = {
-        {[](const Specification&) { return 0.5; }}};
+    const AggregateWeightedFitnessFunction fns =
+        AggregateWeightedFitnessFunction(
+            {{[](const Specification&) { return 0.5; }, 1.0}});
     const auto scored = score_population(pop, fns);
     expect(scored.size() == 2,
            "score_population: should score every specification");
@@ -59,9 +60,10 @@ void test_score_population_single_function() {
 void test_score_population_weighted_aggregation() {
     const std::vector<Specification> pop = {make_spec("p", "q")};
     // (0.0 * 1.0 + 1.0 * 3.0) / (1.0 + 3.0) == 0.75
-    const std::vector<WeightedFitnessFunction> fns = {
-        {[](const Specification&) { return 0.0; }, 1.0},
-        {[](const Specification&) { return 1.0; }, 3.0}};
+    const AggregateWeightedFitnessFunction fns =
+        AggregateWeightedFitnessFunction(
+            {{[](const Specification&) { return 0.0; }, 1.0},
+             {[](const Specification&) { return 1.0; }, 3.0}});
     const auto scored = score_population(pop, fns);
     expect(scored.size() == 1,
            "score_population: should produce one entry for a single-element "
@@ -73,9 +75,10 @@ void test_score_population_weighted_aggregation() {
 void test_score_population_equal_weights_give_average() {
     const std::vector<Specification> pop = {make_spec("p", "q")};
     // (0.2 * 1.0 + 0.8 * 1.0) / 2.0 == 0.5
-    const std::vector<WeightedFitnessFunction> fns = {
-        {[](const Specification&) { return 0.2; }},
-        {[](const Specification&) { return 0.8; }}};
+    const AggregateWeightedFitnessFunction fns =
+        AggregateWeightedFitnessFunction(
+            {{[](const Specification&) { return 0.2; }, 1.0},
+             {[](const Specification&) { return 0.8; }, 1.0}});
     const auto scored = score_population(pop, fns);
     expect(scored[0].fitness == 0.5,
            "score_population: equal weights should give arithmetic average");
@@ -172,8 +175,9 @@ void test_filter_population_population_level_maximal_elements() {
 void test_evolve_generation_produces_target_size() {
     const std::vector<Specification> pop = {
         make_spec("p", "q"), make_spec("r", "s"), make_spec("t", "u")};
-    const std::vector<WeightedFitnessFunction> fns = {
-        {[](const Specification&) { return 0.5; }}};
+    const AggregateWeightedFitnessFunction fns =
+        AggregateWeightedFitnessFunction(
+            {{[](const Specification&) { return 0.5; }, 1.0}});
     const EvolutionConfig config{0.0, 0.0};
     const auto next_gen =
         evolve_generation(pop, 2, fns, {}, config, make_source({}, 0));
@@ -187,13 +191,15 @@ void test_evolve_generation_selects_fittest() {
     // so with zero rates the offspring are unmodified copies of p and t.
     const std::vector<Specification> pop = {
         make_spec("p", "q"), make_spec("r", "s"), make_spec("t", "u")};
-    const std::vector<WeightedFitnessFunction> fns = {
-        {[](const Specification& s) -> double {
-            const auto t = first_trigger(s);
-            if (t == "p") return 0.9;
-            if (t == "t") return 0.5;
-            return 0.1;
-        }}};
+    const AggregateWeightedFitnessFunction fns =
+        AggregateWeightedFitnessFunction(
+            {{[](const Specification& s) -> double {
+                  const auto t = first_trigger(s);
+                  if (t == "p") return 0.9;
+                  if (t == "t") return 0.5;
+                  return 0.1;
+              },
+              1.0}});
     const EvolutionConfig config{0.0, 0.0};
     const auto next_gen =
         evolve_generation(pop, 2, fns, {}, config, make_source({}, 0));
@@ -209,8 +215,9 @@ void test_evolve_generation_selects_fittest() {
 void test_evolve_generation_caps_at_survivor_count() {
     const std::vector<Specification> pop = {make_spec("p", "q"),
                                             make_spec("r", "s")};
-    const std::vector<WeightedFitnessFunction> fns = {
-        {[](const Specification&) { return 0.5; }}};
+    const AggregateWeightedFitnessFunction fns =
+        AggregateWeightedFitnessFunction(
+            {{[](const Specification&) { return 0.5; }, 1.0}});
     const EvolutionConfig config{0.0, 0.0};
     const auto next_gen =
         evolve_generation(pop, 5, fns, {}, config, make_source({}, 0));
@@ -223,8 +230,9 @@ void test_evolve_generation_applies_filter_before_selection() {
     // Filter removes r; only p survives, so the result must come from p.
     const std::vector<Specification> pop = {make_spec("p", "q"),
                                             make_spec("r", "s")};
-    const std::vector<WeightedFitnessFunction> fns = {
-        {[](const Specification&) { return 0.5; }}};
+    const AggregateWeightedFitnessFunction fns =
+        AggregateWeightedFitnessFunction(
+            {{[](const Specification&) { return 0.5; }, 1.0}});
     const std::vector<FilterFunction> filters = {make_predicate_filter(
         [](const Specification& s) { return first_trigger(s) == "p"; })};
     const EvolutionConfig config{0.0, 0.0};

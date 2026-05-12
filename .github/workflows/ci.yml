@@ -7,7 +7,7 @@ on:
   pull_request:
 
 jobs:
-  build-and-test:
+  check:
     runs-on: ubuntu-latest
 
     steps:
@@ -23,17 +23,7 @@ jobs:
         run: |
           sudo apt-get remove --purge -y cmake
           python3 -m pip install --upgrade pip
-          python3 -m pip install cpplint
-          python3 -m pip install cmake --upgrade
-          python3 -m pip install sphinx furo breathe
-
-      - name: Cache third-party dependencies
-        uses: actions/cache@v4
-        with:
-          path: build/third_party
-          key: ${{ runner.os }}-third-party-${{ hashFiles('cmake/spot.cmake', 'cmake/ganak.cmake', 'cmake/black.cmake') }}
-          restore-keys: |
-            ${{ runner.os }}-third-party-
+          python3 -m pip install cpplint cmake sphinx furo breathe
 
       - name: Configure project
         run: cmake --preset debug
@@ -47,8 +37,45 @@ jobs:
       - name: Build docs
         run: cmake --build --preset debug --target docs
 
+  build-and-test:
+    runs-on: ubuntu-latest
+
+    strategy:
+      matrix:
+        preset: [debug, release]
+        include:
+          - preset: debug
+            build_dir: build
+          - preset: release
+            build_dir: build-release
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libfmt-dev
+
+      - name: Upgrade CMake
+        run: |
+          sudo apt-get remove --purge -y cmake
+          python3 -m pip install --upgrade pip cmake
+
+      - name: Cache third-party dependencies
+        uses: actions/cache@v4
+        with:
+          path: ${{ matrix.build_dir }}/third_party
+          key: ${{ runner.os }}-${{ matrix.preset }}-third-party-${{ hashFiles('cmake/spot.cmake', 'cmake/ganak.cmake', 'cmake/black.cmake') }}
+          restore-keys: |
+            ${{ runner.os }}-${{ matrix.preset }}-third-party-
+
+      - name: Configure project
+        run: cmake --preset ${{ matrix.preset }}
+
       - name: Build project
-        run: cmake --build --preset debug
+        run: cmake --build --preset ${{ matrix.preset }}
 
       - name: Run tests
-        run: ctest --preset debug
+        run: ctest --preset ${{ matrix.preset }}

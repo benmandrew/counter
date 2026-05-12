@@ -1,6 +1,7 @@
 #include "fitness/semantic_similarity.hpp"
 
 #include <cassert>
+#include <vector>
 
 #include "fitness/model_counter.hpp"
 #include "fitness/transfer_matrix.hpp"
@@ -69,19 +70,26 @@ double semantic_similarity(const Requirement& requirement1,
 double semantic_similarity(const Specification& specification,
                            const Specification& other_specification,
                            std::size_t step_count) {
-    assert(!specification.m_requirements.empty() &&
-           !other_specification.m_requirements.empty());
-    assert(specification.m_requirements.size() ==
-           other_specification.m_requirements.size());
+    assert(specification.m_assumptions.size() ==
+           other_specification.m_assumptions.size());
+    assert(specification.m_guarantees.size() ==
+           other_specification.m_guarantees.size());
+    const std::size_t total_count =
+        specification.m_assumptions.size() + specification.m_guarantees.size();
+    assert(total_count > 0 && (other_specification.m_assumptions.size() +
+                               other_specification.m_guarantees.size()) > 0);
     double total = 0.0;
-    auto it1 = specification.m_requirements.begin();
-    auto it2 = other_specification.m_requirements.begin();
-    while (it1 != specification.m_requirements.end()) {
-        total += semantic_similarity(*it1, *it2, step_count);
-        ++it1;
-        ++it2;
-    }
-    return total / static_cast<double>(specification.m_requirements.size());
+    auto accumulate = [&](const std::vector<Requirement>& reqs1,
+                          const std::vector<Requirement>& reqs2) {
+        auto it1 = reqs1.begin();
+        auto it2 = reqs2.begin();
+        for (; it1 != reqs1.end(); ++it1, ++it2) {
+            total += semantic_similarity(*it1, *it2, step_count);
+        }
+    };
+    accumulate(specification.m_assumptions, other_specification.m_assumptions);
+    accumulate(specification.m_guarantees, other_specification.m_guarantees);
+    return total / static_cast<double>(total_count);
 }
 
 double semantic_similarity(const Specification& specification,

@@ -195,24 +195,37 @@ Requirement crossover_requirements(const Requirement& first_parent,
     return offspring;
 }
 
+namespace {
+
+std::vector<Requirement> crossover_req_lists(
+    const std::vector<Requirement>& first,
+    const std::vector<Requirement>& second, const RandomSource& random_source) {
+    assert(first.size() == second.size());
+    std::vector<Requirement> offspring;
+    offspring.reserve(first.size());
+    for (std::size_t i = 0; i < first.size(); ++i) {
+        offspring.push_back(
+            crossover_requirements(first[i], second[i], random_source));
+    }
+    return offspring;
+}
+
+}  // namespace
+
 Specification crossover_specifications(const Specification& first_parent,
                                        const Specification& second_parent,
                                        const RandomSource& random_source) {
     assert(random_source);
-    assert(first_parent.m_requirements.size() ==
-           second_parent.m_requirements.size());
+    assert(first_parent.m_assumptions.size() ==
+           second_parent.m_assumptions.size());
+    assert(first_parent.m_guarantees.size() ==
+           second_parent.m_guarantees.size());
     assert(first_parent.m_in_atoms == second_parent.m_in_atoms &&
            first_parent.m_out_atoms == second_parent.m_out_atoms);
-    std::vector<Requirement> offspring_reqs;
-    offspring_reqs.reserve(first_parent.m_requirements.size());
-    auto it1 = first_parent.m_requirements.begin();
-    auto it2 = second_parent.m_requirements.begin();
-    while (it1 != first_parent.m_requirements.end()) {
-        offspring_reqs.push_back(
-            crossover_requirements(*it1, *it2, random_source));
-        ++it1;
-        ++it2;
-    }
-    return Specification(std::move(offspring_reqs), first_parent.m_in_atoms,
-                         first_parent.m_out_atoms);
+    return Specification(
+        crossover_req_lists(first_parent.m_assumptions,
+                            second_parent.m_assumptions, random_source),
+        crossover_req_lists(first_parent.m_guarantees,
+                            second_parent.m_guarantees, random_source),
+        first_parent.m_in_atoms, first_parent.m_out_atoms);
 }

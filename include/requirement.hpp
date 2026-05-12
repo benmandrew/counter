@@ -106,23 +106,30 @@ static bool atom_contains_uppercase(const std::string& atom) {
 }
 
 struct Specification {
-    std::vector<Requirement> m_requirements;
+    std::vector<Requirement> m_assumptions;
+    std::vector<Requirement> m_guarantees;
 
     std::vector<std::string> m_in_atoms;
     std::vector<std::string> m_out_atoms;
 
-    explicit Specification(std::vector<Requirement> requirements = {},
+    explicit Specification(std::vector<Requirement> assumptions = {},
+                           std::vector<Requirement> guarantees = {},
                            std::vector<std::string> in_atoms = {},
                            std::vector<std::string> out_atoms = {})
         : m_in_atoms(std::move(in_atoms)), m_out_atoms(std::move(out_atoms)) {
-        // Preserve insertion order while deduplicating.
-        std::set<Requirement> seen;
-        m_requirements.reserve(requirements.size());
-        for (auto& req : requirements) {
-            if (seen.insert(req).second) {
-                m_requirements.push_back(std::move(req));
+        // Preserve insertion order while deduplicating within each bucket.
+        auto deduplicate = [](std::vector<Requirement> reqs,
+                              std::vector<Requirement>& out) {
+            std::set<Requirement> seen;
+            out.reserve(reqs.size());
+            for (auto& req : reqs) {
+                if (seen.insert(req).second) {
+                    out.push_back(std::move(req));
+                }
             }
-        }
+        };
+        deduplicate(std::move(assumptions), m_assumptions);
+        deduplicate(std::move(guarantees), m_guarantees);
         for (const auto& atom : m_in_atoms) {
             if (atom_contains_uppercase(atom)) {
                 std::cerr
@@ -140,7 +147,9 @@ struct Specification {
     }
 
     friend bool operator<(const Specification& lhs, const Specification& rhs) {
-        return lhs.m_requirements < rhs.m_requirements;
+        if (lhs.m_assumptions < rhs.m_assumptions) return true;
+        if (rhs.m_assumptions < lhs.m_assumptions) return false;
+        return lhs.m_guarantees < rhs.m_guarantees;
     }
 };
 

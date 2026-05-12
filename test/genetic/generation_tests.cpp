@@ -19,7 +19,7 @@ Requirement make_req(const std::string& trigger, const std::string& response,
 
 Specification make_spec(const std::string& trigger, const std::string& response,
                         Timing timing = timing::immediately()) {
-    return Specification({make_req(trigger, response, timing)}, {}, {});
+    return Specification({}, {make_req(trigger, response, timing)}, {}, {});
 }
 
 RandomSource make_source(std::vector<std::size_t> values,
@@ -37,7 +37,7 @@ RandomSource make_source(std::vector<std::size_t> values,
 }
 
 std::string first_trigger(const Specification& spec) {
-    return spec.m_requirements.begin()->m_trigger.to_string();
+    return spec.m_guarantees.begin()->m_trigger.to_string();
 }
 
 // --- score_population ---
@@ -144,14 +144,14 @@ void test_filter_population_population_level_maximal_elements() {
             std::min_element(
                 candidates.begin(), candidates.end(),
                 [](const Specification& a, const Specification& b) {
-                    return a.m_requirements.begin()->m_trigger.n_subformulae() <
-                           b.m_requirements.begin()->m_trigger.n_subformulae();
+                    return a.m_guarantees.begin()->m_trigger.n_subformulae() <
+                           b.m_guarantees.begin()->m_trigger.n_subformulae();
                 })
-                ->m_requirements.begin()
+                ->m_guarantees.begin()
                 ->m_trigger.n_subformulae();
         std::vector<Specification> result;
         for (const Specification& s : candidates) {
-            if (s.m_requirements.begin()->m_trigger.n_subformulae() ==
+            if (s.m_guarantees.begin()->m_trigger.n_subformulae() ==
                 min_nodes) {
                 result.push_back(s);
             }

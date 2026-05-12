@@ -107,23 +107,37 @@ std::string join_comma(const std::vector<std::string>& items) {
 }
 
 void check_specification_ltls_present(const Specification& specification) {
-    assert(!specification.m_requirements.empty());
+    assert(!specification.m_guarantees.empty());
     for ([[maybe_unused]] const Requirement& req :
-         specification.m_requirements) {
+         specification.m_assumptions) {
+        assert(req.m_ltl.has_value());
+    }
+    for ([[maybe_unused]] const Requirement& req : specification.m_guarantees) {
         assert(req.m_ltl.has_value());
     }
 }
 
-void build_specification_conjunction(const Specification& specification,
-                                     std::string& conj_ltl) {
+void build_ltl_conjunction(const std::vector<Requirement>& reqs,
+                           std::string& out) {
     bool first = true;
-    for (const Requirement& req : specification.m_requirements) {
-        if (!first) {
-            conj_ltl += " & ";
-        }
-        conj_ltl += "(" + req.m_ltl.value() + ")";
+    for (const Requirement& req : reqs) {
+        if (!first) out += " & ";
+        out += "(" + req.m_ltl.value() + ")";
         first = false;
     }
+}
+
+void build_specification_formula(const Specification& specification,
+                                 std::string& formula) {
+    if (specification.m_assumptions.empty()) {
+        build_ltl_conjunction(specification.m_guarantees, formula);
+        return;
+    }
+    std::string conj_a;
+    build_ltl_conjunction(specification.m_assumptions, conj_a);
+    std::string conj_g;
+    build_ltl_conjunction(specification.m_guarantees, conj_g);
+    formula = "(" + conj_a + ") -> (" + conj_g + ")";
 }
 
 bool parse_realizability_output(const ProcessResult& result) {
@@ -154,7 +168,7 @@ bool RealizabilityChecker::check_realizability(
     const Specification& specification) {
     check_specification_ltls_present(specification);
     std::string conj_ltl;
-    build_specification_conjunction(specification, conj_ltl);
+    build_specification_formula(specification, conj_ltl);
     const std::string cache_key = conj_ltl + "|" +
                                   join_comma(specification.m_in_atoms) + "|" +
                                   join_comma(specification.m_out_atoms);

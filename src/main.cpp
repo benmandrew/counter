@@ -27,6 +27,7 @@ std::vector<WeightedFitnessFunction> get_fitness_functions(
 
 int main() {
     Specification original_spec(
+        {},
         {Requirement(Formula("p"), Formula("q"), timing::next_timepoint(),
                      "G(p -> X q)"),
          Requirement(Formula("p"), Formula("!q"), timing::next_timepoint(),
@@ -67,7 +68,7 @@ int main() {
               << " generations:\n";
     if (!scored.empty()) {
         for (const Requirement& req :
-             scored.front().specification.m_requirements) {
+             scored.front().specification.m_guarantees) {
             std::cout << "Requirement:\n  Trigger: "
                       << req.m_trigger.to_string()
                       << "\n  Response: " << req.m_response.to_string()

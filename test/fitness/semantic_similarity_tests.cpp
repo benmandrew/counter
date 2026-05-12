@@ -41,6 +41,7 @@ void test_semantic_similarity_default_overload_matches_explicit_step_count() {
 
 void test_semantic_similarity_identical_specifications_score_one() {
     const Specification spec(
+        {},
         {Requirement{Formula("P"), Formula("Q"), timing::immediately()},
          Requirement{Formula("P"), Formula("!Q"), timing::immediately()}},
         {"P"}, {"Q"});
@@ -60,9 +61,9 @@ void test_semantic_similarity_specification_averages_requirements() {
     const Requirement req_next{Formula("P"), Formula("Q"),
                                timing::next_timepoint()};
     // spec1 iteration order: req_imm, req_within
-    const Specification spec1({req_imm, req_within}, {"P"}, {"Q"});
+    const Specification spec1({}, {req_imm, req_within}, {"P"}, {"Q"});
     // spec2 iteration order: req_next, req_within
-    const Specification spec2({req_next, req_within}, {"P"}, {"Q"});
+    const Specification spec2({}, {req_next, req_within}, {"P"}, {"Q"});
     const double score = semantic_similarity(spec1, spec2, 1);
     const double expected = (semantic_similarity(req_imm, req_next, 1) +
                              semantic_similarity(req_within, req_within, 1)) /

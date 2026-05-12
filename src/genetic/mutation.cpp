@@ -210,21 +210,40 @@ Requirement mutate_requirement(const Requirement& requirement,
 Specification mutate_specification(const Specification& specification,
                                    const RandomSource& random_source) {
     assert(random_source);
-    assert(!specification.m_requirements.empty());
+    const std::size_t n_assumptions = specification.m_assumptions.size();
+    const std::size_t n_guarantees = specification.m_guarantees.size();
+    assert(n_assumptions + n_guarantees > 0);
     std::vector<std::string> atoms;
     atoms.insert(atoms.end(), specification.m_in_atoms.begin(),
                  specification.m_in_atoms.end());
     atoms.insert(atoms.end(), specification.m_out_atoms.begin(),
                  specification.m_out_atoms.end());
-    std::vector<Requirement> reqs = specification.m_requirements;
-    const std::size_t idx = random_source.next_index(reqs.size());
-    reqs[idx] = mutate_requirement(reqs[idx], atoms, random_source);
-    for (std::size_t i = 0; i < reqs.size(); ++i) {
-        if (i != idx) {
-            const bool equal = !(reqs[i] < reqs[idx]) && !(reqs[idx] < reqs[i]);
-            if (equal) return specification;
+    const std::size_t idx =
+        random_source.next_index(n_assumptions + n_guarantees);
+    std::vector<Requirement> assumptions = specification.m_assumptions;
+    std::vector<Requirement> guarantees = specification.m_guarantees;
+    if (idx < n_assumptions) {
+        assumptions[idx] =
+            mutate_requirement(assumptions[idx], atoms, random_source);
+        for (std::size_t i = 0; i < assumptions.size(); ++i) {
+            if (i != idx) {
+                const bool equal = !(assumptions[i] < assumptions[idx]) &&
+                                   !(assumptions[idx] < assumptions[i]);
+                if (equal) return specification;
+            }
+        }
+    } else {
+        const std::size_t g_idx = idx - n_assumptions;
+        guarantees[g_idx] =
+            mutate_requirement(guarantees[g_idx], atoms, random_source);
+        for (std::size_t i = 0; i < guarantees.size(); ++i) {
+            if (i != g_idx) {
+                const bool equal = !(guarantees[i] < guarantees[g_idx]) &&
+                                   !(guarantees[g_idx] < guarantees[i]);
+                if (equal) return specification;
+            }
         }
     }
-    return Specification(std::move(reqs), specification.m_in_atoms,
-                         specification.m_out_atoms);
+    return Specification(std::move(assumptions), std::move(guarantees),
+                         specification.m_in_atoms, specification.m_out_atoms);
 }

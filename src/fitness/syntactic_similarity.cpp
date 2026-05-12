@@ -1,28 +1,37 @@
 #include "fitness/syntactic_similarity.hpp"
 
 #include <cassert>
+#include <vector>
 
 #include "prop_formula.hpp"
 #include "requirement.hpp"
 
 namespace {
 
+Formula conjoin_field(const Specification& spec, Formula Requirement::*field) {
+    std::optional<Formula> conj;
+    auto accumulate = [&](const std::vector<Requirement>& reqs) {
+        for (const Requirement& req : reqs) {
+            if (!conj) {
+                conj = req.*field;
+            } else {
+                conj =
+                    Formula::make_binary(Formula::Kind::And, *conj, req.*field);
+            }
+        }
+    };
+    accumulate(spec.m_assumptions);
+    accumulate(spec.m_guarantees);
+    assert(conj.has_value());
+    return *conj;
+}
+
 Formula conjoin_triggers(const Specification& spec) {
-    auto it = spec.m_requirements.begin();
-    Formula conj = it->m_trigger;
-    for (++it; it != spec.m_requirements.end(); ++it) {
-        conj = Formula::make_binary(Formula::Kind::And, conj, it->m_trigger);
-    }
-    return conj;
+    return conjoin_field(spec, &Requirement::m_trigger);
 }
 
 Formula conjoin_responses(const Specification& spec) {
-    auto it = spec.m_requirements.begin();
-    Formula conj = it->m_response;
-    for (++it; it != spec.m_requirements.end(); ++it) {
-        conj = Formula::make_binary(Formula::Kind::And, conj, it->m_response);
-    }
-    return conj;
+    return conjoin_field(spec, &Requirement::m_response);
 }
 
 }  // namespace
@@ -41,8 +50,10 @@ double syntactic_similarity(const Requirement& requirement,
 
 double syntactic_similarity(const Specification& specification,
                             const Specification& other_specification) {
-    assert(!specification.m_requirements.empty() &&
-           !other_specification.m_requirements.empty());
+    assert((!specification.m_assumptions.empty() ||
+            !specification.m_guarantees.empty()) &&
+           (!other_specification.m_assumptions.empty() ||
+            !other_specification.m_guarantees.empty()));
     const double trigger_similarity =
         conjoin_triggers(specification)
             .syntactic_similarity(conjoin_triggers(other_specification));

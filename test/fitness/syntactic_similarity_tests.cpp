@@ -23,7 +23,7 @@ Specification make_spec(
     for (const auto& [t, r] : reqs) {
         req_vec.push_back(make_req(t, r));
     }
-    return Specification(std::move(req_vec), {}, {});
+    return Specification({}, std::move(req_vec), {}, {});
 }
 
 // --- requirement-level ---

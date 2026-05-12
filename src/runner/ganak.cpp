@@ -54,12 +54,14 @@ std::string write_temporary_dimacs(const std::string& contents) {
 ProcessResult execute_and_capture(const std::vector<std::string>& arguments) {
     assert(!arguments.empty());
     int pipe_fds[2] = {-1, -1};
-    assert(pipe(pipe_fds) == 0);
+    [[maybe_unused]] const int pipe_result = pipe(pipe_fds);
+    assert(pipe_result == 0);
     const pid_t child_pid = fork();
     if (child_pid < 0) {
         close(pipe_fds[0]);
         close(pipe_fds[1]);
         assert(false);
+        __builtin_unreachable();
     }
     if (child_pid == 0) {
         close(pipe_fds[0]);
@@ -95,10 +97,12 @@ ProcessResult execute_and_capture(const std::vector<std::string>& arguments) {
         }
         close(pipe_fds[0]);
         assert(false);
+        __builtin_unreachable();
     }
     close(pipe_fds[0]);
     int wait_status = 0;
-    assert(waitpid(child_pid, &wait_status, 0) >= 0);
+    [[maybe_unused]] const pid_t waited = waitpid(child_pid, &wait_status, 0);
+    assert(waited >= 0);
     int exit_code = -1;
     if (WIFEXITED(wait_status)) {
         exit_code = WEXITSTATUS(wait_status);

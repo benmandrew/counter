@@ -55,13 +55,15 @@ std::string read_from_fd(int read_fd) {
             continue;
         }
         assert(false);
+        __builtin_unreachable();
     }
     return output;
 }
 
 int wait_for_child(pid_t child_pid) {
     int wait_status = 0;
-    assert(waitpid(child_pid, &wait_status, 0) >= 0);
+    [[maybe_unused]] const pid_t waited = waitpid(child_pid, &wait_status, 0);
+    assert(waited >= 0);
     if (WIFEXITED(wait_status)) {
         return WEXITSTATUS(wait_status);
     } else if (WIFSIGNALED(wait_status)) {
@@ -73,12 +75,14 @@ int wait_for_child(pid_t child_pid) {
 ProcessResult execute_and_capture(const std::vector<std::string>& arguments) {
     assert(!arguments.empty());
     int pipe_fds[2] = {-1, -1};
-    assert(pipe(pipe_fds) == 0);
+    [[maybe_unused]] const int pipe_result = pipe(pipe_fds);
+    assert(pipe_result == 0);
     const pid_t child_pid = fork();
     if (child_pid < 0) {
         close(pipe_fds[0]);
         close(pipe_fds[1]);
         assert(false);
+        __builtin_unreachable();
     }
     if (child_pid == 0) {
         close(pipe_fds[0]);
@@ -104,7 +108,8 @@ std::string join_comma(const std::vector<std::string>& items) {
 
 void check_specification_ltls_present(const Specification& specification) {
     assert(!specification.m_requirements.empty());
-    for (const Requirement& req : specification.m_requirements) {
+    for ([[maybe_unused]] const Requirement& req :
+         specification.m_requirements) {
         assert(req.m_ltl.has_value());
     }
 }

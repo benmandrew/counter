@@ -21,6 +21,7 @@ Formula::Kind pick_binary_kind(const RandomSource& random_source) {
             return Formula::Kind::Iff;
     }
     assert(false);
+    __builtin_unreachable();
 }
 
 Formula select_subformula(const Formula& formula,
@@ -50,6 +51,7 @@ Formula select_subformula(const Formula& formula,
         }
     }
     assert(false);
+    __builtin_unreachable();
 }
 
 Formula replace_subformula(const Formula& formula, const Formula& donor,
@@ -102,6 +104,7 @@ Formula crossover_formula(const Formula& first_parent,
                                       random_source);
     }
     assert(false);
+    __builtin_unreachable();
 }
 
 template <typename TimingVariant>
@@ -134,6 +137,7 @@ Timing crossover_parameterized_timing(const First& first_value,
             return make_parameterized_timing<Second>(first_value.m_ticks);
     }
     assert(false);
+    __builtin_unreachable();
 }
 
 template <typename First, typename Second>

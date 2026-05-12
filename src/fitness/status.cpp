@@ -11,7 +11,8 @@ static SatisfiabilityChecker global_sat_checker;
 static RealizabilityChecker global_real_checker;
 
 double specification_status(const Specification& specification) {
-    for (const Requirement& req : specification.m_requirements) {
+    for ([[maybe_unused]] const Requirement& req :
+         specification.m_requirements) {
         assert(req.m_ltl.has_value());
     }
     // Build conjunctions of all triggers (assumptions) and all responses

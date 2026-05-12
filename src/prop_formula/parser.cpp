@@ -78,7 +78,8 @@ class Parser {
         }
         if (try_consume("(")) {
             const std::size_t expression = parse_iff();
-            assert(try_consume(")"));
+            [[maybe_unused]] const bool closed = try_consume(")");
+            assert(closed);
             return expression;
         }
         return parse_variable();

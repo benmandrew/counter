@@ -25,6 +25,7 @@ Formula::Kind node_type_to_kind(NodeType type) {
             return Formula::Kind::Iff;
     }
     assert(false);
+    __builtin_unreachable();
 }
 
 std::string node_to_string(const std::vector<Node>& nodes, std::size_t index) {
@@ -60,6 +61,7 @@ std::string node_to_string(const std::vector<Node>& nodes, std::size_t index) {
             }
         }
         assert(false);
+        __builtin_unreachable();
     };
 
     return to_string_recursive(index);
@@ -69,7 +71,7 @@ std::string node_to_string(const std::vector<Node>& nodes, std::size_t index) {
 
 Formula Formula::make_atom(const std::string& atom) { return Formula(atom); }
 
-Formula Formula::make_unary(Kind kind, const Formula& child) {
+Formula Formula::make_unary([[maybe_unused]] Kind kind, const Formula& child) {
     assert(kind == Kind::Not);
     return Formula("!(" + child.to_string() + ")");
 }
@@ -92,8 +94,9 @@ Formula Formula::make_binary(Kind kind, const Formula& left,
         case Kind::Atom:
         case Kind::Not:
             assert(false);
+            __builtin_unreachable();
     }
-    assert(false);
+    __builtin_unreachable();
 }
 
 void Formula::remove_double_negation() {
@@ -150,7 +153,7 @@ std::optional<std::pair<Formula, Formula>> Formula::binary_children() const {
         case prop_formula_internal::NodeType::Not:
             return std::nullopt;
     }
-    assert(false);
+    __builtin_unreachable();
 }
 
 Formula Formula::rewrite_post_order(

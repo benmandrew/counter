@@ -56,7 +56,7 @@ CountVector canonical_valuation_counts_or_throw(
 }
 
 CountVector counts_or_throw(const CountVector& provided_counts,
-                            Eigen::Index expected_size,
+                            [[maybe_unused]] Eigen::Index expected_size,
                             const std::function<CountVector()>& loader,
                             const char* /*size_error_message*/) {
     CountVector counts = provided_counts;

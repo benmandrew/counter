@@ -93,7 +93,7 @@ inline std::string count_to_string(Count value) {
 inline Count parse_count_decimal_or_throw(std::string_view text) {
     assert(!text.empty());
     Count value = 0;
-    const Count max_value = std::numeric_limits<Count>::max();
+    [[maybe_unused]] const Count max_value = std::numeric_limits<Count>::max();
     for (const char character : text) {
         assert(std::isdigit(static_cast<unsigned char>(character)));
         const Count digit = static_cast<Count>(character - '0');

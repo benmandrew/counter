@@ -27,6 +27,7 @@ Formula::Kind pick_binary_kind(const RandomSource& random_source) {
             return Formula::Kind::Iff;
     }
     assert(false);
+    __builtin_unreachable();
 }
 
 std::string random_atom(const std::vector<std::string>& atoms,

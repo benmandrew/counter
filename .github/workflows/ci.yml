@@ -23,7 +23,7 @@ jobs:
         run: |
           sudo apt-get remove --purge -y cmake
           python3 -m pip install --upgrade pip
-          python3 -m pip install cpplint cmake sphinx furo breathe
+          python3 -m pip install cpplint cmake sphinx furo breathe clang-format
 
       - name: Configure project
         run: cmake --preset debug

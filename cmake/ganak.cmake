@@ -1,7 +1,30 @@
+set(GANAK_VERSION "2.5.3")
+
+if(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
+    set(GANAK_OS "mac")
+elseif(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+    set(GANAK_OS "linux")
+else()
+    message(FATAL_ERROR "Unsupported OS for Ganak: ${CMAKE_SYSTEM_NAME}")
+endif()
+
+if(CMAKE_SYSTEM_PROCESSOR MATCHES "^(arm64|aarch64)$")
+    set(GANAK_ARCH "arm64")
+elseif(CMAKE_SYSTEM_PROCESSOR MATCHES "^(x86_64|AMD64)$")
+    if(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
+        set(GANAK_ARCH "x86_64")
+    else()
+        set(GANAK_ARCH "amd64")
+    endif()
+else()
+    message(FATAL_ERROR "Unsupported architecture for Ganak: ${CMAKE_SYSTEM_PROCESSOR}")
+endif()
+
+set(GANAK_ARCHIVE_NAME "ganak-${GANAK_OS}-${GANAK_ARCH}.zip")
 set(GANAK_DOWNLOAD_URL
-    "https://github.com/meelgroup/ganak/releases/download/release%2F2.5.3/ganak-linux-amd64.zip")
+    "https://github.com/meelgroup/ganak/releases/download/release/${GANAK_VERSION}/${GANAK_ARCHIVE_NAME}")
 set(GANAK_ROOT_DIR "${CMAKE_BINARY_DIR}/third_party/ganak")
-set(GANAK_ARCHIVE_PATH "${GANAK_ROOT_DIR}/ganak-linux-amd64.zip")
+set(GANAK_ARCHIVE_PATH "${GANAK_ROOT_DIR}/${GANAK_ARCHIVE_NAME}")
 set(GANAK_EXTRACT_DIR "${GANAK_ROOT_DIR}/extracted")
 
 file(MAKE_DIRECTORY "${GANAK_ROOT_DIR}")

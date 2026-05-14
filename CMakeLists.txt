@@ -79,6 +79,9 @@ target_link_libraries(counter PRIVATE counter_fitness)
 
 add_custom_target(ganak_binary ALL DEPENDS "${GANAK_EXECUTABLE}")
 add_custom_target(black_binary ALL DEPENDS "${BLACK_EXECUTABLE}")
+if(DEFINED BLACK_EXTERNAL_TARGET)
+    add_dependencies(black_binary ${BLACK_EXTERNAL_TARGET})
+endif()
 
 add_subdirectory(test)
 

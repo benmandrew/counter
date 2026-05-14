@@ -11,4 +11,10 @@ FetchContent_Declare(
     GIT_SHALLOW TRUE
 )
 
+# Eigen's blas/ subdir unconditionally calls check_language(Fortran).
+# On macOS, gfortran hangs during the link test. Pre-setting this cache
+# variable to empty makes check_language return "not found" immediately
+# without running any compiler test, so enable_language(Fortran) is skipped.
+set(CMAKE_Fortran_COMPILER "" CACHE FILEPATH "" FORCE)
 FetchContent_MakeAvailable(eigen)
+unset(CMAKE_Fortran_COMPILER CACHE)

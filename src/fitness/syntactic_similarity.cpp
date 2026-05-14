@@ -8,7 +8,7 @@
 
 namespace {
 
-Formula conjoin_field(const Specification& spec, Formula Requirement::*field) {
+Formula conjoin_field(const Specification& spec, Formula Requirement::* field) {
     std::optional<Formula> conj;
     auto accumulate = [&](const std::vector<Requirement>& reqs) {
         for (const Requirement& req : reqs) {

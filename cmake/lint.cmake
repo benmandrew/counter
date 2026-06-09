@@ -1,5 +1,6 @@
 find_program(CPPLINT_EXE NAMES cpplint cpplint.py)
 find_program(CLANG_TIDY_EXE NAMES clang-tidy)
+find_program(RUN_CLANG_TIDY_EXE NAMES run-clang-tidy run-clang-tidy-14)
 find_program(CPPCHECK_EXE NAMES cppcheck)
 
 set(COUNTER_LINT_GLOBS
@@ -39,12 +40,22 @@ endif()
 
 # --- clang-tidy ---
 
-if(CLANG_TIDY_EXE)
+if(RUN_CLANG_TIDY_EXE)
+    add_custom_target(lint-clang-tidy
+        COMMAND ${RUN_CLANG_TIDY_EXE}
+            -quiet
+            -p ${CMAKE_BINARY_DIR}
+            "^${CMAKE_CURRENT_SOURCE_DIR}/(src|test)/.*\\.cpp$"
+        COMMENT "Running clang-tidy on C++ sources"
+        VERBATIM
+    )
+elseif(CLANG_TIDY_EXE)
     add_custom_target(lint-clang-tidy
         COMMAND ${CLANG_TIDY_EXE}
+            --quiet
             -p ${CMAKE_BINARY_DIR}
             ${COUNTER_LINT_CPP_FILES}
-        COMMENT "Running clang-tidy on C++ sources"
+        COMMENT "Running clang-tidy on C++ sources (single-threaded)"
         VERBATIM
     )
 else()
@@ -82,4 +93,4 @@ endif()
 # --- aggregate ---
 
 add_custom_target(lint)
-add_dependencies(lint lint-cpplint lint-clang-tidy)
+add_dependencies(lint lint-cpplint lint-clang-tidy lint-cppcheck)

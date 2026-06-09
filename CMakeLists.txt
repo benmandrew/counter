@@ -58,7 +58,9 @@ target_sources(counter_fitness PRIVATE
     src/genetic/mutation.cpp
 )
 target_include_directories(counter_fitness PUBLIC include)
-target_link_libraries(counter_fitness PUBLIC counter_core Eigen3::Eigen)
+target_link_libraries(counter_fitness PUBLIC counter_core)
+# Include Eigen as a system directory so clang-tidy skips warnings inside it.
+target_include_directories(counter_fitness SYSTEM PUBLIC ${eigen_SOURCE_DIR})
 target_compile_definitions(counter_fitness PRIVATE
     GANAK_EXECUTABLE_PATH="${GANAK_EXECUTABLE}"
     SPOT_BIN_DIR="${SPOT_BIN_DIR}"

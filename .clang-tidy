@@ -20,4 +20,4 @@ Checks: >
 
 WarningsAsErrors: "*"
 
-HeaderFilterRegex: "include/.*"
+HeaderFilterRegex: ".*"

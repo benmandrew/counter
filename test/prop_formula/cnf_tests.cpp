@@ -14,8 +14,8 @@ namespace {
 
 void test_formula_to_dimacs_implies_count() {
     const Formula formula = Formula("P -> Q");
-    char dimacs_path[] = "/tmp/counter-formula-implies-XXXXXX";
-    const int file_descriptor = mkstemp(dimacs_path);
+    std::string dimacs_path = "/tmp/counter-formula-implies-XXXXXX";
+    const int file_descriptor = mkstemp(dimacs_path.data());
     expect(file_descriptor >= 0,
            "formula-dimacs: failed to create DIMACS file for implies");
     close(file_descriptor);
@@ -28,13 +28,13 @@ void test_formula_to_dimacs_implies_count() {
     const Count count = run_ganak_on_dimacs(dimacs_path, 1);
     expect(count == 3,
            "formula-dimacs: expected 3 models for formula 'P -> Q'");
-    std::remove(dimacs_path);
+    std::remove(dimacs_path.c_str());
 }
 
 void test_formula_to_dimacs_precedence_count() {
     const Formula formula = Formula("A | B & C");
-    char dimacs_path[] = "/tmp/counter-formula-precedence-XXXXXX";
-    const int file_descriptor = mkstemp(dimacs_path);
+    std::string dimacs_path = "/tmp/counter-formula-precedence-XXXXXX";
+    const int file_descriptor = mkstemp(dimacs_path.data());
     expect(file_descriptor >= 0,
            "formula-dimacs: failed to create DIMACS file for precedence");
     close(file_descriptor);
@@ -47,7 +47,7 @@ void test_formula_to_dimacs_precedence_count() {
     const Count count = run_ganak_on_dimacs(dimacs_path, 1);
     expect(count == 5,
            "formula-dimacs: expected 5 models for formula 'A | B & C'");
-    std::remove(dimacs_path);
+    std::remove(dimacs_path.c_str());
 }
 
 }  // namespace

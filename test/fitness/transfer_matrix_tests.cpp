@@ -23,7 +23,7 @@ CountVector count_vector_from_values(const std::vector<Count>& values) {
 }
 
 CountMatrix count_matrix_from_rows(const CountGrid& rows) {
-    const Eigen::Index row_count = static_cast<Eigen::Index>(rows.size());
+    const auto row_count = static_cast<Eigen::Index>(rows.size());
     const Eigen::Index column_count =
         rows.empty() ? 0 : static_cast<Eigen::Index>(rows.front().size());
     CountMatrix matrix(row_count, column_count);
@@ -43,9 +43,103 @@ void run_cases(const std::vector<CaseType>& cases, Fn run_case) {
     }
 }
 
-bool trace_satisfies_requirement(
-    const Requirement& requirement,
-    const std::vector<std::pair<bool, bool>>& trace) {
+using Trace = std::vector<std::pair<bool, bool>>;
+
+bool satisfies_immediately(const Trace& trace) {
+    return std::all_of(trace.begin(), trace.end(), [](const auto& step) {
+        const auto& [trigger, response] = step;
+        return !trigger || response;
+    });
+}
+
+bool satisfies_next_timepoint(const Trace& trace) {
+    for (std::size_t idx = 0; idx + 1 < trace.size(); ++idx) {
+        if (trace[idx].first && !trace[idx + 1].second) {
+            return false;
+        }
+    }
+    return true;
+}
+
+bool satisfies_within_ticks(const Trace& trace, std::size_t ticks) {
+    std::size_t countdown = 0;
+    for (const auto& [trigger, response] : trace) {
+        if (response) {
+            countdown = 0;
+            continue;
+        }
+        if (countdown == 0) {
+            countdown = trigger ? ticks : 0;
+            continue;
+        }
+        if (countdown == 1) {
+            return false;
+        }
+        countdown = trigger ? ticks : countdown - 1;
+    }
+    return true;
+}
+
+bool satisfies_for_ticks(const Trace& trace, std::size_t ticks) {
+    std::size_t countdown = 0;
+    for (const auto& [trigger, response] : trace) {
+        if (!response) {
+            if (countdown > 0 || trigger) {
+                return false;
+            }
+            continue;
+        }
+        if (trigger) {
+            countdown = ticks;
+            continue;
+        }
+        if (countdown > 0) {
+            --countdown;
+        }
+    }
+    return true;
+}
+
+bool satisfies_after_ticks(const Trace& trace, std::size_t ticks) {
+    std::size_t countdown = 0;
+    for (const auto& [trigger, response] : trace) {
+        if (countdown == 0) {
+            if (!trigger) {
+                continue;
+            }
+            if (response) {
+                return false;
+            }
+            countdown = ticks;
+        } else if (countdown == 1) {
+            if (!response || trigger) {
+                return false;
+            }
+            countdown = 0;
+        } else {
+            if (response) {
+                return false;
+            }
+            countdown = trigger ? ticks : countdown - 1;
+        }
+    }
+    return true;
+}
+
+bool satisfies_eventually(const Trace& trace) {
+    bool pending = false;
+    for (const auto& [trigger, response] : trace) {
+        if (trigger && !response) {
+            pending = true;
+        } else if (response) {
+            pending = false;
+        }
+    }
+    return !pending;
+}
+
+bool trace_satisfies_requirement(const Requirement& requirement,
+                                 const Trace& trace) {
     if (trace.empty()) {
         return true;
     }
@@ -53,70 +147,17 @@ bool trace_satisfies_requirement(
         [&trace](const auto& timing_value) {
             using T = std::decay_t<decltype(timing_value)>;
             if constexpr (std::is_same_v<T, timing::Immediately>) {
-                for (const auto& [trigger, response] : trace) {
-                    if (trigger && !response) return false;
-                }
-                return true;
+                return satisfies_immediately(trace);
             } else if constexpr (std::is_same_v<T, timing::NextTimepoint>) {
-                for (std::size_t i = 0; i + 1 < trace.size(); ++i) {
-                    if (trace[i].first && !trace[i + 1].second) return false;
-                }
-                return true;
+                return satisfies_next_timepoint(trace);
             } else if constexpr (std::is_same_v<T, timing::WithinTicks>) {
-                std::size_t countdown = 0;
-                for (const auto& [trigger, response] : trace) {
-                    if (response) {
-                        countdown = 0;
-                        continue;
-                    }
-                    if (countdown == 0) {
-                        countdown = trigger ? timing_value.m_ticks : 0;
-                        continue;
-                    }
-                    if (countdown == 1) return false;
-                    countdown = trigger ? timing_value.m_ticks : countdown - 1;
-                }
-                return true;
+                return satisfies_within_ticks(trace, timing_value.m_ticks);
             } else if constexpr (std::is_same_v<T, timing::ForTicks>) {
-                std::size_t countdown = 0;
-                for (const auto& [trigger, response] : trace) {
-                    if (!response) {
-                        if (countdown > 0 || trigger) return false;
-                        continue;
-                    }
-                    if (trigger) {
-                        countdown = timing_value.m_ticks;
-                        continue;
-                    }
-                    if (countdown > 0) --countdown;
-                }
-                return true;
+                return satisfies_for_ticks(trace, timing_value.m_ticks);
             } else if constexpr (std::is_same_v<T, timing::AfterTicks>) {
-                std::size_t countdown = 0;
-                for (const auto& [trigger, response] : trace) {
-                    if (countdown == 0) {
-                        if (!trigger) continue;
-                        if (response) return false;
-                        countdown = timing_value.m_ticks;
-                    } else if (countdown == 1) {
-                        if (!response || trigger) return false;
-                        countdown = 0;
-                    } else {
-                        if (response) return false;
-                        countdown =
-                            trigger ? timing_value.m_ticks : countdown - 1;
-                    }
-                }
-                return true;
+                return satisfies_after_ticks(trace, timing_value.m_ticks);
             } else {
-                bool pending = false;
-                for (const auto& [trigger, response] : trace) {
-                    if (trigger && !response)
-                        pending = true;
-                    else if (response)
-                        pending = false;
-                }
-                return !pending;
+                return satisfies_eventually(trace);
             }
         },
         requirement.m_timing);

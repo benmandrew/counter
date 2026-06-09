@@ -106,7 +106,7 @@ double Formula::syntactic_similarity(const Formula& other) const {
     if (this->n_subformulae() == 0 || other.n_subformulae() == 0) {
         return 1.0;
     }
-    const double shared_subformulae =
+    const auto shared_subformulae =
         static_cast<double>(this->shared_subformulae(other));
     return 0.5 *
            (shared_subformulae / static_cast<double>(this->n_subformulae()) +

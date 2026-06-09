@@ -1,6 +1,7 @@
 #pragma once
 
 #include <functional>
+#include <utility>
 #include <vector>
 
 #include "requirement.hpp"
@@ -32,8 +33,8 @@ class AggregateWeightedFitnessFunction {
 
    public:
     explicit AggregateWeightedFitnessFunction(
-        const std::vector<WeightedFitnessFunction>& fitness_functions)
-        : m_fitness_functions(fitness_functions) {}
+        std::vector<WeightedFitnessFunction> fitness_functions)
+        : m_fitness_functions(std::move(fitness_functions)) {}
 
     /// Computes the weighted average fitness score for a given specification.
     ///
@@ -52,8 +53,8 @@ class AggregateWeightedFitnessFunction {
     }
 
     /// Checks if the collection of fitness functions is empty.
-    bool empty() const { return m_fitness_functions.empty(); }
+    [[nodiscard]] bool empty() const { return m_fitness_functions.empty(); }
 
-    auto begin() const { return m_fitness_functions.begin(); }
-    auto end() const { return m_fitness_functions.end(); }
+    [[nodiscard]] auto begin() const { return m_fitness_functions.begin(); }
+    [[nodiscard]] auto end() const { return m_fitness_functions.end(); }
 };

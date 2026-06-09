@@ -93,9 +93,9 @@ class TseitinEncoder {
     }
 
     int get_or_create_symbol(const std::string& name) {
-        auto it = m_symbol_to_variable.find(name);
-        if (it != m_symbol_to_variable.end()) {
-            return it->second;
+        auto found = m_symbol_to_variable.find(name);
+        if (found != m_symbol_to_variable.end()) {
+            return found->second;
         }
 
         const int variable = m_next_variable_id;

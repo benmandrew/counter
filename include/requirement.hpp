@@ -1,5 +1,6 @@
 #pragma once
 
+#include <algorithm>
 #include <cstddef>
 #include <iostream>
 #include <optional>
@@ -64,14 +65,14 @@ inline bool operator<(const Timing& lhs, const Timing& rhs) {
     if (lhs.index() != rhs.index()) {
         return lhs.index() < rhs.index();
     }
-    if (const auto* l = std::get_if<timing::WithinTicks>(&lhs)) {
-        return l->m_ticks < std::get<timing::WithinTicks>(rhs).m_ticks;
+    if (const auto* lhs_ptr = std::get_if<timing::WithinTicks>(&lhs)) {
+        return lhs_ptr->m_ticks < std::get<timing::WithinTicks>(rhs).m_ticks;
     }
-    if (const auto* l = std::get_if<timing::ForTicks>(&lhs)) {
-        return l->m_ticks < std::get<timing::ForTicks>(rhs).m_ticks;
+    if (const auto* lhs_ptr = std::get_if<timing::ForTicks>(&lhs)) {
+        return lhs_ptr->m_ticks < std::get<timing::ForTicks>(rhs).m_ticks;
     }
-    if (const auto* l = std::get_if<timing::AfterTicks>(&lhs)) {
-        return l->m_ticks < std::get<timing::AfterTicks>(rhs).m_ticks;
+    if (const auto* lhs_ptr = std::get_if<timing::AfterTicks>(&lhs)) {
+        return lhs_ptr->m_ticks < std::get<timing::AfterTicks>(rhs).m_ticks;
     }
     return false;
 }
@@ -91,34 +92,44 @@ struct Requirement {
     std::optional<std::string> m_ltl;
 
     friend bool operator<(const Requirement& lhs, const Requirement& rhs) {
-        if (lhs.m_trigger < rhs.m_trigger) return true;
-        if (rhs.m_trigger < lhs.m_trigger) return false;
-        if (lhs.m_response < rhs.m_response) return true;
-        if (rhs.m_response < lhs.m_response) return false;
-        if (lhs.m_timing < rhs.m_timing) return true;
-        if (rhs.m_timing < lhs.m_timing) return false;
+        if (lhs.m_trigger < rhs.m_trigger) {
+            return true;
+        }
+        if (rhs.m_trigger < lhs.m_trigger) {
+            return false;
+        }
+        if (lhs.m_response < rhs.m_response) {
+            return true;
+        }
+        if (rhs.m_response < lhs.m_response) {
+            return false;
+        }
+        if (lhs.m_timing < rhs.m_timing) {
+            return true;
+        }
+        if (rhs.m_timing < lhs.m_timing) {
+            return false;
+        }
         return lhs.m_ltl < rhs.m_ltl;
     }
 
-    explicit Requirement(const Formula& trigger, const Formula& response,
+    explicit Requirement(Formula trigger, Formula response,
                          const Timing& timing)
-        : m_trigger(trigger), m_response(response), m_timing(timing) {}
+        : m_trigger(std::move(trigger)),
+          m_response(std::move(response)),
+          m_timing(timing) {}
 
-    explicit Requirement(const Formula& trigger, const Formula& response,
+    explicit Requirement(Formula trigger, Formula response,
                          const Timing& timing, const std::string& ltl)
-        : m_trigger(trigger),
-          m_response(response),
+        : m_trigger(std::move(trigger)),
+          m_response(std::move(response)),
           m_timing(timing),
           m_ltl(ltl) {}
 };
 
 static bool atom_contains_uppercase(const std::string& atom) {
-    for (char c : atom) {
-        if (c >= 'A' && c <= 'Z') {
-            return true;
-        }
-    }
-    return false;
+    return std::any_of(atom.begin(), atom.end(),
+                       [](char chr) { return chr >= 'A' && chr <= 'Z'; });
 }
 
 struct Specification {
@@ -163,8 +174,12 @@ struct Specification {
     }
 
     friend bool operator<(const Specification& lhs, const Specification& rhs) {
-        if (lhs.m_assumptions < rhs.m_assumptions) return true;
-        if (rhs.m_assumptions < lhs.m_assumptions) return false;
+        if (lhs.m_assumptions < rhs.m_assumptions) {
+            return true;
+        }
+        if (rhs.m_assumptions < lhs.m_assumptions) {
+            return false;
+        }
         return lhs.m_guarantees < rhs.m_guarantees;
     }
 };
@@ -183,7 +198,7 @@ struct State {
     std::size_t m_countdown_ticks = 0;
 
     /// Returns a human-readable label for this state (used for debugging).
-    std::string label() const;
+    [[nodiscard]] std::string label() const;
 };
 
 /// Returns the set of canonical states based on the cross-product of trigger

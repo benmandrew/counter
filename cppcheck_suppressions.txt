@@ -5,3 +5,8 @@ identicalConditionAfterEarlyExit
 # Eigen's comma-initializer syntax (operator<<) is flagged as a suspicious
 # comma operator. This is a known false positive with Eigen.
 constStatement
+
+# Structured bindings (const auto& [a, b]) are not understood by cppcheck 2.7 —
+# it reports the destructured variables as "not assigned a value" even when they
+# are read. Suppress globally since all uses in this codebase are legitimate.
+unassignedVariable

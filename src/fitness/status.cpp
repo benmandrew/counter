@@ -30,8 +30,12 @@ double specification_status(const Specification& specification) {
         conj_g += "(" + req.m_response.to_string() + ")";
         first = false;
     };
-    for (const Requirement& req : specification.m_assumptions) add_req(req);
-    for (const Requirement& req : specification.m_guarantees) add_req(req);
+    for (const Requirement& req : specification.m_assumptions) {
+        add_req(req);
+    }
+    for (const Requirement& req : specification.m_guarantees) {
+        add_req(req);
+    }
     std::string conj_ag = "(" + conj_a + ") & (" + conj_g + ")";
     if (!global_sat_checker.check_satisfiability(conj_a)) {
         return 0.0;

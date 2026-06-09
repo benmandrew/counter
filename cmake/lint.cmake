@@ -42,10 +42,11 @@ endif()
 
 if(RUN_CLANG_TIDY_EXE)
     add_custom_target(lint-clang-tidy
-        COMMAND ${RUN_CLANG_TIDY_EXE}
-            -quiet
-            -p ${CMAKE_BINARY_DIR}
-            "^${CMAKE_CURRENT_SOURCE_DIR}/(src|test)/.*\\.cpp$"
+        COMMAND ${CMAKE_COMMAND}
+            -DRUN_CLANG_TIDY_EXE=${RUN_CLANG_TIDY_EXE}
+            -DBUILD_DIR=${CMAKE_BINARY_DIR}
+            "-DFILES_PATTERN=^${CMAKE_CURRENT_SOURCE_DIR}/(src|test)/.*\\.cpp$"
+            -P ${CMAKE_CURRENT_SOURCE_DIR}/cmake/run_clang_tidy.cmake
         COMMENT "Running clang-tidy on C++ sources"
         VERBATIM
     )

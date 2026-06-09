@@ -36,8 +36,7 @@ void test_mutation_with_false_source_leaves_formula_unchanged() {
 void test_mutation_renames_atom_to_one_from_atoms_list() {
     // True source forces the rename branch; atoms = {"Q"} so "P" becomes "Q".
     const Formula formula("P");
-    const Formula mutated =
-        mutate_formula(formula, {"Q"}, make_source({}, true));
+    const Formula mutated = mutate_formula(formula, {"Q"}, make_source({}, 1U));
     expect(mutated.to_string() == "Q",
            "mutation: true source should mutate atom to one from the provided "
            "atoms list");
@@ -46,7 +45,7 @@ void test_mutation_renames_atom_to_one_from_atoms_list() {
 void test_mutation_atom_unchanged_when_no_atoms_provided() {
     // True source forces the rename branch; empty atoms → name unchanged.
     const Formula formula("P");
-    const Formula mutated = mutate_formula(formula, {}, make_source({}, true));
+    const Formula mutated = mutate_formula(formula, {}, make_source({}, 1U));
     expect(mutated.to_string() == "P",
            "mutation: atom name should be left unchanged when atoms list is "
            "empty");
@@ -66,7 +65,7 @@ void test_mutation_atom_selected_from_atoms_list() {
 
 void test_timing_mutation_non_parameterized_becomes_within_one_tick() {
     const Timing mutated =
-        mutate_timing(timing::next_timepoint(), make_source({}, false));
+        mutate_timing(timing::next_timepoint(), make_source({}, 0U));
     const auto* within = std::get_if<timing::WithinTicks>(&mutated);
     expect(within != nullptr,
            "mutation: next-timepoint should weaken to within-ticks");
@@ -76,7 +75,7 @@ void test_timing_mutation_non_parameterized_becomes_within_one_tick() {
 
 void test_timing_mutation_immediately_becomes_within_one_tick() {
     const Timing mutated =
-        mutate_timing(timing::immediately(), make_source({}, false));
+        mutate_timing(timing::immediately(), make_source({}, 0U));
     const auto* within = std::get_if<timing::WithinTicks>(&mutated);
     expect(within != nullptr,
            "mutation: immediately should weaken to within-ticks");
@@ -86,7 +85,7 @@ void test_timing_mutation_immediately_becomes_within_one_tick() {
 
 void test_timing_mutation_eventually_is_unchanged() {
     const Timing mutated =
-        mutate_timing(timing::eventually(), make_source({}, false));
+        mutate_timing(timing::eventually(), make_source({}, 0U));
     expect(std::holds_alternative<timing::Eventually>(mutated),
            "mutation: eventually has no weakening and should be unchanged");
 }

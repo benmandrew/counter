@@ -89,9 +89,9 @@ void test_score_population_equal_weights_give_average() {
 void test_make_predicate_filter_keeps_matching() {
     const std::vector<Specification> pop = {make_spec("p", "q"),
                                             make_spec("r", "s")};
-    const FilterFunction f = make_predicate_filter(
-        [](const Specification& s) { return first_trigger(s) == "p"; });
-    const auto survivors = f(pop);
+    const FilterFunction filter = make_predicate_filter(
+        [](const Specification& spec) { return first_trigger(spec) == "p"; });
+    const auto survivors = filter(pop);
     expect(survivors.size() == 1,
            "make_predicate_filter: should remove non-matching specifications");
     expect(first_trigger(survivors[0]) == "p",
@@ -111,7 +111,7 @@ void test_filter_population_removes_failing() {
     const std::vector<Specification> pop = {make_spec("p", "q"),
                                             make_spec("r", "s")};
     const std::vector<FilterFunction> filters = {make_predicate_filter(
-        [](const Specification& s) { return first_trigger(s) == "p"; })};
+        [](const Specification& spec) { return first_trigger(spec) == "p"; })};
     const auto survivors = filter_population(pop, filters);
     expect(survivors.size() == 1,
            "filter_population: should remove specifications failing the "
@@ -125,10 +125,12 @@ void test_filter_population_applies_sequentially() {
         make_spec("p", "q"), make_spec("r", "s"), make_spec("t", "u")};
     // First filter removes t; second filter removes r — only p survives.
     const std::vector<FilterFunction> filters = {
-        make_predicate_filter(
-            [](const Specification& s) { return first_trigger(s) != "t"; }),
-        make_predicate_filter(
-            [](const Specification& s) { return first_trigger(s) != "r"; })};
+        make_predicate_filter([](const Specification& spec) {
+            return first_trigger(spec) != "t";
+        }),
+        make_predicate_filter([](const Specification& spec) {
+            return first_trigger(spec) != "r";
+        })};
     const auto survivors = filter_population(pop, filters);
     expect(survivors.size() == 1,
            "filter_population: filters should be applied sequentially");
@@ -142,21 +144,23 @@ void test_filter_population_population_level_maximal_elements() {
                                             make_spec("p & r", "q")};
     const FilterFunction simplest_trigger = [](const std::vector<Specification>&
                                                    candidates) {
-        if (candidates.empty()) return candidates;
+        if (candidates.empty()) {
+            return candidates;
+        }
         const std::size_t min_nodes =
             std::min_element(
                 candidates.begin(), candidates.end(),
-                [](const Specification& a, const Specification& b) {
-                    return a.m_guarantees.begin()->m_trigger.n_subformulae() <
-                           b.m_guarantees.begin()->m_trigger.n_subformulae();
+                [](const Specification& lhs, const Specification& rhs) {
+                    return lhs.m_guarantees.begin()->m_trigger.n_subformulae() <
+                           rhs.m_guarantees.begin()->m_trigger.n_subformulae();
                 })
                 ->m_guarantees.begin()
                 ->m_trigger.n_subformulae();
         std::vector<Specification> result;
-        for (const Specification& s : candidates) {
-            if (s.m_guarantees.begin()->m_trigger.n_subformulae() ==
+        for (const Specification& spec : candidates) {
+            if (spec.m_guarantees.begin()->m_trigger.n_subformulae() ==
                 min_nodes) {
-                result.push_back(s);
+                result.push_back(spec);
             }
         }
         return result;
@@ -193,10 +197,14 @@ void test_evolve_generation_selects_fittest() {
         make_spec("p", "q"), make_spec("r", "s"), make_spec("t", "u")};
     const AggregateWeightedFitnessFunction fns =
         AggregateWeightedFitnessFunction(
-            {{[](const Specification& s) -> double {
-                  const auto t = first_trigger(s);
-                  if (t == "p") return 0.9;
-                  if (t == "t") return 0.5;
+            {{[](const Specification& spec) -> double {
+                  const auto trigger = first_trigger(spec);
+                  if (trigger == "p") {
+                      return 0.9;
+                  }
+                  if (trigger == "t") {
+                      return 0.5;
+                  }
                   return 0.1;
               },
               1.0}});
@@ -234,7 +242,7 @@ void test_evolve_generation_applies_filter_before_selection() {
         AggregateWeightedFitnessFunction(
             {{[](const Specification&) { return 0.5; }, 1.0}});
     const std::vector<FilterFunction> filters = {make_predicate_filter(
-        [](const Specification& s) { return first_trigger(s) == "p"; })};
+        [](const Specification& spec) { return first_trigger(spec) == "p"; })};
     const EvolutionConfig config{0.0, 0.0};
     const auto next_gen =
         evolve_generation(pop, 2, fns, filters, config, make_source({}, 0));

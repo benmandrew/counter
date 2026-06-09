@@ -29,7 +29,7 @@ void test_crossover_prefers_first_parent_with_false_source() {
     const Requirement second_parent{Formula("R"), Formula("S"),
                                     timing::next_timepoint()};
     const Requirement offspring = crossover_requirements(
-        first_parent, second_parent, make_source({}, false));
+        first_parent, second_parent, make_source({}, 0U));
     expect(offspring.m_trigger.to_string() == "P",
            "crossover: false source should keep first parent's trigger");
     expect(offspring.m_response.to_string() == "Q",

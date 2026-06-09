@@ -24,10 +24,15 @@ struct Node {
     std::size_t m_right;
 
     friend bool operator<(const Node& lhs, const Node& rhs) {
-        if (lhs.m_type != rhs.m_type) return lhs.m_type < rhs.m_type;
-        if (lhs.m_variable != rhs.m_variable)
+        if (lhs.m_type != rhs.m_type) {
+            return lhs.m_type < rhs.m_type;
+        }
+        if (lhs.m_variable != rhs.m_variable) {
             return lhs.m_variable < rhs.m_variable;
-        if (lhs.m_left != rhs.m_left) return lhs.m_left < rhs.m_left;
+        }
+        if (lhs.m_left != rhs.m_left) {
+            return lhs.m_left < rhs.m_left;
+        }
         return lhs.m_right < rhs.m_right;
     }
 };

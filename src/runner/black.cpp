@@ -4,6 +4,7 @@
 #include <sys/wait.h>
 #include <unistd.h>
 
+#include <array>
 #include <cassert>
 #include <cerrno>
 #include <cstring>
@@ -20,8 +21,8 @@ struct ProcessResult {
 
 ProcessResult execute_and_capture(const std::vector<std::string>& arguments) {
     assert(!arguments.empty());
-    int pipe_fds[2] = {-1, -1};
-    [[maybe_unused]] const int pipe_result = pipe(pipe_fds);
+    std::array<int, 2> pipe_fds = {-1, -1};
+    [[maybe_unused]] const int pipe_result = pipe(pipe_fds.data());
     assert(pipe_result == 0);
     const pid_t child_pid = fork();
     if (child_pid < 0) {
@@ -37,22 +38,23 @@ ProcessResult execute_and_capture(const std::vector<std::string>& arguments) {
             _exit(127);
         }
         close(pipe_fds[1]);
-        std::unique_ptr<char*[]> argv =
-            std::make_unique<char*[]>(arguments.size() + 1);
-        for (std::size_t i = 0; i < arguments.size(); ++i) {
-            argv[i] = const_cast<char*>(arguments[i].c_str());
+        std::vector<char*> argv(arguments.size() + 1);
+        for (std::size_t arg_idx = 0; arg_idx < arguments.size(); ++arg_idx) {
+            argv[arg_idx] = const_cast<char*>(arguments[arg_idx].c_str());
         }
         argv[arguments.size()] = nullptr;
-        execv(arguments[0].c_str(), argv.get());
+        execv(arguments[0].c_str(), argv.data());
         _exit(127);
     }
     close(pipe_fds[1]);
     std::string output;
-    char buffer[4096];
+    std::array<char, 4096> read_buf{};
     while (true) {
-        const ssize_t bytes_read = read(pipe_fds[0], buffer, sizeof(buffer));
+        const ssize_t bytes_read =
+            read(pipe_fds[0], read_buf.data(), read_buf.size());
         if (bytes_read > 0) {
-            output.append(buffer, static_cast<std::size_t>(bytes_read));
+            output.append(read_buf.data(),
+                          static_cast<std::size_t>(bytes_read));
             continue;
         }
         if (bytes_read == 0) {
@@ -91,9 +93,9 @@ std::string black_executable_path() {
 
 bool SatisfiabilityChecker::check_satisfiability(
     const std::string& ltl_formula) {
-    const auto it = m_cache.find(ltl_formula);
-    if (it != m_cache.end()) {
-        return it->second;
+    const auto found = m_cache.find(ltl_formula);
+    if (found != m_cache.end()) {
+        return found->second;
     }
     const std::string black = black_executable_path();
     assert(access(black.c_str(), F_OK) == 0);

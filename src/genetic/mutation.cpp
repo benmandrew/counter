@@ -68,10 +68,10 @@ Formula mutate_formula(const Formula& formula,
                        const std::vector<std::string>& atoms,
                        const RandomSource& random_source) {
     assert(random_source);
-    const std::size_t n = formula.n_subformulae();
+    const std::size_t n_subformulas = formula.n_subformulae();
     const auto mutation_function =
         [&](const Formula& subtree) -> std::optional<Formula> {
-        if (random_source.next_index(n) != 0) {
+        if (random_source.next_index(n_subformulas) != 0) {
             return std::nullopt;
         }
         switch (subtree.kind()) {
@@ -119,9 +119,9 @@ Formula mutate_formula(const Formula& formula,
         }
         return std::nullopt;
     };
-    auto f = formula.rewrite_post_order(mutation_function);
-    f.remove_double_negation();
-    return f;
+    auto mutated = formula.rewrite_post_order(mutation_function);
+    mutated.remove_double_negation();
+    return mutated;
 }
 
 Timing mutate_timing(const Timing& timing, const RandomSource& random_source) {
@@ -186,7 +186,9 @@ Specification mutate_specification(const Specification& specification,
             if (i != idx) {
                 const bool equal = !(assumptions[i] < assumptions[idx]) &&
                                    !(assumptions[idx] < assumptions[i]);
-                if (equal) return specification;
+                if (equal) {
+                    return specification;
+                }
             }
         }
     } else {
@@ -197,7 +199,9 @@ Specification mutate_specification(const Specification& specification,
             if (i != g_idx) {
                 const bool equal = !(guarantees[i] < guarantees[g_idx]) &&
                                    !(guarantees[g_idx] < guarantees[i]);
-                if (equal) return specification;
+                if (equal) {
+                    return specification;
+                }
             }
         }
     }

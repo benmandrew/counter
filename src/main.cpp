@@ -59,8 +59,8 @@ int main() {
     // 4. Evolution config
     EvolutionConfig config;
     // 5. Random source
-    std::random_device rd;
-    RandomSource random_source = make_random_source_from_seed(rd());
+    std::random_device rng_dev;
+    RandomSource random_source = make_random_source_from_seed(rng_dev());
     // 6. Run genetic algorithm for a few generations
     std::size_t generations = 10;
     std::size_t pop_size = population.size();
@@ -71,9 +71,10 @@ int main() {
     }
     // 7. Score and print the best specification
     auto scored = score_population(population, fitness_function);
-    std::sort(scored.begin(), scored.end(), [](const auto& a, const auto& b) {
-        return a.fitness > b.fitness;
-    });
+    std::sort(scored.begin(), scored.end(),
+              [](const auto& lhs, const auto& rhs) {
+                  return lhs.fitness > rhs.fitness;
+              });
     std::cout << "Best specification after " << generations
               << " generations:\n";
     if (!scored.empty()) {

@@ -5,6 +5,7 @@
 #include <unistd.h>
 
 #include <algorithm>
+#include <array>
 #include <cassert>
 #include <cerrno>
 #include <cstring>
@@ -29,23 +30,24 @@ void spawn_child_and_exec(const std::vector<std::string>& arguments,
         _exit(127);
     }
     close(write_fd);
-    std::unique_ptr<char*[]> argv =
-        std::make_unique<char*[]>(arguments.size() + 1);
-    for (std::size_t i = 0; i < arguments.size(); ++i) {
-        argv[i] = const_cast<char*>(arguments[i].c_str());
+    std::vector<char*> argv(arguments.size() + 1);
+    for (std::size_t arg_idx = 0; arg_idx < arguments.size(); ++arg_idx) {
+        argv[arg_idx] = const_cast<char*>(arguments[arg_idx].c_str());
     }
     argv[arguments.size()] = nullptr;
-    execv(arguments[0].c_str(), argv.get());
+    execv(arguments[0].c_str(), argv.data());
     _exit(127);
 }
 
 std::string read_from_fd(int read_fd) {
     std::string output;
-    char buffer[4096];
+    std::array<char, 4096> read_buf{};
     while (true) {
-        const ssize_t bytes_read = read(read_fd, buffer, sizeof(buffer));
+        const ssize_t bytes_read =
+            read(read_fd, read_buf.data(), read_buf.size());
         if (bytes_read > 0) {
-            output.append(buffer, static_cast<std::size_t>(bytes_read));
+            output.append(read_buf.data(),
+                          static_cast<std::size_t>(bytes_read));
             continue;
         }
         if (bytes_read == 0) {
@@ -66,7 +68,8 @@ int wait_for_child(pid_t child_pid) {
     assert(waited >= 0);
     if (WIFEXITED(wait_status)) {
         return WEXITSTATUS(wait_status);
-    } else if (WIFSIGNALED(wait_status)) {
+    }
+    if (WIFSIGNALED(wait_status)) {
         return 128 + WTERMSIG(wait_status);
     }
     return -1;
@@ -74,8 +77,8 @@ int wait_for_child(pid_t child_pid) {
 
 ProcessResult execute_and_capture(const std::vector<std::string>& arguments) {
     assert(!arguments.empty());
-    int pipe_fds[2] = {-1, -1};
-    [[maybe_unused]] const int pipe_result = pipe(pipe_fds);
+    std::array<int, 2> pipe_fds = {-1, -1};
+    [[maybe_unused]] const int pipe_result = pipe(pipe_fds.data());
     assert(pipe_result == 0);
     const pid_t child_pid = fork();
     if (child_pid < 0) {
@@ -99,7 +102,9 @@ std::string join_comma(const std::vector<std::string>& items) {
     std::string result;
     bool first = true;
     for (const auto& item : items) {
-        if (!first) result += ',';
+        if (!first) {
+            result += ',';
+        }
         result += item;
         first = false;
     }
@@ -121,7 +126,9 @@ void build_ltl_conjunction(const std::vector<Requirement>& reqs,
                            std::string& out) {
     bool first = true;
     for (const Requirement& req : reqs) {
-        if (!first) out += " & ";
+        if (!first) {
+            out += " & ";
+        }
         out += "(" + req.m_ltl.value() + ")";
         first = false;
     }
@@ -143,12 +150,12 @@ void build_specification_formula(const Specification& specification,
 bool parse_realizability_output(const ProcessResult& result) {
     if (result.m_output.find("UNREALIZABLE") != std::string::npos) {
         return false;
-    } else if (result.m_output.find("REALIZABLE") != std::string::npos) {
-        return true;
-    } else {
-        assert(false);
-        return false;
     }
+    if (result.m_output.find("REALIZABLE") != std::string::npos) {
+        return true;
+    }
+    assert(false);
+    return false;
 }
 
 }  // namespace
@@ -183,9 +190,9 @@ bool RealizabilityChecker::check_realizability(
     const std::string cache_key = conj_ltl + "|" +
                                   join_comma(specification.m_in_atoms) + "|" +
                                   join_comma(specification.m_out_atoms);
-    const auto it = m_cache.find(cache_key);
-    if (it != m_cache.end()) {
-        return it->second;
+    const auto found = m_cache.find(cache_key);
+    if (found != m_cache.end()) {
+        return found->second;
     }
     const std::string ltlsynt = ltlsynt_path();
     assert(access(ltlsynt.c_str(), F_OK) == 0);

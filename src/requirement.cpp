@@ -46,31 +46,37 @@ std::string to_string(const Timing& timing) {
 }
 
 std::string requirement_to_ltl(const Requirement& requirement) {
-    const std::string t = "(" + requirement.m_trigger.to_string() + ")";
-    const std::string r = "(" + requirement.m_response.to_string() + ")";
+    const std::string trigger_str =
+        "(" + requirement.m_trigger.to_string() + ")";
+    const std::string response_str =
+        "(" + requirement.m_response.to_string() + ")";
     return std::visit(
-        [&](const auto& v) -> std::string {
-            using T = std::decay_t<decltype(v)>;
+        [&](const auto& variant) -> std::string {
+            using T = std::decay_t<decltype(variant)>;
             if constexpr (std::is_same_v<T, timing::Immediately>) {
-                return "G(" + t + " -> " + r + ")";
+                return "G(" + trigger_str + " -> " + response_str + ")";
             } else if constexpr (std::is_same_v<T, timing::NextTimepoint>) {
-                return "G(" + t + " -> X" + r + ")";
+                return "G(" + trigger_str + " -> X" + response_str + ")";
             } else if constexpr (std::is_same_v<T, timing::WithinTicks>) {
-                return "G(" + t + " -> F[0.." + std::to_string(v.m_ticks) +
-                       "]" + r + ")";
+                return "G(" + trigger_str + " -> F[0.." +
+                       std::to_string(variant.m_ticks) + "]" + response_str +
+                       ")";
             } else if constexpr (std::is_same_v<T, timing::ForTicks>) {
-                return "G(" + t + " -> G[0.." + std::to_string(v.m_ticks) +
-                       "]" + r + ")";
+                return "G(" + trigger_str + " -> G[0.." +
+                       std::to_string(variant.m_ticks) + "]" + response_str +
+                       ")";
             } else if constexpr (std::is_same_v<T, timing::AfterTicks>) {
-                if (v.m_ticks == 0) {
-                    return "G(" + t + " -> " + r + ")";
+                if (variant.m_ticks == 0) {
+                    return "G(" + trigger_str + " -> " + response_str + ")";
                 }
-                const std::string n = std::to_string(v.m_ticks);
-                const std::string nm1 = std::to_string(v.m_ticks - 1);
-                return "G(" + t + " -> (G[0.." + nm1 + "] !" + r + " & F[" + n +
-                       ".." + n + "]" + r + "))";
+                const std::string ticks_str = std::to_string(variant.m_ticks);
+                const std::string ticks_minus1_str =
+                    std::to_string(variant.m_ticks - 1);
+                return "G(" + trigger_str + " -> (G[0.." + ticks_minus1_str +
+                       "] !" + response_str + " & F[" + ticks_str + ".." +
+                       ticks_str + "]" + response_str + "))";
             } else {
-                return "G(" + t + " -> F" + r + ")";
+                return "G(" + trigger_str + " -> F" + response_str + ")";
             }
         },
         requirement.m_timing);

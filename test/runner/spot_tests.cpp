@@ -80,20 +80,20 @@ void test_realizable_with_assumption() {
 void test_assumption_enables_joint_realizability() {
     RealizabilityChecker checker;
     // These two guarantees are jointly unrealizable on their own
-    Requirement g1 =
+    Requirement guarantee1 =
         make_req("a", "b", timing::next_timepoint(), "G((a) -> (X(b)))");
-    Requirement g2 =
+    Requirement guarantee2 =
         make_req("a", "!b", timing::next_timepoint(), "G((a) -> (X(!b)))");
-    expect(
-        !checker.check_realizability(Specification({}, {g1, g2}, {"a"}, {"b"})),
-        "spot-runner: G(a->Xb) & G(a->X!b) should be unrealizable without "
-        "assumption");
+    expect(!checker.check_realizability(
+               Specification({}, {guarantee1, guarantee2}, {"a"}, {"b"})),
+           "spot-runner: G(a->Xb) & G(a->X!b) should be unrealizable without "
+           "assumption");
     // Assumption G(!a): environment never sets a — makes both guarantees
     // vacuously true
     Requirement assum =
         make_req("true", "!a", timing::immediately(), "G((true) -> (!a))");
     expect(checker.check_realizability(
-               Specification({assum}, {g1, g2}, {"a"}, {"b"})),
+               Specification({assum}, {guarantee1, guarantee2}, {"a"}, {"b"})),
            "spot-runner: G(!a) -> (G(a->Xb) & G(a->X!b)) should be realizable");
 }
 

@@ -74,7 +74,7 @@ inline std::string count_to_string(Count value) {
     }
     std::string digits;
     while (value > 0) {
-        const unsigned digit = static_cast<unsigned>(value % 10U);
+        const auto digit = static_cast<unsigned>(value % 10U);
         digits.push_back(static_cast<char>('0' + digit));
         value /= 10U;
     }
@@ -96,7 +96,7 @@ inline Count parse_count_decimal_or_throw(std::string_view text) {
     [[maybe_unused]] const Count max_value = std::numeric_limits<Count>::max();
     for (const char character : text) {
         assert(std::isdigit(static_cast<unsigned char>(character)));
-        const Count digit = static_cast<Count>(character - '0');
+        const auto digit = static_cast<Count>(character - '0');
         assert(value <= (max_value - digit) / 10U);
         value = value * 10U + digit;
     }

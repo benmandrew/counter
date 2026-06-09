@@ -95,7 +95,7 @@ class Parser {
         ++m_position;
         while (!at_end()) {
             const char character = m_text[m_position];
-            if (std::isalnum(static_cast<unsigned char>(character)) ||
+            if ((std::isalnum(static_cast<unsigned char>(character)) != 0) ||
                 character == '_') {
                 name.push_back(character);
                 ++m_position;
@@ -131,8 +131,8 @@ class Parser {
     }
 
     void skip_whitespace() {
-        while (!at_end() &&
-               std::isspace(static_cast<unsigned char>(m_text[m_position]))) {
+        while (!at_end() && (std::isspace(static_cast<unsigned char>(
+                                 m_text[m_position])) != 0)) {
             ++m_position;
         }
     }

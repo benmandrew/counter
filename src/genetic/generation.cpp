@@ -11,8 +11,12 @@ namespace {
 constexpr std::size_t k_rate_granularity = 1'000'000;
 
 bool probability_check(double rate, const RandomSource& random_source) {
-    if (rate <= 0.0) return false;
-    if (rate >= 1.0) return true;
+    if (rate <= 0.0) {
+        return false;
+    }
+    if (rate >= 1.0) {
+        return true;
+    }
     return random_source.next_index(k_rate_granularity) <
            static_cast<std::size_t>(rate *
                                     static_cast<double>(k_rate_granularity));
@@ -39,18 +43,18 @@ std::vector<ScoredSpecification> score_population(
     const std::vector<Specification>& population,
     const AggregateWeightedFitnessFunction& fitness_function) {
     assert(!fitness_function.empty());
-    const double total_weight =
-        std::accumulate(fitness_function.begin(), fitness_function.end(), 0.0,
-                        [](double acc, const WeightedFitnessFunction& wf) {
-                            return acc + wf.weight;
-                        });
+    const double total_weight = std::accumulate(
+        fitness_function.begin(), fitness_function.end(), 0.0,
+        [](double acc, const WeightedFitnessFunction& weighted_fn) {
+            return acc + weighted_fn.weight;
+        });
     assert(total_weight > 0.0);
     std::vector<ScoredSpecification> scored;
     scored.reserve(population.size());
     for (const Specification& spec : population) {
         double weighted_sum = 0.0;
-        for (const WeightedFitnessFunction& wf : fitness_function) {
-            weighted_sum += wf.function(spec) * wf.weight;
+        for (const WeightedFitnessFunction& weighted_fn : fitness_function) {
+            weighted_sum += weighted_fn.function(spec) * weighted_fn.weight;
         }
         scored.push_back({spec, weighted_sum / total_weight});
     }
@@ -61,8 +65,8 @@ std::vector<Specification> filter_population(
     const std::vector<Specification>& population,
     const std::vector<FilterFunction>& filter_functions) {
     std::vector<Specification> current = population;
-    for (const FilterFunction& fn : filter_functions) {
-        current = fn(current);
+    for (const FilterFunction& filter_fn : filter_functions) {
+        current = filter_fn(current);
     }
     return current;
 }
@@ -81,17 +85,18 @@ std::vector<Specification> evolve_generation(
     assert(!survivors.empty());
     std::vector<ScoredSpecification> scored =
         score_population(survivors, fitness_functions);
-    std::sort(scored.begin(), scored.end(),
-              [](const ScoredSpecification& a, const ScoredSpecification& b) {
-                  return a.fitness > b.fitness;
-              });
-    const std::size_t n = std::min(target_size, scored.size());
+    std::sort(
+        scored.begin(), scored.end(),
+        [](const ScoredSpecification& lhs, const ScoredSpecification& rhs) {
+            return lhs.fitness > rhs.fitness;
+        });
+    const std::size_t top_n = std::min(target_size, scored.size());
     std::vector<Specification> next_generation;
-    next_generation.reserve(n);
-    for (std::size_t i = 0; i < n; ++i) {
+    next_generation.reserve(top_n);
+    for (std::size_t i = 0; i < top_n; ++i) {
         Specification offspring = scored[i].specification;
         if (probability_check(config.crossover_rate, random_source)) {
-            const std::size_t partner = random_source.next_index(n);
+            const std::size_t partner = random_source.next_index(top_n);
             offspring = crossover_specifications(
                 offspring, scored[partner].specification, random_source);
         }

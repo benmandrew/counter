@@ -100,9 +100,9 @@ Formula Formula::make_binary(Kind kind, const Formula& left,
 }
 
 void Formula::remove_double_negation() {
-    auto f = [](const Formula& f) -> std::optional<Formula> {
-        if (f.kind() == Formula::Kind::Not) {
-            auto child = f.unary_child();
+    auto remove_double_neg = [](const Formula& node) -> std::optional<Formula> {
+        if (node.kind() == Formula::Kind::Not) {
+            auto child = node.unary_child();
             if (child && child->kind() == Formula::Kind::Not) {
                 auto grandchild = child->unary_child();
                 if (grandchild) {
@@ -112,7 +112,7 @@ void Formula::remove_double_negation() {
         }
         return std::nullopt;
     };
-    *this = this->rewrite_post_order(f);
+    *this = this->rewrite_post_order(remove_double_neg);
 }
 
 Formula::Kind Formula::kind() const {

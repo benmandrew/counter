@@ -193,3 +193,6 @@ std::vector<State> canonical_states();
 
 /// Converts a Timing enum value to a human-readable string representation.
 std::string to_string(const Timing& timing);
+
+/// Converts a Requirement to an LTL formula string suitable for SPOT.
+std::string requirement_to_ltl(const Requirement& requirement);

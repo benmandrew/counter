@@ -121,49 +121,17 @@ struct TransferSystem {
     CountVector m_final_state_mask;
 };
 
-/// Constructs a TransferSystem automaton from a requirement. The automaton
-/// structure varies based on the requirement's Timing constraint and encodes
-/// the valid traces that satisfy the requirement specification.
-///
-/// @param requirement The requirement to build an automaton for
-/// @param canonical_valuation_counts Optional pre-computed valuation counts
-/// @return A TransferSystem representing the requirement automaton
+/// Constructs a TransferSystem for a requirement using SPOT's ltl2tgba to
+/// generate a deterministic automaton from the requirement's LTL formula.
+/// The canonical_valuation_counts parameter is accepted for API compatibility
+/// but is ignored (weights come from SPOT + Ganak directly).
 TransferSystem build_transfer_system(
     const Requirement& requirement,
     const CountVector& canonical_valuation_counts = CountVector());
 
-/// Counts the number of satisfying valuations for the canonical boolean
-/// conditions {T,R} ∈ {true, false} of a requirement using a propositional
-/// model counter (e.g., Ganak for bounded model counting).
-///
-/// @param requirement The requirement whose conditions to count
-/// @param seed Random seed for the model counter
-/// @return A vector of four counts: [¬T∧¬R, ¬T∧R, T∧¬R, T∧R]
-CountVector count_canonical_valuation_counts(const Requirement& requirement,
-                                             unsigned seed = 1);
-
-/// Counts the joint satisfying valuations for the cross-product of conditions
-/// from two requirements, producing 16 counts for all combinations of
-/// {T₁,R₁,T₂,R₂} ∈ {true, false}. Used for computing model counts of
-/// requirement conjunctions in semantic similarity.
-///
-/// @param requirement1 The first requirement
-/// @param requirement2 The second requirement
-/// @param seed Random seed for the model counter
-/// @return A vector of 16 counts for all valuation combinations
-CountVector count_joint_valuation_counts(const Requirement& requirement1,
-                                         const Requirement& requirement2,
-                                         unsigned seed = 1);
+/// Constructs a TransferSystem for the conjunction of two requirements.
+/// Runs ltl2tgba on "(ltl1) & (ltl2)" and weights transitions via Ganak.
+TransferSystem build_conjunction_transfer_system(
+    const Requirement& requirement1, const Requirement& requirement2);
 
 CountMatrix weighted_transition_matrix(const TransferSystem& system);
-
-CountMatrix build_combined_weighted_transition_matrix(
-    const Requirement& requirement1, const Requirement& requirement2,
-    const CountVector& joint_valuation_counts = CountVector());
-
-/// Returns the final-state mask for the product automaton of two requirements.
-/// Entry (i*n_right + j) is 1 iff both individual states i and j are valid
-/// final states. Returns an empty vector when all states are valid (no
-/// Eventually timing in either requirement).
-CountVector build_combined_final_state_mask(const Requirement& requirement1,
-                                            const Requirement& requirement2);

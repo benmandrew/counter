@@ -44,3 +44,34 @@ std::string to_string(const Timing& timing) {
         },
         timing);
 }
+
+std::string requirement_to_ltl(const Requirement& requirement) {
+    const std::string t = "(" + requirement.m_trigger.to_string() + ")";
+    const std::string r = "(" + requirement.m_response.to_string() + ")";
+    return std::visit(
+        [&](const auto& v) -> std::string {
+            using T = std::decay_t<decltype(v)>;
+            if constexpr (std::is_same_v<T, timing::Immediately>) {
+                return "G(" + t + " -> " + r + ")";
+            } else if constexpr (std::is_same_v<T, timing::NextTimepoint>) {
+                return "G(" + t + " -> X" + r + ")";
+            } else if constexpr (std::is_same_v<T, timing::WithinTicks>) {
+                return "G(" + t + " -> F[0.." +
+                       std::to_string(v.m_ticks) + "]" + r + ")";
+            } else if constexpr (std::is_same_v<T, timing::ForTicks>) {
+                return "G(" + t + " -> G[0.." +
+                       std::to_string(v.m_ticks) + "]" + r + ")";
+            } else if constexpr (std::is_same_v<T, timing::AfterTicks>) {
+                if (v.m_ticks == 0) {
+                    return "G(" + t + " -> " + r + ")";
+                }
+                const std::string n = std::to_string(v.m_ticks);
+                const std::string nm1 = std::to_string(v.m_ticks - 1);
+                return "G(" + t + " -> (G[0.." + nm1 + "] !" + r +
+                       " & F[" + n + ".." + n + "]" + r + "))";
+            } else {
+                return "G(" + t + " -> F" + r + ")";
+            }
+        },
+        requirement.m_timing);
+}

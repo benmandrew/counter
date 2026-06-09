@@ -28,16 +28,8 @@ SemanticSimilarityCounts count_semantic_similarity_terms(
     const TransferSystem system = build_transfer_system(requirement);
     const TransferSystem other_system =
         build_transfer_system(other_requirement);
-    const CountMatrix conjunction_weighted =
-        build_combined_weighted_transition_matrix(requirement,
-                                                  other_requirement);
-    TransferSystem conjunction_system;
-    conjunction_system.m_states.assign(
-        static_cast<std::size_t>(conjunction_weighted.rows()), State{});
-    conjunction_system.m_transition_matrix = conjunction_weighted;
-    conjunction_system.m_transition_matrix_is_weighted = true;
-    conjunction_system.m_final_state_mask =
-        build_combined_final_state_mask(requirement, other_requirement);
+    const TransferSystem conjunction_system =
+        build_conjunction_transfer_system(requirement, other_requirement);
     return {
         count_traces(system, step_count),
         count_traces(other_system, step_count),

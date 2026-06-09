@@ -19,9 +19,10 @@ Formula::Kind pick_binary_kind(const RandomSource& random_source) {
             return Formula::Kind::Implies;
         case 3:
             return Formula::Kind::Iff;
+        default:
+            assert(false);
+            __builtin_unreachable();
     }
-    assert(false);
-    __builtin_unreachable();
 }
 
 Formula select_subformula(const Formula& formula,
@@ -30,7 +31,12 @@ Formula select_subformula(const Formula& formula,
         case Formula::Kind::Atom:
             return formula;
         case Formula::Kind::Not: {
-            const Formula child = formula.unary_child().value();
+            const auto child_opt = formula.unary_child();
+            if (!child_opt.has_value()) {
+                assert(false);
+                __builtin_unreachable();
+            }
+            const Formula& child = *child_opt;
             if (!random_source.next_bool()) {
                 return formula;
             }
@@ -40,7 +46,12 @@ Formula select_subformula(const Formula& formula,
         case Formula::Kind::Or:
         case Formula::Kind::Implies:
         case Formula::Kind::Iff: {
-            const auto children = formula.binary_children().value();
+            const auto children_opt = formula.binary_children();
+            if (!children_opt.has_value()) {
+                assert(false);
+                __builtin_unreachable();
+            }
+            const auto& children = *children_opt;
             if (!random_source.next_bool()) {
                 return formula;
             }
@@ -102,9 +113,10 @@ Formula crossover_formula(const Formula& first_parent,
         case 3:
             return combine_subformula(first_parent, second_parent,
                                       random_source);
+        default:
+            assert(false);
+            __builtin_unreachable();
     }
-    assert(false);
-    __builtin_unreachable();
 }
 
 template <typename TimingVariant>
@@ -138,9 +150,10 @@ Timing crossover_parameterized_timing(const First& first_value,
             return make_parameterized_timing<First>(second_value.m_ticks);
         case 3:
             return make_parameterized_timing<Second>(first_value.m_ticks);
+        default:
+            assert(false);
+            __builtin_unreachable();
     }
-    assert(false);
-    __builtin_unreachable();
 }
 
 template <typename First, typename Second>

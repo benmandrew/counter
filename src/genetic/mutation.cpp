@@ -24,9 +24,10 @@ Formula::Kind pick_binary_kind(const RandomSource& random_source) {
             return Formula::Kind::Implies;
         case 3:
             return Formula::Kind::Iff;
+        default:
+            assert(false);
+            __builtin_unreachable();
     }
-    assert(false);
-    __builtin_unreachable();
 }
 
 std::string random_atom(const std::vector<std::string>& atoms,
@@ -62,6 +63,43 @@ Formula mutate_atom_formula(const Formula& formula,
     return Formula::make_unary(Formula::Kind::Not, formula);
 }
 
+Formula mutate_not_subtree(Formula child, const std::vector<std::string>& atoms,
+                           const RandomSource& random_source) {
+    const int selector = static_cast<int>(random_source.next_index(4));
+    switch (selector) {
+        case 0:
+            return child;
+        case 1:
+            return Formula::make_unary(Formula::Kind::Not, child);
+        case 2:
+            return Formula::make_unary(
+                Formula::Kind::Not,
+                Formula::make_unary(Formula::Kind::Not, child));
+        case 3:
+            break;
+        default:
+            assert(false);
+            __builtin_unreachable();
+    }
+    const Formula anchor =
+        Formula::make_atom(random_atom(atoms, random_source));
+    return Formula::make_binary(pick_binary_kind(random_source), anchor,
+                                Formula::make_unary(Formula::Kind::Not, child));
+}
+
+Formula mutate_binary_subtree(const std::pair<Formula, Formula>& children,
+                              const RandomSource& random_source) {
+    if (!random_source.next_bool()) {
+        return random_source.next_bool() ? children.first : children.second;
+    }
+    Formula combined = Formula::make_binary(pick_binary_kind(random_source),
+                                            children.first, children.second);
+    if (!random_source.next_bool()) {
+        return combined;
+    }
+    return Formula::make_unary(Formula::Kind::Not, combined);
+}
+
 }  // namespace
 
 Formula mutate_formula(const Formula& formula,
@@ -78,43 +116,23 @@ Formula mutate_formula(const Formula& formula,
             case Formula::Kind::Atom:
                 return mutate_atom_formula(subtree, atoms, random_source);
             case Formula::Kind::Not: {
-                const Formula child = subtree.unary_child().value();
-                const int selector =
-                    static_cast<int>(random_source.next_index(4));
-                switch (selector) {
-                    case 0:
-                        return child;
-                    case 1:
-                        return Formula::make_unary(Formula::Kind::Not, child);
-                    case 2:
-                        return Formula::make_unary(
-                            Formula::Kind::Not,
-                            Formula::make_unary(Formula::Kind::Not, child));
-                    case 3:
-                        break;
+                auto child_opt = subtree.unary_child();
+                if (!child_opt.has_value()) {
+                    assert(false);
+                    __builtin_unreachable();
                 }
-                const Formula anchor =
-                    Formula::make_atom(random_atom(atoms, random_source));
-                return Formula::make_binary(
-                    pick_binary_kind(random_source), anchor,
-                    Formula::make_unary(Formula::Kind::Not, child));
+                return mutate_not_subtree(*child_opt, atoms, random_source);
             }
             case Formula::Kind::And:
             case Formula::Kind::Or:
             case Formula::Kind::Implies:
             case Formula::Kind::Iff: {
-                const auto children = subtree.binary_children().value();
-                if (!random_source.next_bool()) {
-                    return random_source.next_bool() ? children.first
-                                                     : children.second;
+                const auto children_opt = subtree.binary_children();
+                if (!children_opt.has_value()) {
+                    assert(false);
+                    __builtin_unreachable();
                 }
-                const Formula combined =
-                    Formula::make_binary(pick_binary_kind(random_source),
-                                         children.first, children.second);
-                if (!random_source.next_bool()) {
-                    return combined;
-                }
-                return Formula::make_unary(Formula::Kind::Not, combined);
+                return mutate_binary_subtree(*children_opt, random_source);
             }
         }
         return std::nullopt;

@@ -10,9 +10,9 @@ void test_make_atom_and_inspect() {
     const Formula formula = Formula::make_atom("P");
     expect(formula.kind() == Formula::Kind::Atom,
            "prop-formula-ast: atom should report Kind::Atom");
-    expect(formula.atom_name().has_value(),
-           "prop-formula-ast: atom should expose its name");
-    expect(formula.atom_name().value() == "P",
+    const auto name = formula.atom_name();
+    expect(name.has_value(), "prop-formula-ast: atom should expose its name");
+    expect(name.has_value() && *name == "P",
            "prop-formula-ast: atom name should round-trip");
     expect(formula.to_string() == "P",
            "prop-formula-ast: atom should stringify to itself");
@@ -23,9 +23,10 @@ void test_make_unary_and_inspect() {
     const Formula formula = Formula::make_unary(Formula::Kind::Not, child);
     expect(formula.kind() == Formula::Kind::Not,
            "prop-formula-ast: unary should report Kind::Not");
-    expect(formula.unary_child().has_value(),
+    const auto unary_child = formula.unary_child();
+    expect(unary_child.has_value(),
            "prop-formula-ast: unary should expose its child");
-    expect(formula.unary_child()->to_string() == "P",
+    expect(unary_child.has_value() && unary_child->to_string() == "P",
            "prop-formula-ast: unary child should round-trip");
     expect(formula.to_string() == "!(P)",
            "prop-formula-ast: unary should stringify canonically");
@@ -38,11 +39,12 @@ void test_make_binary_and_inspect() {
         Formula::make_binary(Formula::Kind::And, left, right);
     expect(formula.kind() == Formula::Kind::And,
            "prop-formula-ast: binary should report Kind::And");
-    expect(formula.binary_children().has_value(),
+    const auto children = formula.binary_children();
+    expect(children.has_value(),
            "prop-formula-ast: binary should expose its children");
-    expect(formula.binary_children()->first.to_string() == "P",
+    expect(children.has_value() && children->first.to_string() == "P",
            "prop-formula-ast: left child should round-trip");
-    expect(formula.binary_children()->second.to_string() == "Q",
+    expect(children.has_value() && children->second.to_string() == "Q",
            "prop-formula-ast: right child should round-trip");
     expect(formula.to_string() == "(P) & (Q)",
            "prop-formula-ast: binary should stringify canonically");

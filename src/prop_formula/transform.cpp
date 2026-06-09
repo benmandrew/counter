@@ -106,7 +106,7 @@ void Formula::remove_double_negation() {
             if (child && child->kind() == Formula::Kind::Not) {
                 auto grandchild = child->unary_child();
                 if (grandchild) {
-                    return *grandchild;
+                    return grandchild;
                 }
             }
         }

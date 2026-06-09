@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstddef>
+#include <cstdint>
 #include <string>
 #include <vector>
 
@@ -8,7 +9,7 @@
 
 namespace prop_formula_internal {
 
-enum class NodeType {
+enum class NodeType : std::uint8_t {
     Variable,
     Not,
     And,

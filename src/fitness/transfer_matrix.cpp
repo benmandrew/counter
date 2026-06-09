@@ -157,10 +157,11 @@ struct HoaTransition {
 struct HoaAutomaton {
     std::size_t m_n_states = 0;
     std::size_t m_initial_state = 0;
-    std::vector<std::string> m_aps;           // AP names in index order
+    std::vector<std::string> m_aps;  // AP names in index order
     bool m_is_buchi = false;
-    std::vector<bool> m_accepting_states;     // indexed by HOA state ID
-    std::vector<std::vector<HoaTransition>> m_transitions;  // indexed by source state ID
+    std::vector<bool> m_accepting_states;  // indexed by HOA state ID
+    std::vector<std::vector<HoaTransition>>
+        m_transitions;  // indexed by source state ID
 };
 
 // Parses a HOA v1 automaton string into an HoaAutomaton. Reads the header

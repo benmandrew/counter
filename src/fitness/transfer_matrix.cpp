@@ -186,9 +186,8 @@ HoaAutomaton parse_hoa(const std::string& hoa_text) {
                     ap_ss >> std::quoted(result.m_aps[i]);
                 }
             } else if (line.rfind("acc-name:", 0) == 0) {
-                result.m_is_buchi =
-                    line.find("Buchi") != std::string::npos ||
-                    line.find("buchi") != std::string::npos;
+                result.m_is_buchi = line.find("Buchi") != std::string::npos ||
+                                    line.find("buchi") != std::string::npos;
             } else if (line == "--BODY--") {
                 in_body = true;
             }
@@ -214,7 +213,7 @@ HoaAutomaton parse_hoa(const std::string& hoa_text) {
 }
 
 TransferSystem build_transfer_system_from_hoa(const HoaAutomaton& hoa,
-                                               std::size_t n_total_atoms) {
+                                              std::size_t n_total_atoms) {
     const Eigen::Index n = static_cast<Eigen::Index>(hoa.m_n_states);
 
     // Permute states so the initial state maps to matrix index 0.
@@ -235,8 +234,7 @@ TransferSystem build_transfer_system_from_hoa(const HoaAutomaton& hoa,
     matrix.setZero();
 
     for (std::size_t hoa_from = 0; hoa_from < hoa.m_n_states; ++hoa_from) {
-        const Eigen::Index row =
-            static_cast<Eigen::Index>(inv_perm[hoa_from]);
+        const Eigen::Index row = static_cast<Eigen::Index>(inv_perm[hoa_from]);
         for (const HoaTransition& trans : hoa.m_transitions[hoa_from]) {
             const Eigen::Index col =
                 static_cast<Eigen::Index>(inv_perm[trans.m_destination]);

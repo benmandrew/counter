@@ -169,8 +169,8 @@ std::string ltl2tgba_path() { return spot_bin_dir() + "/ltl2tgba"; }
 std::string run_ltl2tgba_for_counting(const std::string& formula) {
     const std::string binary = ltl2tgba_path();
     assert(access(binary.c_str(), F_OK) == 0);
-    const ProcessResult result = execute_and_capture(
-        {binary, "-D", "-S", "-H", "-f", formula});
+    const ProcessResult result =
+        execute_and_capture({binary, "-D", "-S", "-H", "-f", formula});
     assert(result.m_exit_code == 0);
     return result.m_output;
 }

@@ -56,19 +56,19 @@ std::string requirement_to_ltl(const Requirement& requirement) {
             } else if constexpr (std::is_same_v<T, timing::NextTimepoint>) {
                 return "G(" + t + " -> X" + r + ")";
             } else if constexpr (std::is_same_v<T, timing::WithinTicks>) {
-                return "G(" + t + " -> F[0.." +
-                       std::to_string(v.m_ticks) + "]" + r + ")";
+                return "G(" + t + " -> F[0.." + std::to_string(v.m_ticks) +
+                       "]" + r + ")";
             } else if constexpr (std::is_same_v<T, timing::ForTicks>) {
-                return "G(" + t + " -> G[0.." +
-                       std::to_string(v.m_ticks) + "]" + r + ")";
+                return "G(" + t + " -> G[0.." + std::to_string(v.m_ticks) +
+                       "]" + r + ")";
             } else if constexpr (std::is_same_v<T, timing::AfterTicks>) {
                 if (v.m_ticks == 0) {
                     return "G(" + t + " -> " + r + ")";
                 }
                 const std::string n = std::to_string(v.m_ticks);
                 const std::string nm1 = std::to_string(v.m_ticks - 1);
-                return "G(" + t + " -> (G[0.." + nm1 + "] !" + r +
-                       " & F[" + n + ".." + n + "]" + r + "))";
+                return "G(" + t + " -> (G[0.." + nm1 + "] !" + r + " & F[" + n +
+                       ".." + n + "]" + r + "))";
             } else {
                 return "G(" + t + " -> F" + r + ")";
             }

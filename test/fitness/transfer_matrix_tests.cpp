@@ -43,8 +43,9 @@ void run_cases(const std::vector<CaseType>& cases, Fn run_case) {
     }
 }
 
-bool trace_satisfies_requirement(const Requirement& requirement,
-                                 const std::vector<std::pair<bool, bool>>& trace) {
+bool trace_satisfies_requirement(
+    const Requirement& requirement,
+    const std::vector<std::pair<bool, bool>>& trace) {
     if (trace.empty()) {
         return true;
     }
@@ -102,15 +103,18 @@ bool trace_satisfies_requirement(const Requirement& requirement,
                         countdown = 0;
                     } else {
                         if (response) return false;
-                        countdown = trigger ? timing_value.m_ticks : countdown - 1;
+                        countdown =
+                            trigger ? timing_value.m_ticks : countdown - 1;
                     }
                 }
                 return true;
             } else {
                 bool pending = false;
                 for (const auto& [trigger, response] : trace) {
-                    if (trigger && !response) pending = true;
-                    else if (response) pending = false;
+                    if (trigger && !response)
+                        pending = true;
+                    else if (response)
+                        pending = false;
                 }
                 return !pending;
             }
@@ -247,9 +251,8 @@ void test_trace_acceptance_cases() {
     };
 
     run_cases(cases, [](const TraceAcceptanceCase& test_case) {
-        const bool actual =
-            trace_satisfies_requirement(test_case.m_requirement,
-                                        test_case.m_trace);
+        const bool actual = trace_satisfies_requirement(test_case.m_requirement,
+                                                        test_case.m_trace);
         expect(actual == test_case.m_expected_acceptance,
                test_case.m_label + ": oracle acceptance mismatch");
     });

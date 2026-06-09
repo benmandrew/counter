@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cstdint>
 #include <functional>
 #include <memory>
 #include <optional>
@@ -16,7 +17,7 @@
 /// representation) from the public interface.
 class Formula {
    public:
-    enum class Kind {
+    enum class Kind : std::uint8_t {
         Atom,
         Not,
         And,

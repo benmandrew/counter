@@ -126,10 +126,14 @@ void build_ltl_conjunction(const std::vector<Requirement>& reqs,
                            std::string& out) {
     bool first = true;
     for (const Requirement& req : reqs) {
+        if (!req.m_ltl.has_value()) {
+            assert(false);
+            __builtin_unreachable();
+        }
         if (!first) {
             out += " & ";
         }
-        out += "(" + req.m_ltl.value() + ")";
+        out += "(" + *req.m_ltl + ")";
         first = false;
     }
 }

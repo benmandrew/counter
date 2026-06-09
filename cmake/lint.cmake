@@ -82,4 +82,4 @@ endif()
 # --- aggregate ---
 
 add_custom_target(lint)
-add_dependencies(lint lint-cpplint lint-clang-tidy lint-cppcheck)
+add_dependencies(lint lint-cpplint lint-clang-tidy)

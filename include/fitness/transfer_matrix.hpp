@@ -134,4 +134,8 @@ TransferSystem build_transfer_system(
 TransferSystem build_conjunction_transfer_system(
     const Requirement& requirement1, const Requirement& requirement2);
 
+/// Returns the weighted transition matrix for a TransferSystem. If
+/// m_transition_matrix_is_weighted is already true the matrix is returned
+/// unchanged. Otherwise each column j is scaled by m_valuation_counts(j),
+/// turning a 0/1 adjacency matrix into a valuation-weighted one.
 CountMatrix weighted_transition_matrix(const TransferSystem& system);

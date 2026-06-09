@@ -194,5 +194,8 @@ std::vector<State> canonical_states();
 /// Converts a Timing enum value to a human-readable string representation.
 std::string to_string(const Timing& timing);
 
-/// Converts a Requirement to an LTL formula string suitable for SPOT.
+/// Converts a Requirement to an LTL formula string in SPOT syntax. Each
+/// Timing variant maps to a distinct temporal pattern, e.g. WithinTicks(n)
+/// yields G(T -> F[0..n] R) and ForTicks(n) yields G(T -> G[0..n] R).
+/// The result is suitable for passing directly to ltl2tgba or ltlsynt.
 std::string requirement_to_ltl(const Requirement& requirement);

@@ -146,19 +146,27 @@ Count count_guard_models(const std::string& label,
 }
 
 struct HoaTransition {
-    std::string m_guard_label;  // raw HOA guard using AP indices
-    std::size_t m_destination;
+    std::string m_guard_label;  // Boolean formula over AP indices, e.g. "!0&1"
+    std::size_t m_destination;  // destination state index in the HOA
 };
 
+// Parsed representation of a HOA v1 automaton as produced by ltl2tgba -H.
+// Safety automata (acc-name: all) have m_is_buchi == false and an implicit
+// dead state for any unlisted transition. Buchi automata carry per-state
+// acceptance marks used to populate the final-state mask.
 struct HoaAutomaton {
     std::size_t m_n_states = 0;
     std::size_t m_initial_state = 0;
-    std::vector<std::string> m_aps;
+    std::vector<std::string> m_aps;           // AP names in index order
     bool m_is_buchi = false;
-    std::vector<bool> m_accepting_states;
-    std::vector<std::vector<HoaTransition>> m_transitions;
+    std::vector<bool> m_accepting_states;     // indexed by HOA state ID
+    std::vector<std::vector<HoaTransition>> m_transitions;  // indexed by source state ID
 };
 
+// Parses a HOA v1 automaton string into an HoaAutomaton. Reads the header
+// fields States, Start, AP, and acc-name, then collects per-state transitions
+// from the --BODY-- section. Accepts both safety (acc-name: all) and Buchi
+// (acc-name: Buchi) acceptance conditions.
 HoaAutomaton parse_hoa(const std::string& hoa_text) {
     HoaAutomaton result;
     std::istringstream ss(hoa_text);
@@ -212,6 +220,14 @@ HoaAutomaton parse_hoa(const std::string& hoa_text) {
     return result;
 }
 
+// Converts a parsed HOA automaton into a weighted TransferSystem. States are
+// permuted so that the HOA initial state lands at matrix index 0, matching the
+// e_0 start vector used by count_traces. Each matrix entry is the sum of
+// count_guard_models over all transitions between those two states, weighted
+// over the full n_total_atoms variable universe (not just the HOA APs, since
+// SPOT may eliminate atoms when it simplifies a formula to a tautology).
+// Safety automata produce an empty final_state_mask (all states accept);
+// Buchi automata set the mask from the per-state acceptance flags.
 TransferSystem build_transfer_system_from_hoa(const HoaAutomaton& hoa,
                                               std::size_t n_total_atoms) {
     const Eigen::Index n = static_cast<Eigen::Index>(hoa.m_n_states);

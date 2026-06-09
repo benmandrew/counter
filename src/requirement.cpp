@@ -36,6 +36,8 @@ std::string to_string(const Timing& timing) {
                 return "within " + std::to_string(value.m_ticks) + " ticks";
             } else if constexpr (std::is_same_v<T, timing::ForTicks>) {
                 return "for " + std::to_string(value.m_ticks) + " ticks";
+            } else if constexpr (std::is_same_v<T, timing::AfterTicks>) {
+                return "after " + std::to_string(value.m_ticks) + " ticks";
             } else {
                 return "eventually";
             }

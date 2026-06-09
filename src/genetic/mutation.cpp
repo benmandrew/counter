@@ -2,7 +2,6 @@
 
 #include <cassert>
 #include <cstdlib>
-#include <limits>
 #include <optional>
 #include <string>
 #include <type_traits>
@@ -125,80 +124,29 @@ Formula mutate_formula(const Formula& formula,
     return f;
 }
 
-Timing pick_non_parameter_timing(const RandomSource& random_source) {
-    const std::size_t choice = random_source.next_index(3);
-    if (choice == 0) return timing::immediately();
-    if (choice == 1) return timing::next_timepoint();
-    return timing::eventually();
-}
-
-Timing pick_parameter_timing(std::size_t ticks,
-                             const RandomSource& random_source) {
-    return random_source.next_bool() ? timing::within_ticks(ticks)
-                                     : timing::for_ticks(ticks);
-}
-
-std::size_t pick_tick_count(const RandomSource& random_source) {
-    return random_source.next_index(8) + 1;
-}
-
-std::size_t mutate_tick_count(std::size_t ticks,
-                              const RandomSource& random_source) {
-    const std::size_t candidate = pick_tick_count(random_source);
-    if (candidate != ticks) {
-        return candidate;
-    }
-    if (ticks < std::numeric_limits<std::size_t>::max()) {
-        return ticks + 1;
-    }
-    return ticks - 1;
-}
-
 Timing mutate_timing(const Timing& timing, const RandomSource& random_source) {
     assert(random_source);
     const auto mutation_function = [&](const auto& value) -> Timing {
         using T = std::decay_t<decltype(value)>;
         if constexpr (std::is_same_v<T, timing::Immediately> ||
-                      std::is_same_v<T, timing::NextTimepoint> ||
-                      std::is_same_v<T, timing::Eventually>) {
-            if (!random_source.next_bool()) {
-                // Replace with one of the other two non-parameterized timings.
-                const std::size_t other = random_source.next_index(2);
-                if constexpr (std::is_same_v<T, timing::Immediately>) {
-                    return other == 0 ? timing::next_timepoint()
-                                      : timing::eventually();
-                } else if constexpr (std::is_same_v<T, timing::NextTimepoint>) {
-                    return other == 0 ? timing::immediately()
-                                      : timing::eventually();
-                } else {
-                    return other == 0 ? timing::immediately()
-                                      : timing::next_timepoint();
-                }
+                      std::is_same_v<T, timing::NextTimepoint>) {
+            return timing::within_ticks(1);
+        } else if constexpr (std::is_same_v<T, timing::Eventually>) {
+            return timing::eventually();
+        } else if constexpr (std::is_same_v<T, timing::AfterTicks>) {
+            return timing::within_ticks(value.m_ticks + 1);
+        } else if constexpr (std::is_same_v<T, timing::ForTicks>) {
+            if (value.m_ticks == 1) {
+                return random_source.next_bool() ? timing::next_timepoint()
+                                                 : timing::immediately();
             }
-            // Replace with a parameterized timing.
-            return pick_parameter_timing(pick_tick_count(random_source),
-                                         random_source);
+            return random_source.next_bool()
+                       ? timing::for_ticks(value.m_ticks - 1)
+                       : timing::for_ticks(value.m_ticks / 2);
         } else {
-            if (!random_source.next_bool()) {
-                // Change operator only, preserve parameter.
-                if constexpr (std::is_same_v<T, timing::WithinTicks>) {
-                    return timing::for_ticks(value.m_ticks);
-                } else {
-                    return timing::within_ticks(value.m_ticks);
-                }
-            }
-            if (!random_source.next_bool()) {
-                // Change parameter only, preserve operator.
-                const std::size_t mutated_ticks =
-                    mutate_tick_count(value.m_ticks, random_source);
-                if constexpr (std::is_same_v<T, timing::WithinTicks>) {
-                    return timing::within_ticks(mutated_ticks);
-                } else {
-                    return timing::for_ticks(mutated_ticks);
-                }
-            }
-            // Replace with a non-parameterized timing.
-            return pick_non_parameter_timing(random_source);
+            return random_source.next_bool()
+                       ? timing::within_ticks(value.m_ticks + 1)
+                       : timing::within_ticks(value.m_ticks * 2);
         }
     };
     return std::visit(mutation_function, timing);

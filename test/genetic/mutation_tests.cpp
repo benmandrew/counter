@@ -64,41 +64,52 @@ void test_mutation_atom_selected_from_atoms_list() {
            "by the random source");
 }
 
-void test_timing_mutation_replaces_non_parameterized_timing() {
+void test_timing_mutation_non_parameterized_becomes_within_one_tick() {
     const Timing mutated =
         mutate_timing(timing::next_timepoint(), make_source({}, false));
-    expect(std::holds_alternative<timing::Immediately>(mutated),
-           "mutation: next-timepoint should mutate to immediately on replace");
-}
-
-void test_timing_mutation_can_switch_to_parameterized_timing() {
-    const Timing mutated =
-        mutate_timing(timing::immediately(), make_source({1, 5, 0}, 0));
-    const auto* for_ticks = std::get_if<timing::ForTicks>(&mutated);
-    expect(for_ticks != nullptr,
-           "mutation: non-parameterized timing should be able to become for");
-    expect(for_ticks->m_ticks == 6,
-           "mutation: parameterized timing should use generated tick count");
-}
-
-void test_timing_mutation_replaces_eventually_with_non_parameterized() {
-    // false source → enters the "replace with other non-parameterized" branch;
-    // next_index(2) == 0 → picks immediately when current is eventually.
-    const Timing mutated =
-        mutate_timing(timing::eventually(), make_source({}, false));
-    expect(std::holds_alternative<timing::Immediately>(mutated),
-           "mutation: eventually should mutate to immediately on replace");
-}
-
-void test_timing_mutation_can_change_parameter_only() {
-    const Timing mutated =
-        mutate_timing(timing::within_ticks(3), make_source({1, 0, 1}, 1));
     const auto* within = std::get_if<timing::WithinTicks>(&mutated);
     expect(within != nullptr,
-           "mutation: within timing should remain within for parameter-only "
-           "mutation");
-    expect(within->m_ticks != 3,
-           "mutation: parameter-only mutation should change tick count");
+           "mutation: next-timepoint should weaken to within-ticks");
+    expect(within->m_ticks == 1,
+           "mutation: next-timepoint should weaken to within 1 tick");
+}
+
+void test_timing_mutation_immediately_becomes_within_one_tick() {
+    const Timing mutated =
+        mutate_timing(timing::immediately(), make_source({}, false));
+    const auto* within = std::get_if<timing::WithinTicks>(&mutated);
+    expect(within != nullptr,
+           "mutation: immediately should weaken to within-ticks");
+    expect(within->m_ticks == 1,
+           "mutation: immediately should weaken to within 1 tick");
+}
+
+void test_timing_mutation_eventually_is_unchanged() {
+    const Timing mutated =
+        mutate_timing(timing::eventually(), make_source({}, false));
+    expect(std::holds_alternative<timing::Eventually>(mutated),
+           "mutation: eventually has no weakening and should be unchanged");
+}
+
+void test_timing_mutation_within_ticks_weakens() {
+    // next_bool() = false (0 % 2) → doubles: within_ticks(3 * 2 = 6)
+    const Timing mutated =
+        mutate_timing(timing::within_ticks(3), make_source({0}, 0));
+    const auto* within = std::get_if<timing::WithinTicks>(&mutated);
+    expect(within != nullptr,
+           "mutation: within-ticks should remain within-ticks after weakening");
+    expect(within->m_ticks == 6,
+           "mutation: within-ticks double weakening should double the count");
+}
+
+void test_timing_mutation_after_ticks_becomes_within_ticks() {
+    const Timing mutated =
+        mutate_timing(timing::after_ticks(3), make_source({}, 0));
+    const auto* within = std::get_if<timing::WithinTicks>(&mutated);
+    expect(within != nullptr,
+           "mutation: after-ticks should weaken to within-ticks");
+    expect(within->m_ticks == 4,
+           "mutation: after 3 ticks should weaken to within 4 ticks");
 }
 
 }  // namespace
@@ -108,8 +119,9 @@ void run_mutation_tests() {
     test_mutation_renames_atom_to_one_from_atoms_list();
     test_mutation_atom_unchanged_when_no_atoms_provided();
     test_mutation_atom_selected_from_atoms_list();
-    test_timing_mutation_replaces_non_parameterized_timing();
-    test_timing_mutation_replaces_eventually_with_non_parameterized();
-    test_timing_mutation_can_switch_to_parameterized_timing();
-    test_timing_mutation_can_change_parameter_only();
+    test_timing_mutation_non_parameterized_becomes_within_one_tick();
+    test_timing_mutation_immediately_becomes_within_one_tick();
+    test_timing_mutation_eventually_is_unchanged();
+    test_timing_mutation_within_ticks_weakens();
+    test_timing_mutation_after_ticks_becomes_within_ticks();
 }

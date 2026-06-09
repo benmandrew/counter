@@ -159,6 +159,24 @@ bool trace_satisfies_requirement(const Requirement& requirement,
                     }
                 }
                 return true;
+            } else if constexpr (std::is_same_v<T, timing::AfterTicks>) {
+                std::size_t countdown = 0;
+                for (const TraceStep& step : trace) {
+                    if (countdown == 0) {
+                        if (!step.m_trigger_holds) continue;
+                        if (step.m_response_holds) return false;
+                        countdown = timing_value.m_ticks;
+                    } else if (countdown == 1) {
+                        if (!step.m_response_holds || step.m_trigger_holds)
+                            return false;
+                        countdown = 0;
+                    } else {
+                        if (step.m_response_holds) return false;
+                        countdown = step.m_trigger_holds ? timing_value.m_ticks
+                                                         : countdown - 1;
+                    }
+                }
+                return true;
             } else {
                 bool pending = false;
                 for (const TraceStep& step : trace) {

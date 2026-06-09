@@ -13,15 +13,19 @@
 namespace {
 
 // Returns true when the requirement uses the countdown automata used for
-// within-N-ticks and for-N-ticks semantics.
+// within-N-ticks, for-N-ticks, and after-N-ticks semantics.
 bool is_countdown_timing(const Timing& timing) {
     return std::holds_alternative<timing::WithinTicks>(timing) ||
-           std::holds_alternative<timing::ForTicks>(timing);
+           std::holds_alternative<timing::ForTicks>(timing) ||
+           std::holds_alternative<timing::AfterTicks>(timing);
 }
 
 std::size_t tick_count_or_throw(const Timing& timing) {
     if (const auto* within = std::get_if<timing::WithinTicks>(&timing)) {
         return within->m_ticks;
+    }
+    if (const auto* after = std::get_if<timing::AfterTicks>(&timing)) {
+        return after->m_ticks;
     }
     const auto* for_ticks = std::get_if<timing::ForTicks>(&timing);
     assert(for_ticks != nullptr);
@@ -125,6 +129,38 @@ std::size_t for_next_countdown(std::size_t countdown, bool trigger_holds,
     }
     valid = true;
     return 0;
+}
+
+// Computes the next countdown for [] (P -> after[N] Q).
+// States: c=0 (idle), c=1 (required: Q must hold), c=2..N (forbidden: Q must
+// not hold). Trigger fires at c=0 with Q absent -> c=N. Invalid transitions
+// correspond to entering the omitted dead state.
+std::size_t after_next_countdown(std::size_t countdown, bool trigger_holds,
+                                 bool response_holds, std::size_t max_ticks,
+                                 bool& valid) {
+    if (countdown == 0) {
+        if (!trigger_holds) {
+            valid = true;
+            return 0;
+        }
+        if (response_holds) {
+            valid = false;
+            return 0;
+        }
+        valid = true;
+        return max_ticks;
+    }
+    if (countdown == 1) {
+        valid = response_holds && !trigger_holds;
+        return 0;
+    }
+    // countdown >= 2: forbidden tick
+    if (response_holds) {
+        valid = false;
+        return 0;
+    }
+    valid = true;
+    return trigger_holds ? max_ticks : countdown - 1;
 }
 
 using CountdownTransitionFn =
@@ -252,6 +288,9 @@ CountdownTransitionFn countdown_transition_fn_or_throw(
     const Requirement& requirement) {
     if (std::holds_alternative<timing::WithinTicks>(requirement.m_timing)) {
         return &within_next_countdown;
+    }
+    if (std::holds_alternative<timing::AfterTicks>(requirement.m_timing)) {
+        return &after_next_countdown;
     }
     assert(std::holds_alternative<timing::ForTicks>(requirement.m_timing));
     return &for_next_countdown;

@@ -31,12 +31,18 @@ struct ForTicks {
     std::size_t m_ticks;
 };
 
+/// Response must not hold for `m_ticks` ticks (including the trigger tick),
+/// then must hold on the (`m_ticks` + 1)th tick.
+struct AfterTicks {
+    std::size_t m_ticks;
+};
+
 /// Response must hold at some timepoint at or after the trigger.
 struct Eventually {};
 
 /// Algebraic data type for requirement timing.
-using Timing =
-    std::variant<Immediately, NextTimepoint, WithinTicks, ForTicks, Eventually>;
+using Timing = std::variant<Immediately, NextTimepoint, WithinTicks, ForTicks,
+                            AfterTicks, Eventually>;
 
 inline Timing immediately() { return Immediately{}; }
 
@@ -45,6 +51,8 @@ inline Timing next_timepoint() { return NextTimepoint{}; }
 inline Timing within_ticks(std::size_t ticks) { return WithinTicks{ticks}; }
 
 inline Timing for_ticks(std::size_t ticks) { return ForTicks{ticks}; }
+
+inline Timing after_ticks(std::size_t ticks) { return AfterTicks{ticks}; }
 
 inline Timing eventually() { return Eventually{}; }
 
@@ -61,6 +69,9 @@ inline bool operator<(const Timing& lhs, const Timing& rhs) {
     }
     if (const auto* l = std::get_if<timing::ForTicks>(&lhs)) {
         return l->m_ticks < std::get<timing::ForTicks>(rhs).m_ticks;
+    }
+    if (const auto* l = std::get_if<timing::AfterTicks>(&lhs)) {
+        return l->m_ticks < std::get<timing::AfterTicks>(rhs).m_ticks;
     }
     return false;
 }

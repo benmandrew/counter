@@ -111,6 +111,8 @@ template <typename TimingVariant>
 Timing make_parameterized_timing(std::size_t ticks) {
     if constexpr (std::is_same_v<TimingVariant, timing::WithinTicks>) {
         return timing::within_ticks(ticks);
+    } else if constexpr (std::is_same_v<TimingVariant, timing::AfterTicks>) {
+        return timing::after_ticks(ticks);
     } else {
         return timing::for_ticks(ticks);
     }
@@ -119,7 +121,8 @@ Timing make_parameterized_timing(std::size_t ticks) {
 template <typename TimingVariant>
 constexpr bool is_parameterized_timing_v =
     std::is_same_v<TimingVariant, timing::WithinTicks> ||
-    std::is_same_v<TimingVariant, timing::ForTicks>;
+    std::is_same_v<TimingVariant, timing::ForTicks> ||
+    std::is_same_v<TimingVariant, timing::AfterTicks>;
 
 template <typename First, typename Second>
 Timing crossover_parameterized_timing(const First& first_value,

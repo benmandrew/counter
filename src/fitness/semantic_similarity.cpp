@@ -25,9 +25,14 @@ struct SemanticSimilarityCounts {
 SemanticSimilarityCounts count_semantic_similarity_terms(
     const Requirement& requirement, const Requirement& other_requirement,
     std::size_t step_count) {
-    const TransferSystem system = build_transfer_system(requirement);
+    // All three systems must use the same atom universe so that the
+    // conjunction count is always <= each individual count, keeping
+    // the similarity ratio in [0, 1].
+    const std::size_t n_atoms =
+        count_joint_atoms(requirement, other_requirement);
+    const TransferSystem system = build_transfer_system(requirement, n_atoms);
     const TransferSystem other_system =
-        build_transfer_system(other_requirement);
+        build_transfer_system(other_requirement, n_atoms);
     const TransferSystem conjunction_system =
         build_conjunction_transfer_system(requirement, other_requirement);
     return {

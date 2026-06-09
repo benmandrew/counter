@@ -121,6 +121,11 @@ struct TransferSystem {
     CountVector m_final_state_mask;
 };
 
+/// Returns the number of unique atoms across all four formulas of two
+/// requirements. Used to establish a shared atom universe for semantic
+/// similarity computations.
+std::size_t count_joint_atoms(const Requirement& req1, const Requirement& req2);
+
 /// Constructs a TransferSystem for a requirement using SPOT's ltl2tgba to
 /// generate a deterministic automaton from the requirement's LTL formula.
 /// The canonical_valuation_counts parameter is accepted for API compatibility
@@ -128,6 +133,13 @@ struct TransferSystem {
 TransferSystem build_transfer_system(
     const Requirement& requirement,
     const CountVector& canonical_valuation_counts = CountVector());
+
+/// Constructs a TransferSystem for a requirement, explicitly specifying the
+/// total atom universe size used for transition weighting. Use this overload
+/// when comparing trace counts across systems that must share the same universe
+/// (e.g. when computing semantic similarity alongside a conjunction system).
+TransferSystem build_transfer_system(const Requirement& requirement,
+                                     std::size_t n_total_atoms);
 
 /// Constructs a TransferSystem for the conjunction of two requirements.
 /// Runs ltl2tgba on "(ltl1) & (ltl2)" and weights transitions via Ganak.

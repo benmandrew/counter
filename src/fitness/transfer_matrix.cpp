@@ -40,8 +40,8 @@ std::size_t count_requirement_atoms(const Requirement& req) {
     return atoms.size();
 }
 
-// Returns the number of unique atoms across all four formulas of two
-// requirements.
+}  // namespace
+
 std::size_t count_joint_atoms(const Requirement& req1,
                               const Requirement& req2) {
     std::set<std::string> atoms = collect_formula_atoms(req1.m_trigger);
@@ -54,6 +54,8 @@ std::size_t count_joint_atoms(const Requirement& req1,
     ins(req2.m_response);
     return atoms.size();
 }
+
+namespace {
 
 // Converts a HOA guard label (AP indices) to a propositional formula string
 // using the AP names. Digits become AP name references; operators pass through.
@@ -284,6 +286,14 @@ TransferSystem build_transfer_system(
     const Requirement& requirement,
     const CountVector& /*canonical_valuation_counts*/) {
     const std::size_t n_total_atoms = count_requirement_atoms(requirement);
+    const std::string ltl = requirement_to_ltl(requirement);
+    const std::string hoa_text = run_ltl2tgba_for_counting(ltl);
+    const HoaAutomaton hoa = parse_hoa(hoa_text);
+    return build_transfer_system_from_hoa(hoa, n_total_atoms);
+}
+
+TransferSystem build_transfer_system(const Requirement& requirement,
+                                     std::size_t n_total_atoms) {
     const std::string ltl = requirement_to_ltl(requirement);
     const std::string hoa_text = run_ltl2tgba_for_counting(ltl);
     const HoaAutomaton hoa = parse_hoa(hoa_text);

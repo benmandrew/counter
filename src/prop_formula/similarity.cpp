@@ -59,17 +59,8 @@ std::unordered_map<std::size_t, std::size_t> collect_subformula_ids(
                 key.m_left = ids[node.m_left];
                 break;
             case prop_formula_internal::NodeType::And:
-                key.m_left = ids[node.m_left];
-                key.m_right = ids[node.m_right];
-                break;
             case prop_formula_internal::NodeType::Or:
-                key.m_left = ids[node.m_left];
-                key.m_right = ids[node.m_right];
-                break;
             case prop_formula_internal::NodeType::Implies:
-                key.m_left = ids[node.m_left];
-                key.m_right = ids[node.m_right];
-                break;
             case prop_formula_internal::NodeType::Iff:
                 key.m_left = ids[node.m_left];
                 key.m_right = ids[node.m_right];

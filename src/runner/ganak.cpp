@@ -42,7 +42,7 @@ std::string write_temporary_dimacs(const std::string& contents) {
     const int file_descriptor = mkstemp(buffer.data());
     assert(file_descriptor >= 0);
     close(file_descriptor);
-    const std::string dimacs_path(buffer.data());
+    std::string dimacs_path(buffer.data());
     std::ofstream dimacs_file(dimacs_path);
     assert(dimacs_file.good());
     dimacs_file << contents;

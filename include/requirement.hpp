@@ -102,15 +102,14 @@ struct Requirement {
 
     explicit Requirement(const Formula& trigger, const Formula& response,
                          const Timing& timing)
-        : m_trigger(trigger), m_response(response), m_timing(timing) {
-        m_ltl = std::nullopt;
-    }
+        : m_trigger(trigger), m_response(response), m_timing(timing) {}
 
     explicit Requirement(const Formula& trigger, const Formula& response,
                          const Timing& timing, const std::string& ltl)
-        : m_trigger(trigger), m_response(response), m_timing(timing) {
-        m_ltl = std::make_optional(ltl);
-    }
+        : m_trigger(trigger),
+          m_response(response),
+          m_timing(timing),
+          m_ltl(ltl) {}
 };
 
 static bool atom_contains_uppercase(const std::string& atom) {

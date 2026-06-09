@@ -1,0 +1,7 @@
+# next_bool() is non-pure — each call returns a different value, so the
+# "identical condition" check is a false positive here.
+identicalConditionAfterEarlyExit
+
+# Eigen's comma-initializer syntax (operator<<) is flagged as a suspicious
+# comma operator. This is a known false positive with Eigen.
+constStatement

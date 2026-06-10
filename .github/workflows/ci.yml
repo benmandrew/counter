@@ -14,6 +14,11 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@v4
 
+      - name: Install LLVM 21
+        run: |
+          wget -qO- https://apt.llvm.org/llvm.sh | sudo bash -s -- 21
+          sudo ln -sf /usr/bin/clang-tidy-21 /usr/bin/clang-tidy
+
       - name: Install system dependencies
         run: |
           sudo apt-get update

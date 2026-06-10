@@ -60,9 +60,9 @@ double semantic_similarity(const Requirement& requirement,
     return semantic_similarity_from_counts(counts);
 }
 
-double semantic_similarity(const Requirement& requirement1,
-                           const Requirement& requirement2) {
-    return semantic_similarity(requirement1, requirement2,
+double semantic_similarity(const Requirement& requirement,
+                           const Requirement& other_requirement) {
+    return semantic_similarity(requirement, other_requirement,
                                kDefaultModelCountingBound);
 }
 

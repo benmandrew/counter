@@ -4,6 +4,7 @@ Checks: >
   performance-*,
   modernize-*,
   readability-*,
+  google-*,
   -modernize-use-trailing-return-type,
   -readability-magic-numbers,
   -bugprone-easily-swappable-parameters,

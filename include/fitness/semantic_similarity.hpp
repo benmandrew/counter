@@ -28,7 +28,7 @@ double semantic_similarity(const Requirement& requirement,
 /// @param other_requirement The second requirement to compare
 /// @return                  A semantic similarity score in [0, 1]
 double semantic_similarity(const Requirement& requirement,
-                           const Requirement& requirement2);
+                           const Requirement& other_requirement);
 
 /// Computes semantic similarity between two specifications by averaging the
 /// pairwise semantic similarities of corresponding requirements (matched in

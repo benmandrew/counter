@@ -1,4 +1,6 @@
 #include <algorithm>
+#include <chrono>
+#include <iomanip>
 #include <iostream>
 #include <random>
 #include <set>
@@ -43,6 +45,12 @@ Specification get_spec() {
 
 int main() {
     Specification original_spec = get_spec();
+    std::cout << "Original specification:\n";
+    for (const Requirement& req : original_spec.m_guarantees) {
+        std::cout << "Requirement:\n  Trigger: " << req.m_trigger.to_string()
+                  << "\n  Response: " << req.m_response.to_string()
+                  << "\n  Timing: " << to_string(req.m_timing) << "\n";
+    }
     // 1. Initial population — each requirement wrapped in a specification
     std::vector<Specification> population = {
         original_spec,
@@ -62,12 +70,17 @@ int main() {
     std::random_device rng_dev;
     RandomSource random_source = make_random_source_from_seed(rng_dev());
     // 6. Run genetic algorithm for a few generations
-    std::size_t generations = 10;
+    std::size_t generations = 3;
     std::size_t pop_size = population.size();
     for (std::size_t gen_idx = 0; gen_idx < generations; ++gen_idx) {
-        std::cout << "Generation " << gen_idx + 1 << ":\n";
+        std::cout << "Generation " << gen_idx + 1 << ": " << std::flush;
+        const auto start = std::chrono::steady_clock::now();
         population = evolve_generation(population, pop_size, fitness_function,
                                        filters, config, random_source);
+        const double elapsed = std::chrono::duration<double>(
+                                   std::chrono::steady_clock::now() - start)
+                                   .count();
+        std::cout << std::fixed << std::setprecision(2) << elapsed << "s\n";
     }
     // 7. Score and print the best specification
     auto scored = score_population(population, fitness_function);
@@ -83,9 +96,9 @@ int main() {
             std::cout << "Requirement:\n  Trigger: "
                       << req.m_trigger.to_string()
                       << "\n  Response: " << req.m_response.to_string()
-                      << "\n  Timing: " << to_string(req.m_timing)
-                      << "\n  Fitness: " << scored.front().fitness << "\n";
+                      << "\n  Timing: " << to_string(req.m_timing) << "\n";
         }
+        std::cout << "Fitness: " << scored.front().fitness << "\n";
     }
     return 0;
 }

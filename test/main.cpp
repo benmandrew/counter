@@ -61,6 +61,10 @@ void run_suite(std::string_view suite_name) {
         run_syntactic_similarity_tests();
         return;
     }
+    if (suite_name == "fitness_function") {
+        run_fitness_function_tests();
+        return;
+    }
     throw std::invalid_argument("Unknown test suite: " +
                                 std::string(suite_name));
 }
@@ -83,6 +87,7 @@ int main(int argc, char* argv[]) {
             run_prop_formula_similarity_tests();
             run_semantic_similarity_tests();
             run_syntactic_similarity_tests();
+            run_fitness_function_tests();
             return 0;
         }
         if (argc != 2) {

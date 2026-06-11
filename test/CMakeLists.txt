@@ -6,6 +6,7 @@ add_executable(counter_tests
     genetic/generation_tests.cpp
     genetic/mutation_tests.cpp
     main.cpp
+    fitness/function_tests.cpp
     fitness/semantic_similarity_tests.cpp
     fitness/syntactic_similarity_tests.cpp
     fitness/transfer_matrix_tests.cpp
@@ -37,6 +38,7 @@ add_test(NAME counter_tests.prop_formula_rewrite COMMAND counter_tests prop_form
 add_test(NAME counter_tests.prop_formula_similarity COMMAND counter_tests prop_formula_similarity)
 add_test(NAME counter_tests.semantic_similarity COMMAND counter_tests semantic_similarity)
 add_test(NAME counter_tests.syntactic_similarity COMMAND counter_tests syntactic_similarity)
+add_test(NAME counter_tests.fitness_function COMMAND counter_tests fitness_function)
 
 add_custom_target(tests
     COMMAND ${CMAKE_CTEST_COMMAND} --output-on-failure

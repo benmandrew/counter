@@ -123,9 +123,24 @@ class Formula {
     /// @return A string representation of the formula
     [[nodiscard]] std::string to_string() const;
 
+    [[nodiscard]] std::size_t hash() const noexcept;
+
    private:
     struct Impl;
     std::unique_ptr<Impl> m_impl;
 
     friend bool operator<(const Formula& lhs, const Formula& rhs);
 };
+
+inline bool operator==(const Formula& lhs, const Formula& rhs) {
+    return !(lhs < rhs) && !(rhs < lhs);
+}
+
+namespace std {  // NOLINT(build/namespaces)
+template <>
+struct hash<Formula> {
+    std::size_t operator()(const Formula& formula) const noexcept {
+        return formula.hash();
+    }
+};
+}  // namespace std

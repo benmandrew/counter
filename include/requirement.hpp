@@ -2,10 +2,12 @@
 
 #include <algorithm>
 #include <cstddef>
+#include <functional>
 #include <iostream>
 #include <optional>
 #include <set>
 #include <string>
+#include <type_traits>
 #include <utility>
 #include <variant>
 #include <vector>
@@ -77,6 +79,10 @@ inline bool operator<(const Timing& lhs, const Timing& rhs) {
     return false;
 }
 
+inline bool operator==(const Timing& lhs, const Timing& rhs) {
+    return !(lhs < rhs) && !(rhs < lhs);
+}
+
 /// A FRET requirement specifying a system obligation. Consists of a trigger
 /// condition and a response that must be satisfied according to the specified
 /// timing constraint. These are used as the basic units for repair and for
@@ -111,6 +117,10 @@ struct Requirement {
             return false;
         }
         return lhs.m_ltl < rhs.m_ltl;
+    }
+
+    friend bool operator==(const Requirement& lhs, const Requirement& rhs) {
+        return !(lhs < rhs) && !(rhs < lhs);
     }
 
     explicit Requirement(Formula trigger, Formula response,
@@ -182,6 +192,13 @@ struct Specification {
         }
         return lhs.m_guarantees < rhs.m_guarantees;
     }
+
+    friend bool operator==(const Specification& lhs, const Specification& rhs) {
+        return lhs.m_assumptions == rhs.m_assumptions &&
+               lhs.m_guarantees == rhs.m_guarantees &&
+               lhs.m_in_atoms == rhs.m_in_atoms &&
+               lhs.m_out_atoms == rhs.m_out_atoms;
+    }
 };
 
 /// A state in the automaton used for transfer matrix model counting. Encodes
@@ -213,3 +230,68 @@ std::string to_string(const Timing& timing);
 /// yields G(T -> F[0..n] R) and ForTicks(n) yields G(T -> G[0..n] R).
 /// The result is suitable for passing directly to ltl2tgba or ltlsynt.
 std::string requirement_to_ltl(const Requirement& requirement);
+
+namespace std {  // NOLINT(build/namespaces)
+
+template <>
+struct hash<Timing> {
+    std::size_t operator()(const Timing& timing) const noexcept {
+        auto combine = [](std::size_t seed, std::size_t val) noexcept {
+            return seed ^ (val + 0x9e3779b9U + (seed << 6) + (seed >> 2));
+        };
+        return std::visit(
+            [&combine, idx = timing.index()](const auto& val) -> std::size_t {
+                using T = std::decay_t<decltype(val)>;
+                if constexpr (std::is_same_v<T, timing::WithinTicks> ||
+                              std::is_same_v<T, timing::ForTicks> ||
+                              std::is_same_v<T, timing::AfterTicks>) {
+                    return combine(idx, std::hash<std::size_t>{}(val.m_ticks));
+                } else {
+                    return idx;
+                }
+            },
+            timing);
+    }
+};
+
+template <>
+struct hash<Requirement> {
+    std::size_t operator()(const Requirement& req) const noexcept {
+        auto combine = [](std::size_t seed, std::size_t val) noexcept {
+            return seed ^ (val + 0x9e3779b9U + (seed << 6) + (seed >> 2));
+        };
+        std::size_t seed = std::hash<Formula>{}(req.m_trigger);
+        seed = combine(seed, std::hash<Formula>{}(req.m_response));
+        seed = combine(seed, std::hash<Timing>{}(req.m_timing));
+        seed = combine(seed, std::hash<bool>{}(req.m_ltl.has_value()));
+        if (req.m_ltl.has_value()) {
+            seed = combine(seed, std::hash<std::string>{}(*req.m_ltl));
+        }
+        return seed;
+    }
+};
+
+template <>
+struct hash<Specification> {
+    std::size_t operator()(const Specification& spec) const noexcept {
+        auto combine = [](std::size_t seed, std::size_t val) noexcept {
+            return seed ^ (val + 0x9e3779b9U + (seed << 6) + (seed >> 2));
+        };
+        std::size_t seed = 0;
+        for (const Requirement& req : spec.m_assumptions) {
+            seed = combine(seed, std::hash<Requirement>{}(req));
+        }
+        for (const Requirement& req : spec.m_guarantees) {
+            seed = combine(seed, std::hash<Requirement>{}(req));
+        }
+        for (const std::string& atom : spec.m_in_atoms) {
+            seed = combine(seed, std::hash<std::string>{}(atom));
+        }
+        for (const std::string& atom : spec.m_out_atoms) {
+            seed = combine(seed, std::hash<std::string>{}(atom));
+        }
+        return seed;
+    }
+};
+
+}  // namespace std

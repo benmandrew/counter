@@ -12,6 +12,8 @@
 #include "fitness/syntactic_similarity.hpp"
 #include "genetic/generation.hpp"
 #include "requirement.hpp"
+#include "runner/black.hpp"
+#include "runner/spot.hpp"
 
 AggregateWeightedFitnessFunction get_fitness_function(
     const Specification& original_spec) {
@@ -25,7 +27,7 @@ AggregateWeightedFitnessFunction get_fitness_function(
         return specification_status(spec);
     };
     return AggregateWeightedFitnessFunction(
-        {{synsim, 0.5}, {semsim, 0.3}, {status, 0.2}});
+        {{synsim, 0.15}, {semsim, 0.15}, {status, 0.7}});
 }
 
 Specification get_spec() {
@@ -43,6 +45,38 @@ Specification get_spec() {
     return Specification(assumptions, guarantees, in_atoms, out_atoms);
 }
 
+void print_cache_report() {
+    std::cout << "Fitness function cache report:\n";
+    std::cout << "  Cache hits: "
+              << AggregateWeightedFitnessFunction::n_cache_hits << "\n";
+    std::cout << "  Cache misses: "
+              << AggregateWeightedFitnessFunction::n_cache_misses << "\n";
+    std::cout << "Satisfiability check cache report:\n";
+    std::cout << "  Cache hits: " << SatisfiabilityChecker::n_cache_hits
+              << "\n";
+    std::cout << "  Cache misses: " << SatisfiabilityChecker::n_cache_misses
+              << "\n";
+    std::cout << "Realizability check cache report:\n";
+    std::cout << "  Cache hits: " << RealizabilityChecker::n_cache_hits << "\n";
+    std::cout << "  Cache misses: " << RealizabilityChecker::n_cache_misses
+              << "\n";
+}
+
+std::vector<ScoredSpecification> original_population(
+    Specification& original_spec,
+    const AggregateWeightedFitnessFunction& fitness_function,
+    std::size_t population_size) {
+    std::vector<ScoredSpecification> population;
+    population.reserve(population_size);
+    for (std::size_t i = 0; i < population_size; ++i) {
+        population.push_back({original_spec, fitness_function(original_spec)});
+    }
+    return population;
+}
+
+constexpr std::size_t generations = 10;
+constexpr std::size_t population_size = 20;
+
 int main() {
     Specification original_spec = get_spec();
     std::cout << "Original specification:\n";
@@ -55,14 +89,8 @@ int main() {
     AggregateWeightedFitnessFunction fitness_function =
         get_fitness_function(original_spec);
     // 2. Initial population — each requirement wrapped in a specification
-    std::vector<ScoredSpecification> population = score_population(
-        {
-            original_spec,
-            original_spec,
-            original_spec,
-            original_spec,
-        },
-        fitness_function);
+    std::vector<ScoredSpecification> population =
+        original_population(original_spec, fitness_function, population_size);
     // 3. No filtering for demo
     std::vector<FilterFunction> filters;
     // 4. Evolution config
@@ -71,7 +99,6 @@ int main() {
     std::random_device rng_dev;
     RandomSource random_source = make_random_source_from_seed(rng_dev());
     // 6. Run genetic algorithm for a few generations
-    std::size_t generations = 10;
     std::size_t pop_size = population.size();
 
     for (std::size_t gen_idx = 0; gen_idx < generations; ++gen_idx) {
@@ -100,7 +127,8 @@ int main() {
                       << "\n  Response: " << req.m_response.to_string()
                       << "\n  Timing: " << to_string(req.m_timing) << "\n";
         }
-        std::cout << "Fitness: " << best_scored_spec.fitness << "\n";
+        std::cout << "Fitness: " << best_scored_spec.fitness << "\n\n";
     }
+    print_cache_report();
     return 0;
 }

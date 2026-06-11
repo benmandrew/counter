@@ -95,6 +95,76 @@ void test_spec_similarity_partial_match_multi_req() {
            "score 5/9");
 }
 
+// --- timing similarity ---
+
+// Identical timings always score 1.0.
+void test_timing_identical_immediately() {
+    const Requirement req{Formula("p"), Formula("q"), timing::immediately()};
+    const double result = syntactic_similarity(req, req);
+    // All three components equal 1.0 → average is 1.0
+    expect(std::fabs(result - 1.0) < 1e-12,
+           "timing-sim: identical requirements (immediately) should score 1.0");
+}
+
+void test_timing_identical_within_ticks() {
+    const Requirement req{Formula("p"), Formula("p"), timing::within_ticks(3)};
+    const double result = syntactic_similarity(req, req);
+    expect(std::fabs(result - 1.0) < 1e-12,
+           "timing-sim: identical within_ticks requirements should score 1.0");
+}
+
+// ForTicks{2} > ForTicks{1}: synSim = μ(↓ForTicks{1}) / μ(↓ForTicks{2}).
+// With r=0.5, w=0.01:
+//   μ(↓ForTicks{1}) = 3*0.01 + 0.5*(2-0.5)/0.5   = 0.03 + 1.5  = 1.53
+//   μ(↓ForTicks{2}) = 3*0.01 + 0.5*(2-0.25)/0.5  = 0.03 + 1.75 = 1.78
+//   synSim_timing = 1.53 / 1.78
+// Both requirements share the same formulas (p/p), so formula components = 1.0.
+// Overall = (1.0 + 1.0 + 1.53/1.78) / 3.0
+void test_timing_comparable_for_ticks() {
+    const Requirement req_strong{Formula("p"), Formula("p"),
+                                 timing::for_ticks(2)};
+    const Requirement req_weak{Formula("p"), Formula("p"),
+                               timing::for_ticks(1)};
+    const double timing_sim = 1.53 / 1.78;
+    const double expected = (1.0 + 1.0 + timing_sim) / 3.0;
+    const double result = syntactic_similarity(req_strong, req_weak);
+    expect(std::fabs(result - expected) < 1e-9,
+           "timing-sim: for_ticks{2} vs for_ticks{1} should give 1.53/1.78 "
+           "timing component");
+}
+
+// ForTicks{1} vs Eventually: very different → timing component near 0.
+// synSim_timing = μ(↓Eventually) / μ(↓ForTicks{1}) = 0.01 / 1.53
+void test_timing_for_ticks_vs_eventually() {
+    const Requirement req_strong{Formula("p"), Formula("p"),
+                                 timing::for_ticks(1)};
+    const Requirement req_weak{Formula("p"), Formula("p"),
+                               timing::eventually()};
+    const double timing_sim = 0.01 / 1.53;
+    const double expected = (1.0 + 1.0 + timing_sim) / 3.0;
+    const double result = syntactic_similarity(req_strong, req_weak);
+    expect(std::fabs(result - expected) < 1e-9,
+           "timing-sim: for_ticks{1} vs eventually should give tiny timing "
+           "component");
+}
+
+// Immediately vs NextTimepoint are incomparable in the partial order.
+// ↓I ∩ ↓N = WithinTicks{k≥1} ∪ {Eventually} → μ = 0.01 + 1.0 = 1.01
+// μ(↓I) = μ(↓N) = 0.01 + 0.01 + 1.0 = 1.02
+// μ(∪) = 1.02 + 1.02 - 1.01 = 1.03
+// synSim_timing = 1.01 / 1.03
+void test_timing_immediately_vs_next_timepoint() {
+    const Requirement req_i{Formula("p"), Formula("p"), timing::immediately()};
+    const Requirement req_n{Formula("p"), Formula("p"),
+                            timing::next_timepoint()};
+    const double timing_sim = 1.01 / 1.03;
+    const double expected = (1.0 + 1.0 + timing_sim) / 3.0;
+    const double result = syntactic_similarity(req_i, req_n);
+    expect(std::fabs(result - expected) < 1e-9,
+           "timing-sim: immediately vs next_timepoint should give 1.01/1.03 "
+           "timing component");
+}
+
 }  // namespace
 
 void run_syntactic_similarity_tests() {
@@ -104,4 +174,9 @@ void run_syntactic_similarity_tests() {
     test_spec_similarity_same_trigger_different_response();
     test_spec_similarity_identical_multi_req();
     test_spec_similarity_partial_match_multi_req();
+    test_timing_identical_immediately();
+    test_timing_identical_within_ticks();
+    test_timing_comparable_for_ticks();
+    test_timing_for_ticks_vs_eventually();
+    test_timing_immediately_vs_next_timepoint();
 }

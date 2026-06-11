@@ -82,8 +82,8 @@ std::vector<Specification> filter_population(
 ///                               fitness_function is empty, if rates are
 ///                               outside [0, 1], or if the filtered population
 ///                               is empty
-std::vector<Specification> evolve_generation(
-    const std::vector<Specification>& population, std::size_t target_size,
+std::vector<ScoredSpecification> evolve_generation(
+    const std::vector<ScoredSpecification>& population, std::size_t target_size,
     const AggregateWeightedFitnessFunction& fitness_function,
     const std::vector<FilterFunction>& filter_functions,
     const EvolutionConfig& config, const RandomSource& random_source);

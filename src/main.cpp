@@ -51,27 +51,29 @@ int main() {
                   << "\n  Response: " << req.m_response.to_string()
                   << "\n  Timing: " << to_string(req.m_timing) << "\n";
     }
-    // 1. Initial population — each requirement wrapped in a specification
-    std::vector<Specification> population = {
-        original_spec,
-        original_spec,
-        original_spec,
-        original_spec,
-    };
-    // 2. Fitness functions
+    // 1. Fitness functions
     AggregateWeightedFitnessFunction fitness_function =
         get_fitness_function(original_spec);
+    // 2. Initial population — each requirement wrapped in a specification
+    std::vector<ScoredSpecification> population = score_population(
+        {
+            original_spec,
+            original_spec,
+            original_spec,
+            original_spec,
+        },
+        fitness_function);
     // 3. No filtering for demo
     std::vector<FilterFunction> filters;
-
     // 4. Evolution config
     EvolutionConfig config;
     // 5. Random source
     std::random_device rng_dev;
     RandomSource random_source = make_random_source_from_seed(rng_dev());
     // 6. Run genetic algorithm for a few generations
-    std::size_t generations = 3;
+    std::size_t generations = 10;
     std::size_t pop_size = population.size();
+
     for (std::size_t gen_idx = 0; gen_idx < generations; ++gen_idx) {
         std::cout << "Generation " << gen_idx + 1 << ": " << std::flush;
         const auto start = std::chrono::steady_clock::now();
@@ -83,22 +85,22 @@ int main() {
         std::cout << std::fixed << std::setprecision(2) << elapsed << "s\n";
     }
     // 7. Score and print the best specification
-    auto scored = score_population(population, fitness_function);
-    std::sort(scored.begin(), scored.end(),
+    std::sort(population.begin(), population.end(),
               [](const auto& lhs, const auto& rhs) {
                   return lhs.fitness > rhs.fitness;
               });
     std::cout << "Best specification after " << generations
               << " generations:\n";
-    if (!scored.empty()) {
+    if (!population.empty()) {
+        ScoredSpecification& best_scored_spec = population.front();
         for (const Requirement& req :
-             scored.front().specification.m_guarantees) {
+             best_scored_spec.specification.m_guarantees) {
             std::cout << "Requirement:\n  Trigger: "
                       << req.m_trigger.to_string()
                       << "\n  Response: " << req.m_response.to_string()
                       << "\n  Timing: " << to_string(req.m_timing) << "\n";
         }
-        std::cout << "Fitness: " << scored.front().fitness << "\n";
+        std::cout << "Fitness: " << best_scored_spec.fitness << "\n";
     }
     return 0;
 }

@@ -162,9 +162,18 @@ Timing mutate_timing(const Timing& timing, const RandomSource& random_source) {
                        ? timing::for_ticks(value.m_ticks - 1)
                        : timing::for_ticks(value.m_ticks / 2);
         } else {
-            return random_source.next_bool()
-                       ? timing::within_ticks(value.m_ticks + 1)
-                       : timing::within_ticks(value.m_ticks * 2);
+            std::size_t index = random_source.next_index(3);
+            switch (index) {
+                case 0:
+                    return timing::within_ticks(value.m_ticks + 1);
+                case 1:
+                    return timing::within_ticks(value.m_ticks * 2);
+                case 2:
+                    return timing::eventually();
+                default:
+                    assert(false);
+                    __builtin_unreachable();
+            }
         }
     };
     return std::visit(mutation_function, timing);

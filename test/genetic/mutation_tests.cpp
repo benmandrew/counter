@@ -90,13 +90,24 @@ void test_timing_mutation_eventually_is_unchanged() {
            "mutation: eventually has no weakening and should be unchanged");
 }
 
-void test_timing_mutation_within_ticks_weakens() {
-    // next_bool() = false (0 % 2) → doubles: within_ticks(3 * 2 = 6)
+void test_timing_mutation_within_ticks_step_down() {
+    // next_index(3) = 0 → step down: within_ticks(3 + 1 = 4)
     const Timing mutated =
         mutate_timing(timing::within_ticks(3), make_source({0}, 0));
     const auto* within = std::get_if<timing::WithinTicks>(&mutated);
     expect(within != nullptr,
-           "mutation: within-ticks should remain within-ticks after weakening");
+           "mutation: within-ticks should remain within-ticks after step-down");
+    expect(within->m_ticks == 4,
+           "mutation: within-ticks step-down weakening should add one tick");
+}
+
+void test_timing_mutation_within_ticks_double() {
+    // next_index(3) = 1 → double: within_ticks(3 * 2 = 6)
+    const Timing mutated =
+        mutate_timing(timing::within_ticks(3), make_source({1}, 0));
+    const auto* within = std::get_if<timing::WithinTicks>(&mutated);
+    expect(within != nullptr,
+           "mutation: within-ticks should remain within-ticks after doubling");
     expect(within->m_ticks == 6,
            "mutation: within-ticks double weakening should double the count");
 }
@@ -121,6 +132,7 @@ void run_mutation_tests() {
     test_timing_mutation_non_parameterized_becomes_within_one_tick();
     test_timing_mutation_immediately_becomes_within_one_tick();
     test_timing_mutation_eventually_is_unchanged();
-    test_timing_mutation_within_ticks_weakens();
+    test_timing_mutation_within_ticks_step_down();
+    test_timing_mutation_within_ticks_double();
     test_timing_mutation_after_ticks_becomes_within_ticks();
 }

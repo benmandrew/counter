@@ -43,20 +43,10 @@ std::vector<ScoredSpecification> score_population(
     const std::vector<Specification>& population,
     const AggregateWeightedFitnessFunction& fitness_function) {
     assert(!fitness_function.empty());
-    const double total_weight = std::accumulate(
-        fitness_function.begin(), fitness_function.end(), 0.0,
-        [](double acc, const WeightedFitnessFunction& weighted_fn) {
-            return acc + weighted_fn.weight;
-        });
-    assert(total_weight > 0.0);
     std::vector<ScoredSpecification> scored;
     scored.reserve(population.size());
     for (const Specification& spec : population) {
-        double weighted_sum = 0.0;
-        for (const WeightedFitnessFunction& weighted_fn : fitness_function) {
-            weighted_sum += weighted_fn.function(spec) * weighted_fn.weight;
-        }
-        scored.push_back({spec, weighted_sum / total_weight});
+        scored.push_back({spec, fitness_function(spec)});
     }
     return scored;
 }

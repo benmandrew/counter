@@ -33,14 +33,22 @@ class AggregateWeightedFitnessFunction {
    private:
     std::vector<WeightedFitnessFunction> m_fitness_functions;
     mutable std::unordered_map<Specification, double> m_cache;
+    const double m_total_weight;
 
    public:
-    inline static size_t n_cache_hits = 0;
-    inline static size_t n_cache_misses = 0;
+    inline static std::size_t n_cache_hits = 0;
+    inline static std::size_t n_cache_misses = 0;
 
     explicit AggregateWeightedFitnessFunction(
         std::vector<WeightedFitnessFunction> fitness_functions)
-        : m_fitness_functions(std::move(fitness_functions)) {}
+        : m_fitness_functions(std::move(fitness_functions)),
+          m_total_weight([&]() {
+              double total = 0.0;
+              for (const auto& wff : m_fitness_functions) {
+                  total += wff.weight;
+              }
+              return total;
+          }()) {}
 
     /// Computes the weighted average fitness score for a given specification,
     /// returning a cached value if the specification has been scored before.
@@ -55,17 +63,17 @@ class AggregateWeightedFitnessFunction {
             return cache_iter->second;
         }
         n_cache_misses++;
-        double total_weight = 0.0;
         double weighted_sum = 0.0;
         for (const auto& wff : m_fitness_functions) {
             weighted_sum += wff.weight * wff.function(spec);
-            total_weight += wff.weight;
         }
         const double result =
-            total_weight > 0.0 ? weighted_sum / total_weight : 0.0;
+            m_total_weight > 0.0 ? weighted_sum / m_total_weight : 0.0;
         m_cache.emplace(spec, result);
         return result;
     }
+
+    double total_weight() const { return m_total_weight; }
 
     /// Checks if the collection of fitness functions is empty.
     [[nodiscard]] bool empty() const { return m_fitness_functions.empty(); }

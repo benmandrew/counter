@@ -196,8 +196,10 @@ bool RealizabilityChecker::check_realizability(
                                   join_comma(specification.m_out_atoms);
     const auto found = m_cache.find(cache_key);
     if (found != m_cache.end()) {
+        n_cache_hits++;
         return found->second;
     }
+    n_cache_misses++;
     const std::string ltlsynt = ltlsynt_path();
     assert(access(ltlsynt.c_str(), F_OK) == 0);
     std::vector<std::string> command = {ltlsynt, "--realizability", "-f",

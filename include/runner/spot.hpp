@@ -22,8 +22,8 @@ std::string run_ltl2tgba_for_counting(const std::string& formula);
 
 class RealizabilityChecker {
    public:
-    inline static size_t n_cache_misses = 0;
-    inline static size_t n_cache_hits = 0;
+    inline static std::size_t n_cache_misses = 0;
+    inline static std::size_t n_cache_hits = 0;
 
     /// Checks whether the specification is realizable using ltlsynt. Results
     /// are memoised by the full specification formula, so repeated calls with

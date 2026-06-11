@@ -110,12 +110,12 @@ class Formula {
     /// Returns the total number of subformulae (nodes) in this formula,
     /// including the root and all proper subformulae.
     /// @return The count of all nodes in the AST
-    [[nodiscard]] size_t n_subformulae() const;
+    [[nodiscard]] std::size_t n_subformulae() const;
 
     /// Returns the number of subformulae shared with another formula.
     /// @param other The formula to compare with
     /// @return The number of shared subformulae
-    [[nodiscard]] size_t shared_subformulae(const Formula& other) const;
+    [[nodiscard]] std::size_t shared_subformulae(const Formula& other) const;
 
     /// Converts the formula back to its string representation.
     /// Returns a string that, when parsed as a new Formula, produces an

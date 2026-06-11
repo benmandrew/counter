@@ -9,7 +9,7 @@ namespace {
 void test_formula_syntactic_similarity_identical_formulas() {
     const Formula formula("P -> Q");
     const Formula other_formula("P -> Q");
-    const size_t shared = formula.shared_subformulae(other_formula);
+    const std::size_t shared = formula.shared_subformulae(other_formula);
     expect(shared == 3,
            "formula-syntactic-similarity: identical 'P -> Q' should share 3 "
            "subformulae including the root");
@@ -23,7 +23,7 @@ void test_formula_syntactic_similarity_identical_formulas() {
 void test_formula_shared_subformulae_partial_overlap() {
     const Formula formula("P & Q");
     const Formula other_formula("P & R");
-    const size_t shared = formula.shared_subformulae(other_formula);
+    const std::size_t shared = formula.shared_subformulae(other_formula);
     expect(shared == 1,
            "formula-syntactic-similarity: 'P & Q' and 'P & R' should share "
            "only one subformula");
@@ -41,7 +41,7 @@ void test_formula_syntactic_similarity_partial_overlap() {
 void test_formula_shared_subformulae_counts_repeated_subformulae() {
     const Formula formula("(P & P) & P");
     const Formula other_formula("(P & P) & Q");
-    const size_t shared = formula.shared_subformulae(other_formula);
+    const std::size_t shared = formula.shared_subformulae(other_formula);
     expect(shared == 3,
            "formula-shared-subformulae: repeated subformulae should "
            "be counted with multiplicity");

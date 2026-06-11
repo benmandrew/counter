@@ -95,8 +95,10 @@ bool SatisfiabilityChecker::check_satisfiability(
     const std::string& ltl_formula) {
     const auto found = m_cache.find(ltl_formula);
     if (found != m_cache.end()) {
+        n_cache_hits++;
         return found->second;
     }
+    n_cache_misses++;
     const std::string black = black_executable_path();
     assert(access(black.c_str(), F_OK) == 0);
     const std::vector<std::string> command = {black, "solve", "-f",

@@ -41,12 +41,16 @@ FilterFunction make_predicate_filter(
 
 std::vector<ScoredSpecification> score_population(
     const std::vector<Specification>& population,
-    const AggregateWeightedFitnessFunction& fitness_function) {
+    const AggregateWeightedFitnessFunction& fitness_function,
+    const GenerationProgressCallback& on_progress) {
     assert(!fitness_function.empty());
     std::vector<ScoredSpecification> scored;
     scored.reserve(population.size());
-    for (const Specification& spec : population) {
-        scored.push_back({spec, fitness_function(spec)});
+    for (std::size_t i = 0; i < population.size(); ++i) {
+        scored.push_back({population[i], fitness_function(population[i])});
+        if (on_progress) {
+            on_progress(i + 1, population.size());
+        }
     }
     return scored;
 }
@@ -65,7 +69,8 @@ std::vector<ScoredSpecification> evolve_generation(
     const std::vector<ScoredSpecification>& population, std::size_t target_size,
     const AggregateWeightedFitnessFunction& fitness_functions,
     const std::vector<FilterFunction>& filter_functions,
-    const EvolutionConfig& config, const RandomSource& random_source) {
+    const EvolutionConfig& config, const RandomSource& random_source,
+    const GenerationProgressCallback& on_progress) {
     assert(random_source);
     assert(!fitness_functions.empty());
     assert(config.crossover_rate >= 0.0 && config.crossover_rate <= 1.0);
@@ -98,7 +103,7 @@ std::vector<ScoredSpecification> evolve_generation(
         filter_population(next_generation, filter_functions);
     assert(!survivors.empty());
     std::vector<ScoredSpecification> scored =
-        score_population(survivors, fitness_functions);
+        score_population(survivors, fitness_functions, on_progress);
     std::sort(
         scored.begin(), scored.end(),
         [](const ScoredSpecification& lhs, const ScoredSpecification& rhs) {

@@ -16,6 +16,11 @@
 using FilterFunction = std::function<std::vector<Specification>(
     const std::vector<Specification>&)>;
 
+/// Callback invoked after each individual is produced during a generation.
+/// @p done is the count produced so far; @p total is the generation size.
+using GenerationProgressCallback =
+    std::function<void(std::size_t done, std::size_t total)>;
+
 /// A specification paired with its aggregated fitness score.
 struct ScoredSpecification {
     Specification specification;
@@ -51,7 +56,8 @@ FilterFunction make_predicate_filter(
 ///                               is not positive
 std::vector<ScoredSpecification> score_population(
     const std::vector<Specification>& population,
-    const AggregateWeightedFitnessFunction& fitness_function);
+    const AggregateWeightedFitnessFunction& fitness_function,
+    const GenerationProgressCallback& on_progress = nullptr);
 
 /// Applies filter functions sequentially; each filter receives the survivors
 /// from the previous one.
@@ -88,4 +94,5 @@ std::vector<ScoredSpecification> evolve_generation(
     const std::vector<ScoredSpecification>& population, std::size_t target_size,
     const AggregateWeightedFitnessFunction& fitness_function,
     const std::vector<FilterFunction>& filter_functions,
-    const EvolutionConfig& config, const RandomSource& random_source);
+    const EvolutionConfig& config, const RandomSource& random_source,
+    const GenerationProgressCallback& on_progress = nullptr);

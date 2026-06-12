@@ -90,8 +90,8 @@ std::vector<ScoredSpecification> original_population(
     return population;
 }
 
-constexpr std::size_t generations = 10;
-constexpr std::size_t population_size = 20;
+constexpr std::size_t generations = 20;
+constexpr std::size_t population_size = 50;
 
 int main() {
     Specification original_spec = get_spec();
@@ -114,14 +114,23 @@ int main() {
     std::size_t pop_size = population.size();
 
     for (std::size_t gen_idx = 0; gen_idx < generations; ++gen_idx) {
-        std::cout << "Generation " << gen_idx + 1 << ": " << std::flush;
         const auto start = std::chrono::steady_clock::now();
-        population = evolve_generation(population, pop_size, fitness_function,
-                                       filters, config, random_source);
+        auto on_progress = [&](std::size_t done, std::size_t total) {
+            const double elapsed = std::chrono::duration<double>(
+                                       std::chrono::steady_clock::now() - start)
+                                       .count();
+            std::cout << "\rGeneration " << gen_idx + 1 << ": " << std::setw(3)
+                      << (done * 100 / total) << "%  " << std::fixed
+                      << std::setprecision(2) << elapsed << "s" << std::flush;
+        };
+        population =
+            evolve_generation(population, pop_size, fitness_function, filters,
+                              config, random_source, on_progress);
         const double elapsed = std::chrono::duration<double>(
                                    std::chrono::steady_clock::now() - start)
                                    .count();
-        std::cout << std::fixed << std::setprecision(2) << elapsed << "s\n";
+        std::cout << "\r\033[KGeneration " << gen_idx + 1 << ":  " << std::fixed
+                  << std::setprecision(2) << elapsed << "s\n";
     }
     // 7. Collect and print all unique realizable specifications
     std::set<Specification> realizable;

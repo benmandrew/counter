@@ -4,13 +4,10 @@
 #include <string>
 
 #include "requirement.hpp"
-#include "runner/black.hpp"
-#include "runner/spot.hpp"
 
-static SatisfiabilityChecker global_sat_checker;
-static RealizabilityChecker global_real_checker;
-
-double specification_status(const Specification& specification) {
+double specification_status(const Specification& specification,
+                            SatisfiabilityChecker& sat,
+                            RealizabilityChecker& real) {
     for ([[maybe_unused]] const Requirement& req :
          specification.m_assumptions) {
         assert(req.m_ltl.has_value());
@@ -36,18 +33,18 @@ double specification_status(const Specification& specification) {
     for (const Requirement& req : specification.m_guarantees) {
         add_req(req);
     }
-    std::string conj_ag = "(" + conj_a + ") & (" + conj_g + ")";
-    if (!global_sat_checker.check_satisfiability(conj_a)) {
+    const std::string conj_ag = "(" + conj_a + ") & (" + conj_g + ")";
+    if (!sat.check_satisfiability(conj_a)) {
         return 0.0;
     }
-    if (!global_sat_checker.check_satisfiability(conj_g)) {
+    if (!sat.check_satisfiability(conj_g)) {
         return 0.1;
     }
-    if (!global_sat_checker.check_satisfiability(conj_ag)) {
+    if (!sat.check_satisfiability(conj_ag)) {
         return 0.2;
     }
     if (!specification.m_guarantees.empty() &&
-        !global_real_checker.check_realizability(specification)) {
+        !real.check_realizability(specification)) {
         return 0.5;
     }
     return 1.0;

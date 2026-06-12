@@ -167,6 +167,11 @@ bool parse_realizability_output(const ProcessResult& result) {
 
 }  // namespace
 
+RealizabilityChecker& global_real_checker() {
+    static RealizabilityChecker instance;
+    return instance;
+}
+
 std::string spot_bin_dir() {
 #ifdef SPOT_BIN_DIR
     return SPOT_BIN_DIR;

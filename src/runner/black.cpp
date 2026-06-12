@@ -84,6 +84,11 @@ ProcessResult execute_and_capture(const std::vector<std::string>& arguments) {
 
 }  // namespace
 
+SatisfiabilityChecker& global_sat_checker() {
+    static SatisfiabilityChecker instance;
+    return instance;
+}
+
 std::string black_executable_path() {
 #ifdef BLACK_EXECUTABLE_PATH
     return BLACK_EXECUTABLE_PATH;

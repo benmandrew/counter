@@ -42,3 +42,8 @@ class RealizabilityChecker {
     mutable std::mutex m_cache_mutex;
     std::unordered_map<std::string, bool> m_cache;
 };
+
+/// Returns the process-lifetime RealizabilityChecker instance. All callers
+/// that do not need test isolation should use this instead of constructing
+/// their own, so they share the memoisation cache.
+RealizabilityChecker& global_real_checker();

@@ -8,6 +8,7 @@
 #include <utility>
 #include <vector>
 
+#include "filter/implication.hpp"
 #include "fitness/semantic_similarity.hpp"
 #include "fitness/status.hpp"
 #include "fitness/syntactic_similarity.hpp"
@@ -26,7 +27,8 @@ AggregateWeightedFitnessFunction get_fitness_function(
         return semantic_similarity(spec, original_spec);
     };
     auto status = [](const Specification& spec) -> double {
-        return specification_status(spec);
+        return specification_status(spec, global_sat_checker(),
+                                    global_real_checker());
     };
     return AggregateWeightedFitnessFunction(
         {{synsim, 0.15}, {semsim, 0.15}, {status, 0.7}});
@@ -91,7 +93,7 @@ std::vector<ScoredSpecification> original_population(
 }
 
 constexpr std::size_t generations = 20;
-constexpr std::size_t population_size = 50;
+constexpr std::size_t population_size = 1000;
 
 int main() {
     Specification original_spec = get_spec();
@@ -103,8 +105,9 @@ int main() {
     // 2. Initial population — each requirement wrapped in a specification
     std::vector<ScoredSpecification> population =
         original_population(original_spec, fitness_function, population_size);
-    // 3. No filtering for demo
-    std::vector<FilterFunction> filters;
+    // 3. Filter to maximal specifications under implication
+    std::vector<FilterFunction> filters = {
+        make_implication_filter(global_sat_checker())};
     // 4. Evolution config
     EvolutionConfig config;
     // 5. Random source
@@ -119,9 +122,10 @@ int main() {
             const double elapsed = std::chrono::duration<double>(
                                        std::chrono::steady_clock::now() - start)
                                        .count();
-            std::cout << "\rGeneration " << gen_idx + 1 << ": " << std::setw(3)
-                      << (done * 100 / total) << "%  " << std::fixed
-                      << std::setprecision(2) << elapsed << "s" << std::flush;
+            std::cout << "\rGeneration " << std::setw(2) << gen_idx + 1 << ": "
+                      << std::setw(3) << (done * 100 / total) << "%  "
+                      << std::fixed << std::setprecision(2) << elapsed << "s"
+                      << std::flush;
         };
         population =
             evolve_generation(population, pop_size, fitness_function, filters,
@@ -129,13 +133,15 @@ int main() {
         const double elapsed = std::chrono::duration<double>(
                                    std::chrono::steady_clock::now() - start)
                                    .count();
-        std::cout << "\r\033[KGeneration " << gen_idx + 1 << ":  " << std::fixed
-                  << std::setprecision(2) << elapsed << "s\n";
+        std::cout << "\r\033[KGeneration " << std::setw(2) << gen_idx + 1
+                  << ": 100%  " << std::fixed << std::setprecision(2) << elapsed
+                  << "s\n";
     }
     // 7. Collect and print all unique realizable specifications
     std::set<Specification> realizable;
     for (const ScoredSpecification& scored : population) {
-        if (specification_status(scored.specification) == 1.0) {
+        if (specification_status(scored.specification, global_sat_checker(),
+                                 global_real_checker()) == 1.0) {
             realizable.insert(scored.specification);
         }
     }

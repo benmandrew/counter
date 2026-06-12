@@ -48,6 +48,7 @@ target_sources(counter_fitness PRIVATE
     src/runner/black.cpp
     src/runner/ganak.cpp
     src/runner/spot.cpp
+    src/filter/implication.cpp
     src/fitness/model_counter.cpp
     src/fitness/semantic_similarity.cpp
     src/fitness/status.cpp

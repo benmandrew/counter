@@ -18,3 +18,8 @@ class SatisfiabilityChecker {
     mutable std::mutex m_cache_mutex;
     std::unordered_map<std::string, bool> m_cache;
 };
+
+/// Returns the process-lifetime SatisfiabilityChecker instance. All callers
+/// that do not need test isolation should use this instead of constructing
+/// their own, so they share the memoisation cache.
+SatisfiabilityChecker& global_sat_checker();

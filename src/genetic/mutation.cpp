@@ -195,6 +195,7 @@ Requirement mutate_requirement(const Requirement& requirement,
     if (random_source.next_real() < config.p_timing) {
         mutated.m_timing = mutate_timing(requirement.m_timing, random_source);
     }
+    mutated.m_ltl = requirement_to_ltl(mutated);
     return mutated;
 }
 

@@ -233,16 +233,25 @@ Specification crossover_specifications(const Specification& first_parent,
                                        const Specification& second_parent,
                                        const RandomSource& random_source) {
     assert(random_source);
-    assert(first_parent.m_assumptions.size() ==
-           second_parent.m_assumptions.size());
-    assert(first_parent.m_guarantees.size() ==
-           second_parent.m_guarantees.size());
-    assert(first_parent.m_in_atoms == second_parent.m_in_atoms &&
-           first_parent.m_out_atoms == second_parent.m_out_atoms);
-    return Specification(
+    if (first_parent.m_assumptions.size() !=
+            second_parent.m_assumptions.size() ||
+        first_parent.m_guarantees.size() != second_parent.m_guarantees.size() ||
+        first_parent.m_in_atoms != second_parent.m_in_atoms ||
+        first_parent.m_out_atoms != second_parent.m_out_atoms) {
+        return first_parent;
+    }
+    Specification offspring(
         crossover_req_lists(first_parent.m_assumptions,
                             second_parent.m_assumptions, random_source),
         crossover_req_lists(first_parent.m_guarantees,
                             second_parent.m_guarantees, random_source),
         first_parent.m_in_atoms, first_parent.m_out_atoms);
+    // Specification constructor deduplicates; if dedup reduced the count the
+    // offspring has a different structure than the parents and cannot safely
+    // participate in future crossovers — fall back to first_parent.
+    if (offspring.m_assumptions.size() != first_parent.m_assumptions.size() ||
+        offspring.m_guarantees.size() != first_parent.m_guarantees.size()) {
+        return first_parent;
+    }
+    return offspring;
 }

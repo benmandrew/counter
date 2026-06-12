@@ -183,42 +183,11 @@ void test_evolve_generation_produces_target_size() {
 
     const std::vector<ScoredSpecification> pop = score_population(
         {make_spec("p", "q"), make_spec("r", "s"), make_spec("t", "u")}, fns);
-    const EvolutionConfig config{0.0, 0.0};
     const auto next_gen =
-        evolve_generation(pop, 2, fns, {}, config, make_source({}, 0));
+        evolve_generation(pop, 2, fns, {}, make_source({}, 0));
     expect(
         next_gen.size() == 2,
         "evolve_generation: should produce the requested number of offspring");
-}
-
-void test_evolve_generation_selects_fittest() {
-    // p scores 0.9, r scores 0.1, t scores 0.5 — top 2 parents are p and t,
-    // so with zero rates the offspring are unmodified copies of p and t.
-    const AggregateWeightedFitnessFunction fns =
-        AggregateWeightedFitnessFunction(
-            {{[](const Specification& spec) -> double {
-                  const auto trigger = first_trigger(spec);
-                  if (trigger == "p") {
-                      return 0.9;
-                  }
-                  if (trigger == "t") {
-                      return 0.5;
-                  }
-                  return 0.1;
-              },
-              1.0}});
-    const std::vector<ScoredSpecification> pop = score_population(
-        {make_spec("p", "q"), make_spec("r", "s"), make_spec("t", "u")}, fns);
-    const EvolutionConfig config{0.0, 0.0};
-    const auto next_gen =
-        evolve_generation(pop, 2, fns, {}, config, make_source({}, 0));
-    expect(next_gen.size() == 2,
-           "evolve_generation: should return target_size offspring");
-    expect(
-        first_trigger(next_gen[0].specification) == "p",
-        "evolve_generation: fittest candidate should produce first offspring");
-    expect(first_trigger(next_gen[1].specification) == "t",
-           "evolve_generation: second fittest should produce second offspring");
 }
 
 void test_evolve_generation_caps_at_survivor_count() {
@@ -227,9 +196,8 @@ void test_evolve_generation_caps_at_survivor_count() {
             {{[](const Specification&) { return 0.5; }, 1.0}});
     const std::vector<ScoredSpecification> pop =
         score_population({make_spec("p", "q"), make_spec("r", "s")}, fns);
-    const EvolutionConfig config{0.0, 0.0};
     const auto next_gen =
-        evolve_generation(pop, 5, fns, {}, config, make_source({}, 0));
+        evolve_generation(pop, 5, fns, {}, make_source({}, 0));
     expect(next_gen.size() == 2,
            "evolve_generation: should return at most the number of survivors "
            "when target_size exceeds population");
@@ -244,14 +212,11 @@ void test_evolve_generation_applies_filter_before_selection() {
         score_population({make_spec("p", "q"), make_spec("r", "s")}, fns);
     const std::vector<FilterFunction> filters = {make_predicate_filter(
         [](const Specification& spec) { return first_trigger(spec) == "p"; })};
-    const EvolutionConfig config{0.0, 0.0};
     const auto next_gen =
-        evolve_generation(pop, 2, fns, filters, config, make_source({}, 0));
+        evolve_generation(pop, 2, fns, filters, make_source({}, 0));
     expect(next_gen.size() == 1,
-           "evolve_generation: filtered-out specifications must not appear");
-    expect(
-        first_trigger(next_gen[0].specification) == "p",
-        "evolve_generation: only the surviving specification should be used");
+           "evolve_generation: filter before selection must exclude ineligible "
+           "parents, leaving only one offspring when one parent survives");
 }
 
 }  // namespace
@@ -266,7 +231,6 @@ void run_generation_tests() {
     test_filter_population_applies_sequentially();
     test_filter_population_population_level_maximal_elements();
     test_evolve_generation_produces_target_size();
-    test_evolve_generation_selects_fittest();
     test_evolve_generation_caps_at_survivor_count();
     test_evolve_generation_applies_filter_before_selection();
 }

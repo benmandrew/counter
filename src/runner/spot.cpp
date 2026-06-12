@@ -26,19 +26,14 @@ struct ProcessResult {
     std::string m_output;
 };
 
-void spawn_child_and_exec(const std::vector<std::string>& arguments,
+void spawn_child_and_exec(char* const* argv, const char* executable,
                           int write_fd) {
     if (dup2(write_fd, STDOUT_FILENO) < 0 ||
         dup2(write_fd, STDERR_FILENO) < 0) {
         _exit(127);
     }
     close(write_fd);
-    std::vector<char*> argv(arguments.size() + 1);
-    for (std::size_t arg_idx = 0; arg_idx < arguments.size(); ++arg_idx) {
-        argv[arg_idx] = const_cast<char*>(arguments[arg_idx].c_str());
-    }
-    argv[arguments.size()] = nullptr;
-    execv(arguments[0].c_str(), argv.data());
+    execv(executable, argv);
     _exit(127);
 }
 
@@ -80,6 +75,14 @@ int wait_for_child(pid_t child_pid) {
 
 ProcessResult execute_and_capture(const std::vector<std::string>& arguments) {
     assert(!arguments.empty());
+    // Build argv before forking: heap allocation inside the child between
+    // fork() and execv() can deadlock if another thread held the allocator
+    // lock at the moment of the fork (e.g. under ASAN's allocator).
+    std::vector<char*> argv(arguments.size() + 1);
+    for (std::size_t arg_idx = 0; arg_idx < arguments.size(); ++arg_idx) {
+        argv[arg_idx] = const_cast<char*>(arguments[arg_idx].c_str());
+    }
+    argv[arguments.size()] = nullptr;
     std::array<int, 2> pipe_fds = {-1, -1};
     [[maybe_unused]] const int pipe_result = pipe(pipe_fds.data());
     assert(pipe_result == 0);
@@ -92,7 +95,7 @@ ProcessResult execute_and_capture(const std::vector<std::string>& arguments) {
     }
     if (child_pid == 0) {
         close(pipe_fds[0]);
-        spawn_child_and_exec(arguments, pipe_fds[1]);
+        spawn_child_and_exec(argv.data(), arguments[0].c_str(), pipe_fds[1]);
     }
     close(pipe_fds[1]);
     std::string output = read_from_fd(pipe_fds[0]);

@@ -23,6 +23,14 @@ struct ProcessResult {
 
 ProcessResult execute_and_capture(const std::vector<std::string>& arguments) {
     assert(!arguments.empty());
+    // Build argv before forking: heap allocation inside the child between
+    // fork() and execv() can deadlock if another thread held the allocator
+    // lock at the moment of the fork (e.g. under ASAN's allocator).
+    std::vector<char*> argv(arguments.size() + 1);
+    for (std::size_t arg_idx = 0; arg_idx < arguments.size(); ++arg_idx) {
+        argv[arg_idx] = const_cast<char*>(arguments[arg_idx].c_str());
+    }
+    argv[arguments.size()] = nullptr;
     std::array<int, 2> pipe_fds = {-1, -1};
     [[maybe_unused]] const int pipe_result = pipe(pipe_fds.data());
     assert(pipe_result == 0);
@@ -40,11 +48,6 @@ ProcessResult execute_and_capture(const std::vector<std::string>& arguments) {
             _exit(127);
         }
         close(pipe_fds[1]);
-        std::vector<char*> argv(arguments.size() + 1);
-        for (std::size_t arg_idx = 0; arg_idx < arguments.size(); ++arg_idx) {
-            argv[arg_idx] = const_cast<char*>(arguments[arg_idx].c_str());
-        }
-        argv[arguments.size()] = nullptr;
         execv(arguments[0].c_str(), argv.data());
         _exit(127);
     }

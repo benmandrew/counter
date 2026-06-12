@@ -8,6 +8,8 @@
 #include <utility>
 #include <vector>
 
+#include "config.hpp"
+
 namespace {
 
 constexpr std::size_t k_rate_granularity = 1'000'000;
@@ -89,41 +91,58 @@ std::vector<ScoredSpecification> evolve_generation(
     const std::vector<ScoredSpecification>& population, std::size_t target_size,
     const AggregateWeightedFitnessFunction& fitness_functions,
     const std::vector<FilterFunction>& filter_functions,
-    const EvolutionConfig& config, const RandomSource& random_source,
+    const RandomSource& random_source,
     const GenerationProgressCallback& on_progress) {
     assert(random_source);
     assert(!fitness_functions.empty());
-    assert(config.crossover_rate >= 0.0 && config.crossover_rate <= 1.0);
-    assert(config.mutation_rate >= 0.0 && config.mutation_rate <= 1.0);
+    assert(Config::crossover_rate >= 0.0 && Config::crossover_rate <= 1.0);
+    assert(Config::mutation_rate >= 0.0 && Config::mutation_rate <= 1.0);
 
-    std::vector<ScoredSpecification> sorted_pop = population;
+    // Filter input population to select eligible parents.
+    std::vector<Specification> raw_pop;
+    raw_pop.reserve(population.size());
+    for (const auto& scored_spec : population) {
+        raw_pop.push_back(scored_spec.specification);
+    }
+    const std::vector<Specification> filtered_specs =
+        filter_population(raw_pop, filter_functions);
+    assert(!filtered_specs.empty());
+
+    // Reconstruct scored list for eligible parents, preserving existing scores.
+    std::vector<ScoredSpecification> eligible;
+    eligible.reserve(filtered_specs.size());
+    for (const Specification& fspec : filtered_specs) {
+        for (const ScoredSpecification& scored : population) {
+            if (scored.specification == fspec) {
+                eligible.push_back(scored);
+                break;
+            }
+        }
+    }
+
     std::sort(
-        sorted_pop.begin(), sorted_pop.end(),
+        eligible.begin(), eligible.end(),
         [](const ScoredSpecification& lhs, const ScoredSpecification& rhs) {
             return lhs.fitness > rhs.fitness;
         });
-    const std::size_t top_n = std::min(target_size, sorted_pop.size());
+    const std::size_t top_n = std::min(target_size, eligible.size());
     std::vector<Specification> next_generation;
     next_generation.reserve(top_n);
     for (std::size_t i = 0; i < top_n; ++i) {
-        Specification offspring = sorted_pop[i].specification;
-        if (probability_check(config.crossover_rate, random_source)) {
+        Specification offspring = eligible[i].specification;
+        if (probability_check(Config::crossover_rate, random_source)) {
             const std::size_t partner = random_source.next_index(top_n);
             offspring = crossover_specifications(
-                offspring, population[partner].specification, random_source);
+                offspring, eligible[partner].specification, random_source);
         }
-        if (probability_check(config.mutation_rate, random_source)) {
-            offspring = mutate_specification(offspring, random_source,
-                                             config.requirement_mutation);
+        if (probability_check(Config::mutation_rate, random_source)) {
+            offspring = mutate_specification(offspring, random_source);
         }
         next_generation.push_back(std::move(offspring));
     }
 
-    const std::vector<Specification> survivors =
-        filter_population(next_generation, filter_functions);
-    assert(!survivors.empty());
     std::vector<ScoredSpecification> scored =
-        score_population(survivors, fitness_functions, on_progress);
+        score_population(next_generation, fitness_functions, on_progress);
     std::sort(
         scored.begin(), scored.end(),
         [](const ScoredSpecification& lhs, const ScoredSpecification& rhs) {

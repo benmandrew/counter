@@ -65,6 +65,14 @@ void run_suite(std::string_view suite_name) {
         run_fitness_function_tests();
         return;
     }
+    if (suite_name == "status") {
+        run_status_tests();
+        return;
+    }
+    if (suite_name == "implication_filter") {
+        run_implication_filter_tests();
+        return;
+    }
     throw std::invalid_argument("Unknown test suite: " +
                                 std::string(suite_name));
 }
@@ -88,6 +96,8 @@ int main(int argc, char* argv[]) {
             run_semantic_similarity_tests();
             run_syntactic_similarity_tests();
             run_fitness_function_tests();
+            run_status_tests();
+            run_implication_filter_tests();
             return 0;
         }
         if (argc != 2) {

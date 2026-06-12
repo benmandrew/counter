@@ -14,3 +14,5 @@ void run_prop_formula_similarity_tests();
 void run_semantic_similarity_tests();
 void run_syntactic_similarity_tests();
 void run_fitness_function_tests();
+void run_status_tests();
+void run_implication_filter_tests();

@@ -4,6 +4,7 @@
 #include <cassert>
 #include <future>
 #include <numeric>
+#include <thread>
 #include <utility>
 #include <vector>
 
@@ -40,25 +41,35 @@ FilterFunction make_predicate_filter(
     };
 }
 
+const std::size_t n_hw_threads = std::thread::hardware_concurrency();
+
 std::vector<ScoredSpecification> score_population(
     const std::vector<Specification>& population,
     const AggregateWeightedFitnessFunction& fitness_function,
     const GenerationProgressCallback& on_progress) {
     assert(!fitness_function.empty());
-    std::vector<std::future<double>> futures;
-    futures.reserve(population.size());
-    for (std::size_t i = 0; i < population.size(); ++i) {
-        futures.push_back(std::async(
-            std::launch::async, [&fitness_function, &spec = population[i]] {
-                return fitness_function(spec);
-            }));
-    }
+    const std::size_t batch_size =
+        n_hw_threads > 0 ? static_cast<std::size_t>(n_hw_threads) : 1;
     std::vector<ScoredSpecification> scored;
     scored.reserve(population.size());
-    for (std::size_t i = 0; i < population.size(); ++i) {
-        scored.push_back({population[i], futures[i].get()});
-        if (on_progress) {
-            on_progress(i + 1, population.size());
+    std::size_t done = 0;
+    for (std::size_t batch_start = 0; batch_start < population.size();
+         batch_start += batch_size) {
+        const std::size_t batch_end =
+            std::min(batch_start + batch_size, population.size());
+        std::vector<std::future<double>> futures;
+        futures.reserve(batch_end - batch_start);
+        for (std::size_t i = batch_start; i < batch_end; ++i) {
+            futures.push_back(std::async(
+                std::launch::async, [&fitness_function, &spec = population[i]] {
+                    return fitness_function(spec);
+                }));
+        }
+        for (std::size_t i = 0; i < futures.size(); ++i) {
+            scored.push_back({population[batch_start + i], futures[i].get()});
+            if (on_progress) {
+                on_progress(++done, population.size());
+            }
         }
     }
     return scored;

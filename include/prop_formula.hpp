@@ -136,6 +136,7 @@ inline bool operator==(const Formula& lhs, const Formula& rhs) {
     return !(lhs < rhs) && !(rhs < lhs);
 }
 
+/// \cond
 namespace std {  // NOLINT(build/namespaces)
 template <>
 struct hash<Formula> {
@@ -144,3 +145,4 @@ struct hash<Formula> {
     }
 };
 }  // namespace std
+/// \endcond

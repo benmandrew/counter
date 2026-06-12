@@ -135,6 +135,7 @@ std::string to_string(const Timing& timing);
 /// The result is suitable for passing directly to ltl2tgba or ltlsynt.
 std::string requirement_to_ltl(const Requirement& requirement);
 
+/// \cond
 namespace std {  // NOLINT(build/namespaces)
 
 template <>
@@ -199,3 +200,4 @@ struct hash<Specification> {
 };
 
 }  // namespace std
+/// \endcond

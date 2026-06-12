@@ -8,6 +8,7 @@
 #include <utility>
 #include <vector>
 
+#include "config.hpp"
 #include "filter/implication.hpp"
 #include "fitness/semantic_similarity.hpp"
 #include "fitness/status.hpp"
@@ -31,7 +32,9 @@ AggregateWeightedFitnessFunction get_fitness_function(
                                     global_real_checker());
     };
     return AggregateWeightedFitnessFunction(
-        {{synsim, 0.15}, {semsim, 0.15}, {status, 0.7}});
+        {{synsim, Config::fitness_weight_syntactic},
+         {semsim, Config::fitness_weight_semantic},
+         {status, Config::fitness_weight_status}});
 }
 
 Specification get_spec() {
@@ -92,9 +95,6 @@ std::vector<ScoredSpecification> original_population(
     return population;
 }
 
-constexpr std::size_t generations = 20;
-constexpr std::size_t population_size = 1000;
-
 int main() {
     Specification original_spec = get_spec();
     std::cout << "Original specification:\n"
@@ -103,20 +103,20 @@ int main() {
     AggregateWeightedFitnessFunction fitness_function =
         get_fitness_function(original_spec);
     // 2. Initial population — each requirement wrapped in a specification
-    std::vector<ScoredSpecification> population =
-        original_population(original_spec, fitness_function, population_size);
-    // 3. Filter to maximal specifications under implication
-    std::vector<FilterFunction> filters = {
-        make_implication_filter(global_sat_checker())};
-    // 4. Evolution config
-    EvolutionConfig config;
-    // 5. Random source
+    std::vector<ScoredSpecification> population = original_population(
+        original_spec, fitness_function, Config::population_size);
+    // 3. Evolution config
+    EvolutionConfig evo_config{
+        Config::crossover_rate,
+        Config::mutation_rate,
+        {Config::p_trigger, Config::p_response, Config::p_timing}};
+    // 4. Random source
     std::random_device rng_dev;
     RandomSource random_source = make_random_source_from_seed(rng_dev());
-    // 6. Run genetic algorithm for a few generations
+    // 5. Run genetic algorithm for a few generations
     std::size_t pop_size = population.size();
 
-    for (std::size_t gen_idx = 0; gen_idx < generations; ++gen_idx) {
+    for (std::size_t gen_idx = 0; gen_idx < Config::generations; ++gen_idx) {
         const auto start = std::chrono::steady_clock::now();
         auto on_progress = [&](std::size_t done, std::size_t total) {
             const double elapsed = std::chrono::duration<double>(
@@ -128,8 +128,8 @@ int main() {
                       << std::flush;
         };
         population =
-            evolve_generation(population, pop_size, fitness_function, filters,
-                              config, random_source, on_progress);
+            evolve_generation(population, pop_size, fitness_function, {},
+                              evo_config, random_source, on_progress);
         const double elapsed = std::chrono::duration<double>(
                                    std::chrono::steady_clock::now() - start)
                                    .count();
@@ -137,17 +137,23 @@ int main() {
                   << ": 100%  " << std::fixed << std::setprecision(2) << elapsed
                   << "s\n";
     }
-    // 7. Collect and print all unique realizable specifications
-    std::set<Specification> realizable;
+    // 6. Collect realizable specifications, then filter to maximal under
+    // implication
+    std::vector<Specification> realizable_vec;
     for (const ScoredSpecification& scored : population) {
         if (specification_status(scored.specification, global_sat_checker(),
                                  global_real_checker()) == 1.0) {
-            realizable.insert(scored.specification);
+            realizable_vec.push_back(scored.specification);
         }
     }
-    std::cout << "\nRealizable specifications after " << generations
-              << " generations (" << realizable.size() << "):\n";
-    for (const Specification& spec : realizable) {
+    const FilterFunction implication_filter =
+        make_implication_filter(global_sat_checker());
+    const std::vector<Specification> maximal =
+        implication_filter(realizable_vec);
+    std::cout << "\nRealizable specifications after " << Config::generations
+              << " generations (" << maximal.size() << " reduced from "
+              << realizable_vec.size() << "):\n";
+    for (const Specification& spec : maximal) {
         std::cout << spec.to_string() << "\n\n";
     }
     print_timing_report();

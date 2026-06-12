@@ -7,6 +7,7 @@ Repairing unrealisable FRETish specifications.
    :maxdepth: 1
    :caption: Core
 
+   api/config
    api/prop_formula
    api/requirement
 
@@ -14,10 +15,18 @@ Repairing unrealisable FRETish specifications.
    :maxdepth: 1
    :caption: Fitness
 
+   api/fitness/function
    api/fitness/model_counter
    api/fitness/semantic_similarity
+   api/fitness/status
    api/fitness/syntactic_similarity
    api/fitness/transfer_matrix
+
+.. toctree::
+   :maxdepth: 1
+   :caption: Filter
+
+   api/filter/implication
 
 .. toctree::
    :maxdepth: 1

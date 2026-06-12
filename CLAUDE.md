@@ -42,6 +42,8 @@ cmake --build build --target format-ci     # dry-run (fails if unformatted)
 cmake --build build --target docs   # Doxygen + Sphinx (requires both installed)
 ```
 
+Every header file in `include/` must have a corresponding `.rst` page under `docs/api/` and be listed in `docs/index.rst`. When adding a new header, add the page and toctree entry before committing.
+
 ## Code style
 
 - **Standard**: C++17, `-Wall -Wextra -Wpedantic -Werror` on all targets.

@@ -208,6 +208,7 @@ Requirement crossover_requirements(const Requirement& first_parent,
         first_parent.m_response, second_parent.m_response, random_source);
     offspring.m_timing = crossover_timing(
         first_parent.m_timing, second_parent.m_timing, random_source);
+    offspring.m_ltl = requirement_to_ltl(offspring);
     return offspring;
 }
 

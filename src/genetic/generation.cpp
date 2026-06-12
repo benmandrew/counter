@@ -138,6 +138,16 @@ std::vector<ScoredSpecification> evolve_generation(
         if (probability_check(Config::mutation_rate, random_source)) {
             offspring = mutate_specification(offspring, random_source);
         }
+        for (auto& req : offspring.m_assumptions) {
+            req.m_trigger.simplify();
+            req.m_response.simplify();
+            req.m_ltl = requirement_to_ltl(req);
+        }
+        for (auto& req : offspring.m_guarantees) {
+            req.m_trigger.simplify();
+            req.m_response.simplify();
+            req.m_ltl = requirement_to_ltl(req);
+        }
         next_generation.push_back(std::move(offspring));
     }
 

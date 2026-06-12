@@ -115,6 +115,113 @@ void Formula::remove_double_negation() {
     *this = this->rewrite_post_order(remove_double_neg);
 }
 
+namespace {
+
+bool is_true_formula(const Formula& fml) {
+    return fml.kind() == Formula::Kind::Atom && fml.atom_name() == "true";
+}
+
+std::optional<Formula> simplify_not(const Formula& node) {
+    const auto child = node.unary_child();
+    if (child && child->kind() == Formula::Kind::Not) {
+        return child->unary_child();
+    }
+    return std::nullopt;
+}
+
+std::optional<Formula> simplify_and(const Formula& lhs, const Formula& rhs) {
+    if (lhs == rhs) {
+        return lhs;
+    }
+    if (is_true_formula(lhs)) {
+        return rhs;
+    }
+    if (is_true_formula(rhs)) {
+        return lhs;
+    }
+    return std::nullopt;
+}
+
+std::optional<Formula> simplify_or(const Formula& lhs, const Formula& rhs) {
+    if (lhs == rhs) {
+        return lhs;
+    }
+    if (is_true_formula(lhs) || is_true_formula(rhs)) {
+        return Formula{};
+    }
+    if (rhs.kind() == Formula::Kind::Not) {
+        const auto rch = rhs.unary_child();
+        if (rch && *rch == lhs) {
+            return Formula{};
+        }
+    }
+    if (lhs.kind() == Formula::Kind::Not) {
+        const auto lch = lhs.unary_child();
+        if (lch && *lch == rhs) {
+            return Formula{};
+        }
+    }
+    return std::nullopt;
+}
+
+std::optional<Formula> simplify_implies(const Formula& lhs,
+                                        const Formula& rhs) {
+    if (lhs == rhs) {
+        return Formula{};
+    }
+    if (is_true_formula(rhs)) {
+        return Formula{};
+    }
+    if (is_true_formula(lhs)) {
+        return rhs;
+    }
+    return std::nullopt;
+}
+
+std::optional<Formula> simplify_iff(const Formula& lhs, const Formula& rhs) {
+    if (lhs == rhs) {
+        return Formula{};
+    }
+    if (is_true_formula(lhs)) {
+        return rhs;
+    }
+    if (is_true_formula(rhs)) {
+        return lhs;
+    }
+    return std::nullopt;
+}
+
+}  // namespace
+
+void Formula::simplify() {
+    auto simplify_node = [](const Formula& node) -> std::optional<Formula> {
+        if (node.kind() == Kind::Not) {
+            return simplify_not(node);
+        }
+        const auto children = node.binary_children();
+        if (!children) {
+            return std::nullopt;
+        }
+        const Formula& lhs = children->first;
+        const Formula& rhs = children->second;
+        switch (node.kind()) {
+            case Kind::And:
+                return simplify_and(lhs, rhs);
+            case Kind::Or:
+                return simplify_or(lhs, rhs);
+            case Kind::Implies:
+                return simplify_implies(lhs, rhs);
+            case Kind::Iff:
+                return simplify_iff(lhs, rhs);
+            case Kind::Atom:
+            case Kind::Not:
+                break;
+        }
+        return std::nullopt;
+    };
+    *this = this->rewrite_post_order(simplify_node);
+}
+
 Formula::Kind Formula::kind() const {
     assert(!m_impl->m_nodes.empty());
     return prop_formula_internal::node_type_to_kind(

@@ -68,6 +68,11 @@ class Formula {
     /// Removes all double negations (!!A → A) from this formula in-place.
     void remove_double_negation();
 
+    /// Simplifies this formula in-place using boolean identities:
+    /// idempotence (A∧A→A, A∨A→A), tautology (A→A→true, A↔A→true),
+    /// excluded middle (A∨¬A→true), identity/absorption with true, and ¬¬A→A.
+    void simplify();
+
     /// Returns the kind of this formula's root node.
     [[nodiscard]] Kind kind() const;
 

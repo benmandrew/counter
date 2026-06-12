@@ -1,5 +1,6 @@
 #pragma once
 
+#include <mutex>
 #include <string>
 #include <unordered_map>
 
@@ -38,5 +39,6 @@ class RealizabilityChecker {
     bool check_realizability(const Specification& specification);
 
    private:
+    mutable std::mutex m_cache_mutex;
     std::unordered_map<std::string, bool> m_cache;
 };

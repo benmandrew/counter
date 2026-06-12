@@ -1,5 +1,6 @@
 #pragma once
 
+#include <mutex>
 #include <string>
 #include <unordered_map>
 
@@ -14,5 +15,6 @@ class SatisfiabilityChecker {
     bool check_satisfiability(const std::string& ltl_formula);
 
    private:
+    mutable std::mutex m_cache_mutex;
     std::unordered_map<std::string, bool> m_cache;
 };

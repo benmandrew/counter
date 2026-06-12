@@ -14,6 +14,7 @@
 #include <filesystem>  // NOLINT(build/c++17)
 #include <fstream>
 #include <memory>
+#include <mutex>
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -167,22 +168,28 @@ Count run_ganak_on_dimacs(const std::string& dimacs_path, unsigned seed) {
 
 Count run_ganak_on_formula(const std::string& formula, unsigned seed) {
     static std::unordered_map<std::string, Count> cache;
+    static std::mutex cache_mutex;
     const std::string key = formula + "|" + std::to_string(seed);
-    const auto found = cache.find(key);
-    if (found != cache.end()) {
-        GanakStats::n_cache_hits++;
-        return found->second;
+    {
+        std::lock_guard<std::mutex> lock(cache_mutex);
+        const auto found = cache.find(key);
+        if (found != cache.end()) {
+            GanakStats::n_cache_hits++;
+            return found->second;
+        }
+        GanakStats::n_cache_misses++;
     }
-    GanakStats::n_cache_misses++;
     const Formula parsed = Formula(formula);
     const std::string formula_dimacs_path =
         write_temporary_dimacs(parsed.to_dimacs());
     const auto start = std::chrono::steady_clock::now();
     const Count count = run_ganak_on_dimacs(formula_dimacs_path, seed);
-    GanakStats::total_time_s +=
+    const double elapsed =
         std::chrono::duration<double>(std::chrono::steady_clock::now() - start)
             .count();
     std::remove(formula_dimacs_path.c_str());
+    std::lock_guard<std::mutex> lock(cache_mutex);
+    GanakStats::total_time_s += elapsed;
     cache.emplace(key, count);
     return count;
 }

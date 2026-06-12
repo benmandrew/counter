@@ -1,6 +1,8 @@
 #pragma once
 
 #include <functional>
+#include <memory>
+#include <mutex>
 #include <unordered_map>
 #include <utility>
 #include <vector>
@@ -33,6 +35,8 @@ class AggregateWeightedFitnessFunction {
    private:
     std::vector<WeightedFitnessFunction> m_fitness_functions;
     mutable std::unordered_map<Specification, double> m_cache;
+    mutable std::unique_ptr<std::mutex> m_cache_mutex =
+        std::make_unique<std::mutex>();
     const double m_total_weight;
 
    public:
@@ -57,18 +61,22 @@ class AggregateWeightedFitnessFunction {
     /// @return The weighted average fitness score, or 0.0 if total weight is
     /// not positive.
     double operator()(const Specification& spec) const {
-        const auto cache_iter = m_cache.find(spec);
-        if (cache_iter != m_cache.end()) {
-            n_cache_hits++;
-            return cache_iter->second;
+        {
+            std::lock_guard<std::mutex> lock(*m_cache_mutex);
+            const auto cache_iter = m_cache.find(spec);
+            if (cache_iter != m_cache.end()) {
+                n_cache_hits++;
+                return cache_iter->second;
+            }
+            n_cache_misses++;
         }
-        n_cache_misses++;
         double weighted_sum = 0.0;
         for (const auto& wff : m_fitness_functions) {
             weighted_sum += wff.weight * wff.function(spec);
         }
         const double result =
             m_total_weight > 0.0 ? weighted_sum / m_total_weight : 0.0;
+        std::lock_guard<std::mutex> lock(*m_cache_mutex);
         m_cache.emplace(spec, result);
         return result;
     }

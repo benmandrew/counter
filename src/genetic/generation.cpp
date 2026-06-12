@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cassert>
+#include <future>
 #include <numeric>
 #include <utility>
 #include <vector>
@@ -44,10 +45,18 @@ std::vector<ScoredSpecification> score_population(
     const AggregateWeightedFitnessFunction& fitness_function,
     const GenerationProgressCallback& on_progress) {
     assert(!fitness_function.empty());
+    std::vector<std::future<double>> futures;
+    futures.reserve(population.size());
+    for (std::size_t i = 0; i < population.size(); ++i) {
+        futures.push_back(std::async(
+            std::launch::async, [&fitness_function, &spec = population[i]] {
+                return fitness_function(spec);
+            }));
+    }
     std::vector<ScoredSpecification> scored;
     scored.reserve(population.size());
     for (std::size_t i = 0; i < population.size(); ++i) {
-        scored.push_back({population[i], fitness_function(population[i])});
+        scored.push_back({population[i], futures[i].get()});
         if (on_progress) {
             on_progress(i + 1, population.size());
         }

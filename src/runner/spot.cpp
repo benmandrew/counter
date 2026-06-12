@@ -12,6 +12,7 @@
 #include <cstring>
 #include <iostream>
 #include <memory>
+#include <mutex>
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -181,21 +182,27 @@ std::string ltl2tgba_path() { return spot_bin_dir() + "/ltl2tgba"; }
 
 std::string run_ltl2tgba_for_counting(const std::string& formula) {
     static std::unordered_map<std::string, std::string> cache;
-    const auto found = cache.find(formula);
-    if (found != cache.end()) {
-        Ltl2tgbaStats::n_cache_hits++;
-        return found->second;
+    static std::mutex cache_mutex;
+    {
+        std::lock_guard<std::mutex> lock(cache_mutex);
+        const auto found = cache.find(formula);
+        if (found != cache.end()) {
+            Ltl2tgbaStats::n_cache_hits++;
+            return found->second;
+        }
+        Ltl2tgbaStats::n_cache_misses++;
     }
-    Ltl2tgbaStats::n_cache_misses++;
     const std::string binary = ltl2tgba_path();
     assert(access(binary.c_str(), F_OK) == 0);
     const auto start = std::chrono::steady_clock::now();
     const ProcessResult result =
         execute_and_capture({binary, "-D", "-S", "-H", "-f", formula});
-    Ltl2tgbaStats::total_time_s +=
+    const double elapsed =
         std::chrono::duration<double>(std::chrono::steady_clock::now() - start)
             .count();
     assert(result.m_exit_code == 0);
+    std::lock_guard<std::mutex> lock(cache_mutex);
+    Ltl2tgbaStats::total_time_s += elapsed;
     cache.emplace(formula, result.m_output);
     return result.m_output;
 }
@@ -208,12 +215,15 @@ bool RealizabilityChecker::check_realizability(
     const std::string cache_key = conj_ltl + "|" +
                                   join_comma(specification.m_in_atoms) + "|" +
                                   join_comma(specification.m_out_atoms);
-    const auto found = m_cache.find(cache_key);
-    if (found != m_cache.end()) {
-        n_cache_hits++;
-        return found->second;
+    {
+        std::lock_guard<std::mutex> lock(m_cache_mutex);
+        const auto found = m_cache.find(cache_key);
+        if (found != m_cache.end()) {
+            n_cache_hits++;
+            return found->second;
+        }
+        n_cache_misses++;
     }
-    n_cache_misses++;
     const std::string ltlsynt = ltlsynt_path();
     assert(access(ltlsynt.c_str(), F_OK) == 0);
     std::vector<std::string> command = {ltlsynt, "--realizability", "-f",
@@ -225,14 +235,12 @@ bool RealizabilityChecker::check_realizability(
     }
     const auto start = std::chrono::steady_clock::now();
     const ProcessResult result = execute_and_capture(command);
-    total_time_s +=
+    const double elapsed =
         std::chrono::duration<double>(std::chrono::steady_clock::now() - start)
             .count();
-    bool realizable = parse_realizability_output(result);
-    if (realizable) {
-        std::cout << "Realizable specification: " << specification.to_string()
-                  << "\n";
-    }
+    const bool realizable = parse_realizability_output(result);
+    std::lock_guard<std::mutex> lock(m_cache_mutex);
+    total_time_s += elapsed;
     m_cache.emplace(cache_key, realizable);
     return realizable;
 }

@@ -10,6 +10,7 @@
 #include <chrono>
 #include <cstring>
 #include <memory>
+#include <mutex>
 #include <string>
 #include <vector>
 
@@ -94,19 +95,22 @@ std::string black_executable_path() {
 
 bool SatisfiabilityChecker::check_satisfiability(
     const std::string& ltl_formula) {
-    const auto found = m_cache.find(ltl_formula);
-    if (found != m_cache.end()) {
-        n_cache_hits++;
-        return found->second;
+    {
+        std::lock_guard<std::mutex> lock(m_cache_mutex);
+        const auto found = m_cache.find(ltl_formula);
+        if (found != m_cache.end()) {
+            n_cache_hits++;
+            return found->second;
+        }
+        n_cache_misses++;
     }
-    n_cache_misses++;
     const std::string black = black_executable_path();
     assert(access(black.c_str(), F_OK) == 0);
     const std::vector<std::string> command = {black, "solve", "-f",
                                               ltl_formula};
     const auto start = std::chrono::steady_clock::now();
     const ProcessResult result = execute_and_capture(command);
-    total_time_s +=
+    const double elapsed =
         std::chrono::duration<double>(std::chrono::steady_clock::now() - start)
             .count();
     // Check UNSAT before SAT: the former contains the latter as a substring.
@@ -118,6 +122,8 @@ bool SatisfiabilityChecker::check_satisfiability(
     } else {
         assert(false);
     }
+    std::lock_guard<std::mutex> lock(m_cache_mutex);
+    total_time_s += elapsed;
     m_cache.emplace(ltl_formula, sat);
     return sat;
 }

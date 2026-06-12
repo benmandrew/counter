@@ -50,7 +50,9 @@ FilterFunction make_predicate_filter(
 ///   fitness = sum(fn_i(spec) * w_i) / sum(w_i)
 ///
 /// @param population        The population to score
-/// @param fitness_function Non-empty set of weighted fitness functions
+/// @param fitness_function  Non-empty set of weighted fitness functions
+/// @param on_progress       Optional callback invoked after each individual is
+///                          scored; receives (done, total) counts
 /// @return                  Population paired with aggregated fitness scores
 /// @throws std::invalid_argument if fitness_function is empty or total weight
 ///                               is not positive
@@ -85,6 +87,8 @@ std::vector<Specification> filter_population(
 /// @param filter_functions  Filters applied to the population before scoring
 /// @param config            Crossover and mutation rates
 /// @param random_source     Random source for crossover and mutation
+/// @param on_progress       Optional callback invoked after each individual is
+///                          scored; receives (done, total) counts
 /// @return                  Next generation of up to target_size specifications
 /// @throws std::invalid_argument if random_source is not callable, if
 ///                               fitness_function is empty, if rates are

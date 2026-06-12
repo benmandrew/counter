@@ -1,9 +1,132 @@
 #include "requirement.hpp"
 
+#include <algorithm>
+#include <cctype>
+#include <iostream>
+#include <set>
 #include <string>
 #include <type_traits>
+#include <utility>
 #include <variant>
 #include <vector>
+
+namespace {
+
+bool atom_contains_uppercase(const std::string& atom) {
+    return std::any_of(atom.begin(), atom.end(),
+                       [](unsigned char chr) { return std::isupper(chr); });
+}
+
+}  // namespace
+
+bool operator<(const Timing& lhs, const Timing& rhs) {
+    if (lhs.index() != rhs.index()) {
+        return lhs.index() < rhs.index();
+    }
+    const auto get_ticks = [](const Timing& tim) -> std::size_t {
+        return std::visit(
+            [](const auto& val) -> std::size_t {
+                using T = std::decay_t<decltype(val)>;
+                if constexpr (std::is_same_v<T, timing::WithinTicks> ||
+                              std::is_same_v<T, timing::ForTicks> ||
+                              std::is_same_v<T, timing::AfterTicks>) {
+                    return val.m_ticks;
+                }
+                return 0;
+            },
+            tim);
+    };
+    return get_ticks(lhs) < get_ticks(rhs);
+}
+
+bool operator==(const Timing& lhs, const Timing& rhs) {
+    return !(lhs < rhs) && !(rhs < lhs);
+}
+
+Requirement::Requirement(Formula trigger, Formula response,
+                         const Timing& timing)
+    : m_trigger(std::move(trigger)),
+      m_response(std::move(response)),
+      m_timing(timing) {}
+
+Requirement::Requirement(Formula trigger, Formula response,
+                         const Timing& timing, const std::string& ltl)
+    : m_trigger(std::move(trigger)),
+      m_response(std::move(response)),
+      m_timing(timing),
+      m_ltl(ltl) {}
+
+bool operator<(const Requirement& lhs, const Requirement& rhs) {
+    if (lhs.m_timing < rhs.m_timing || rhs.m_timing < lhs.m_timing) {
+        return lhs.m_timing < rhs.m_timing;
+    }
+    if (lhs.m_trigger < rhs.m_trigger) {
+        return true;
+    }
+    if (rhs.m_trigger < lhs.m_trigger) {
+        return false;
+    }
+    if (lhs.m_response < rhs.m_response) {
+        return true;
+    }
+    if (rhs.m_response < lhs.m_response) {
+        return false;
+    }
+    return lhs.m_ltl < rhs.m_ltl;
+}
+
+bool operator==(const Requirement& lhs, const Requirement& rhs) {
+    return !(lhs.m_timing < rhs.m_timing) && !(rhs.m_timing < lhs.m_timing) &&
+           lhs.m_trigger == rhs.m_trigger && lhs.m_response == rhs.m_response &&
+           lhs.m_ltl == rhs.m_ltl;
+}
+
+Specification::Specification(std::vector<Requirement> assumptions,
+                             std::vector<Requirement> guarantees,
+                             std::vector<std::string> in_atoms,
+                             std::vector<std::string> out_atoms)
+    : m_in_atoms(std::move(in_atoms)), m_out_atoms(std::move(out_atoms)) {
+    auto deduplicate =
+        [](std::vector<Requirement> reqs) -> std::vector<Requirement> {
+        std::set<Requirement> seen;
+        std::vector<Requirement> unique;
+        for (auto& req : reqs) {
+            auto [it, inserted] = seen.insert(req);
+            if (inserted) {
+                unique.push_back(std::move(req));
+            }
+        }
+        return unique;
+    };
+    m_assumptions = deduplicate(std::move(assumptions));
+    m_guarantees = deduplicate(std::move(guarantees));
+    for (const std::string& atom : m_in_atoms) {
+        if (atom_contains_uppercase(atom)) {
+            std::cerr << "Warning: input atom '" << atom
+                      << "' contains uppercase letters\n";
+        }
+    }
+    for (const std::string& atom : m_out_atoms) {
+        if (atom_contains_uppercase(atom)) {
+            std::cerr << "Warning: output atom '" << atom
+                      << "' contains uppercase letters\n";
+        }
+    }
+}
+
+bool operator<(const Specification& lhs, const Specification& rhs) {
+    if (lhs.m_assumptions != rhs.m_assumptions) {
+        return lhs.m_assumptions < rhs.m_assumptions;
+    }
+    return lhs.m_guarantees < rhs.m_guarantees;
+}
+
+bool operator==(const Specification& lhs, const Specification& rhs) {
+    return lhs.m_assumptions == rhs.m_assumptions &&
+           lhs.m_guarantees == rhs.m_guarantees &&
+           lhs.m_in_atoms == rhs.m_in_atoms &&
+           lhs.m_out_atoms == rhs.m_out_atoms;
+}
 
 std::string State::label() const {
     if (m_countdown_state) {

@@ -1,14 +1,10 @@
 #pragma once
 
-#include <algorithm>
 #include <cstddef>
 #include <functional>
-#include <iostream>
 #include <optional>
-#include <set>
 #include <string>
 #include <type_traits>
-#include <utility>
 #include <variant>
 #include <vector>
 
@@ -48,40 +44,18 @@ using Timing = std::variant<Immediately, NextTimepoint, WithinTicks, ForTicks,
                             AfterTicks, Eventually>;
 
 inline Timing immediately() { return Immediately{}; }
-
 inline Timing next_timepoint() { return NextTimepoint{}; }
-
 inline Timing within_ticks(std::size_t ticks) { return WithinTicks{ticks}; }
-
 inline Timing for_ticks(std::size_t ticks) { return ForTicks{ticks}; }
-
 inline Timing after_ticks(std::size_t ticks) { return AfterTicks{ticks}; }
-
 inline Timing eventually() { return Eventually{}; }
 
 }  // namespace timing
 
 using Timing = timing::Timing;
 
-inline bool operator<(const Timing& lhs, const Timing& rhs) {
-    if (lhs.index() != rhs.index()) {
-        return lhs.index() < rhs.index();
-    }
-    if (const auto* lhs_ptr = std::get_if<timing::WithinTicks>(&lhs)) {
-        return lhs_ptr->m_ticks < std::get<timing::WithinTicks>(rhs).m_ticks;
-    }
-    if (const auto* lhs_ptr = std::get_if<timing::ForTicks>(&lhs)) {
-        return lhs_ptr->m_ticks < std::get<timing::ForTicks>(rhs).m_ticks;
-    }
-    if (const auto* lhs_ptr = std::get_if<timing::AfterTicks>(&lhs)) {
-        return lhs_ptr->m_ticks < std::get<timing::AfterTicks>(rhs).m_ticks;
-    }
-    return false;
-}
-
-inline bool operator==(const Timing& lhs, const Timing& rhs) {
-    return !(lhs < rhs) && !(rhs < lhs);
-}
+bool operator<(const Timing& lhs, const Timing& rhs);
+bool operator==(const Timing& lhs, const Timing& rhs);
 
 /// A FRET requirement specifying a system obligation. Consists of a trigger
 /// condition and a response that must be satisfied according to the specified
@@ -97,54 +71,18 @@ struct Requirement {
     /// An LTL formula representing the requirement semantics
     std::optional<std::string> m_ltl;
 
-    friend bool operator<(const Requirement& lhs, const Requirement& rhs) {
-        if (lhs.m_trigger < rhs.m_trigger) {
-            return true;
-        }
-        if (rhs.m_trigger < lhs.m_trigger) {
-            return false;
-        }
-        if (lhs.m_response < rhs.m_response) {
-            return true;
-        }
-        if (rhs.m_response < lhs.m_response) {
-            return false;
-        }
-        if (lhs.m_timing < rhs.m_timing) {
-            return true;
-        }
-        if (rhs.m_timing < lhs.m_timing) {
-            return false;
-        }
-        return lhs.m_ltl < rhs.m_ltl;
-    }
-
-    friend bool operator==(const Requirement& lhs, const Requirement& rhs) {
-        return !(lhs < rhs) && !(rhs < lhs);
-    }
+    friend bool operator<(const Requirement& lhs, const Requirement& rhs);
+    friend bool operator==(const Requirement& lhs, const Requirement& rhs);
 
     explicit Requirement(Formula trigger, Formula response,
-                         const Timing& timing)
-        : m_trigger(std::move(trigger)),
-          m_response(std::move(response)),
-          m_timing(timing) {}
-
+                         const Timing& timing);
     explicit Requirement(Formula trigger, Formula response,
-                         const Timing& timing, const std::string& ltl)
-        : m_trigger(std::move(trigger)),
-          m_response(std::move(response)),
-          m_timing(timing),
-          m_ltl(ltl) {}
+                         const Timing& timing, const std::string& ltl);
 
     /// Returns a one-line human-readable string of the form
     /// "If <trigger>, <timing> <response>".
     [[nodiscard]] std::string to_string() const;
 };
-
-static bool atom_contains_uppercase(const std::string& atom) {
-    return std::any_of(atom.begin(), atom.end(),
-                       [](char chr) { return chr >= 'A' && chr <= 'Z'; });
-}
 
 struct Specification {
     std::vector<Requirement> m_assumptions;
@@ -156,53 +94,10 @@ struct Specification {
     explicit Specification(std::vector<Requirement> assumptions = {},
                            std::vector<Requirement> guarantees = {},
                            std::vector<std::string> in_atoms = {},
-                           std::vector<std::string> out_atoms = {})
-        : m_in_atoms(std::move(in_atoms)), m_out_atoms(std::move(out_atoms)) {
-        // Preserve insertion order while deduplicating within each bucket.
-        auto deduplicate = [](std::vector<Requirement> reqs,
-                              std::vector<Requirement>& out) {
-            std::set<Requirement> seen;
-            out.reserve(reqs.size());
-            for (auto& req : reqs) {
-                if (seen.insert(req).second) {
-                    out.push_back(std::move(req));
-                }
-            }
-        };
-        deduplicate(std::move(assumptions), m_assumptions);
-        deduplicate(std::move(guarantees), m_guarantees);
-        for (const auto& atom : m_in_atoms) {
-            if (atom_contains_uppercase(atom)) {
-                std::cerr
-                    << "[WARNING] in_atoms contains uppercase letter in atom '"
-                    << atom << ", this can cause issues with Spot'\n";
-            }
-        }
-        for (const auto& atom : m_out_atoms) {
-            if (atom_contains_uppercase(atom)) {
-                std::cerr
-                    << "[WARNING] out_atoms contains uppercase letter in atom '"
-                    << atom << ", this can cause issues with Spot'\n";
-            }
-        }
-    }
+                           std::vector<std::string> out_atoms = {});
 
-    friend bool operator<(const Specification& lhs, const Specification& rhs) {
-        if (lhs.m_assumptions < rhs.m_assumptions) {
-            return true;
-        }
-        if (rhs.m_assumptions < lhs.m_assumptions) {
-            return false;
-        }
-        return lhs.m_guarantees < rhs.m_guarantees;
-    }
-
-    friend bool operator==(const Specification& lhs, const Specification& rhs) {
-        return lhs.m_assumptions == rhs.m_assumptions &&
-               lhs.m_guarantees == rhs.m_guarantees &&
-               lhs.m_in_atoms == rhs.m_in_atoms &&
-               lhs.m_out_atoms == rhs.m_out_atoms;
-    }
+    friend bool operator<(const Specification& lhs, const Specification& rhs);
+    friend bool operator==(const Specification& lhs, const Specification& rhs);
 
     /// Returns one line per requirement (assumptions then guarantees),
     /// each in the form "If <trigger>, <timing> <response>", joined by

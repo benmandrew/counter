@@ -30,6 +30,8 @@ struct EvolutionConfig {
     double crossover_rate = 0.1;
     /// Probability in [0, 1] that the result (crossover or copy) is mutated.
     double mutation_rate = 1.0;
+    /// Per-component probabilities for mutating each part of a requirement.
+    RequirementMutationConfig requirement_mutation = {};
 };
 
 /// Wraps a per-element predicate as a population-level FilterFunction.

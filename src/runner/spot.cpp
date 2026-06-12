@@ -229,6 +229,10 @@ bool RealizabilityChecker::check_realizability(
         std::chrono::duration<double>(std::chrono::steady_clock::now() - start)
             .count();
     bool realizable = parse_realizability_output(result);
+    if (realizable) {
+        std::cout << "Realizable specification: " << specification.to_string()
+                  << "\n";
+    }
     m_cache.emplace(cache_key, realizable);
     return realizable;
 }

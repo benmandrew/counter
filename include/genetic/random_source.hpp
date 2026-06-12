@@ -26,6 +26,13 @@ class RandomSource {
     /// Returns a pseudo-random boolean.
     [[nodiscard]] bool next_bool() const { return next_index(2) == 1; }
 
+    /// Returns a pseudo-random double uniformly in [0, 1).
+    [[nodiscard]] double next_real() const {
+        constexpr std::size_t kResolution = 1000000;
+        return static_cast<double>(next_index(kResolution)) /
+               static_cast<double>(kResolution);
+    }
+
     explicit operator bool() const { return static_cast<bool>(m_fn); }
 
    private:

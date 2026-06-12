@@ -88,7 +88,8 @@ std::vector<ScoredSpecification> evolve_generation(
                 offspring, population[partner].specification, random_source);
         }
         if (probability_check(config.mutation_rate, random_source)) {
-            offspring = mutate_specification(offspring, random_source);
+            offspring = mutate_specification(offspring, random_source,
+                                             config.requirement_mutation);
         }
         next_generation.push_back(std::move(offspring));
     }

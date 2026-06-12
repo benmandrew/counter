@@ -181,18 +181,26 @@ Timing mutate_timing(const Timing& timing, const RandomSource& random_source) {
 
 Requirement mutate_requirement(const Requirement& requirement,
                                const std::vector<std::string>& atoms,
-                               const RandomSource& random_source) {
+                               const RandomSource& random_source,
+                               const RequirementMutationConfig& config) {
     Requirement mutated = requirement;
-    mutated.m_response =
-        mutate_formula(requirement.m_response, atoms, random_source);
-    mutated.m_trigger =
-        mutate_formula(requirement.m_trigger, atoms, random_source);
-    mutated.m_timing = mutate_timing(requirement.m_timing, random_source);
+    if (random_source.next_real() < config.p_response) {
+        mutated.m_response =
+            mutate_formula(requirement.m_response, atoms, random_source);
+    }
+    if (random_source.next_real() < config.p_trigger) {
+        mutated.m_trigger =
+            mutate_formula(requirement.m_trigger, atoms, random_source);
+    }
+    if (random_source.next_real() < config.p_timing) {
+        mutated.m_timing = mutate_timing(requirement.m_timing, random_source);
+    }
     return mutated;
 }
 
 Specification mutate_specification(const Specification& specification,
-                                   const RandomSource& random_source) {
+                                   const RandomSource& random_source,
+                                   const RequirementMutationConfig& config) {
     assert(random_source);
     const std::size_t n_assumptions = specification.m_assumptions.size();
     const std::size_t n_guarantees = specification.m_guarantees.size();
@@ -208,7 +216,7 @@ Specification mutate_specification(const Specification& specification,
     std::vector<Requirement> guarantees = specification.m_guarantees;
     if (idx < n_assumptions) {
         assumptions[idx] =
-            mutate_requirement(assumptions[idx], atoms, random_source);
+            mutate_requirement(assumptions[idx], atoms, random_source, config);
         for (std::size_t i = 0; i < assumptions.size(); ++i) {
             if (i != idx) {
                 const bool equal = !(assumptions[i] < assumptions[idx]) &&
@@ -221,7 +229,7 @@ Specification mutate_specification(const Specification& specification,
     } else {
         const std::size_t g_idx = idx - n_assumptions;
         guarantees[g_idx] =
-            mutate_requirement(guarantees[g_idx], atoms, random_source);
+            mutate_requirement(guarantees[g_idx], atoms, random_source, config);
         for (std::size_t i = 0; i < guarantees.size(); ++i) {
             if (i != g_idx) {
                 const bool equal = !(guarantees[i] < guarantees[g_idx]) &&

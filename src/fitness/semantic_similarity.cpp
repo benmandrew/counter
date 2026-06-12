@@ -43,6 +43,13 @@ SemanticSimilarityCounts count_semantic_similarity_terms(
 }
 
 double semantic_similarity_from_counts(const SemanticSimilarityCounts& counts) {
+    if (counts.m_requirement_count == 0 &&
+        counts.m_other_requirement_count == 0) {
+        return 1.0;
+    } else if (counts.m_requirement_count == 0 ||
+               counts.m_other_requirement_count == 0) {
+        return 0.0;
+    }
     double first =
         ratio_or_throw(counts.m_conjunction_count, counts.m_requirement_count);
     double second = ratio_or_throw(counts.m_conjunction_count,

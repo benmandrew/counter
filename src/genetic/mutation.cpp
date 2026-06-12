@@ -9,6 +9,7 @@
 #include <variant>
 #include <vector>
 
+#include "config.hpp"
 #include "prop_formula.hpp"
 
 namespace {
@@ -65,17 +66,13 @@ Formula mutate_atom_formula(const Formula& formula,
 
 Formula mutate_not_subtree(Formula child, const std::vector<std::string>& atoms,
                            const RandomSource& random_source) {
-    const int selector = static_cast<int>(random_source.next_index(4));
+    const int selector = static_cast<int>(random_source.next_index(3));
     switch (selector) {
         case 0:
             return child;
         case 1:
             return Formula::make_unary(Formula::Kind::Not, child);
         case 2:
-            return Formula::make_unary(
-                Formula::Kind::Not,
-                Formula::make_unary(Formula::Kind::Not, child));
-        case 3:
             break;
         default:
             assert(false);
@@ -181,18 +178,17 @@ Timing mutate_timing(const Timing& timing, const RandomSource& random_source) {
 
 Requirement mutate_requirement(const Requirement& requirement,
                                const std::vector<std::string>& atoms,
-                               const RandomSource& random_source,
-                               const RequirementMutationConfig& config) {
+                               const RandomSource& random_source) {
     Requirement mutated = requirement;
-    if (random_source.next_real() < config.p_response) {
+    if (random_source.next_real() < Config::p_response) {
         mutated.m_response =
             mutate_formula(requirement.m_response, atoms, random_source);
     }
-    if (random_source.next_real() < config.p_trigger) {
+    if (random_source.next_real() < Config::p_trigger) {
         mutated.m_trigger =
             mutate_formula(requirement.m_trigger, atoms, random_source);
     }
-    if (random_source.next_real() < config.p_timing) {
+    if (random_source.next_real() < Config::p_timing) {
         mutated.m_timing = mutate_timing(requirement.m_timing, random_source);
     }
     mutated.m_ltl = requirement_to_ltl(mutated);
@@ -200,8 +196,7 @@ Requirement mutate_requirement(const Requirement& requirement,
 }
 
 Specification mutate_specification(const Specification& specification,
-                                   const RandomSource& random_source,
-                                   const RequirementMutationConfig& config) {
+                                   const RandomSource& random_source) {
     assert(random_source);
     const std::size_t n_assumptions = specification.m_assumptions.size();
     const std::size_t n_guarantees = specification.m_guarantees.size();
@@ -217,7 +212,7 @@ Specification mutate_specification(const Specification& specification,
     std::vector<Requirement> guarantees = specification.m_guarantees;
     if (idx < n_assumptions) {
         assumptions[idx] =
-            mutate_requirement(assumptions[idx], atoms, random_source, config);
+            mutate_requirement(assumptions[idx], atoms, random_source);
         for (std::size_t i = 0; i < assumptions.size(); ++i) {
             if (i != idx) {
                 const bool equal = !(assumptions[i] < assumptions[idx]) &&
@@ -230,7 +225,7 @@ Specification mutate_specification(const Specification& specification,
     } else {
         const std::size_t g_idx = idx - n_assumptions;
         guarantees[g_idx] =
-            mutate_requirement(guarantees[g_idx], atoms, random_source, config);
+            mutate_requirement(guarantees[g_idx], atoms, random_source);
         for (std::size_t i = 0; i < guarantees.size(); ++i) {
             if (i != g_idx) {
                 const bool equal = !(guarantees[i] < guarantees[g_idx]) &&

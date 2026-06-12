@@ -4,13 +4,13 @@
 
 struct Config {
     // --- Run parameters ---
-    static constexpr std::size_t generations = 20;
-    static constexpr std::size_t population_size = 500;
+    static constexpr std::size_t generations = 100;
+    static constexpr std::size_t population_size = 10;
 
     // --- Fitness weights ---
-    static constexpr double fitness_weight_syntactic = 0.15;
-    static constexpr double fitness_weight_semantic = 0.15;
-    static constexpr double fitness_weight_status = 0.7;
+    static constexpr double fitness_weight_syntactic = 0.25;
+    static constexpr double fitness_weight_semantic = 0.25;
+    static constexpr double fitness_weight_status = 0.5;
 
     // --- Evolution ---
     static constexpr double crossover_rate = 0.1;

@@ -105,15 +105,10 @@ int main() {
     // 2. Initial population — each requirement wrapped in a specification
     std::vector<ScoredSpecification> population = original_population(
         original_spec, fitness_function, Config::population_size);
-    // 3. Evolution config
-    EvolutionConfig evo_config{
-        Config::crossover_rate,
-        Config::mutation_rate,
-        {Config::p_trigger, Config::p_response, Config::p_timing}};
-    // 4. Random source
+    // 3. Random source
     std::random_device rng_dev;
     RandomSource random_source = make_random_source_from_seed(rng_dev());
-    // 5. Run genetic algorithm for a few generations
+    // 4. Run genetic algorithm for a few generations
     std::size_t pop_size = population.size();
 
     for (std::size_t gen_idx = 0; gen_idx < Config::generations; ++gen_idx) {
@@ -127,9 +122,8 @@ int main() {
                       << std::fixed << std::setprecision(2) << elapsed << "s"
                       << std::flush;
         };
-        population =
-            evolve_generation(population, pop_size, fitness_function, {},
-                              evo_config, random_source, on_progress);
+        population = evolve_generation(population, pop_size, fitness_function,
+                                       {}, random_source, on_progress);
         const double elapsed = std::chrono::duration<double>(
                                    std::chrono::steady_clock::now() - start)
                                    .count();
@@ -137,7 +131,7 @@ int main() {
                   << ": 100%  " << std::fixed << std::setprecision(2) << elapsed
                   << "s\n";
     }
-    // 6. Collect realizable specifications, then filter to maximal under
+    // 5. Collect realizable specifications, then filter to maximal under
     // implication
     std::vector<Specification> realizable_vec;
     for (const ScoredSpecification& scored : population) {

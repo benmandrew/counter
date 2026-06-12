@@ -27,18 +27,6 @@ struct ScoredSpecification {
     double fitness;
 };
 
-/// Parameters controlling stochastic operations within a single generation.
-struct EvolutionConfig {
-    /// Probability in [0, 1] that an offspring is produced by crossing two
-    /// selected parents. When crossover does not fire, the offspring is a copy
-    /// of its parent.
-    double crossover_rate = 0.1;
-    /// Probability in [0, 1] that the result (crossover or copy) is mutated.
-    double mutation_rate = 1.0;
-    /// Per-component probabilities for mutating each part of a requirement.
-    RequirementMutationConfig requirement_mutation = {};
-};
-
 /// Wraps a per-element predicate as a population-level FilterFunction.
 ///
 /// @param predicate A predicate returning true for specifications to keep
@@ -85,7 +73,6 @@ std::vector<Specification> filter_population(
 /// @param target_size       Number of offspring to produce
 /// @param fitness_function  Non-empty weighted fitness function for scoring
 /// @param filter_functions  Filters applied to the population before scoring
-/// @param config            Crossover and mutation rates
 /// @param random_source     Random source for crossover and mutation
 /// @param on_progress       Optional callback invoked after each individual is
 ///                          scored; receives (done, total) counts
@@ -98,5 +85,5 @@ std::vector<ScoredSpecification> evolve_generation(
     const std::vector<ScoredSpecification>& population, std::size_t target_size,
     const AggregateWeightedFitnessFunction& fitness_function,
     const std::vector<FilterFunction>& filter_functions,
-    const EvolutionConfig& config, const RandomSource& random_source,
+    const RandomSource& random_source,
     const GenerationProgressCallback& on_progress = nullptr);

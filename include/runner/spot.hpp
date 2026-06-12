@@ -20,10 +20,17 @@ std::string ltl2tgba_path();
 /// Asserts that the binary is accessible and that the process exits cleanly.
 std::string run_ltl2tgba_for_counting(const std::string& formula);
 
+struct Ltl2tgbaStats {
+    inline static std::size_t n_cache_hits = 0;
+    inline static std::size_t n_cache_misses = 0;
+    inline static double total_time_s = 0.0;
+};
+
 class RealizabilityChecker {
    public:
     inline static std::size_t n_cache_misses = 0;
     inline static std::size_t n_cache_hits = 0;
+    inline static double total_time_s = 0.0;
 
     /// Checks whether the specification is realizable using ltlsynt. Results
     /// are memoised by the full specification formula, so repeated calls with

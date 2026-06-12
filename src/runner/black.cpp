@@ -7,6 +7,7 @@
 #include <array>
 #include <cassert>
 #include <cerrno>
+#include <chrono>
 #include <cstring>
 #include <memory>
 #include <string>
@@ -103,7 +104,11 @@ bool SatisfiabilityChecker::check_satisfiability(
     assert(access(black.c_str(), F_OK) == 0);
     const std::vector<std::string> command = {black, "solve", "-f",
                                               ltl_formula};
+    const auto start = std::chrono::steady_clock::now();
     const ProcessResult result = execute_and_capture(command);
+    total_time_s +=
+        std::chrono::duration<double>(std::chrono::steady_clock::now() - start)
+            .count();
     // Check UNSAT before SAT: the former contains the latter as a substring.
     bool sat = false;
     if (result.m_output.find("UNSAT") != std::string::npos) {

@@ -8,12 +8,14 @@
 #include <cassert>
 #include <cctype>
 #include <cerrno>
+#include <chrono>
 #include <cstdlib>
 #include <cstring>
 #include <filesystem>  // NOLINT(build/c++17)
 #include <fstream>
 #include <memory>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 #include "prop_formula.hpp"
@@ -164,10 +166,23 @@ Count run_ganak_on_dimacs(const std::string& dimacs_path, unsigned seed) {
 }
 
 Count run_ganak_on_formula(const std::string& formula, unsigned seed) {
+    static std::unordered_map<std::string, Count> cache;
+    const std::string key = formula + "|" + std::to_string(seed);
+    const auto found = cache.find(key);
+    if (found != cache.end()) {
+        GanakStats::n_cache_hits++;
+        return found->second;
+    }
+    GanakStats::n_cache_misses++;
     const Formula parsed = Formula(formula);
     const std::string formula_dimacs_path =
         write_temporary_dimacs(parsed.to_dimacs());
+    const auto start = std::chrono::steady_clock::now();
     const Count count = run_ganak_on_dimacs(formula_dimacs_path, seed);
+    GanakStats::total_time_s +=
+        std::chrono::duration<double>(std::chrono::steady_clock::now() - start)
+            .count();
     std::remove(formula_dimacs_path.c_str());
+    cache.emplace(key, count);
     return count;
 }

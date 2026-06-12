@@ -14,6 +14,7 @@
 #include "genetic/generation.hpp"
 #include "requirement.hpp"
 #include "runner/black.hpp"
+#include "runner/ganak.hpp"
 #include "runner/spot.hpp"
 
 AggregateWeightedFitnessFunction get_fitness_function(
@@ -46,21 +47,35 @@ Specification get_spec() {
     return Specification(assumptions, guarantees, in_atoms, out_atoms);
 }
 
-void print_cache_report() {
-    std::cout << "Fitness function cache report:\n";
-    std::cout << "  Cache hits: "
-              << AggregateWeightedFitnessFunction::n_cache_hits << "\n";
-    std::cout << "  Cache misses: "
-              << AggregateWeightedFitnessFunction::n_cache_misses << "\n";
-    std::cout << "Satisfiability check cache report:\n";
-    std::cout << "  Cache hits: " << SatisfiabilityChecker::n_cache_hits
-              << "\n";
-    std::cout << "  Cache misses: " << SatisfiabilityChecker::n_cache_misses
-              << "\n";
-    std::cout << "Realizability check cache report:\n";
-    std::cout << "  Cache hits: " << RealizabilityChecker::n_cache_hits << "\n";
-    std::cout << "  Cache misses: " << RealizabilityChecker::n_cache_misses
-              << "\n";
+void print_timing_report() {
+    auto print_row = [](const char* name, std::size_t calls, double total_s,
+                        std::size_t cache_hits) {
+        const double avg_s =
+            calls > 0 ? total_s / static_cast<double>(calls) : 0.0;
+        std::cout << std::left << std::setw(12) << name << std::right
+                  << std::setw(6) << calls << " calls  " << std::fixed
+                  << std::setprecision(3) << std::setw(8) << total_s
+                  << "s total  " << std::setw(8) << avg_s << "s avg";
+        if (cache_hits > 0) {
+            std::cout << "  (+" << cache_hits << " cache hits)";
+        }
+        std::cout << "\n";
+    };
+    std::cout << "\nTool timing report:\n";
+    print_row("ltl2tgba", Ltl2tgbaStats::n_cache_misses,
+              Ltl2tgbaStats::total_time_s, Ltl2tgbaStats::n_cache_hits);
+    print_row("ltlsynt", RealizabilityChecker::n_cache_misses,
+              RealizabilityChecker::total_time_s,
+              RealizabilityChecker::n_cache_hits);
+    print_row("black", SatisfiabilityChecker::n_cache_misses,
+              SatisfiabilityChecker::total_time_s,
+              SatisfiabilityChecker::n_cache_hits);
+    print_row("ganak", GanakStats::n_cache_misses, GanakStats::total_time_s,
+              GanakStats::n_cache_hits);
+    std::cout << "\nFitness cache: "
+              << AggregateWeightedFitnessFunction::n_cache_hits << " hits / "
+              << AggregateWeightedFitnessFunction::n_cache_misses
+              << " misses\n";
 }
 
 std::vector<ScoredSpecification> original_population(
@@ -120,6 +135,6 @@ int main() {
     for (const Specification& spec : realizable) {
         std::cout << spec.to_string() << "\n\n";
     }
-    // print_cache_report();
+    print_timing_report();
     return 0;
 }

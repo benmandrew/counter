@@ -8,10 +8,12 @@
 #include <array>
 #include <cassert>
 #include <cerrno>
+#include <chrono>
 #include <cstring>
 #include <iostream>
 #include <memory>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 #include "requirement.hpp"
@@ -178,11 +180,23 @@ std::string ltlsynt_path() { return spot_bin_dir() + "/ltlsynt"; }
 std::string ltl2tgba_path() { return spot_bin_dir() + "/ltl2tgba"; }
 
 std::string run_ltl2tgba_for_counting(const std::string& formula) {
+    static std::unordered_map<std::string, std::string> cache;
+    const auto found = cache.find(formula);
+    if (found != cache.end()) {
+        Ltl2tgbaStats::n_cache_hits++;
+        return found->second;
+    }
+    Ltl2tgbaStats::n_cache_misses++;
     const std::string binary = ltl2tgba_path();
     assert(access(binary.c_str(), F_OK) == 0);
+    const auto start = std::chrono::steady_clock::now();
     const ProcessResult result =
         execute_and_capture({binary, "-D", "-S", "-H", "-f", formula});
+    Ltl2tgbaStats::total_time_s +=
+        std::chrono::duration<double>(std::chrono::steady_clock::now() - start)
+            .count();
     assert(result.m_exit_code == 0);
+    cache.emplace(formula, result.m_output);
     return result.m_output;
 }
 
@@ -209,7 +223,11 @@ bool RealizabilityChecker::check_realizability(
     } else if (!specification.m_out_atoms.empty()) {
         command.push_back("--outs=" + join_comma(specification.m_out_atoms));
     }
+    const auto start = std::chrono::steady_clock::now();
     const ProcessResult result = execute_and_capture(command);
+    total_time_s +=
+        std::chrono::duration<double>(std::chrono::steady_clock::now() - start)
+            .count();
     bool realizable = parse_realizability_output(result);
     m_cache.emplace(cache_key, realizable);
     return realizable;

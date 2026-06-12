@@ -49,7 +49,7 @@ std::vector<ScoredSpecification> score_population(
     const GenerationProgressCallback& on_progress) {
     assert(!fitness_function.empty());
     const std::size_t batch_size =
-        n_hw_threads > 0 ? static_cast<std::size_t>(n_hw_threads) : 1;
+        n_hw_threads > 0 ? static_cast<std::size_t>(n_hw_threads) * 2 : 1;
     std::vector<ScoredSpecification> scored;
     scored.reserve(population.size());
     std::size_t done = 0;

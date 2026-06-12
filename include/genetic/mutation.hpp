@@ -32,7 +32,7 @@ Timing mutate_timing(const Timing& timing, const RandomSource& random_source);
 struct RequirementMutationConfig {
     double p_trigger = 1.0;
     double p_response = 1.0;
-    double p_timing = 1.0;
+    double p_timing = 0.1;
 };
 
 /// Mutates a requirement. Each of trigger, response, and timing is mutated

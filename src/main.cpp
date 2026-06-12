@@ -5,6 +5,7 @@
 #include <random>
 #include <set>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "fitness/semantic_similarity.hpp"
@@ -79,12 +80,8 @@ constexpr std::size_t population_size = 20;
 
 int main() {
     Specification original_spec = get_spec();
-    std::cout << "Original specification:\n";
-    for (const Requirement& req : original_spec.m_guarantees) {
-        std::cout << "Requirement:\n  Trigger: " << req.m_trigger.to_string()
-                  << "\n  Response: " << req.m_response.to_string()
-                  << "\n  Timing: " << to_string(req.m_timing) << "\n";
-    }
+    std::cout << "Original specification:\n"
+              << original_spec.to_string() << "\n";
     // 1. Fitness functions
     AggregateWeightedFitnessFunction fitness_function =
         get_fitness_function(original_spec);
@@ -111,24 +108,18 @@ int main() {
                                    .count();
         std::cout << std::fixed << std::setprecision(2) << elapsed << "s\n";
     }
-    // 7. Score and print the best specification
-    std::sort(population.begin(), population.end(),
-              [](const auto& lhs, const auto& rhs) {
-                  return lhs.fitness > rhs.fitness;
-              });
-    std::cout << "Best specification after " << generations
-              << " generations:\n";
-    if (!population.empty()) {
-        ScoredSpecification& best_scored_spec = population.front();
-        for (const Requirement& req :
-             best_scored_spec.specification.m_guarantees) {
-            std::cout << "Requirement:\n  Trigger: "
-                      << req.m_trigger.to_string()
-                      << "\n  Response: " << req.m_response.to_string()
-                      << "\n  Timing: " << to_string(req.m_timing) << "\n";
+    // 7. Collect and print all unique realizable specifications
+    std::set<Specification> realizable;
+    for (const ScoredSpecification& scored : population) {
+        if (specification_status(scored.specification) == 1.0) {
+            realizable.insert(scored.specification);
         }
-        std::cout << "Fitness: " << best_scored_spec.fitness << "\n\n";
     }
-    print_cache_report();
+    std::cout << "\nRealizable specifications after " << generations
+              << " generations (" << realizable.size() << "):\n";
+    for (const Specification& spec : realizable) {
+        std::cout << spec.to_string() << "\n\n";
+    }
+    // print_cache_report();
     return 0;
 }

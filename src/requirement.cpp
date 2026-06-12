@@ -45,6 +45,28 @@ std::string to_string(const Timing& timing) {
         timing);
 }
 
+std::string Requirement::to_string() const {
+    return "If " + m_trigger.to_string() + ", " + ::to_string(m_timing) + " " +
+           m_response.to_string();
+}
+
+std::string Specification::to_string() const {
+    std::string result;
+    for (const Requirement& req : m_assumptions) {
+        if (!result.empty()) {
+            result += "\n";
+        }
+        result += req.to_string();
+    }
+    for (const Requirement& req : m_guarantees) {
+        if (!result.empty()) {
+            result += "\n";
+        }
+        result += req.to_string();
+    }
+    return result;
+}
+
 std::string requirement_to_ltl(const Requirement& requirement) {
     const std::string trigger_str =
         "(" + requirement.m_trigger.to_string() + ")";

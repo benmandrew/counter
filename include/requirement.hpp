@@ -135,6 +135,10 @@ struct Requirement {
           m_response(std::move(response)),
           m_timing(timing),
           m_ltl(ltl) {}
+
+    /// Returns a one-line human-readable string of the form
+    /// "If <trigger>, <timing> <response>".
+    [[nodiscard]] std::string to_string() const;
 };
 
 static bool atom_contains_uppercase(const std::string& atom) {
@@ -199,6 +203,11 @@ struct Specification {
                lhs.m_in_atoms == rhs.m_in_atoms &&
                lhs.m_out_atoms == rhs.m_out_atoms;
     }
+
+    /// Returns one line per requirement (assumptions then guarantees),
+    /// each in the form "If <trigger>, <timing> <response>", joined by
+    /// newlines.
+    [[nodiscard]] std::string to_string() const;
 };
 
 /// A state in the automaton used for transfer matrix model counting. Encodes

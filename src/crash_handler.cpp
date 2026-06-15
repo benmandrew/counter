@@ -19,9 +19,11 @@ namespace {
 constexpr std::size_t k_path_buffer_size = 4096;
 constexpr std::size_t k_num_buffer_size = 32;
 constexpr std::size_t k_frame_buffer_size = 100;
+constexpr std::size_t k_metadata_buffer_size = 4096;
 
 std::array<char, k_path_buffer_size> g_tracer_path = {};
 std::array<char, k_path_buffer_size> g_crash_dir = {};
+std::array<char, k_metadata_buffer_size> g_crash_metadata = {};
 
 void copy_path_to_buffer(std::array<char, k_path_buffer_size>& destination,
                          const std::filesystem::path& path) {
@@ -143,7 +145,7 @@ void crash_handler(int signo, [[maybe_unused]] siginfo_t* siginfo,
         }
         close(pipefd[0]);
         execl(g_tracer_path.data(), "signal_tracer", log_path.data(),
-              signal_buffer.data(), pid_buffer.data(),
+              signal_buffer.data(), pid_buffer.data(), g_crash_metadata.data(),
               static_cast<char*>(nullptr));
         _exit(1);
     }
@@ -167,6 +169,13 @@ void crash_handler(int signo, [[maybe_unused]] siginfo_t* siginfo,
 }
 
 }  // namespace
+
+void register_crash_metadata(const std::string& text) {
+    if (text.size() + 1 > g_crash_metadata.size()) {
+        throw std::runtime_error("crash metadata exceeds buffer size");
+    }
+    std::memcpy(g_crash_metadata.data(), text.c_str(), text.size() + 1);
+}
 
 void init_cpptrace(char* executable_name) {
     const std::filesystem::path executable_path =

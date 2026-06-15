@@ -58,12 +58,18 @@ int main(int argc, char* argv[]) {
     const int signal_number =
         argc >= 3 && argv[2] != nullptr ? std::atoi(argv[2]) : 0;
     const int pid = argc >= 4 && argv[3] != nullptr ? std::atoi(argv[3]) : 0;
+    const char* metadata = argc >= 5 && argv[4] != nullptr && argv[4][0] != '\0'
+                               ? argv[4]
+                               : nullptr;
     *output << "=== CRASH REPORT ===\n";
     *output << "Time:   " << current_time_string() << "\n";
     *output << "Signal: " << signal_name(signal_number) << " (" << signal_number
             << ")\n";
-    *output << "PID:    " << pid << "\n\n";
-    *output << "Stack trace:\n";
+    *output << "PID:    " << pid << "\n";
+    if (metadata != nullptr) {
+        *output << "\n" << metadata << "\n";
+    }
+    *output << "\nStack trace:\n";
     trace.resolve().print(*output, false);
     *output << '\n';
     return 0;

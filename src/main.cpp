@@ -96,7 +96,7 @@ std::vector<ScoredSpecification> original_population(
     return population;
 }
 
-std::optional<std::size_t> parse_seed_arg(int argc, char* argv[]) {
+std::optional<std::size_t> parse_seed_arg(int argc, char** argv) {
     for (int i = 1; i < argc - 1; ++i) {
         if (argv[i] != nullptr && std::string(argv[i]) == "--seed") {
             if (argv[i + 1] != nullptr) {

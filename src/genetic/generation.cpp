@@ -87,6 +87,27 @@ std::vector<Specification> filter_population(
     return current;
 }
 
+Specification simplify_offspring(Specification offspring) {
+    Specification pre_simplify = offspring;
+    for (auto& req : offspring.m_assumptions) {
+        req.m_trigger.simplify();
+        req.m_response.simplify();
+        req.m_ltl = requirement_to_ltl(req);
+    }
+    for (auto& req : offspring.m_guarantees) {
+        req.m_trigger.simplify();
+        req.m_response.simplify();
+        req.m_ltl = requirement_to_ltl(req);
+    }
+    Specification rededuped(offspring.m_assumptions, offspring.m_guarantees,
+                            offspring.m_in_atoms, offspring.m_out_atoms);
+    if (rededuped.m_assumptions.size() != pre_simplify.m_assumptions.size() ||
+        rededuped.m_guarantees.size() != pre_simplify.m_guarantees.size()) {
+        return pre_simplify;
+    }
+    return rededuped;
+}
+
 std::vector<ScoredSpecification> evolve_generation(
     const std::vector<ScoredSpecification>& population, std::size_t target_size,
     const AggregateWeightedFitnessFunction& fitness_functions,
@@ -138,30 +159,7 @@ std::vector<ScoredSpecification> evolve_generation(
         if (probability_check(Config::mutation_rate, random_source)) {
             offspring = mutate_specification(offspring, random_source);
         }
-        Specification pre_simplify = offspring;
-        for (auto& req : offspring.m_assumptions) {
-            req.m_trigger.simplify();
-            req.m_response.simplify();
-            req.m_ltl = requirement_to_ltl(req);
-        }
-        for (auto& req : offspring.m_guarantees) {
-            req.m_trigger.simplify();
-            req.m_response.simplify();
-            req.m_ltl = requirement_to_ltl(req);
-        }
-        // Re-deduplicate after simplification; if simplification collapsed two
-        // requirements into one, revert to the pre-simplify offspring so the
-        // structural size invariant (same count as original) is preserved.
-        Specification rededuped(offspring.m_assumptions, offspring.m_guarantees,
-                                offspring.m_in_atoms, offspring.m_out_atoms);
-        if (rededuped.m_assumptions.size() !=
-                pre_simplify.m_assumptions.size() ||
-            rededuped.m_guarantees.size() != pre_simplify.m_guarantees.size()) {
-            offspring = std::move(pre_simplify);
-        } else {
-            offspring = std::move(rededuped);
-        }
-        next_generation.push_back(std::move(offspring));
+        next_generation.push_back(simplify_offspring(std::move(offspring)));
     }
 
     std::vector<ScoredSpecification> scored =

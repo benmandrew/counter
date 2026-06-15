@@ -1,6 +1,7 @@
 #pragma once
 
 #include <Eigen/Dense>
+
 #include <algorithm>
 #include <cassert>
 #include <cctype>

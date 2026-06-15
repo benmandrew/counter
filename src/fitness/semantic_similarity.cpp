@@ -46,8 +46,9 @@ double semantic_similarity_from_counts(const SemanticSimilarityCounts& counts) {
     if (counts.m_requirement_count == 0 &&
         counts.m_other_requirement_count == 0) {
         return 1.0;
-    } else if (counts.m_requirement_count == 0 ||
-               counts.m_other_requirement_count == 0) {
+    }
+    if (counts.m_requirement_count == 0 ||
+        counts.m_other_requirement_count == 0) {
         return 0.0;
     }
     double first =

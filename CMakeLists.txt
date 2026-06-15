@@ -78,7 +78,10 @@ if(DEFINED COUNTER_DEFAULT_FITNESS_WEIGHT)
 endif()
 
 add_executable(counter src/main.cpp)
-target_link_libraries(counter PRIVATE counter_fitness)
+target_link_libraries(counter PRIVATE counter_fitness cpptrace::cpptrace)
+
+add_executable(signal_tracer src/signal_tracer.cpp)
+target_link_libraries(signal_tracer PRIVATE cpptrace::cpptrace)
 
 add_custom_target(ganak_binary ALL DEPENDS "${GANAK_EXECUTABLE}")
 add_custom_target(black_binary ALL DEPENDS "${BLACK_EXECUTABLE}")

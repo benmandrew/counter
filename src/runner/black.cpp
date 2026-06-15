@@ -9,6 +9,7 @@
 #include <cerrno>
 #include <chrono>
 #include <cstring>
+#include <iostream>
 #include <memory>
 #include <mutex>
 #include <string>
@@ -128,7 +129,10 @@ bool SatisfiabilityChecker::check_satisfiability(
     } else if (result.m_output.find("SAT") != std::string::npos) {
         sat = true;
     } else {
+        std::cerr << "Unexpected output from black:\n"
+                  << result.m_output << "\n";
         assert(false);
+        __builtin_unreachable();
     }
     std::lock_guard<std::mutex> lock(m_cache_mutex);
     total_time_s += elapsed;

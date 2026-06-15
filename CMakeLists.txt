@@ -25,6 +25,14 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
+option(COUNTER_TSAN "Build with ThreadSanitizer" OFF)
+if(COUNTER_TSAN)
+    set(CMAKE_CROSSCOMPILING_EMULATOR
+        "setarch" "${CMAKE_SYSTEM_PROCESSOR}" "-R"
+        CACHE STRING "Disable ASLR for TSan shadow memory" FORCE)
+    message(STATUS "TSan: wrapping tests with setarch ${CMAKE_SYSTEM_PROCESSOR} -R (ASLR disabled)")
+endif()
+
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 check_cxx_source_compiles(

@@ -120,17 +120,17 @@ void test_counts_req_timing_contributes_operator() {
                               timing::immediately()};
     const Requirement req_ev{Formula("p"), Formula("q"), timing::eventually()};
     const HalsteadCounts imm = halstead_counts(req_imm);
-    const HalsteadCounts ev = halstead_counts(req_ev);
+    const HalsteadCounts evn = halstead_counts(req_ev);
     // Both have same formulas; their timing operators are distinct strings so
     // eta1 should be 1 for each (only the timing operator; no connectives).
     expect(imm.eta1 == 1,
            "counts/req-timing: immediately should contribute 1 operator");
-    expect(ev.eta1 == 1,
+    expect(evn.eta1 == 1,
            "counts/req-timing: eventually should contribute 1 operator");
     // eta1 should differ (different timing string), but each alone gives 1
     // distinct operator — combined counts for a SINGLE requirement match.
     expect(imm.n1 == 1, "counts/req-timing: n1 should be 1 for immediately");
-    expect(ev.n1 == 1, "counts/req-timing: n1 should be 1 for eventually");
+    expect(evn.n1 == 1, "counts/req-timing: n1 should be 1 for eventually");
 }
 
 void test_counts_req_parameterised_timing_contributes_operand() {
@@ -152,12 +152,12 @@ void test_counts_req_different_tick_values_are_distinct_operands() {
     // different tick-count operands.
     const Requirement req3{Formula("p"), Formula("q"), timing::within_ticks(3)};
     const Requirement req5{Formula("p"), Formula("q"), timing::within_ticks(5)};
-    const HalsteadCounts c3 = halstead_counts(req3);
-    const HalsteadCounts c5 = halstead_counts(req5);
-    expect(c3.eta2 == 3,
+    const HalsteadCounts cnt3 = halstead_counts(req3);
+    const HalsteadCounts cnt5 = halstead_counts(req5);
+    expect(cnt3.eta2 == 3,
            "counts/tick-operands: within_ticks(3) should have 3 distinct "
            "operands (p,q,ticks:3)");
-    expect(c5.eta2 == 3,
+    expect(cnt5.eta2 == 3,
            "counts/tick-operands: within_ticks(5) should have 3 distinct "
            "operands (p,q,ticks:5)");
 }

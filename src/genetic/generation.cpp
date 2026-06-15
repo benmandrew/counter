@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cassert>
+#include <deque>
 #include <future>
 #include <numeric>
 #include <utility>
@@ -47,28 +48,34 @@ std::vector<ScoredSpecification> score_population(
     const AggregateWeightedFitnessFunction& fitness_function,
     const GenerationProgressCallback& on_progress) {
     assert(!fitness_function.empty());
-    const std::size_t batch_size =
+    const std::size_t max_in_flight =
         Config::n_hw_threads > 0 ? Config::n_hw_threads * 4 : 1;
     std::vector<ScoredSpecification> scored;
     scored.reserve(population.size());
     std::size_t done = 0;
-    for (std::size_t batch_start = 0; batch_start < population.size();
-         batch_start += batch_size) {
-        const std::size_t batch_end =
-            std::min(batch_start + batch_size, population.size());
-        std::vector<std::future<double>> futures;
-        futures.reserve(batch_end - batch_start);
-        for (std::size_t i = batch_start; i < batch_end; ++i) {
-            futures.push_back(std::async(
-                std::launch::async, [&fitness_function, &spec = population[i]] {
-                    return fitness_function(spec);
-                }));
-        }
-        for (std::size_t i = 0; i < futures.size(); ++i) {
-            scored.push_back({population[batch_start + i], futures[i].get()});
+    std::deque<std::pair<const Specification*, std::future<double>>> in_flight;
+    for (std::size_t i = 0; i < population.size(); ++i) {
+        if (in_flight.size() >= max_in_flight) {
+            scored.push_back(
+                {*in_flight.front().first, in_flight.front().second.get()});
+            in_flight.pop_front();
             if (on_progress) {
                 on_progress(++done, population.size());
             }
+        }
+        in_flight.emplace_back(
+            &population[i],
+            std::async(std::launch::async,
+                       [&fitness_function, &spec = population[i]] {
+                           return fitness_function(spec);
+                       }));
+    }
+    while (!in_flight.empty()) {
+        scored.push_back(
+            {*in_flight.front().first, in_flight.front().second.get()});
+        in_flight.pop_front();
+        if (on_progress) {
+            on_progress(++done, population.size());
         }
     }
     return scored;

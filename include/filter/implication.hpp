@@ -14,5 +14,9 @@
 /// be thread-safe (SatisfiabilityChecker satisfies this). The checker is
 /// captured by reference; it must outlive the returned FilterFunction.
 ///
-/// @param checker  Satisfiability checker for pairwise implication tests
-FilterFunction make_implication_filter(SatisfiabilityChecker& checker);
+/// @param checker      Satisfiability checker for pairwise implication tests
+/// @param on_progress  Optional callback invoked after each batch of pairs is
+///                     checked; receives (done, total) pair counts
+FilterFunction make_implication_filter(
+    SatisfiabilityChecker& checker,
+    const GenerationProgressCallback& on_progress = nullptr);

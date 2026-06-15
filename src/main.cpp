@@ -189,10 +189,26 @@ int main(int argc, char* argv[]) {
             realizable_vec.push_back(scored.specification);
         }
     }
+    const auto impl_start = std::chrono::steady_clock::now();
+    auto on_impl_progress = [&](std::size_t done, std::size_t total) {
+        const double elapsed =
+            std::chrono::duration<double>(std::chrono::steady_clock::now() -
+                                          impl_start)
+                .count();
+        std::cout << "\rImplication filter: " << std::setw(3)
+                  << (done * 100 / total) << "%  " << std::fixed
+                  << std::setprecision(2) << elapsed << "s" << std::flush;
+    };
     const FilterFunction implication_filter =
-        make_implication_filter(global_sat_checker());
+        make_implication_filter(global_sat_checker(), on_impl_progress);
     const std::vector<Specification> maximal =
         implication_filter(realizable_vec);
+    const double impl_elapsed =
+        std::chrono::duration<double>(std::chrono::steady_clock::now() -
+                                      impl_start)
+            .count();
+    std::cout << "\r\033[KImplication filter: 100%  " << std::fixed
+              << std::setprecision(2) << impl_elapsed << "s\n";
     std::cout << "\nRealizable specifications after " << Config::generations
               << " generations (" << maximal.size() << " reduced from "
               << realizable_vec.size() << "):\n";

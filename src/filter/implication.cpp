@@ -38,7 +38,8 @@ std::string build_spec_ltl(const Specification& spec) {
 // logically implies pop[j]. All pairs are checked in parallel.
 std::vector<uint8_t> compute_implies_matrix(
     const std::vector<std::string>& ltls, std::size_t pop_size,
-    SatisfiabilityChecker& checker) {
+    SatisfiabilityChecker& checker,
+    const GenerationProgressCallback& on_progress) {
     std::vector<std::pair<std::size_t, std::size_t>> pairs;
     pairs.reserve(pop_size * (pop_size - 1));
     for (std::size_t idx_i = 0; idx_i < pop_size; ++idx_i) {
@@ -48,14 +49,11 @@ std::vector<uint8_t> compute_implies_matrix(
             }
         }
     }
-
     // Each cell is written by exactly one async task; uint8_t avoids the
     // bit-packing aliasing hazard of vector<bool>.
     std::vector<uint8_t> mat(pop_size * pop_size, 0);
-
     const std::size_t n_hw = std::thread::hardware_concurrency();
     const std::size_t batch_size = n_hw > 0 ? n_hw * 2 : 1;
-
     for (std::size_t batch_start = 0; batch_start < pairs.size();
          batch_start += batch_size) {
         const std::size_t batch_end =
@@ -77,6 +75,9 @@ std::vector<uint8_t> compute_implies_matrix(
         }
         for (auto& fut : futures) {
             fut.get();
+        }
+        if (on_progress) {
+            on_progress(batch_end, pairs.size());
         }
     }
     return mat;
@@ -108,8 +109,10 @@ std::vector<Specification> keep_maximal(const std::vector<Specification>& pop,
 
 }  // namespace
 
-FilterFunction make_implication_filter(SatisfiabilityChecker& checker) {
-    return [&checker](const std::vector<Specification>& pop) {
+FilterFunction make_implication_filter(
+    SatisfiabilityChecker& checker,
+    const GenerationProgressCallback& on_progress) {
+    return [&checker, on_progress](const std::vector<Specification>& pop) {
         const std::size_t pop_size = pop.size();
         if (pop_size <= 1) {
             return pop;
@@ -120,7 +123,7 @@ FilterFunction make_implication_filter(SatisfiabilityChecker& checker) {
             ltls.push_back(build_spec_ltl(spec));
         }
         const std::vector<uint8_t> mat =
-            compute_implies_matrix(ltls, pop_size, checker);
+            compute_implies_matrix(ltls, pop_size, checker, on_progress);
         return keep_maximal(pop, mat, pop_size);
     };
 }

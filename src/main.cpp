@@ -75,7 +75,7 @@ Specification get_spec() {
 
 void print_timing_report() {
     auto print_row = [](const char* name, std::size_t calls, double total_s,
-                        std::size_t cache_hits) {
+                        std::size_t cache_hits, std::size_t timeouts = 0) {
         const double avg_s =
             calls > 0 ? total_s / static_cast<double>(calls) : 0.0;
         std::cout << std::left << std::setw(12) << name << std::right
@@ -84,6 +84,9 @@ void print_timing_report() {
                   << "s total  " << std::setw(8) << avg_s << "s avg";
         if (cache_hits > 0) {
             std::cout << "  (+" << cache_hits << " cache hits)";
+        }
+        if (timeouts > 0) {
+            std::cout << "  (" << timeouts << " timeouts)";
         }
         std::cout << "\n";
     };
@@ -95,7 +98,8 @@ void print_timing_report() {
               RealizabilityChecker::n_cache_hits);
     print_row("black", SatisfiabilityChecker::n_cache_misses,
               SatisfiabilityChecker::total_time_s,
-              SatisfiabilityChecker::n_cache_hits);
+              SatisfiabilityChecker::n_cache_hits,
+              SatisfiabilityChecker::n_timeouts);
     print_row("ganak", GanakStats::n_cache_misses, GanakStats::total_time_s,
               GanakStats::n_cache_hits);
     std::cout << "\nFitness cache: "

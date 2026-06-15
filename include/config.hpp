@@ -1,12 +1,13 @@
 #pragma once
 
+#include <chrono>
 #include <cstddef>
 #include <thread>
 
 struct Config {
     // --- Run parameters ---
-    static constexpr std::size_t generations = 20;
-    static constexpr std::size_t population_size = 1000;
+    static constexpr std::size_t generations = 10;
+    static constexpr std::size_t population_size = 500;
 
     // --- Fitness weights ---
     static constexpr double fitness_weight_syntactic = 0.1;
@@ -16,6 +17,9 @@ struct Config {
 
     // --- Model counting ---
     static constexpr std::size_t default_model_counting_bound = 5;
+
+    // --- External tool timeouts ---
+    static constexpr std::chrono::seconds black_timeout{10};
 
     // --- Evolution ---
     static constexpr double crossover_rate = 0.1;

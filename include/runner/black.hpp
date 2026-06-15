@@ -1,6 +1,7 @@
 #pragma once
 
 #include <mutex>
+#include <optional>
 #include <string>
 #include <unordered_map>
 
@@ -10,9 +11,11 @@ class SatisfiabilityChecker {
    public:
     inline static std::size_t n_cache_misses = 0;
     inline static std::size_t n_cache_hits = 0;
+    inline static std::size_t n_timeouts = 0;
     inline static double total_time_s = 0.0;
 
-    bool check_satisfiability(const std::string& ltl_formula);
+    /// Returns true (SAT), false (UNSAT), or nullopt (timed out / unknown).
+    std::optional<bool> check_satisfiability(const std::string& ltl_formula);
 
    private:
     mutable std::mutex m_cache_mutex;

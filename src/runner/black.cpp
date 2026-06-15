@@ -1,5 +1,6 @@
 #include "runner/black.hpp"
 
+#include <poll.h>
 #include <sys/types.h>
 #include <sys/wait.h>
 #include <unistd.h>
@@ -8,21 +9,82 @@
 #include <cassert>
 #include <cerrno>
 #include <chrono>
+#include <csignal>
 #include <cstring>
 #include <iostream>
+#include <limits>
 #include <memory>
 #include <mutex>
+#include <optional>
 #include <string>
+#include <utility>
 #include <vector>
+
+#include "config.hpp"
 
 namespace {
 
 struct ProcessResult {
     int m_exit_code;
     std::string m_output;
+    bool m_timed_out = false;
 };
 
-ProcessResult execute_and_capture(const std::vector<std::string>& arguments) {
+// Reads from fd until EOF or deadline, killing child_pid on timeout.
+// Returns {output, timed_out}.
+std::pair<std::string, bool> read_with_timeout(
+    int read_fd, pid_t child_pid,
+    std::chrono::steady_clock::time_point deadline) {
+    std::string output;
+    std::array<char, 4096> read_buf{};
+    while (true) {
+        const auto now = std::chrono::steady_clock::now();
+        if (now >= deadline) {
+            kill(child_pid, SIGKILL);
+            return {output, true};
+        }
+        const auto remaining_ms =
+            std::chrono::duration_cast<std::chrono::milliseconds>(deadline -
+                                                                  now)
+                .count();
+        const int poll_ms = remaining_ms > std::numeric_limits<int>::max()
+                                ? std::numeric_limits<int>::max()
+                                : static_cast<int>(remaining_ms);
+        struct pollfd pfd{};
+        pfd.fd = read_fd;
+        pfd.events = POLLIN;
+        const int poll_ret = poll(&pfd, 1, poll_ms);
+        if (poll_ret < 0) {
+            if (errno == EINTR) {
+                continue;
+            }
+            assert(false);
+            __builtin_unreachable();
+        }
+        if (poll_ret == 0) {
+            kill(child_pid, SIGKILL);
+            return {output, true};
+        }
+        const ssize_t bytes_read =
+            read(read_fd, read_buf.data(), read_buf.size());
+        if (bytes_read > 0) {
+            output.append(read_buf.data(),
+                          static_cast<std::size_t>(bytes_read));
+            continue;
+        }
+        if (bytes_read == 0) {
+            return {output, false};
+        }
+        if (errno == EINTR) {
+            continue;
+        }
+        assert(false);
+        __builtin_unreachable();
+    }
+}
+
+ProcessResult execute_and_capture(const std::vector<std::string>& arguments,
+                                  std::chrono::seconds timeout) {
     assert(!arguments.empty());
     // Build argv before forking: heap allocation inside the child between
     // fork() and execv() can deadlock if another thread held the allocator
@@ -53,26 +115,9 @@ ProcessResult execute_and_capture(const std::vector<std::string>& arguments) {
         _exit(127);
     }
     close(pipe_fds[1]);
-    std::string output;
-    std::array<char, 4096> read_buf{};
-    while (true) {
-        const ssize_t bytes_read =
-            read(pipe_fds[0], read_buf.data(), read_buf.size());
-        if (bytes_read > 0) {
-            output.append(read_buf.data(),
-                          static_cast<std::size_t>(bytes_read));
-            continue;
-        }
-        if (bytes_read == 0) {
-            break;
-        }
-        if (errno == EINTR) {
-            continue;
-        }
-        close(pipe_fds[0]);
-        assert(false);
-        __builtin_unreachable();
-    }
+    const auto deadline = std::chrono::steady_clock::now() + timeout;
+    auto [output, timed_out] =
+        read_with_timeout(pipe_fds[0], child_pid, deadline);
     close(pipe_fds[0]);
     int wait_status = 0;
     [[maybe_unused]] const pid_t waited = waitpid(child_pid, &wait_status, 0);
@@ -83,7 +128,7 @@ ProcessResult execute_and_capture(const std::vector<std::string>& arguments) {
     } else if (WIFSIGNALED(wait_status)) {
         exit_code = 128 + WTERMSIG(wait_status);
     }
-    return {exit_code, output};
+    return {exit_code, std::move(output), timed_out};
 }
 
 }  // namespace
@@ -102,7 +147,7 @@ std::string black_executable_path() {
 #endif
 }
 
-bool SatisfiabilityChecker::check_satisfiability(
+std::optional<bool> SatisfiabilityChecker::check_satisfiability(
     const std::string& ltl_formula) {
     {
         std::lock_guard<std::mutex> lock(m_cache_mutex);
@@ -118,10 +163,17 @@ bool SatisfiabilityChecker::check_satisfiability(
     const std::vector<std::string> command = {black, "solve", "-f",
                                               ltl_formula};
     const auto start = std::chrono::steady_clock::now();
-    const ProcessResult result = execute_and_capture(command);
+    const ProcessResult result =
+        execute_and_capture(command, Config::black_timeout);
     const double elapsed =
         std::chrono::duration<double>(std::chrono::steady_clock::now() - start)
             .count();
+    std::lock_guard<std::mutex> lock(m_cache_mutex);
+    total_time_s += elapsed;
+    if (result.m_timed_out) {
+        n_timeouts++;
+        return std::nullopt;
+    }
     // Check UNSAT before SAT: the former contains the latter as a substring.
     bool sat = false;
     if (result.m_output.find("UNSAT") != std::string::npos) {
@@ -134,8 +186,6 @@ bool SatisfiabilityChecker::check_satisfiability(
         assert(false);
         __builtin_unreachable();
     }
-    std::lock_guard<std::mutex> lock(m_cache_mutex);
-    total_time_s += elapsed;
     m_cache.emplace(ltl_formula, sat);
     return sat;
 }

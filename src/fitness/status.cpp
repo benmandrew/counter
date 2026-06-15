@@ -34,13 +34,13 @@ double specification_status(const Specification& specification,
         add_req(req);
     }
     const std::string conj_ag = "(" + conj_a + ") & (" + conj_g + ")";
-    if (!sat.check_satisfiability(conj_a)) {
+    if (!sat.check_satisfiability(conj_a).value_or(false)) {
         return 0.0;
     }
-    if (!sat.check_satisfiability(conj_g)) {
+    if (!sat.check_satisfiability(conj_g).value_or(false)) {
         return 0.1;
     }
-    if (!sat.check_satisfiability(conj_ag)) {
+    if (!sat.check_satisfiability(conj_ag).value_or(false)) {
         return 0.2;
     }
     if (!specification.m_guarantees.empty() &&

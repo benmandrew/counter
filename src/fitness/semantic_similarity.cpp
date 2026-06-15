@@ -3,12 +3,11 @@
 #include <cassert>
 #include <vector>
 
+#include "config.hpp"
 #include "fitness/model_counter.hpp"
 #include "fitness/transfer_matrix.hpp"
 
 namespace {
-
-constexpr std::size_t kDefaultModelCountingBound = 5;
 
 double ratio_or_throw(Count numerator, Count denominator) {
     assert(denominator != 0);
@@ -71,7 +70,7 @@ double semantic_similarity(const Requirement& requirement,
 double semantic_similarity(const Requirement& requirement,
                            const Requirement& other_requirement) {
     return semantic_similarity(requirement, other_requirement,
-                               kDefaultModelCountingBound);
+                               Config::default_model_counting_bound);
 }
 
 double semantic_similarity(const Specification& specification,
@@ -102,5 +101,5 @@ double semantic_similarity(const Specification& specification,
 double semantic_similarity(const Specification& specification,
                            const Specification& other_specification) {
     return semantic_similarity(specification, other_specification,
-                               kDefaultModelCountingBound);
+                               Config::default_model_counting_bound);
 }

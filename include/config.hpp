@@ -5,14 +5,17 @@
 
 struct Config {
     // --- Run parameters ---
-    static constexpr std::size_t generations = 10;
-    static constexpr std::size_t population_size = 200;
+    static constexpr std::size_t generations = 20;
+    static constexpr std::size_t population_size = 1000;
 
     // --- Fitness weights ---
-    static constexpr double fitness_weight_syntactic = 0.25;
-    static constexpr double fitness_weight_semantic = 0.25;
+    static constexpr double fitness_weight_syntactic = 0.1;
+    static constexpr double fitness_weight_semantic = 0.5;
     static constexpr double fitness_weight_halstead = 0.1;
     static constexpr double fitness_weight_status = 0.5;
+
+    // --- Model counting ---
+    static constexpr std::size_t default_model_counting_bound = 5;
 
     // --- Evolution ---
     static constexpr double crossover_rate = 0.1;

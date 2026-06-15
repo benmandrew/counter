@@ -5,11 +5,12 @@
 struct Config {
     // --- Run parameters ---
     static constexpr std::size_t generations = 20;
-    static constexpr std::size_t population_size = 100;
+    static constexpr std::size_t population_size = 1000;
 
     // --- Fitness weights ---
     static constexpr double fitness_weight_syntactic = 0.25;
     static constexpr double fitness_weight_semantic = 0.25;
+    static constexpr double fitness_weight_halstead = 0.1;
     static constexpr double fitness_weight_status = 0.5;
 
     // --- Evolution ---

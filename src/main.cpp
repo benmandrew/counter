@@ -11,6 +11,7 @@
 #include "config.hpp"
 #include "crash_handler.hpp"
 #include "filter/implication.hpp"
+#include "fitness/halstead.hpp"
 #include "fitness/semantic_similarity.hpp"
 #include "fitness/status.hpp"
 #include "fitness/syntactic_similarity.hpp"
@@ -28,6 +29,9 @@ AggregateWeightedFitnessFunction get_fitness_function(
     auto semsim = [original_spec](const Specification& spec) -> double {
         return semantic_similarity(spec, original_spec);
     };
+    auto halstead = [original_spec](const Specification& spec) -> double {
+        return halstead_fitness(spec, original_spec);
+    };
     auto status = [](const Specification& spec) -> double {
         return specification_status(spec, global_sat_checker(),
                                     global_real_checker());
@@ -35,6 +39,7 @@ AggregateWeightedFitnessFunction get_fitness_function(
     return AggregateWeightedFitnessFunction(
         {{synsim, Config::fitness_weight_syntactic},
          {semsim, Config::fitness_weight_semantic},
+         {halstead, Config::fitness_weight_halstead},
          {status, Config::fitness_weight_status}});
 }
 
@@ -120,6 +125,7 @@ std::string format_crash_metadata(std::size_t seed) {
     out << "  p_timing:       " << Config::p_timing << "\n";
     out << "  Weight syn:     " << Config::fitness_weight_syntactic << "\n";
     out << "  Weight sem:     " << Config::fitness_weight_semantic << "\n";
+    out << "  Weight halstead:" << Config::fitness_weight_halstead << "\n";
     out << "  Weight status:  " << Config::fitness_weight_status;
     return out.str();
 }
@@ -130,15 +136,19 @@ int main(int argc, char* argv[]) {
         return 1;
     }
     init_cpptrace(argv[0]);
+
     Specification original_spec = get_spec();
     std::cout << "Original specification:\n"
               << original_spec.to_string() << "\n";
+
     // 1. Fitness functions
     AggregateWeightedFitnessFunction fitness_function =
         get_fitness_function(original_spec);
+
     // 2. Initial population — each requirement wrapped in a specification
     std::vector<ScoredSpecification> population = original_population(
         original_spec, fitness_function, Config::population_size);
+
     // 3. Random source
     const std::optional<std::size_t> seed_arg = parse_seed_arg(argc, argv);
     std::random_device rng_dev;
@@ -147,9 +157,9 @@ int main(int argc, char* argv[]) {
     std::cout << "Seed: " << seed << "\n";
     register_crash_metadata(format_crash_metadata(seed));
     RandomSource random_source = make_random_source_from_seed(seed);
+
     // 4. Run genetic algorithm for a few generations
     std::size_t pop_size = population.size();
-
     for (std::size_t gen_idx = 0; gen_idx < Config::generations; ++gen_idx) {
         const auto start = std::chrono::steady_clock::now();
         auto on_progress = [&](std::size_t done, std::size_t total) {

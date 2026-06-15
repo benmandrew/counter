@@ -4,7 +4,9 @@
 #include <atomic>
 #include <cassert>
 #include <cstdint>
+#include <deque>
 #include <future>
+#include <optional>
 #include <string>
 #include <thread>
 #include <utility>
@@ -47,12 +49,15 @@ void check_pair(const std::vector<std::string>& ltls,
         subsumed[to_idx].load(std::memory_order_relaxed) != 0U) {
         return;
     }
-    const bool sat = checker.check_satisfiability(
+    const std::optional<bool> sat = checker.check_satisfiability(
         "(" + ltls[from_idx] + ") & !(" + ltls[to_idx] + ")");
-    if (!sat) {
-        const bool reverse_sat = checker.check_satisfiability(
+    if (!sat.has_value()) {
+        return;
+    }
+    if (!sat.value()) {
+        const std::optional<bool> reverse_sat = checker.check_satisfiability(
             "(" + ltls[to_idx] + ") & !(" + ltls[from_idx] + ")");
-        if (reverse_sat) {
+        if (reverse_sat.value_or(false)) {
             subsumed[to_idx].store(1, std::memory_order_relaxed);
         }
     }
@@ -78,27 +83,31 @@ std::vector<uint8_t> compute_subsumed(
         flag.store(0, std::memory_order_relaxed);
     }
     const std::size_t n_hw = std::thread::hardware_concurrency();
-    const std::size_t batch_size = n_hw > 0 ? n_hw * 2 : 1;
-    for (std::size_t batch_start = 0; batch_start < pairs.size();
-         batch_start += batch_size) {
-        const std::size_t batch_end =
-            std::min(batch_start + batch_size, pairs.size());
-        std::vector<std::future<void>> futures;
-        futures.reserve(batch_end - batch_start);
-        for (std::size_t k = batch_start; k < batch_end; ++k) {
-            const std::size_t from_idx = pairs[k].first;
-            const std::size_t to_idx = pairs[k].second;
-            futures.push_back(std::async(
-                std::launch::async,
-                [&checker, &ltls, &subsumed, from_idx, to_idx] {
-                    check_pair(ltls, subsumed, checker, from_idx, to_idx);
-                }));
+    const std::size_t max_in_flight = n_hw > 0 ? n_hw * 2 : 1;
+    std::deque<std::future<void>> in_flight;
+    std::size_t completed = 0;
+    for (const auto& pair : pairs) {
+        const std::size_t from_idx = pair.first;
+        const std::size_t to_idx = pair.second;
+        if (in_flight.size() >= max_in_flight) {
+            in_flight.front().get();
+            in_flight.pop_front();
+            ++completed;
+            if (on_progress) {
+                on_progress(completed, pairs.size());
+            }
         }
-        for (auto& fut : futures) {
-            fut.get();
-        }
+        in_flight.push_back(std::async(
+            std::launch::async, [&checker, &ltls, &subsumed, from_idx, to_idx] {
+                check_pair(ltls, subsumed, checker, from_idx, to_idx);
+            }));
+    }
+    while (!in_flight.empty()) {
+        in_flight.front().get();
+        in_flight.pop_front();
+        ++completed;
         if (on_progress) {
-            on_progress(batch_end, pairs.size());
+            on_progress(completed, pairs.size());
         }
     }
     std::vector<uint8_t> result(pop_size);

@@ -1,11 +1,12 @@
 #pragma once
 
 #include <cstddef>
+#include <thread>
 
 struct Config {
     // --- Run parameters ---
-    static constexpr std::size_t generations = 20;
-    static constexpr std::size_t population_size = 1000;
+    static constexpr std::size_t generations = 10;
+    static constexpr std::size_t population_size = 200;
 
     // --- Fitness weights ---
     static constexpr double fitness_weight_syntactic = 0.25;
@@ -21,4 +22,8 @@ struct Config {
     static constexpr double p_trigger = 1.0;
     static constexpr double p_response = 1.0;
     static constexpr double p_timing = 0.1;
+
+    // --- Hardware ---
+    inline static const std::size_t n_hw_threads =
+        std::thread::hardware_concurrency();
 };

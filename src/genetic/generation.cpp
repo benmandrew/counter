@@ -4,7 +4,6 @@
 #include <cassert>
 #include <future>
 #include <numeric>
-#include <thread>
 #include <utility>
 #include <vector>
 
@@ -43,15 +42,13 @@ FilterFunction make_predicate_filter(
     };
 }
 
-const std::size_t n_hw_threads = std::thread::hardware_concurrency();
-
 std::vector<ScoredSpecification> score_population(
     const std::vector<Specification>& population,
     const AggregateWeightedFitnessFunction& fitness_function,
     const GenerationProgressCallback& on_progress) {
     assert(!fitness_function.empty());
     const std::size_t batch_size =
-        n_hw_threads > 0 ? static_cast<std::size_t>(n_hw_threads) * 2 : 1;
+        Config::n_hw_threads > 0 ? Config::n_hw_threads * 4 : 1;
     std::vector<ScoredSpecification> scored;
     scored.reserve(population.size());
     std::size_t done = 0;

@@ -30,27 +30,30 @@ AggregateWeightedFitnessFunction get_fitness_function(
         auto synsim = [original_spec](const Specification& spec) -> double {
             return syntactic_similarity(spec, original_spec);
         };
-        fitness_functions.push_back({synsim, Config::fitness_weight_syntactic});
+        fitness_functions.push_back(
+            {synsim, Config::fitness_weight_syntactic, "syntactic"});
     }
     if (Config::fitness_weight_semantic > 0.0) {
         auto semsim = [original_spec](const Specification& spec) -> double {
             return semantic_similarity(spec, original_spec, 10);
         };
-        fitness_functions.push_back({semsim, Config::fitness_weight_semantic});
+        fitness_functions.push_back(
+            {semsim, Config::fitness_weight_semantic, "semantic"});
     }
     if (Config::fitness_weight_halstead > 0.0) {
         auto halstead = [original_spec](const Specification& spec) -> double {
             return halstead_fitness(spec, original_spec);
         };
         fitness_functions.push_back(
-            {halstead, Config::fitness_weight_halstead});
+            {halstead, Config::fitness_weight_halstead, "halstead"});
     }
     if (Config::fitness_weight_status > 0.0) {
         auto status = [](const Specification& spec) -> double {
             return specification_status(spec, global_sat_checker(),
                                         global_real_checker());
         };
-        fitness_functions.push_back({status, Config::fitness_weight_status});
+        fitness_functions.push_back(
+            {status, Config::fitness_weight_status, "status"});
     }
     return AggregateWeightedFitnessFunction(std::move(fitness_functions));
 }
@@ -238,9 +241,15 @@ int main(int argc, char* argv[]) {
               << " generations (" << maximal.size() << " reduced from "
               << realizable_vec.size() << "):\n";
     for (std::size_t i = 0; i < print_count; ++i) {
+        const Specification& spec = scored_maximal[i].specification;
         std::cout << "Fitness: " << std::fixed << std::setprecision(4)
-                  << scored_maximal[i].fitness << "\n"
-                  << scored_maximal[i].specification.to_string() << "\n\n";
+                  << scored_maximal[i].fitness << "\n";
+        for (const WeightedFitnessFunction& wff : fitness_function) {
+            std::cout << "  " << std::left << std::setw(10) << wff.name
+                      << " (w=" << wff.weight << "): " << std::fixed
+                      << std::setprecision(4) << wff.function(spec) << "\n";
+        }
+        std::cout << spec.to_string() << "\n\n";
     }
     print_timing_report();
     return 0;

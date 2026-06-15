@@ -3,6 +3,7 @@
 #include <functional>
 #include <memory>
 #include <mutex>
+#include <string>
 #include <unordered_map>
 #include <utility>
 #include <vector>
@@ -26,6 +27,7 @@ using FitnessFunction = std::function<double(const Specification&)>;
 struct WeightedFitnessFunction {
     FitnessFunction function;
     double weight = k_default_fitness_weight;
+    std::string name;
 };
 
 /// Aggregates multiple WeightedFitnessFunction instances into a single function

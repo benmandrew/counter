@@ -52,7 +52,7 @@ void test_fitness_function_memoises_repeated_calls() {
               ++call_count;
               return 0.5;
           },
-          1.0}});
+          1.0, ""}});
     const Specification spec = make_spec("p", "q");
     fitness_fn(spec);
     fitness_fn(spec);
@@ -67,7 +67,7 @@ void test_fitness_function_scores_distinct_specs_independently() {
               ++call_count;
               return 0.5;
           },
-          1.0}});
+          1.0, ""}});
     fitness_fn(make_spec("p", "q"));
     fitness_fn(make_spec("r", "s"));
     expect(call_count == 2,
@@ -76,7 +76,7 @@ void test_fitness_function_scores_distinct_specs_independently() {
 
 void test_fitness_function_cached_value_is_correct() {
     const AggregateWeightedFitnessFunction fitness_fn(
-        {{[](const Specification&) { return 0.75; }, 1.0}});
+        {{[](const Specification&) { return 0.75; }, 1.0, ""}});
     const Specification spec = make_spec("p", "q");
     const double first_result = fitness_fn(spec);
     const double second_result = fitness_fn(spec);

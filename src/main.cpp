@@ -1,7 +1,10 @@
 #include <chrono>
+#include <cstdlib>
 #include <iomanip>
 #include <iostream>
+#include <optional>
 #include <random>
+#include <sstream>
 #include <string>
 #include <vector>
 
@@ -93,6 +96,34 @@ std::vector<ScoredSpecification> original_population(
     return population;
 }
 
+std::optional<std::size_t> parse_seed_arg(int argc, char* argv[]) {
+    for (int i = 1; i < argc - 1; ++i) {
+        if (argv[i] != nullptr && std::string(argv[i]) == "--seed") {
+            if (argv[i + 1] != nullptr) {
+                return static_cast<std::size_t>(std::stoull(argv[i + 1]));
+            }
+        }
+    }
+    return std::nullopt;
+}
+
+std::string format_crash_metadata(std::size_t seed) {
+    std::ostringstream out;
+    out << "Config:\n";
+    out << "  Seed:           " << seed << "\n";
+    out << "  Generations:    " << Config::generations << "\n";
+    out << "  Population:     " << Config::population_size << "\n";
+    out << "  Crossover rate: " << Config::crossover_rate << "\n";
+    out << "  Mutation rate:  " << Config::mutation_rate << "\n";
+    out << "  p_trigger:      " << Config::p_trigger << "\n";
+    out << "  p_response:     " << Config::p_response << "\n";
+    out << "  p_timing:       " << Config::p_timing << "\n";
+    out << "  Weight syn:     " << Config::fitness_weight_syntactic << "\n";
+    out << "  Weight sem:     " << Config::fitness_weight_semantic << "\n";
+    out << "  Weight status:  " << Config::fitness_weight_status;
+    return out.str();
+}
+
 int main(int argc, char* argv[]) {
     if (argc == 0 || argv == nullptr || argv[0] == nullptr) {
         std::cerr << "fatal: missing argv[0]\n";
@@ -109,8 +140,13 @@ int main(int argc, char* argv[]) {
     std::vector<ScoredSpecification> population = original_population(
         original_spec, fitness_function, Config::population_size);
     // 3. Random source
+    const std::optional<std::size_t> seed_arg = parse_seed_arg(argc, argv);
     std::random_device rng_dev;
-    RandomSource random_source = make_random_source_from_seed(rng_dev());
+    const std::size_t seed =
+        seed_arg.has_value() ? *seed_arg : static_cast<std::size_t>(rng_dev());
+    std::cout << "Seed: " << seed << "\n";
+    register_crash_metadata(format_crash_metadata(seed));
+    RandomSource random_source = make_random_source_from_seed(seed);
     // 4. Run genetic algorithm for a few generations
     std::size_t pop_size = population.size();
 

@@ -43,6 +43,17 @@
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "RelWithDebInfo"
       }
+    },
+    {
+      "name": "tsan",
+      "displayName": "TSan",
+      "inherits": "base",
+      "binaryDir": "${sourceDir}/build-tsan",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug",
+        "CMAKE_CXX_FLAGS": "-fsanitize=thread -fno-omit-frame-pointer -fno-sanitize-recover=all",
+        "CMAKE_EXE_LINKER_FLAGS": "-fsanitize=thread"
+      }
     }
   ],
   "buildPresets": [
@@ -57,6 +68,10 @@
     {
       "name": "relwithdebinfo",
       "configurePreset": "relwithdebinfo"
+    },
+    {
+      "name": "tsan",
+      "configurePreset": "tsan"
     }
   ],
   "testPresets": [
@@ -77,6 +92,13 @@
     {
       "name": "relwithdebinfo",
       "configurePreset": "relwithdebinfo",
+      "output": {
+        "outputOnFailure": true
+      }
+    },
+    {
+      "name": "tsan",
+      "configurePreset": "tsan",
       "output": {
         "outputOnFailure": true
       }
@@ -105,6 +127,14 @@
         { "type": "configure", "name": "relwithdebinfo" },
         { "type": "build", "name": "relwithdebinfo" },
         { "type": "test", "name": "relwithdebinfo" }
+      ]
+    },
+    {
+      "name": "tsan",
+      "steps": [
+        { "type": "configure", "name": "tsan" },
+        { "type": "build", "name": "tsan" },
+        { "type": "test", "name": "tsan" }
       ]
     }
   ]

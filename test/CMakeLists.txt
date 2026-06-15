@@ -8,6 +8,7 @@ add_executable(counter_tests
     genetic/mutation_tests.cpp
     main.cpp
     fitness/function_tests.cpp
+    fitness/halstead_tests.cpp
     fitness/status_tests.cpp
     fitness/semantic_similarity_tests.cpp
     fitness/syntactic_similarity_tests.cpp
@@ -39,6 +40,7 @@ add_test(NAME counter_tests.prop_formula_ast COMMAND counter_tests prop_formula_
 add_test(NAME counter_tests.prop_formula_cnf COMMAND counter_tests prop_formula_cnf)
 add_test(NAME counter_tests.prop_formula_rewrite COMMAND counter_tests prop_formula_rewrite)
 add_test(NAME counter_tests.prop_formula_similarity COMMAND counter_tests prop_formula_similarity)
+add_test(NAME counter_tests.halstead COMMAND counter_tests halstead)
 add_test(NAME counter_tests.semantic_similarity COMMAND counter_tests semantic_similarity)
 add_test(NAME counter_tests.syntactic_similarity COMMAND counter_tests syntactic_similarity)
 add_test(NAME counter_tests.fitness_function COMMAND counter_tests fitness_function)

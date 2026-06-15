@@ -1,6 +1,7 @@
 #include "filter/implication.hpp"
 
 #include <algorithm>
+#include <atomic>
 #include <cassert>
 #include <cstdint>
 #include <future>
@@ -34,24 +35,48 @@ std::string build_spec_ltl(const Specification& spec) {
            conjoin(spec.m_guarantees) + ")";
 }
 
-// Returns a flat matrix where entry [i * pop_size + j] == 1 iff pop[i]
-// logically implies pop[j]. All pairs are checked in parallel.
-std::vector<uint8_t> compute_implies_matrix(
+// Checks one ordered pair: if from strictly dominates to, marks subsumed[to].
+// Short-circuits if either endpoint is already subsumed.
+// Checks the reverse direction when forward implication holds to preserve
+// mutual equivalences (A <=> B keeps both).
+void check_pair(const std::vector<std::string>& ltls,
+                std::vector<std::atomic<uint8_t>>& subsumed,
+                SatisfiabilityChecker& checker, std::size_t from_idx,
+                std::size_t to_idx) {
+    if (subsumed[from_idx].load(std::memory_order_relaxed) != 0U ||
+        subsumed[to_idx].load(std::memory_order_relaxed) != 0U) {
+        return;
+    }
+    const bool sat = checker.check_satisfiability(
+        "(" + ltls[from_idx] + ") & !(" + ltls[to_idx] + ")");
+    if (!sat) {
+        const bool reverse_sat = checker.check_satisfiability(
+            "(" + ltls[to_idx] + ") & !(" + ltls[from_idx] + ")");
+        if (reverse_sat) {
+            subsumed[to_idx].store(1, std::memory_order_relaxed);
+        }
+    }
+}
+
+// Computes which specs are subsumed: subsumed[j] = 1 iff some i strictly
+// dominates j (i implies j but j does not imply i).
+std::vector<uint8_t> compute_subsumed(
     const std::vector<std::string>& ltls, std::size_t pop_size,
     SatisfiabilityChecker& checker,
     const GenerationProgressCallback& on_progress) {
     std::vector<std::pair<std::size_t, std::size_t>> pairs;
     pairs.reserve(pop_size * (pop_size - 1));
-    for (std::size_t idx_i = 0; idx_i < pop_size; ++idx_i) {
-        for (std::size_t idx_j = 0; idx_j < pop_size; ++idx_j) {
-            if (idx_i != idx_j) {
-                pairs.emplace_back(idx_i, idx_j);
+    for (std::size_t i = 0; i < pop_size; ++i) {
+        for (std::size_t j = 0; j < pop_size; ++j) {
+            if (i != j) {
+                pairs.emplace_back(i, j);
             }
         }
     }
-    // Each cell is written by exactly one async task; uint8_t avoids the
-    // bit-packing aliasing hazard of vector<bool>.
-    std::vector<uint8_t> mat(pop_size * pop_size, 0);
+    std::vector<std::atomic<uint8_t>> subsumed(pop_size);
+    for (auto& flag : subsumed) {
+        flag.store(0, std::memory_order_relaxed);
+    }
     const std::size_t n_hw = std::thread::hardware_concurrency();
     const std::size_t batch_size = n_hw > 0 ? n_hw * 2 : 1;
     for (std::size_t batch_start = 0; batch_start < pairs.size();
@@ -65,12 +90,8 @@ std::vector<uint8_t> compute_implies_matrix(
             const std::size_t to_idx = pairs[k].second;
             futures.push_back(std::async(
                 std::launch::async,
-                [&checker, &ltls, &mat, pop_size, from_idx, to_idx] {
-                    const bool sat = checker.check_satisfiability(
-                        "(" + ltls[from_idx] + ") & !(" + ltls[to_idx] + ")");
-                    if (!sat) {
-                        mat[from_idx * pop_size + to_idx] = 1;
-                    }
+                [&checker, &ltls, &subsumed, from_idx, to_idx] {
+                    check_pair(ltls, subsumed, checker, from_idx, to_idx);
                 }));
         }
         for (auto& fut : futures) {
@@ -80,28 +101,20 @@ std::vector<uint8_t> compute_implies_matrix(
             on_progress(batch_end, pairs.size());
         }
     }
-    return mat;
+    std::vector<uint8_t> result(pop_size);
+    for (std::size_t i = 0; i < pop_size; ++i) {
+        result[i] = subsumed[i].load();
+    }
+    return result;
 }
 
-// Returns only specs not strictly dominated by another. Spec j is dominated
-// iff some i exists with implies[i][j] AND NOT implies[j][i].
-std::vector<Specification> keep_maximal(const std::vector<Specification>& pop,
-                                        const std::vector<uint8_t>& mat,
-                                        std::size_t pop_size) {
+std::vector<Specification> keep_non_subsumed(
+    const std::vector<Specification>& pop,
+    const std::vector<uint8_t>& subsumed) {
     std::vector<Specification> maximal;
-    for (std::size_t idx_j = 0; idx_j < pop_size; ++idx_j) {
-        bool dominated = false;
-        for (std::size_t idx_i = 0; idx_i < pop_size && !dominated; ++idx_i) {
-            if (idx_i == idx_j) {
-                continue;
-            }
-            if (mat[idx_i * pop_size + idx_j] != 0 &&
-                mat[idx_j * pop_size + idx_i] == 0) {
-                dominated = true;
-            }
-        }
-        if (!dominated) {
-            maximal.push_back(pop[idx_j]);
+    for (std::size_t i = 0; i < pop.size(); ++i) {
+        if (subsumed[i] == 0U) {
+            maximal.push_back(pop[i]);
         }
     }
     return maximal;
@@ -122,8 +135,8 @@ FilterFunction make_implication_filter(
         for (const Specification& spec : pop) {
             ltls.push_back(build_spec_ltl(spec));
         }
-        const std::vector<uint8_t> mat =
-            compute_implies_matrix(ltls, pop_size, checker, on_progress);
-        return keep_maximal(pop, mat, pop_size);
+        const std::vector<uint8_t> sub =
+            compute_subsumed(ltls, pop_size, checker, on_progress);
+        return keep_non_subsumed(pop, sub);
     };
 }

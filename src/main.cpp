@@ -183,6 +183,27 @@ void crash_handler(int signo, [[maybe_unused]] siginfo_t* siginfo,
     _exit(1);
 }
 
+void init_cpptrace(char* executable_name) {
+    const std::filesystem::path executable_path =
+        std::filesystem::absolute(std::filesystem::path(executable_name));
+    copy_path_to_buffer(g_tracer_path,
+                        executable_path.parent_path() / "signal_tracer");
+
+    const std::filesystem::path crash_dir_path =
+        std::filesystem::absolute(std::filesystem::path("crashes"));
+    std::filesystem::create_directories(crash_dir_path);
+    copy_path_to_buffer(g_crash_dir, crash_dir_path);
+    warmup_cpptrace();
+    cpptrace::register_terminate_handler();
+    struct sigaction sig_action{};
+    sig_action.sa_sigaction = crash_handler;
+    sig_action.sa_flags = SA_SIGINFO;
+    sigemptyset(&sig_action.sa_mask);
+    sigaction(SIGSEGV, &sig_action, nullptr);
+    sigaction(SIGABRT, &sig_action, nullptr);
+    sigaction(SIGFPE, &sig_action, nullptr);
+}
+
 }  // namespace
 
 AggregateWeightedFitnessFunction get_fitness_function(
@@ -266,28 +287,7 @@ int main(int argc, char* argv[]) {
         std::cerr << "fatal: missing argv[0]\n";
         return 1;
     }
-
-    const std::filesystem::path executable_path =
-        std::filesystem::absolute(std::filesystem::path(argv[0]));
-    copy_path_to_buffer(g_tracer_path,
-                        executable_path.parent_path() / "signal_tracer");
-
-    const std::filesystem::path crash_dir_path =
-        std::filesystem::absolute(std::filesystem::path("crashes"));
-    std::filesystem::create_directories(crash_dir_path);
-    copy_path_to_buffer(g_crash_dir, crash_dir_path);
-
-    warmup_cpptrace();
-    cpptrace::register_terminate_handler();
-
-    struct sigaction sig_action{};
-    sig_action.sa_sigaction = crash_handler;
-    sig_action.sa_flags = SA_SIGINFO;
-    sigemptyset(&sig_action.sa_mask);
-    sigaction(SIGSEGV, &sig_action, nullptr);
-    sigaction(SIGABRT, &sig_action, nullptr);
-    sigaction(SIGFPE, &sig_action, nullptr);
-
+    init_cpptrace(argv[0]);
     Specification original_spec = get_spec();
     std::cout << "Original specification:\n"
               << original_spec.to_string() << "\n";

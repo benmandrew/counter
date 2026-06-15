@@ -12,6 +12,7 @@ add_executable(counter_tests
     fitness/semantic_similarity_tests.cpp
     fitness/syntactic_similarity_tests.cpp
     fitness/transfer_matrix_tests.cpp
+    requirement_tests.cpp
     prop_formula/ast_tests.cpp
     prop_formula/cnf_tests.cpp
     prop_formula/rewrite_tests.cpp
@@ -43,6 +44,7 @@ add_test(NAME counter_tests.syntactic_similarity COMMAND counter_tests syntactic
 add_test(NAME counter_tests.fitness_function COMMAND counter_tests fitness_function)
 add_test(NAME counter_tests.status COMMAND counter_tests status)
 add_test(NAME counter_tests.implication_filter COMMAND counter_tests implication_filter)
+add_test(NAME counter_tests.requirement COMMAND counter_tests requirement)
 
 add_custom_target(tests
     COMMAND ${CMAKE_CTEST_COMMAND} --output-on-failure

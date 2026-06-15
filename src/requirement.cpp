@@ -17,6 +17,35 @@ bool atom_contains_uppercase(const std::string& atom) {
                        [](unsigned char chr) { return std::isupper(chr); });
 }
 
+// Expands F[0..n] R as R | X(R | X(... | X R)) (n nestings of X).
+std::string expand_within(const std::string& response, std::size_t ticks) {
+    std::string inner = response;
+    for (std::size_t i = 0; i < ticks; ++i) {
+        inner = response + " | X(" + inner + ")";
+    }
+    return inner;
+}
+
+// Expands G[0..n] R as R & X(R & X(... & X R)) (n nestings of X).
+std::string expand_for(const std::string& response, std::size_t ticks) {
+    std::string inner = response;
+    for (std::size_t i = 0; i < ticks; ++i) {
+        inner = response + " & X(" + inner + ")";
+    }
+    return inner;
+}
+
+// Expands G[0..n-1](!R) & F[n..n] R as !R & X(!R & X(... & X R))
+// (n nestings: n occurrences of !R followed by R). Caller handles n=0.
+std::string expand_after(const std::string& response, std::size_t ticks) {
+    const std::string not_response = "!" + response;
+    std::string inner = response;
+    for (std::size_t i = 0; i < ticks; ++i) {
+        inner = not_response + " & X(" + inner + ")";
+    }
+    return inner;
+}
+
 }  // namespace
 
 bool operator<(const Timing& lhs, const Timing& rhs) {
@@ -203,23 +232,17 @@ std::string requirement_to_ltl(const Requirement& requirement) {
             } else if constexpr (std::is_same_v<T, timing::NextTimepoint>) {
                 return "G(" + trigger_str + " -> X" + response_str + ")";
             } else if constexpr (std::is_same_v<T, timing::WithinTicks>) {
-                return "G(" + trigger_str + " -> F[0.." +
-                       std::to_string(variant.m_ticks) + "]" + response_str +
-                       ")";
+                return "G(" + trigger_str + " -> (" +
+                       expand_within(response_str, variant.m_ticks) + "))";
             } else if constexpr (std::is_same_v<T, timing::ForTicks>) {
-                return "G(" + trigger_str + " -> G[0.." +
-                       std::to_string(variant.m_ticks) + "]" + response_str +
-                       ")";
+                return "G(" + trigger_str + " -> (" +
+                       expand_for(response_str, variant.m_ticks) + "))";
             } else if constexpr (std::is_same_v<T, timing::AfterTicks>) {
                 if (variant.m_ticks == 0) {
                     return "G(" + trigger_str + " -> " + response_str + ")";
                 }
-                const std::string ticks_str = std::to_string(variant.m_ticks);
-                const std::string ticks_minus1_str =
-                    std::to_string(variant.m_ticks - 1);
-                return "G(" + trigger_str + " -> (G[0.." + ticks_minus1_str +
-                       "] !" + response_str + " & F[" + ticks_str + ".." +
-                       ticks_str + "]" + response_str + "))";
+                return "G(" + trigger_str + " -> (" +
+                       expand_after(response_str, variant.m_ticks) + "))";
             } else {
                 return "G(" + trigger_str + " -> F" + response_str + ")";
             }

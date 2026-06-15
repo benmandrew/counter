@@ -21,7 +21,11 @@ bool atom_contains_uppercase(const std::string& atom) {
 std::string expand_within(const std::string& response, std::size_t ticks) {
     std::string inner = response;
     for (std::size_t i = 0; i < ticks; ++i) {
-        inner = response + " | X(" + inner + ")";
+        std::string next = response;
+        next += " | X(";
+        next += inner;
+        next += ")";
+        inner = std::move(next);
     }
     return inner;
 }
@@ -30,7 +34,11 @@ std::string expand_within(const std::string& response, std::size_t ticks) {
 std::string expand_for(const std::string& response, std::size_t ticks) {
     std::string inner = response;
     for (std::size_t i = 0; i < ticks; ++i) {
-        inner = response + " & X(" + inner + ")";
+        std::string next = response;
+        next += " & X(";
+        next += inner;
+        next += ")";
+        inner = std::move(next);
     }
     return inner;
 }
@@ -38,10 +46,15 @@ std::string expand_for(const std::string& response, std::size_t ticks) {
 // Expands G[0..n-1](!R) & F[n..n] R as !R & X(!R & X(... & X R))
 // (n nestings: n occurrences of !R followed by R). Caller handles n=0.
 std::string expand_after(const std::string& response, std::size_t ticks) {
-    const std::string not_response = "!" + response;
+    std::string not_response = "!";
+    not_response += response;
     std::string inner = response;
     for (std::size_t i = 0; i < ticks; ++i) {
-        inner = not_response + " & X(" + inner + ")";
+        std::string next = not_response;
+        next += " & X(";
+        next += inner;
+        next += ")";
+        inner = std::move(next);
     }
     return inner;
 }

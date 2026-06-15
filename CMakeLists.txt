@@ -77,7 +77,7 @@ if(DEFINED COUNTER_DEFAULT_FITNESS_WEIGHT)
         COUNTER_DEFAULT_FITNESS_WEIGHT=${COUNTER_DEFAULT_FITNESS_WEIGHT})
 endif()
 
-add_executable(counter src/main.cpp)
+add_executable(counter src/main.cpp src/crash_handler.cpp)
 target_link_libraries(counter PRIVATE counter_fitness cpptrace::cpptrace)
 
 add_executable(signal_tracer src/signal_tracer.cpp)

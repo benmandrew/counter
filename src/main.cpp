@@ -1,3 +1,4 @@
+#include <algorithm>
 #include <chrono>
 #include <cstdlib>
 #include <iomanip>
@@ -6,6 +7,7 @@
 #include <random>
 #include <sstream>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "config.hpp"
@@ -23,24 +25,34 @@
 
 AggregateWeightedFitnessFunction get_fitness_function(
     const Specification& original_spec) {
-    auto synsim = [original_spec](const Specification& spec) -> double {
-        return syntactic_similarity(spec, original_spec);
-    };
-    auto semsim = [original_spec](const Specification& spec) -> double {
-        return semantic_similarity(spec, original_spec);
-    };
-    auto halstead = [original_spec](const Specification& spec) -> double {
-        return halstead_fitness(spec, original_spec);
-    };
-    auto status = [](const Specification& spec) -> double {
-        return specification_status(spec, global_sat_checker(),
-                                    global_real_checker());
-    };
-    return AggregateWeightedFitnessFunction(
-        {{synsim, Config::fitness_weight_syntactic},
-         {semsim, Config::fitness_weight_semantic},
-         {halstead, Config::fitness_weight_halstead},
-         {status, Config::fitness_weight_status}});
+    std::vector<WeightedFitnessFunction> fitness_functions{};
+    if (Config::fitness_weight_syntactic > 0.0) {
+        auto synsim = [original_spec](const Specification& spec) -> double {
+            return syntactic_similarity(spec, original_spec);
+        };
+        fitness_functions.push_back({synsim, Config::fitness_weight_syntactic});
+    }
+    if (Config::fitness_weight_semantic > 0.0) {
+        auto semsim = [original_spec](const Specification& spec) -> double {
+            return semantic_similarity(spec, original_spec, 10);
+        };
+        fitness_functions.push_back({semsim, Config::fitness_weight_semantic});
+    }
+    if (Config::fitness_weight_halstead > 0.0) {
+        auto halstead = [original_spec](const Specification& spec) -> double {
+            return halstead_fitness(spec, original_spec);
+        };
+        fitness_functions.push_back(
+            {halstead, Config::fitness_weight_halstead});
+    }
+    if (Config::fitness_weight_status > 0.0) {
+        auto status = [](const Specification& spec) -> double {
+            return specification_status(spec, global_sat_checker(),
+                                        global_real_checker());
+        };
+        fitness_functions.push_back({status, Config::fitness_weight_status});
+    }
+    return AggregateWeightedFitnessFunction(std::move(fitness_functions));
 }
 
 Specification get_spec() {
@@ -209,11 +221,26 @@ int main(int argc, char* argv[]) {
             .count();
     std::cout << "\r\033[KImplication filter: 100%  " << std::fixed
               << std::setprecision(2) << impl_elapsed << "s\n";
+    std::vector<ScoredSpecification> scored_maximal;
+    scored_maximal.reserve(maximal.size());
+    for (const Specification& spec : maximal) {
+        scored_maximal.push_back({spec, fitness_function(spec)});
+    }
+    std::sort(scored_maximal.begin(), scored_maximal.end(),
+              [](const ScoredSpecification& first,
+                 const ScoredSpecification& second) {
+                  return first.fitness > second.fitness;
+              });
+    const std::size_t print_count =
+        std::min(scored_maximal.size(), std::size_t{5});
+
     std::cout << "\nRealizable specifications after " << Config::generations
               << " generations (" << maximal.size() << " reduced from "
               << realizable_vec.size() << "):\n";
-    for (const Specification& spec : maximal) {
-        std::cout << spec.to_string() << "\n\n";
+    for (std::size_t i = 0; i < print_count; ++i) {
+        std::cout << "Fitness: " << std::fixed << std::setprecision(4)
+                  << scored_maximal[i].fitness << "\n"
+                  << scored_maximal[i].specification.to_string() << "\n\n";
     }
     print_timing_report();
     return 0;

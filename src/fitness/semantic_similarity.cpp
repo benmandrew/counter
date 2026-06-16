@@ -107,7 +107,7 @@ double semantic_similarity(const Specification& specification,
            other_specification.m_assumptions.size());
     assert(specification.m_guarantees.size() ==
            other_specification.m_guarantees.size());
-    const std::size_t total_count =
+    [[maybe_unused]] const std::size_t total_count =
         specification.m_assumptions.size() + specification.m_guarantees.size();
     assert(total_count > 0 && (other_specification.m_assumptions.size() +
                                other_specification.m_guarantees.size()) > 0);

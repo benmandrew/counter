@@ -35,7 +35,10 @@ void test_req_similarity_averages_component_scores() {
                                         timing::immediately()};
 
     const double synsim = syntactic_similarity(requirement, other_requirement);
-    expect(std::fabs(synsim - (8.0 / 9.0)) < 1e-12,
+    // condition: P vs P -> 1.0. response: Q vs P|Q -> shared=1, n(Q)=1,
+    // n(P|Q)=3, harmonic mean = 2*1*(1/3)/(4/3) = 0.5. timing: identical ->
+    // 1.0. Average: (1.0 + 0.5 + 1.0) / 3 = 5/6.
+    expect(std::fabs(synsim - (5.0 / 6.0)) < 1e-12,
            "syntactic-similarity: component averaging should produce the "
            "expected score for 'P'/'Q' versus 'P'/'P|Q'");
 }

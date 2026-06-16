@@ -108,9 +108,19 @@ double Formula::syntactic_similarity(const Formula& other) const {
     }
     const auto shared_subformulae =
         static_cast<double>(this->shared_subformulae(other));
-    return 0.5 *
-           (shared_subformulae / static_cast<double>(this->n_subformulae()) +
-            shared_subformulae / static_cast<double>(other.n_subformulae()));
+    const double first =
+        shared_subformulae / static_cast<double>(this->n_subformulae());
+    const double second =
+        shared_subformulae / static_cast<double>(other.n_subformulae());
+    // Harmonic mean: if this is a small subformula fully contained in a much
+    // larger other (or vice versa), the arithmetic mean would float at 0.5
+    // regardless of size difference, since the contained side's ratio is
+    // trivially 1. Disjoint formulas give first == second == 0, which the
+    // formula below would otherwise divide as 0/0.
+    if (first == 0.0 && second == 0.0) {
+        return 0.0;
+    }
+    return (2.0 * first * second) / (first + second);
 }
 
 size_t Formula::n_subformulae() const { return m_impl->m_nodes.size(); }

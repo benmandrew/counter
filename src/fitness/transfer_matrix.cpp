@@ -7,6 +7,7 @@
 #include <optional>
 #include <set>
 #include <sstream>
+#include <stdexcept>
 #include <string>
 #include <vector>
 
@@ -302,6 +303,13 @@ HoaAutomaton parse_hoa(const std::string& hoa_text) {
 // Buchi automata set the mask from the per-state acceptance flags.
 TransferSystem build_transfer_system_from_hoa(const HoaAutomaton& hoa,
                                               std::size_t n_total_atoms) {
+    if (hoa.m_n_states == 0) {
+        // A malformed or empty HOA document (e.g. a failed ltl2tgba
+        // invocation) parses to a default-constructed HoaAutomaton with no
+        // states; permuting/indexing below requires at least one.
+        throw std::runtime_error(
+            "build_transfer_system_from_hoa: HOA automaton has zero states");
+    }
     const auto n_states = static_cast<Eigen::Index>(hoa.m_n_states);
 
     // Permute states so the initial state maps to matrix index 0.

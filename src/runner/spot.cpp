@@ -13,6 +13,7 @@
 #include <iostream>
 #include <memory>
 #include <mutex>
+#include <stdexcept>
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -164,8 +165,10 @@ bool parse_realizability_output(const ProcessResult& result) {
     if (result.m_output.find("REALIZABLE") != std::string::npos) {
         return true;
     }
-    assert(false);
-    return false;
+    // ltlsynt's output crossed a process boundary and didn't match either
+    // expected form: don't let assert() (a no-op in release builds) treat
+    // this as UNREALIZABLE and cache a fabricated result.
+    throw std::runtime_error("unrecognized ltlsynt output: " + result.m_output);
 }
 
 }  // namespace
@@ -208,7 +211,13 @@ std::string run_ltl2tgba_for_counting(const std::string& formula) {
     const double elapsed =
         std::chrono::duration<double>(std::chrono::steady_clock::now() - start)
             .count();
-    assert(result.m_exit_code == 0);
+    if (result.m_exit_code != 0) {
+        // A non-zero exit here (e.g. a subprocess spawn failure under heavy
+        // concurrent forking) must not be cached as a successful result
+        throw std::runtime_error("ltl2tgba exited with code " +
+                                 std::to_string(result.m_exit_code) +
+                                 " for formula: " + formula);
+    }
     std::lock_guard<std::mutex> lock(cache_mutex);
     Ltl2tgbaStats::total_time_s += elapsed;
     cache.emplace(formula, result.m_output);

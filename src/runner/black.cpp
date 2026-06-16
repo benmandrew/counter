@@ -11,11 +11,11 @@
 #include <chrono>
 #include <csignal>
 #include <cstring>
-#include <iostream>
 #include <limits>
 #include <memory>
 #include <mutex>
 #include <optional>
+#include <stdexcept>
 #include <string>
 #include <utility>
 #include <vector>
@@ -181,10 +181,12 @@ std::optional<bool> SatisfiabilityChecker::check_satisfiability(
     } else if (result.m_output.find("SAT") != std::string::npos) {
         sat = true;
     } else {
-        std::cerr << "Unexpected output from black:\n"
-                  << result.m_output << "\n";
-        assert(false);
-        __builtin_unreachable();
+        // black's output crossed a process boundary and didn't match either
+        // expected form: don't let assert() (a no-op in release builds) fall
+        // through to __builtin_unreachable(), which is undefined behavior if
+        // this branch is ever actually taken.
+        throw std::runtime_error("unexpected output from black: " +
+                                 result.m_output);
     }
     m_cache.emplace(ltl_formula, sat);
     return sat;

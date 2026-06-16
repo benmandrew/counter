@@ -15,6 +15,7 @@
 #include <fstream>
 #include <memory>
 #include <mutex>
+#include <stdexcept>
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -139,8 +140,10 @@ Count parse_ganak_exact_count(const std::string& output) {
     if (output.find("s UNSATISFIABLE") != std::string::npos) {
         return 0;
     }
-    assert(false);
-    return 0;
+    // ganak's output crossed a process boundary and didn't match either
+    // expected form: don't let assert() (a no-op in release builds) treat
+    // this as success and cache a fabricated count of 0.
+    throw std::runtime_error("unrecognized ganak output: " + output);
 }
 
 }  // namespace
@@ -165,7 +168,10 @@ Count run_ganak_on_dimacs(const std::string& dimacs_path, unsigned seed) {
         dimacs_path,
     };
     const ProcessResult result = execute_and_capture(command);
-    assert(result.m_exit_code == 0);
+    if (result.m_exit_code != 0) {
+        throw std::runtime_error("ganak exited with code " +
+                                 std::to_string(result.m_exit_code));
+    }
     return parse_ganak_exact_count(result.m_output);
 }
 

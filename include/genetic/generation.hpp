@@ -65,7 +65,9 @@ std::vector<Specification> filter_population(
 ///   2. For each parent, apply crossover and mutation to produce an offspring
 ///   3. Apply filter functions sequentially to the offspring to produce
 ///      survivors
-///   4. Score survivors with fitness functions
+///   4. Pad survivors back to target_size by duplicating them if filtering
+///      reduced the population
+///   5. Score the resulting population with fitness functions
 ///
 /// If the population is smaller than target_size, all of it is used as
 /// parents.
@@ -78,11 +80,10 @@ std::vector<Specification> filter_population(
 /// @param random_source     Random source for crossover and mutation
 /// @param on_progress       Optional callback invoked after each individual is
 ///                          scored; receives (done, total) counts
-/// @return                  Next generation of up to target_size specifications
+/// @return                  Next generation of target_size specifications
 /// @throws std::invalid_argument if random_source is not callable, if
 ///                               fitness_function is empty, if rates are
-///                               outside [0, 1], or if the filtered offspring
-///                               is empty
+///                               outside [0, 1]
 std::vector<ScoredSpecification> evolve_generation(
     const std::vector<ScoredSpecification>& population, std::size_t target_size,
     const AggregateWeightedFitnessFunction& fitness_function,

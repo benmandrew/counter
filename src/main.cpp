@@ -213,7 +213,7 @@ std::vector<ScoredSpecification> run_evolution(
                                    .count();
         std::cout << "\r\033[KGeneration " << std::setw(2) << gen_idx + 1
                   << ": 100%  " << std::fixed << std::setprecision(2) << elapsed
-                  << "s  (" << n_survivors << " survived filtering)\n";
+                  << "s  (" << n_survivors << " in next generation)\n";
     }
     return population;
 }

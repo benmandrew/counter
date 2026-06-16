@@ -190,7 +190,7 @@ void test_evolve_generation_produces_target_size() {
         "evolve_generation: should produce the requested number of offspring");
 }
 
-void test_evolve_generation_caps_at_survivor_count() {
+void test_evolve_generation_pads_up_to_target_size() {
     const AggregateWeightedFitnessFunction fns =
         AggregateWeightedFitnessFunction(
             {{[](const Specification&) { return 0.5; }, 1.0, ""}});
@@ -198,26 +198,35 @@ void test_evolve_generation_caps_at_survivor_count() {
         score_population({make_spec("p", "q"), make_spec("r", "s")}, fns);
     const auto next_gen =
         evolve_generation(pop, 5, fns, {}, make_source({}, 0));
-    expect(next_gen.size() == 2,
-           "evolve_generation: should return at most the number of survivors "
-           "when target_size exceeds population");
+    expect(next_gen.size() == 5,
+           "evolve_generation: should pad the next generation back to the "
+           "requested target size");
 }
 
 void test_evolve_generation_selects_parents_before_offspring_filtering() {
-    // The filter is applied after breeding, so a filter that keeps everything
-    // should preserve the target offspring count.
+    // The filter is applied after breeding, and the generation is then padded
+    // back to the requested size if filtering shrinks the offspring pool.
     const AggregateWeightedFitnessFunction fns =
         AggregateWeightedFitnessFunction(
             {{[](const Specification&) { return 0.5; }, 1.0, ""}});
     const std::vector<ScoredSpecification> pop =
         score_population({make_spec("p", "q"), make_spec("r", "s")}, fns);
     const std::vector<FilterFunction> filters = {
-        make_predicate_filter([](const Specification&) { return true; })};
+        [](const std::vector<Specification>& candidates) {
+            if (candidates.empty()) {
+                return candidates;
+            }
+            return std::vector<Specification>{candidates.front()};
+        }};
     const auto next_gen =
         evolve_generation(pop, 2, fns, filters, make_source({}, 0));
     expect(next_gen.size() == 2,
-           "evolve_generation: filter functions should preserve the target "
-           "offspring count when they keep every specification");
+           "evolve_generation: the generation should be padded back to the "
+           "requested target size after filtering");
+    expect(first_trigger(next_gen[0].specification) ==
+               first_trigger(next_gen[1].specification),
+           "evolve_generation: padded offspring should duplicate the "
+           "surviving specification");
 }
 
 }  // namespace
@@ -232,6 +241,6 @@ void run_generation_tests() {
     test_filter_population_applies_sequentially();
     test_filter_population_population_level_maximal_elements();
     test_evolve_generation_produces_target_size();
-    test_evolve_generation_caps_at_survivor_count();
+    test_evolve_generation_pads_up_to_target_size();
     test_evolve_generation_selects_parents_before_offspring_filtering();
 }

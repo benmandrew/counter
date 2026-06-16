@@ -148,9 +148,18 @@ std::vector<ScoredSpecification> evolve_generation(
         next_generation.push_back(simplify_offspring(std::move(offspring)));
     }
 
-    const std::vector<Specification> filtered_offspring =
+    std::vector<Specification> filtered_offspring =
         filter_population(next_generation, filter_functions);
+    if (filtered_offspring.empty()) {
+        filtered_offspring = std::move(next_generation);
+    }
     assert(!filtered_offspring.empty());
+    const std::size_t filtered_count = filtered_offspring.size();
+    filtered_offspring.reserve(target_size);
+    while (filtered_offspring.size() < target_size) {
+        filtered_offspring.push_back(
+            filtered_offspring[filtered_offspring.size() % filtered_count]);
+    }
 
     std::vector<ScoredSpecification> scored =
         score_population(filtered_offspring, fitness_functions, on_progress);

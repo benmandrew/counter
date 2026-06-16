@@ -149,36 +149,21 @@ std::string format_crash_metadata(std::size_t seed) {
     return out.str();
 }
 
-int main(int argc, char* argv[]) {
-    if (argc == 0 || argv == nullptr || argv[0] == nullptr) {
-        std::cerr << "fatal: missing argv[0]\n";
-        return 1;
-    }
-    init_cpptrace(argv[0]);
-
-    Specification original_spec = get_spec();
-    std::cout << "Original specification:\n"
-              << original_spec.to_string() << "\n";
-
-    // 1. Fitness functions
-    AggregateWeightedFitnessFunction fitness_function =
-        get_fitness_function(original_spec);
-
-    // 2. Initial population — each requirement wrapped in a specification
-    std::vector<ScoredSpecification> population = original_population(
-        original_spec, fitness_function, Config::population_size);
-
-    // 3. Random source
+RandomSource init_random_source(int argc, char** argv) {
     const std::optional<std::size_t> seed_arg = parse_seed_arg(argc, argv);
     std::random_device rng_dev;
     const std::size_t seed =
         seed_arg.has_value() ? *seed_arg : static_cast<std::size_t>(rng_dev());
     std::cout << "Seed: " << seed << "\n";
     register_crash_metadata(format_crash_metadata(seed));
-    RandomSource random_source = make_random_source_from_seed(seed);
+    return make_random_source_from_seed(seed);
+}
 
-    // 4. Run genetic algorithm for a few generations
-    std::size_t pop_size = population.size();
+std::vector<ScoredSpecification> run_evolution(
+    std::vector<ScoredSpecification> population,
+    const AggregateWeightedFitnessFunction& fitness_function,
+    RandomSource& random_source) {
+    const std::size_t pop_size = population.size();
     for (std::size_t gen_idx = 0; gen_idx < Config::generations; ++gen_idx) {
         const auto start = std::chrono::steady_clock::now();
         auto on_progress = [&](std::size_t done, std::size_t total) {
@@ -199,14 +184,27 @@ int main(int argc, char* argv[]) {
                   << ": 100%  " << std::fixed << std::setprecision(2) << elapsed
                   << "s\n";
     }
-    // 5. Collect realizable specifications, then filter to maximal under
-    // implication
+    return population;
+}
+
+std::vector<Specification> collect_realizable_specifications(
+    const std::vector<ScoredSpecification>& population) {
     std::vector<Specification> realizable_vec;
     for (const ScoredSpecification& scored : population) {
         if (specification_status(scored.specification, global_sat_checker(),
                                  global_real_checker()) == 1.0) {
             realizable_vec.push_back(scored.specification);
         }
+    }
+    return realizable_vec;
+}
+
+// Reduces realizable specifications to those maximal under implication, when
+// Config::run_implication_filter is enabled; otherwise returns them unchanged.
+std::vector<Specification> filter_maximal_specifications(
+    const std::vector<Specification>& realizable_vec) {
+    if (!Config::run_implication_filter) {
+        return realizable_vec;
     }
     const auto impl_start = std::chrono::steady_clock::now();
     auto on_impl_progress = [&](std::size_t done, std::size_t total) {
@@ -220,30 +218,41 @@ int main(int argc, char* argv[]) {
     };
     const FilterFunction implication_filter =
         make_implication_filter(global_sat_checker(), on_impl_progress);
-    const std::vector<Specification> maximal =
-        implication_filter(realizable_vec);
+    std::vector<Specification> maximal = implication_filter(realizable_vec);
     const double impl_elapsed =
         std::chrono::duration<double>(std::chrono::steady_clock::now() -
                                       impl_start)
             .count();
     std::cout << "\r\033[KImplication filter: 100%  " << std::fixed
               << std::setprecision(2) << impl_elapsed << "s\n";
-    std::vector<ScoredSpecification> scored_maximal;
-    scored_maximal.reserve(maximal.size());
-    for (const Specification& spec : maximal) {
-        scored_maximal.push_back({spec, fitness_function(spec)});
+    return maximal;
+}
+
+std::vector<ScoredSpecification> score_and_sort_specifications(
+    const std::vector<Specification>& specs,
+    const AggregateWeightedFitnessFunction& fitness_function) {
+    std::vector<ScoredSpecification> scored;
+    scored.reserve(specs.size());
+    for (const Specification& spec : specs) {
+        scored.push_back({spec, fitness_function(spec)});
     }
-    std::sort(scored_maximal.begin(), scored_maximal.end(),
+    std::sort(scored.begin(), scored.end(),
               [](const ScoredSpecification& first,
                  const ScoredSpecification& second) {
                   return first.fitness > second.fitness;
               });
+    return scored;
+}
+
+void print_top_specifications(
+    const std::vector<ScoredSpecification>& scored_maximal,
+    const AggregateWeightedFitnessFunction& fitness_function,
+    std::size_t realizable_count) {
     const std::size_t print_count =
         std::min(scored_maximal.size(), std::size_t{5});
-
     std::cout << "\nRealizable specifications after " << Config::generations
-              << " generations (" << maximal.size() << " reduced from "
-              << realizable_vec.size() << "):\n";
+              << " generations (" << scored_maximal.size() << " reduced from "
+              << realizable_count << "):\n";
     for (std::size_t i = 0; i < print_count; ++i) {
         const Specification& spec = scored_maximal[i].specification;
         std::cout << "Fitness: " << std::fixed << std::setprecision(4)
@@ -255,6 +264,32 @@ int main(int argc, char* argv[]) {
         }
         std::cout << spec.to_string() << "\n\n";
     }
+}
+
+int main(int argc, char* argv[]) {
+    if (argc == 0 || argv == nullptr || argv[0] == nullptr) {
+        std::cerr << "fatal: missing argv[0]\n";
+        return 1;
+    }
+    init_cpptrace(argv[0]);
+    Specification original_spec = get_spec();
+    std::cout << "Original specification:\n"
+              << original_spec.to_string() << "\n";
+    AggregateWeightedFitnessFunction fitness_function =
+        get_fitness_function(original_spec);
+    std::vector<ScoredSpecification> population = original_population(
+        original_spec, fitness_function, Config::population_size);
+    RandomSource random_source = init_random_source(argc, argv);
+    population =
+        run_evolution(std::move(population), fitness_function, random_source);
+    const std::vector<Specification> realizable_vec =
+        collect_realizable_specifications(population);
+    const std::vector<Specification> maximal =
+        filter_maximal_specifications(realizable_vec);
+    const std::vector<ScoredSpecification> scored_maximal =
+        score_and_sort_specifications(maximal, fitness_function);
+    print_top_specifications(scored_maximal, fitness_function,
+                             realizable_vec.size());
     print_timing_report();
     return 0;
 }

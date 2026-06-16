@@ -16,10 +16,13 @@ struct Config {
     static constexpr double fitness_weight_status = 0.5;
 
     // --- Model counting ---
-    static constexpr std::size_t default_model_counting_bound = 5;
+    static constexpr std::size_t default_model_counting_bound = 20;
+
+    // --- Filtering ---
+    static constexpr bool run_implication_filter = false;
 
     // --- External tool timeouts ---
-    static constexpr std::chrono::seconds black_timeout{10};
+    static constexpr std::chrono::seconds black_timeout{1};
 
     // --- Evolution ---
     static constexpr double crossover_rate = 0.1;

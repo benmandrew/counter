@@ -246,9 +246,13 @@ std::vector<Specification> filter_maximal_specifications(
             std::chrono::duration<double>(std::chrono::steady_clock::now() -
                                           impl_start)
                 .count();
-        std::cout << "\rImplication filter: " << std::setw(3)
+        std::cout << "\r\033[KImplication filter: " << std::setw(3)
                   << (done * 100 / total) << "%  " << std::fixed
-                  << std::setprecision(2) << elapsed << "s" << std::flush;
+                  << std::setprecision(2) << elapsed << "s  ("
+                  << ImplicationFilterStats::n_comparisons << " cmp, "
+                  << ImplicationFilterStats::n_skipped << " skip, "
+                  << ImplicationFilterStats::n_duplicates << " dup)"
+                  << std::flush;
     };
     const FilterFunction implication_filter =
         make_implication_filter(global_sat_checker(), on_impl_progress);
@@ -259,11 +263,9 @@ std::vector<Specification> filter_maximal_specifications(
             .count();
     std::cout << "\r\033[KImplication filter: 100%  " << std::fixed
               << std::setprecision(2) << impl_elapsed << "s  ("
-              << ImplicationFilterStats::n_comparisons << " comparisons, "
-              << ImplicationFilterStats::n_skipped
-              << " skipped via subsumption, "
-              << ImplicationFilterStats::n_duplicates
-              << " duplicate specs excluded)\n";
+              << ImplicationFilterStats::n_comparisons << " cmp, "
+              << ImplicationFilterStats::n_skipped << " skip, "
+              << ImplicationFilterStats::n_duplicates << " dup)\n";
     return maximal;
 }
 

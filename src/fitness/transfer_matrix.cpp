@@ -171,12 +171,16 @@ struct HoaTransition {
 // Parsed representation of a HOA v1 automaton as produced by ltl2tgba -H.
 // Safety automata (acc-name: all) have m_is_buchi == false and an implicit
 // dead state for any unlisted transition. Buchi automata carry per-state
-// acceptance marks used to populate the final-state mask.
+// acceptance marks used to populate the final-state mask. Generalized-Buchi
+// automata (acc-name: generalized-Buchi N) require all N acceptance sets to be
+// marked on a state before it counts as accepting.
 struct HoaAutomaton {
     std::size_t m_n_states = 0;
     std::size_t m_initial_state = 0;
     std::vector<std::string> m_aps;  // AP names in index order
     bool m_is_buchi = false;
+    // 1 for standard Buchi, N for generalized-Buchi N
+    std::size_t m_n_acceptance_sets = 1;
     std::vector<bool> m_accepting_states;  // indexed by HOA state ID
     std::vector<std::vector<HoaTransition>>
         m_transitions;  // indexed by source state ID
@@ -184,8 +188,8 @@ struct HoaAutomaton {
 
 // Parses a HOA v1 automaton string into an HoaAutomaton. Reads the header
 // fields States, Start, AP, and acc-name, then collects per-state transitions
-// from the --BODY-- section. Accepts both safety (acc-name: all) and Buchi
-// (acc-name: Buchi) acceptance conditions.
+// from the --BODY-- section. Accepts safety (acc-name: all), Buchi
+// (acc-name: Buchi), and generalized-Buchi (acc-name: generalized-Buchi N).
 void parse_hoa_header_line(HoaAutomaton& hoa, const std::string& line,
                            bool& in_body) {
     if (line.rfind("States:", 0) == 0) {
@@ -205,9 +209,39 @@ void parse_hoa_header_line(HoaAutomaton& hoa, const std::string& line,
     } else if (line.rfind("acc-name:", 0) == 0) {
         hoa.m_is_buchi = line.find("Buchi") != std::string::npos ||
                          line.find("buchi") != std::string::npos;
+        if (hoa.m_is_buchi && line.find("generalized") != std::string::npos) {
+            // "acc-name: generalized-Buchi N" — a state is only accepting when
+            // it carries all N acceptance marks, not just one of them.
+            const std::size_t last_space = line.rfind(' ');
+            if (last_space != std::string::npos) {
+                hoa.m_n_acceptance_sets =
+                    std::stoul(line.substr(last_space + 1));
+            }
+        }
+        // else: standard Buchi, m_n_acceptance_sets stays at default 1
     } else if (line == "--BODY--") {
         in_body = true;
     }
+}
+
+// Counts acceptance-set indices inside a HOA brace expression like "{0 1}".
+// Returns the number of integer tokens found between the braces.
+std::size_t count_acceptance_marks(const std::string& line,
+                                   std::size_t brace_open,
+                                   std::size_t brace_close) {
+    std::size_t mark_count = 0;
+    bool in_num = false;
+    for (std::size_t pos = brace_open + 1; pos < brace_close; ++pos) {
+        if (std::isdigit(static_cast<unsigned char>(line[pos])) != 0) {
+            if (!in_num) {
+                in_num = true;
+                ++mark_count;
+            }
+        } else {
+            in_num = false;
+        }
+    }
+    return mark_count;
 }
 
 void parse_hoa_body_line(HoaAutomaton& hoa, const std::string& line,
@@ -215,8 +249,15 @@ void parse_hoa_body_line(HoaAutomaton& hoa, const std::string& line,
     if (line.rfind("State:", 0) == 0) {
         std::istringstream state_stream(line.substr(6));
         state_stream >> current_state;
-        if (line.find('{') != std::string::npos) {
-            hoa.m_accepting_states[current_state] = true;
+        const std::size_t brace_open = line.find('{');
+        if (brace_open != std::string::npos) {
+            const std::size_t brace_close = line.find('}', brace_open);
+            if (brace_close != std::string::npos) {
+                const std::size_t mark_count =
+                    count_acceptance_marks(line, brace_open, brace_close);
+                hoa.m_accepting_states[current_state] =
+                    (mark_count >= hoa.m_n_acceptance_sets);
+            }
         }
     } else if (!line.empty() && line[0] == '[') {
         const std::size_t end_bracket = line.find(']');

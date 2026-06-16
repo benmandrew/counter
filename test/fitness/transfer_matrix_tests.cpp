@@ -163,6 +163,26 @@ bool trace_satisfies_requirement(const Requirement& requirement,
         requirement.m_timing);
 }
 
+// Enumerate all 4^k traces over atoms {trigger, response} and count how many
+// satisfy req according to the brute-force oracle.
+Count brute_force_trace_count(const Requirement& req, std::size_t step_count) {
+    Count count = 0;
+    const std::size_t total = std::size_t{1} << (2U * step_count);
+    for (std::size_t mask = 0; mask < total; ++mask) {
+        Trace trace;
+        trace.reserve(step_count);
+        for (std::size_t step = 0; step < step_count; ++step) {
+            trace.emplace_back(
+                static_cast<bool>((mask >> (2U * step)) & 1U),
+                static_cast<bool>((mask >> (2U * step + 1U)) & 1U));
+        }
+        if (trace_satisfies_requirement(req, trace)) {
+            ++count;
+        }
+    }
+    return count;
+}
+
 void expect_trace_counts(const TransferSystem& system,
                          const std::vector<Count>& expected_counts,
                          const std::string& label) {
@@ -299,6 +319,40 @@ void test_trace_acceptance_cases() {
     });
 }
 
+// Cross-validates count_traces against the brute-force oracle for all timing
+// variants (including after_ticks and eventually which were previously
+// untested). For k=1..4 and 2 atoms, the oracle enumerates 4^k traces.
+// within-ticks/for-ticks are excluded: the oracle's restart-on-retrigger
+// semantics diverge from SPOT's actual LTL automaton at k>=3 (see the comment
+// on within-ticks/for-ticks in test_transfer_system_cases), so they are
+// instead covered there via hardcoded expected counts.
+void test_transfer_system_vs_oracle() {
+    const std::vector<std::pair<std::string, Requirement>> cases = {
+        {"immediately",
+         Requirement(Formula("P"), Formula("Q"), timing::immediately())},
+        {"next-timepoint",
+         Requirement(Formula("P"), Formula("Q"), timing::next_timepoint())},
+        {"after-ticks",
+         Requirement(Formula("P"), Formula("Q"), timing::after_ticks(1))},
+        {"eventually",
+         Requirement(Formula("P"), Formula("Q"), timing::eventually())},
+    };
+    for (const auto& [label, req] : cases) {
+        const TransferSystem system = build_transfer_system(req);
+        for (std::size_t k = 1; k <= 4; ++k) {
+            const Count expected = brute_force_trace_count(req, k);
+            const Count actual = count_traces(system, k);
+            if (actual != expected) {
+                std::ostringstream msg;
+                msg << label << " k=" << k << ": expected "
+                    << count_to_string(expected) << " but got "
+                    << count_to_string(actual);
+                fail(msg.str());
+            }
+        }
+    }
+}
+
 }  // namespace
 
 void expect_square_matrix_size(const CountMatrix& matrix,
@@ -364,6 +418,7 @@ void test_count_traces_formula() {
 void run_transfer_matrix_tests() {
     test_transfer_system_cases();
     test_trace_acceptance_cases();
+    test_transfer_system_vs_oracle();
     test_weighted_transition_matrix_cases();
     test_count_traces_formula();
 }

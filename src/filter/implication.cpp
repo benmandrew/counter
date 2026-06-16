@@ -16,66 +16,88 @@
 
 namespace {
 
-std::string build_spec_ltl(const Specification& spec) {
-    auto conjoin = [](const std::vector<Requirement>& reqs) {
-        std::string result;
-        bool first = true;
-        for (const Requirement& req : reqs) {
-            assert(req.m_ltl.has_value());
-            if (!first) {
-                result += " & ";
-            }
-            result += "(" + *req.m_ltl + ")";
-            first = false;
-        }
-        return result;
-    };
-    if (spec.m_assumptions.empty()) {
-        return conjoin(spec.m_guarantees);
+// Returns true if `from` implies `to`, i.e. sat(from & !to) is UNSAT.
+// Shortcuts on syntactically identical requirements (a requirement always
+// implies itself) to avoid a black call, and to reuse this requirement pair's
+// result across every spec pair that happens to share it.
+bool requirement_implies(const Requirement& from, const Requirement& dest,
+                         SatisfiabilityChecker& checker) {
+    if (from == dest) {
+        return true;
     }
-    return "(" + conjoin(spec.m_assumptions) + ") -> (" +
-           conjoin(spec.m_guarantees) + ")";
+    assert(from.m_ltl.has_value() && dest.m_ltl.has_value());
+    const std::optional<bool> sat = checker.check_satisfiability(
+        "(" + *from.m_ltl + ") & !(" + *dest.m_ltl + ")");
+    return sat.has_value() && !sat.value();
 }
 
-// Checks one ordered pair: if from strictly dominates to, marks subsumed[to].
-// Short-circuits if either endpoint is already subsumed.
-// Checks the reverse direction when forward implication holds to preserve
-// mutual equivalences (A <=> B keeps both).
-void check_pair(const std::vector<std::string>& ltls,
+// Returns true if every requirement in `to_reqs` is implied by some
+// requirement in `from_reqs`. Sufficient (but not necessary) for the
+// conjunction of from_reqs to imply the conjunction of to_reqs: a true
+// implication that only holds via a combination of several from_reqs is
+// missed, so this under-detects domination rather than ever over-detecting
+// it.
+bool all_implied_by_some(const std::vector<Requirement>& from_reqs,
+                         const std::vector<Requirement>& to_reqs,
+                         SatisfiabilityChecker& checker) {
+    return std::all_of(
+        to_reqs.begin(), to_reqs.end(), [&](const Requirement& dest) {
+            return std::any_of(from_reqs.begin(), from_reqs.end(),
+                               [&](const Requirement& from) {
+                                   return requirement_implies(from, dest,
+                                                              checker);
+                               });
+        });
+}
+
+// Sufficient condition for spec `from` to imply spec `to`, decomposed
+// per-requirement following the standard assume-guarantee contract
+// refinement rule: from's assumptions must each be implied by some
+// assumption of `to` (to assumes no more than from requires), and to's
+// guarantees must each be implied by some guarantee of `from`.
+bool spec_implies(const Specification& from, const Specification& dest,
+                  SatisfiabilityChecker& checker) {
+    return all_implied_by_some(dest.m_assumptions, from.m_assumptions,
+                               checker) &&
+           all_implied_by_some(from.m_guarantees, dest.m_guarantees, checker);
+}
+
+// Checks one unordered pair {a, b} in both directions and marks whichever
+// side is strictly dominated, if any. Short-circuits if either endpoint is
+// already subsumed (the "subsumption optimisation": once a spec is known
+// redundant, no further comparison against it can change the outcome).
+void check_pair(const std::vector<Specification>& pop,
                 std::vector<std::atomic<uint8_t>>& subsumed,
-                SatisfiabilityChecker& checker, std::size_t from_idx,
-                std::size_t to_idx) {
-    if (subsumed[from_idx].load(std::memory_order_relaxed) != 0U ||
-        subsumed[to_idx].load(std::memory_order_relaxed) != 0U) {
+                SatisfiabilityChecker& checker, std::size_t a_idx,
+                std::size_t b_idx) {
+    if (subsumed[a_idx].load(std::memory_order_relaxed) != 0U ||
+        subsumed[b_idx].load(std::memory_order_relaxed) != 0U) {
+        ImplicationFilterStats::n_skipped.fetch_add(1,
+                                                    std::memory_order_relaxed);
         return;
     }
-    const std::optional<bool> sat = checker.check_satisfiability(
-        "(" + ltls[from_idx] + ") & !(" + ltls[to_idx] + ")");
-    if (!sat.has_value()) {
-        return;
-    }
-    if (!sat.value()) {
-        const std::optional<bool> reverse_sat = checker.check_satisfiability(
-            "(" + ltls[to_idx] + ") & !(" + ltls[from_idx] + ")");
-        if (reverse_sat.value_or(false)) {
-            subsumed[to_idx].store(1, std::memory_order_relaxed);
-        }
+    ImplicationFilterStats::n_comparisons.fetch_add(1,
+                                                    std::memory_order_relaxed);
+    const bool a_implies_b = spec_implies(pop[a_idx], pop[b_idx], checker);
+    const bool b_implies_a = spec_implies(pop[b_idx], pop[a_idx], checker);
+    if (a_implies_b && !b_implies_a) {
+        subsumed[b_idx].store(1, std::memory_order_relaxed);
+    } else if (b_implies_a && !a_implies_b) {
+        subsumed[a_idx].store(1, std::memory_order_relaxed);
     }
 }
 
 // Computes which specs are subsumed: subsumed[j] = 1 iff some i strictly
 // dominates j (i implies j but j does not imply i).
 std::vector<uint8_t> compute_subsumed(
-    const std::vector<std::string>& ltls, std::size_t pop_size,
-    SatisfiabilityChecker& checker,
+    const std::vector<Specification>& pop, SatisfiabilityChecker& checker,
     const GenerationProgressCallback& on_progress) {
+    const std::size_t pop_size = pop.size();
     std::vector<std::pair<std::size_t, std::size_t>> pairs;
-    pairs.reserve(pop_size * (pop_size - 1));
+    pairs.reserve(pop_size * (pop_size - 1) / 2);
     for (std::size_t i = 0; i < pop_size; ++i) {
-        for (std::size_t j = 0; j < pop_size; ++j) {
-            if (i != j) {
-                pairs.emplace_back(i, j);
-            }
+        for (std::size_t j = i + 1; j < pop_size; ++j) {
+            pairs.emplace_back(i, j);
         }
     }
     std::vector<std::atomic<uint8_t>> subsumed(pop_size);
@@ -87,12 +109,12 @@ std::vector<uint8_t> compute_subsumed(
     std::size_t completed = 0;
     run_bounded_async(
         pairs.size(), max_in_flight,
-        [&checker, &ltls, &subsumed, &pairs](std::size_t idx) {
-            const std::size_t from_idx = pairs[idx].first;
-            const std::size_t to_idx = pairs[idx].second;
+        [&checker, &pop, &subsumed, &pairs](std::size_t idx) {
+            const std::size_t a_idx = pairs[idx].first;
+            const std::size_t b_idx = pairs[idx].second;
             return global_thread_pool().submit(
-                [&checker, &ltls, &subsumed, from_idx, to_idx] {
-                    check_pair(ltls, subsumed, checker, from_idx, to_idx);
+                [&checker, &pop, &subsumed, a_idx, b_idx] {
+                    check_pair(pop, subsumed, checker, a_idx, b_idx);
                 });
         },
         [&on_progress, &completed, total = pairs.size()](std::size_t) {
@@ -125,17 +147,14 @@ FilterFunction make_implication_filter(
     SatisfiabilityChecker& checker,
     const GenerationProgressCallback& on_progress) {
     return [&checker, on_progress](const std::vector<Specification>& pop) {
-        const std::size_t pop_size = pop.size();
-        if (pop_size <= 1) {
+        ImplicationFilterStats::n_comparisons.store(0,
+                                                    std::memory_order_relaxed);
+        ImplicationFilterStats::n_skipped.store(0, std::memory_order_relaxed);
+        if (pop.size() <= 1) {
             return pop;
         }
-        std::vector<std::string> ltls;
-        ltls.reserve(pop_size);
-        for (const Specification& spec : pop) {
-            ltls.push_back(build_spec_ltl(spec));
-        }
         const std::vector<uint8_t> sub =
-            compute_subsumed(ltls, pop_size, checker, on_progress);
+            compute_subsumed(pop, checker, on_progress);
         return keep_non_subsumed(pop, sub);
     };
 }

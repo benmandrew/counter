@@ -207,13 +207,12 @@ std::vector<ScoredSpecification> run_evolution(
         population =
             evolve_generation(population, pop_size, fitness_function,
                               filter_functions, random_source, on_progress);
-        const std::size_t n_survivors = population.size();
         const double elapsed = std::chrono::duration<double>(
                                    std::chrono::steady_clock::now() - start)
                                    .count();
         std::cout << "\r\033[KGeneration " << std::setw(2) << gen_idx + 1
                   << ": 100%  " << std::fixed << std::setprecision(2) << elapsed
-                  << "s  (" << n_survivors << " in next generation)\n";
+                  << "s\n";
     }
     return population;
 }
@@ -259,7 +258,10 @@ std::vector<Specification> filter_maximal_specifications(
                                       impl_start)
             .count();
     std::cout << "\r\033[KImplication filter: 100%  " << std::fixed
-              << std::setprecision(2) << impl_elapsed << "s\n";
+              << std::setprecision(2) << impl_elapsed << "s  ("
+              << ImplicationFilterStats::n_comparisons << " comparisons, "
+              << ImplicationFilterStats::n_skipped
+              << " skipped via subsumption)\n";
     return maximal;
 }
 

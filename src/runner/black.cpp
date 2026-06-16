@@ -15,6 +15,7 @@
 #include <memory>
 #include <mutex>
 #include <optional>
+#include <shared_mutex>
 #include <stdexcept>
 #include <string>
 #include <utility>
@@ -150,14 +151,14 @@ std::string black_executable_path() {
 std::optional<bool> SatisfiabilityChecker::check_satisfiability(
     const std::string& ltl_formula) {
     {
-        std::scoped_lock lock(m_cache_mutex);
+        std::shared_lock lock(m_cache_mutex);
         const auto found = m_cache.find(ltl_formula);
         if (found != m_cache.end()) {
             n_cache_hits++;
             return found->second;
         }
-        n_cache_misses++;
     }
+    n_cache_misses++;
     const std::string black = black_executable_path();
     assert(access(black.c_str(), F_OK) == 0);
     const std::vector<std::string> command = {black, "solve", "-f",

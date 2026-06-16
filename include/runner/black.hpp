@@ -1,7 +1,9 @@
 #pragma once
 
-#include <mutex>
+#include <atomic>
+#include <cstddef>
 #include <optional>
+#include <shared_mutex>
 #include <string>
 #include <unordered_map>
 
@@ -9,8 +11,8 @@ std::string black_executable_path();
 
 class SatisfiabilityChecker {
    public:
-    inline static std::size_t n_cache_misses = 0;
-    inline static std::size_t n_cache_hits = 0;
+    inline static std::atomic<std::size_t> n_cache_misses{0};
+    inline static std::atomic<std::size_t> n_cache_hits{0};
     inline static std::size_t n_timeouts = 0;
     inline static double total_time_s = 0.0;
 
@@ -18,7 +20,10 @@ class SatisfiabilityChecker {
     std::optional<bool> check_satisfiability(const std::string& ltl_formula);
 
    private:
-    mutable std::mutex m_cache_mutex;
+    // Cache lookups (the common case once the population converges) take a
+    // shared lock so concurrent hits don't serialise on one another; only an
+    // actual insert needs the exclusive lock.
+    mutable std::shared_mutex m_cache_mutex;
     std::unordered_map<std::string, bool> m_cache;
 };
 

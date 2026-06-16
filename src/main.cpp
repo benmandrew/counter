@@ -58,18 +58,46 @@ AggregateWeightedFitnessFunction get_fitness_function(
     return AggregateWeightedFitnessFunction(std::move(fitness_functions));
 }
 
+std::vector<FilterFunction> get_filter_functions() {
+    return {
+        // A false trigger is vacuously satisfied by every trace, so it
+        // imposes no constraint; forbid it from surviving as a breeding
+        // candidate rather than letting the fitness function alone
+        // discourage it.
+        make_predicate_filter([](const Specification& spec) {
+            return !specification_has_false_trigger(spec);
+        }),
+    };
+}
+
+// Specification get_spec() {
+//     std::vector<Requirement> assumptions = {};
+//     std::vector<Requirement> guarantees = {
+//         Requirement(Formula("r1"), Formula("g1"), timing::eventually(),
+//                     "G(r1 -> F g1)"),
+//         Requirement(Formula("r2"), Formula("g2"), timing::eventually(),
+//                     "G(r2 -> F g2)"),
+//         Requirement(Formula("!a"), Formula("!g1 & !g2"),
+//         timing::immediately(),
+//                     "G(!a -> (!g1 & !g2))"),
+//     };
+//     std::vector<std::string> in_atoms = {"a", "r1", "r2"};
+//     std::vector<std::string> out_atoms = {"g1", "g2"};
+//     return Specification(assumptions, guarantees, in_atoms, out_atoms);
+// }
+
 Specification get_spec() {
     std::vector<Requirement> assumptions = {};
     std::vector<Requirement> guarantees = {
-        Requirement(Formula("r1"), Formula("g1"), timing::eventually(),
-                    "G(r1 -> F g1)"),
-        Requirement(Formula("r2"), Formula("g2"), timing::eventually(),
-                    "G(r2 -> F g2)"),
-        Requirement(Formula("!a"), Formula("!g1 & !g2"), timing::immediately(),
-                    "G(!a -> (!g1 & !g2))"),
+        Requirement(Formula("true"), Formula("takeoff_roll"),
+                    timing::for_ticks(5)),
+        Requirement(Formula("true"), Formula("!takeoff_roll & lift_off"),
+                    timing::within_ticks(5)),
+        Requirement(Formula("takeoff_roll"), Formula("lift_off"),
+                    timing::after_ticks(1)),
     };
-    std::vector<std::string> in_atoms = {"a", "r1", "r2"};
-    std::vector<std::string> out_atoms = {"g1", "g2"};
+    std::vector<std::string> in_atoms = {};
+    std::vector<std::string> out_atoms = {"takeoff_roll", "lift_off"};
     return Specification(assumptions, guarantees, in_atoms, out_atoms);
 }
 
@@ -162,15 +190,9 @@ RandomSource init_random_source(int argc, const char* const* argv) {
 std::vector<ScoredSpecification> run_evolution(
     std::vector<ScoredSpecification> population,
     const AggregateWeightedFitnessFunction& fitness_function,
+    const std::vector<FilterFunction>& filter_functions,
     RandomSource& random_source) {
     const std::size_t pop_size = population.size();
-    // A false trigger is vacuously satisfied by every trace, so it imposes
-    // no constraint; forbid it from surviving as a breeding candidate rather
-    // than letting the fitness function alone discourage it.
-    const std::vector<FilterFunction> filter_functions = {
-        make_predicate_filter([](const Specification& spec) {
-            return !specification_has_false_trigger(spec);
-        })};
     for (std::size_t gen_idx = 0; gen_idx < Config::generations; ++gen_idx) {
         const auto start = std::chrono::steady_clock::now();
         auto on_progress = [&](std::size_t done, std::size_t total) {
@@ -295,11 +317,12 @@ int main(int argc, const char* const argv[]) {
               << original_spec.to_string() << "\n";
     AggregateWeightedFitnessFunction fitness_function =
         get_fitness_function(original_spec);
+    const std::vector<FilterFunction> filter_functions = get_filter_functions();
     std::vector<ScoredSpecification> population = original_population(
         original_spec, fitness_function, Config::population_size);
     RandomSource random_source = init_random_source(argc, argv);
-    population =
-        run_evolution(std::move(population), fitness_function, random_source);
+    population = run_evolution(std::move(population), fitness_function,
+                               filter_functions, random_source);
     const std::vector<Specification> realizable_vec =
         collect_realizable_specifications(population);
     const std::vector<Specification> maximal =

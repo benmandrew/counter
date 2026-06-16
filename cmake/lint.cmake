@@ -26,7 +26,10 @@ file(GLOB_RECURSE COUNTER_LINT_CPP_FILES CONFIGURE_DEPENDS ${COUNTER_LINT_CPP_GL
 
 if(CPPLINT_EXE)
     add_custom_target(lint-cpplint
-        COMMAND ${CPPLINT_EXE} --quiet ${COUNTER_LINT_FILES}
+        COMMAND ${CPPLINT_EXE}
+            --config=.cpplint.cfg
+            --quiet
+            ${COUNTER_LINT_FILES}
         COMMENT "Running cpplint on C++ sources"
         VERBATIM
     )
@@ -81,10 +84,7 @@ if(CPPCHECK_EXE)
         COMMAND ${CPPCHECK_EXE}
             --enable=warning,style,performance,portability
             --error-exitcode=1
-            --suppress=missingIncludeSystem
-            --suppress=unusedStructMember
-            --suppress=useStlAlgorithm
-            --suppressions-list=${CMAKE_CURRENT_SOURCE_DIR}/cppcheck_suppressions.txt
+            --suppressions-list=${CMAKE_CURRENT_SOURCE_DIR}/.cppcheck_suppressions.txt
             --quiet
             ${COUNTER_LINT_FILES}
         COMMENT "Running cppcheck on C++ sources"

@@ -1,3 +1,7 @@
+missingIncludeSystem
+unusedStructMember
+useStlAlgorithm
+
 # next_bool() is non-pure — each call returns a different value, so the
 # "identical condition" check is a false positive here.
 identicalConditionAfterEarlyExit

@@ -3,6 +3,7 @@
 #include <chrono>
 #include <cstddef>
 #include <deque>
+#include <future>
 #include <thread>
 #include <type_traits>
 #include <utility>

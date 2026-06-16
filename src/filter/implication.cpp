@@ -4,7 +4,6 @@
 #include <atomic>
 #include <cassert>
 #include <cstdint>
-#include <future>
 #include <optional>
 #include <string>
 #include <thread>
@@ -13,6 +12,7 @@
 
 #include "bounded_async.hpp"
 #include "requirement.hpp"
+#include "thread_pool.hpp"
 
 namespace {
 
@@ -90,10 +90,10 @@ std::vector<uint8_t> compute_subsumed(
         [&checker, &ltls, &subsumed, &pairs](std::size_t idx) {
             const std::size_t from_idx = pairs[idx].first;
             const std::size_t to_idx = pairs[idx].second;
-            return std::async(std::launch::async, [&checker, &ltls, &subsumed,
-                                                   from_idx, to_idx] {
-                check_pair(ltls, subsumed, checker, from_idx, to_idx);
-            });
+            return global_thread_pool().submit(
+                [&checker, &ltls, &subsumed, from_idx, to_idx] {
+                    check_pair(ltls, subsumed, checker, from_idx, to_idx);
+                });
         },
         [&on_progress, &completed, total = pairs.size()](std::size_t) {
             if (on_progress) {

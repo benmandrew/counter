@@ -2,13 +2,13 @@
 
 #include <algorithm>
 #include <cassert>
-#include <future>
 #include <numeric>
 #include <utility>
 #include <vector>
 
 #include "bounded_async.hpp"
 #include "config.hpp"
+#include "thread_pool.hpp"
 
 namespace {
 
@@ -55,10 +55,10 @@ std::vector<ScoredSpecification> score_population(
     run_bounded_async(
         population.size(), max_in_flight,
         [&fitness_function, &population](std::size_t idx) {
-            return std::async(std::launch::async,
-                              [&fitness_function, &spec = population[idx]] {
-                                  return fitness_function(spec);
-                              });
+            return global_thread_pool().submit(
+                [&fitness_function, &spec = population[idx]] {
+                    return fitness_function(spec);
+                });
         },
         [&scored, &population, &on_progress, &done, total = population.size()](
             std::size_t idx, double fitness) {

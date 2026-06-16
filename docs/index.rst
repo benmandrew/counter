@@ -7,9 +7,11 @@ Repairing unrealisable FRETish specifications.
    :maxdepth: 1
    :caption: Core
 
+   api/bounded_async
    api/config
    api/prop_formula
    api/requirement
+   api/thread_pool
 
 .. toctree::
    :maxdepth: 1

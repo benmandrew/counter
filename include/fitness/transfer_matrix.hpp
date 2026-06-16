@@ -127,6 +127,14 @@ struct TransferSystem {
 /// similarity computations.
 std::size_t count_joint_atoms(const Requirement& req1, const Requirement& req2);
 
+/// Constructs a TransferSystem directly from an LTL formula string via
+/// ltl2tgba, given the total atom universe size used for transition
+/// weighting. Exposed so callers (e.g. semantic similarity) can cache the
+/// resulting trace counts on the same (ltl, n_total_atoms) key used here,
+/// rather than only on the requirement objects themselves.
+TransferSystem build_transfer_system_from_ltl(const std::string& ltl,
+                                              std::size_t n_total_atoms);
+
 /// Constructs a TransferSystem for a requirement using SPOT's ltl2tgba to
 /// generate a deterministic automaton from the requirement's LTL formula.
 /// The canonical_valuation_counts parameter is accepted for API compatibility

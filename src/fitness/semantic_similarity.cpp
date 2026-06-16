@@ -1,6 +1,9 @@
 #include "fitness/semantic_similarity.hpp"
 
 #include <cassert>
+#include <mutex>
+#include <string>
+#include <unordered_map>
 #include <vector>
 
 #include "config.hpp"
@@ -21,6 +24,32 @@ struct SemanticSimilarityCounts {
     Count m_conjunction_count;
 };
 
+// Caches trace counts by (ltl, n_total_atoms, step_count): the matrix
+// construction and exponentiation in count_traces is redone from scratch on
+// every call, even though one side of a comparison is frequently the same
+// requirement across an entire population/generation (e.g. the original
+// specification's piece, compared against many mutated offspring).
+Count cached_count_traces(const std::string& ltl, std::size_t n_total_atoms,
+                          std::size_t step_count) {
+    static std::unordered_map<std::string, Count> cache;
+    static std::mutex cache_mutex;
+    const std::string key = ltl + "|" + std::to_string(n_total_atoms) + "|" +
+                            std::to_string(step_count);
+    {
+        std::scoped_lock lock(cache_mutex);
+        const auto found = cache.find(key);
+        if (found != cache.end()) {
+            return found->second;
+        }
+    }
+    const TransferSystem system =
+        build_transfer_system_from_ltl(ltl, n_total_atoms);
+    const Count count = count_traces(system, step_count);
+    std::scoped_lock lock(cache_mutex);
+    cache.emplace(key, count);
+    return count;
+}
+
 SemanticSimilarityCounts count_semantic_similarity_terms(
     const Requirement& requirement, const Requirement& other_requirement,
     std::size_t step_count) {
@@ -29,15 +58,13 @@ SemanticSimilarityCounts count_semantic_similarity_terms(
     // the similarity ratio in [0, 1].
     const std::size_t n_atoms =
         count_joint_atoms(requirement, other_requirement);
-    const TransferSystem system = build_transfer_system(requirement, n_atoms);
-    const TransferSystem other_system =
-        build_transfer_system(other_requirement, n_atoms);
-    const TransferSystem conjunction_system =
-        build_conjunction_transfer_system(requirement, other_requirement);
+    const std::string ltl = requirement_to_ltl(requirement);
+    const std::string other_ltl = requirement_to_ltl(other_requirement);
+    const std::string conjunction_ltl = "(" + ltl + ") & (" + other_ltl + ")";
     return {
-        count_traces(system, step_count),
-        count_traces(other_system, step_count),
-        count_traces(conjunction_system, step_count),
+        cached_count_traces(ltl, n_atoms, step_count),
+        cached_count_traces(other_ltl, n_atoms, step_count),
+        cached_count_traces(conjunction_ltl, n_atoms, step_count),
     };
 }
 

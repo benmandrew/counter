@@ -359,22 +359,25 @@ TransferSystem build_transfer_system_from_hoa(const HoaAutomaton& hoa,
 
 }  // namespace
 
-TransferSystem build_transfer_system(
-    const Requirement& requirement,
-    const CountVector& /*canonical_valuation_counts*/) {
-    const std::size_t n_total_atoms = count_requirement_atoms(requirement);
-    const std::string ltl = requirement_to_ltl(requirement);
+TransferSystem build_transfer_system_from_ltl(const std::string& ltl,
+                                              std::size_t n_total_atoms) {
     const std::string hoa_text = run_ltl2tgba_for_counting(ltl);
     const HoaAutomaton hoa = parse_hoa(hoa_text);
     return build_transfer_system_from_hoa(hoa, n_total_atoms);
 }
 
+TransferSystem build_transfer_system(
+    const Requirement& requirement,
+    const CountVector& /*canonical_valuation_counts*/) {
+    const std::size_t n_total_atoms = count_requirement_atoms(requirement);
+    return build_transfer_system_from_ltl(requirement_to_ltl(requirement),
+                                          n_total_atoms);
+}
+
 TransferSystem build_transfer_system(const Requirement& requirement,
                                      std::size_t n_total_atoms) {
-    const std::string ltl = requirement_to_ltl(requirement);
-    const std::string hoa_text = run_ltl2tgba_for_counting(ltl);
-    const HoaAutomaton hoa = parse_hoa(hoa_text);
-    return build_transfer_system_from_hoa(hoa, n_total_atoms);
+    return build_transfer_system_from_ltl(requirement_to_ltl(requirement),
+                                          n_total_atoms);
 }
 
 TransferSystem build_conjunction_transfer_system(
@@ -384,9 +387,7 @@ TransferSystem build_conjunction_transfer_system(
     const std::string ltl1 = requirement_to_ltl(requirement1);
     const std::string ltl2 = requirement_to_ltl(requirement2);
     const std::string conj = "(" + ltl1 + ") & (" + ltl2 + ")";
-    const std::string hoa_text = run_ltl2tgba_for_counting(conj);
-    const HoaAutomaton hoa = parse_hoa(hoa_text);
-    return build_transfer_system_from_hoa(hoa, n_total_atoms);
+    return build_transfer_system_from_ltl(conj, n_total_atoms);
 }
 
 CountMatrix weighted_transition_matrix(const TransferSystem& system) {

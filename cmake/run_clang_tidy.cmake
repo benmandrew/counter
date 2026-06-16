@@ -1,6 +1,8 @@
 # Wrapper invoked by the lint-clang-tidy target. Runs run-clang-tidy and
 # strips the two noisy line types from its output before printing:
-#   - "clang-tidy-XX ... file.cpp" invocation echoes
+#   - "<clang-tidy binary> ... file.cpp" invocation echoes (run-clang-tidy
+#     writes this unconditionally per file, regardless of -quiet -- that
+#     flag only suppresses clang-tidy's own "N warnings generated" output)
 #   - "N warnings generated." per-TU diagnostic summaries
 set(CLANG_TIDY_BINARY_ARGS "")
 if(CLANG_TIDY_EXE)
@@ -20,7 +22,12 @@ execute_process(
     ERROR_VARIABLE error_output
     RESULT_VARIABLE result
 )
-string(REGEX REPLACE "clang-tidy-[^\n]*\n?" "" output "${output}")
+# The invocation echo starts with the exact binary path we pinned above
+# (CLANG_TIDY_EXE), not the unqualified "clang-tidy-<version>" name the
+# stripped pattern used to assume before pinning was added.
+if(CLANG_TIDY_EXE)
+    string(REGEX REPLACE "${CLANG_TIDY_EXE}[^\n]*\n?" "" output "${output}")
+endif()
 string(REGEX REPLACE "[0-9]+ warnings generated\\.[^\n]*\n?" "" output "${output}")
 string(STRIP "${output}" output)
 string(REGEX REPLACE "[0-9]+ warnings generated\\.[^\n]*\n?" "" error_output "${error_output}")

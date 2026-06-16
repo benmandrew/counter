@@ -22,7 +22,7 @@ struct Config {
     static constexpr bool run_implication_filter = false;
 
     // --- External tool timeouts ---
-    static constexpr std::chrono::seconds black_timeout{1};
+    static constexpr std::chrono::seconds black_timeout{10};
 
     // --- Evolution ---
     static constexpr double crossover_rate = 0.1;

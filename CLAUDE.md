@@ -58,11 +58,13 @@ Every header file in `include/` must have a corresponding `.rst` page under `doc
 
 ```
 include/
+  crash/          — crash_handler.hpp
   fitness/        — syntactic_similarity, semantic_similarity, model_counter, transfer_matrix
   genetic/        — mutation, crossover, generation
   prop_formula.hpp
   requirement.hpp — Requirement, Specification, Timing variants, requirement_to_ltl
 src/
+  crash/          — crash_handler.cpp (SIGSEGV/SIGABRT/SIGFPE handler), signal_tracer.cpp
   fitness/
   genetic/
   prop_formula/   — core, parser, cnf, similarity, transform, dimacs_api

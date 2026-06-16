@@ -8,9 +8,14 @@ Repairing unrealisable FRETish specifications.
    :caption: Core
 
    api/config
-   api/crash_handler
    api/prop_formula
    api/requirement
+
+.. toctree::
+   :maxdepth: 1
+   :caption: Crash
+
+   api/crash/crash_handler
 
 .. toctree::
    :maxdepth: 1

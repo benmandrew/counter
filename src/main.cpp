@@ -11,7 +11,7 @@
 #include <vector>
 
 #include "config.hpp"
-#include "crash_handler.hpp"
+#include "crash/crash_handler.hpp"
 #include "filter/implication.hpp"
 #include "fitness/halstead.hpp"
 #include "fitness/semantic_similarity.hpp"

@@ -68,7 +68,8 @@ struct Requirement {
     Formula m_response;
     /// The timing constraint for satisfaction
     Timing m_timing;
-    /// An LTL formula representing the requirement semantics
+    /// The LTL formula equivalent to (m_trigger, m_response, m_timing),
+    /// derived automatically by the constructor via requirement_to_ltl.
     std::optional<std::string> m_ltl;
 
     friend bool operator<(const Requirement& lhs, const Requirement& rhs);
@@ -76,8 +77,6 @@ struct Requirement {
 
     explicit Requirement(Formula trigger, Formula response,
                          const Timing& timing);
-    explicit Requirement(Formula trigger, Formula response,
-                         const Timing& timing, const std::string& ltl);
 
     /// Returns a one-line human-readable string of the form
     /// "If <trigger>, <timing> <response>".

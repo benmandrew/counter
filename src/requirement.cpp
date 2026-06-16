@@ -89,14 +89,8 @@ Requirement::Requirement(Formula trigger, Formula response,
                          const Timing& timing)
     : m_trigger(std::move(trigger)),
       m_response(std::move(response)),
-      m_timing(timing) {}
-
-Requirement::Requirement(Formula trigger, Formula response,
-                         const Timing& timing, const std::string& ltl)
-    : m_trigger(std::move(trigger)),
-      m_response(std::move(response)),
       m_timing(timing),
-      m_ltl(ltl) {}
+      m_ltl(requirement_to_ltl(*this)) {}
 
 bool operator<(const Requirement& lhs, const Requirement& rhs) {
     if (lhs.m_timing < rhs.m_timing || rhs.m_timing < lhs.m_timing) {

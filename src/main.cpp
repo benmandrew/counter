@@ -120,7 +120,7 @@ std::vector<ScoredSpecification> original_population(
     return population;
 }
 
-std::optional<std::size_t> parse_seed_arg(int argc, char* const* argv) {
+std::optional<std::size_t> parse_seed_arg(int argc, const char* const* argv) {
     for (int i = 1; i < argc - 1; ++i) {
         if (argv[i] != nullptr && std::string(argv[i]) == "--seed") {
             if (argv[i + 1] != nullptr) {
@@ -149,7 +149,7 @@ std::string format_crash_metadata(std::size_t seed) {
     return out.str();
 }
 
-RandomSource init_random_source(int argc, char* const* argv) {
+RandomSource init_random_source(int argc, const char* const* argv) {
     const std::optional<std::size_t> seed_arg = parse_seed_arg(argc, argv);
     std::random_device rng_dev;
     const std::size_t seed =
@@ -272,7 +272,7 @@ void print_top_specifications(
     }
 }
 
-int main(int argc, char* const argv[]) {
+int main(int argc, const char* const argv[]) {
     if (argc == 0 || argv == nullptr || argv[0] == nullptr) {
         std::cerr << "fatal: missing argv[0]\n";
         return 1;

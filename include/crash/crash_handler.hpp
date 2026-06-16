@@ -9,7 +9,7 @@
 /// `cpptrace::register_terminate_handler()` for uncaught exceptions.
 /// \a executable_name should be `argv[0]` so the handler can locate the
 /// `signal_tracer` binary in the same directory as the executable.
-void init_cpptrace(char* executable_name);
+void init_cpptrace(const char* executable_name);
 
 /// Stores \a text to be written at the top of any crash report produced by the
 /// signal handler. Safe to call any time after init_cpptrace(). Calling it

@@ -87,7 +87,7 @@ void run_suite(std::string_view suite_name) {
 
 }  // namespace
 
-int main(int argc, char* const argv[]) {
+int main(int argc, const char* const argv[]) {
     try {
         if (argc == 1) {
             run_transfer_matrix_tests();

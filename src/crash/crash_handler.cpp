@@ -177,7 +177,7 @@ void register_crash_metadata(const std::string& text) {
     std::memcpy(g_crash_metadata.data(), text.c_str(), text.size() + 1);
 }
 
-void init_cpptrace(char* executable_name) {
+void init_cpptrace(const char* executable_name) {
     const std::filesystem::path executable_path =
         std::filesystem::absolute(std::filesystem::path(executable_name));
     copy_path_to_buffer(g_tracer_path,

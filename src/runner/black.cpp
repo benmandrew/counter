@@ -150,7 +150,7 @@ std::string black_executable_path() {
 std::optional<bool> SatisfiabilityChecker::check_satisfiability(
     const std::string& ltl_formula) {
     {
-        std::lock_guard<std::mutex> lock(m_cache_mutex);
+        std::scoped_lock lock(m_cache_mutex);
         const auto found = m_cache.find(ltl_formula);
         if (found != m_cache.end()) {
             n_cache_hits++;
@@ -168,7 +168,7 @@ std::optional<bool> SatisfiabilityChecker::check_satisfiability(
     const double elapsed =
         std::chrono::duration<double>(std::chrono::steady_clock::now() - start)
             .count();
-    std::lock_guard<std::mutex> lock(m_cache_mutex);
+    std::scoped_lock lock(m_cache_mutex);
     total_time_s += elapsed;
     if (result.m_timed_out) {
         n_timeouts++;

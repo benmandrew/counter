@@ -2,10 +2,19 @@
 # strips the two noisy line types from its output before printing:
 #   - "clang-tidy-XX ... file.cpp" invocation echoes
 #   - "N warnings generated." per-TU diagnostic summaries
+set(CLANG_TIDY_BINARY_ARGS "")
+if(CLANG_TIDY_EXE)
+    # run-clang-tidy wrapper scripts default to a version-suffixed binary
+    # name baked into the script itself (e.g. clang-tidy-14); pin it
+    # explicitly so it can't silently diverge from the clang-tidy CMake
+    # resolved on PATH.
+    set(CLANG_TIDY_BINARY_ARGS "-clang-tidy-binary=${CLANG_TIDY_EXE}")
+endif()
 execute_process(
     COMMAND ${RUN_CLANG_TIDY_EXE}
         -quiet
         -p ${BUILD_DIR}
+        ${CLANG_TIDY_BINARY_ARGS}
         ${FILES_PATTERN}
     OUTPUT_VARIABLE output
     ERROR_VARIABLE error_output

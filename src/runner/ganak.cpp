@@ -180,7 +180,7 @@ Count run_ganak_on_formula(const std::string& formula, unsigned seed) {
     static std::mutex cache_mutex;
     const std::string key = formula + "|" + std::to_string(seed);
     {
-        std::lock_guard<std::mutex> lock(cache_mutex);
+        std::scoped_lock lock(cache_mutex);
         const auto found = cache.find(key);
         if (found != cache.end()) {
             GanakStats::n_cache_hits++;
@@ -197,7 +197,7 @@ Count run_ganak_on_formula(const std::string& formula, unsigned seed) {
         std::chrono::duration<double>(std::chrono::steady_clock::now() - start)
             .count();
     std::remove(formula_dimacs_path.c_str());
-    std::lock_guard<std::mutex> lock(cache_mutex);
+    std::scoped_lock lock(cache_mutex);
     GanakStats::total_time_s += elapsed;
     cache.emplace(key, count);
     return count;

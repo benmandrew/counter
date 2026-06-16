@@ -29,7 +29,7 @@ std::string current_time_string() {
     const auto now = std::chrono::system_clock::now();
     const std::time_t now_time = std::chrono::system_clock::to_time_t(now);
     std::tm local_time = {};
-#if defined(_WIN32)
+#ifdef _WIN32
     localtime_s(&local_time, &now_time);
 #else
     localtime_r(&now_time, &local_time);

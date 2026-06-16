@@ -64,7 +64,7 @@ class AggregateWeightedFitnessFunction {
     /// not positive.
     double operator()(const Specification& spec) const {
         {
-            std::lock_guard<std::mutex> lock(*m_cache_mutex);
+            std::scoped_lock lock(*m_cache_mutex);
             const auto cache_iter = m_cache.find(spec);
             if (cache_iter != m_cache.end()) {
                 n_cache_hits++;
@@ -78,7 +78,7 @@ class AggregateWeightedFitnessFunction {
         }
         const double result =
             m_total_weight > 0.0 ? weighted_sum / m_total_weight : 0.0;
-        std::lock_guard<std::mutex> lock(*m_cache_mutex);
+        std::scoped_lock lock(*m_cache_mutex);
         m_cache.emplace(spec, result);
         return result;
     }

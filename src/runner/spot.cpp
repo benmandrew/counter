@@ -195,7 +195,7 @@ std::string run_ltl2tgba_for_counting(const std::string& formula) {
     static std::unordered_map<std::string, std::string> cache;
     static std::mutex cache_mutex;
     {
-        std::lock_guard<std::mutex> lock(cache_mutex);
+        std::scoped_lock lock(cache_mutex);
         const auto found = cache.find(formula);
         if (found != cache.end()) {
             Ltl2tgbaStats::n_cache_hits++;
@@ -218,7 +218,7 @@ std::string run_ltl2tgba_for_counting(const std::string& formula) {
                                  std::to_string(result.m_exit_code) +
                                  " for formula: " + formula);
     }
-    std::lock_guard<std::mutex> lock(cache_mutex);
+    std::scoped_lock lock(cache_mutex);
     Ltl2tgbaStats::total_time_s += elapsed;
     cache.emplace(formula, result.m_output);
     return result.m_output;
@@ -233,7 +233,7 @@ bool RealizabilityChecker::check_realizability(
                                   join_comma(specification.m_in_atoms) + "|" +
                                   join_comma(specification.m_out_atoms);
     {
-        std::lock_guard<std::mutex> lock(m_cache_mutex);
+        std::scoped_lock lock(m_cache_mutex);
         const auto found = m_cache.find(cache_key);
         if (found != m_cache.end()) {
             n_cache_hits++;
@@ -256,7 +256,7 @@ bool RealizabilityChecker::check_realizability(
         std::chrono::duration<double>(std::chrono::steady_clock::now() - start)
             .count();
     const bool realizable = parse_realizability_output(result);
-    std::lock_guard<std::mutex> lock(m_cache_mutex);
+    std::scoped_lock lock(m_cache_mutex);
     total_time_s += elapsed;
     m_cache.emplace(cache_key, realizable);
     return realizable;

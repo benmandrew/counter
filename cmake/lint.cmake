@@ -41,9 +41,16 @@ endif()
 # --- clang-tidy ---
 
 if(RUN_CLANG_TIDY_EXE)
+    # run-clang-tidy wrapper scripts default -clang-tidy-binary to a
+    # version-suffixed name (e.g. clang-tidy-14) baked into the script
+    # itself, which silently diverges from whichever "clang-tidy" resolves
+    # to on PATH if multiple LLVM versions are installed (older versions can
+    # be missing checks that newer .clang-tidy configs rely on). Pin it
+    # explicitly to the same binary CLANG_TIDY_EXE resolved to.
     add_custom_target(lint-clang-tidy
         COMMAND ${CMAKE_COMMAND}
             -DRUN_CLANG_TIDY_EXE=${RUN_CLANG_TIDY_EXE}
+            -DCLANG_TIDY_EXE=${CLANG_TIDY_EXE}
             -DBUILD_DIR=${CMAKE_BINARY_DIR}
             "-DFILES_PATTERN=^${CMAKE_CURRENT_SOURCE_DIR}/(src|test)/.*\\.cpp$"
             -P ${CMAKE_CURRENT_SOURCE_DIR}/cmake/run_clang_tidy.cmake

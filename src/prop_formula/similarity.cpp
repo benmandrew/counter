@@ -66,12 +66,12 @@ std::unordered_map<std::size_t, std::size_t> collect_subformula_ids(
                 key.m_right = ids[node.m_right];
                 break;
         }
-        const auto [it, inserted] = id_pool.emplace(key, next_id);
+        const auto [pool_iter, inserted] = id_pool.emplace(key, next_id);
         if (inserted) {
             ids[index] = next_id;
             ++next_id;
         } else {
-            ids[index] = it->second;
+            ids[index] = pool_iter->second;
         }
         ++counts[ids[index]];
     }

@@ -13,7 +13,7 @@
 
 #include "requirement.hpp"
 
-#if defined(COUNTER_USE_UINT128)
+#ifdef COUNTER_USE_UINT128
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wpedantic"
 using Count = unsigned __int128;
@@ -69,7 +69,7 @@ inline bool count_mul_overflow(Count lhs, Count rhs, Count& result) {
 /// @param value The Count value to convert
 /// @return A string representation in decimal
 inline std::string count_to_string(Count value) {
-#if defined(COUNTER_USE_UINT128)
+#ifdef COUNTER_USE_UINT128
     if (value == 0) {
         return "0";
     }
@@ -99,7 +99,7 @@ inline Count parse_count_decimal_or_throw(std::string_view text) {
         assert(std::isdigit(static_cast<unsigned char>(character)));
         const auto digit = static_cast<Count>(character - '0');
         assert(value <= (max_value - digit) / 10U);
-        value = value * 10U + digit;
+        value = (value * 10U) + digit;
     }
     return value;
 }

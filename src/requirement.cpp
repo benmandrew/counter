@@ -133,7 +133,7 @@ Specification::Specification(std::vector<Requirement> assumptions,
         std::set<Requirement> seen;
         std::vector<Requirement> unique;
         for (auto& req : reqs) {
-            auto [it, inserted] = seen.insert(req);
+            auto [seen_iter, inserted] = seen.insert(req);
             if (inserted) {
                 unique.push_back(std::move(req));
             }

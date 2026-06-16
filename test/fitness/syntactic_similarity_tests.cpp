@@ -20,8 +20,8 @@ Specification make_spec(
     std::initializer_list<std::pair<const char*, const char*>> reqs) {
     std::vector<Requirement> req_vec;
     req_vec.reserve(reqs.size());
-    for (const auto& [t, r] : reqs) {
-        req_vec.push_back(make_req(t, r));
+    for (const auto& [trigger, response] : reqs) {
+        req_vec.push_back(make_req(trigger, response));
     }
     return Specification({}, std::move(req_vec), {}, {});
 }

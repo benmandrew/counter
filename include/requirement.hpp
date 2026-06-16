@@ -126,6 +126,13 @@ struct State {
 /// and response boolean valuations: {(T,R) | T,R ∈ {true, false}}.
 std::vector<State> canonical_states();
 
+/// Returns true if any assumption or guarantee has a trigger that is the
+/// literal atom "false" (e.g. after simplifying "!(true)"). Such a
+/// requirement is vacuously satisfied by every trace and imposes no
+/// constraint, so specifications containing one should be excluded from the
+/// population rather than treated as ordinary candidates.
+bool specification_has_false_trigger(const Specification& specification);
+
 /// Converts a Timing enum value to a human-readable string representation.
 std::string to_string(const Timing& timing);
 

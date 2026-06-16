@@ -97,6 +97,35 @@ void test_after_ticks_two() {
         "requirement_to_ltl: AfterTicks(2) should expand to !R & X(!R & X(R))");
 }
 
+void test_specification_has_false_trigger_detects_assumption() {
+    const Specification spec(
+        {Requirement(Formula("false"), Formula("r"), timing::immediately())},
+        {Requirement(Formula("t"), Formula("r"), timing::immediately())}, {"t"},
+        {"r"});
+    expect(specification_has_false_trigger(spec),
+           "specification_has_false_trigger: should detect a false trigger "
+           "in an assumption");
+}
+
+void test_specification_has_false_trigger_detects_guarantee() {
+    const Specification spec(
+        {},
+        {Requirement(Formula("false"), Formula("r"), timing::immediately())},
+        {"t"}, {"r"});
+    expect(specification_has_false_trigger(spec),
+           "specification_has_false_trigger: should detect a false trigger "
+           "in a guarantee");
+}
+
+void test_specification_has_false_trigger_false_for_normal_spec() {
+    const Specification spec(
+        {}, {Requirement(Formula("t"), Formula("r"), timing::immediately())},
+        {"t"}, {"r"});
+    expect(!specification_has_false_trigger(spec),
+           "specification_has_false_trigger: should not flag a normal "
+           "trigger");
+}
+
 }  // namespace
 
 void run_requirement_tests() {
@@ -112,4 +141,7 @@ void run_requirement_tests() {
     test_after_ticks_zero();
     test_after_ticks_one();
     test_after_ticks_two();
+    test_specification_has_false_trigger_detects_assumption();
+    test_specification_has_false_trigger_detects_guarantee();
+    test_specification_has_false_trigger_false_for_normal_spec();
 }

@@ -121,10 +121,23 @@ bool is_true_formula(const Formula& fml) {
     return fml.kind() == Formula::Kind::Atom && fml.atom_name() == "true";
 }
 
+bool is_false_formula(const Formula& fml) {
+    return fml.kind() == Formula::Kind::Atom && fml.atom_name() == "false";
+}
+
 std::optional<Formula> simplify_not(const Formula& node) {
     const auto child = node.unary_child();
-    if (child && child->kind() == Formula::Kind::Not) {
+    if (!child) {
+        return std::nullopt;
+    }
+    if (child->kind() == Formula::Kind::Not) {
         return child->unary_child();
+    }
+    if (is_true_formula(*child)) {
+        return Formula("false");
+    }
+    if (is_false_formula(*child)) {
+        return Formula{};
     }
     return std::nullopt;
 }

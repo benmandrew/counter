@@ -120,6 +120,16 @@ void test_simplify_double_negation() {
     expect(fml.to_string() == "A", "simplify: !!A -> A");
 }
 
+void test_simplify_negated_constants() {
+    Formula fml = Formula::make_unary(Formula::Kind::Not, Formula{});
+    fml.simplify();
+    expect(fml.to_string() == "false", "simplify: !true -> false");
+
+    fml = Formula::make_unary(Formula::Kind::Not, Formula::make_atom("false"));
+    fml.simplify();
+    expect(fml.to_string() == "true", "simplify: !false -> true");
+}
+
 void test_simplify_compound() {
     // (A & A) -> A  =>  A -> A  =>  true
     Formula inner = Formula::make_binary(
@@ -140,5 +150,6 @@ void run_prop_formula_rewrite_tests() {
     test_simplify_excluded_middle();
     test_simplify_with_true();
     test_simplify_double_negation();
+    test_simplify_negated_constants();
     test_simplify_compound();
 }

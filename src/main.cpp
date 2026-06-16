@@ -164,6 +164,13 @@ std::vector<ScoredSpecification> run_evolution(
     const AggregateWeightedFitnessFunction& fitness_function,
     RandomSource& random_source) {
     const std::size_t pop_size = population.size();
+    // A false trigger is vacuously satisfied by every trace, so it imposes
+    // no constraint; forbid it from surviving as a breeding candidate rather
+    // than letting the fitness function alone discourage it.
+    const std::vector<FilterFunction> filter_functions = {
+        make_predicate_filter([](const Specification& spec) {
+            return !specification_has_false_trigger(spec);
+        })};
     for (std::size_t gen_idx = 0; gen_idx < Config::generations; ++gen_idx) {
         const auto start = std::chrono::steady_clock::now();
         auto on_progress = [&](std::size_t done, std::size_t total) {
@@ -175,8 +182,9 @@ std::vector<ScoredSpecification> run_evolution(
                       << std::fixed << std::setprecision(2) << elapsed << "s"
                       << std::flush;
         };
-        population = evolve_generation(population, pop_size, fitness_function,
-                                       {}, random_source, on_progress);
+        population =
+            evolve_generation(population, pop_size, fitness_function,
+                              filter_functions, random_source, on_progress);
         const double elapsed = std::chrono::duration<double>(
                                    std::chrono::steady_clock::now() - start)
                                    .count();
@@ -191,8 +199,12 @@ std::vector<Specification> collect_realizable_specifications(
     const std::vector<ScoredSpecification>& population) {
     std::vector<Specification> realizable_vec;
     for (const ScoredSpecification& scored : population) {
+        // The per-generation filter only screens breeding parents, so a
+        // false-triggered offspring produced in the final generation would
+        // otherwise never be re-screened before being reported here.
         if (specification_status(scored.specification, global_sat_checker(),
-                                 global_real_checker()) == 1.0) {
+                                 global_real_checker()) == 1.0 &&
+            !specification_has_false_trigger(scored.specification)) {
             realizable_vec.push_back(scored.specification);
         }
     }

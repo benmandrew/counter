@@ -232,6 +232,16 @@ std::string Specification::to_string() const {
     return result;
 }
 
+bool specification_has_false_trigger(const Specification& specification) {
+    auto trigger_is_false = [](const Requirement& req) {
+        return req.m_trigger.atom_name() == "false";
+    };
+    return std::any_of(specification.m_assumptions.begin(),
+                       specification.m_assumptions.end(), trigger_is_false) ||
+           std::any_of(specification.m_guarantees.begin(),
+                       specification.m_guarantees.end(), trigger_is_false);
+}
+
 std::string requirement_to_ltl(const Requirement& requirement) {
     const std::string trigger_str =
         "(" + requirement.m_trigger.to_string() + ")";

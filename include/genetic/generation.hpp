@@ -60,26 +60,28 @@ std::vector<Specification> filter_population(
     const std::vector<FilterFunction>& filter_functions);
 
 /// Evolves a population for one generation using truncation selection:
-///   1. Apply filter functions sequentially to produce survivors
-///   2. Score survivors with fitness functions
-///   3. Sort survivors by fitness (descending) and take the top target_size
-///   4. For each of the top candidates, apply crossover and mutation to produce
-///      an offspring
+///   1. Sort the population by fitness (descending) and take the top
+///      target_size as parents
+///   2. For each parent, apply crossover and mutation to produce an offspring
+///   3. Apply filter functions sequentially to the offspring to produce
+///      survivors
+///   4. Score survivors with fitness functions
 ///
-/// If fewer survivors remain after filtering than target_size, all survivors
-/// are used as parents.
+/// If the population is smaller than target_size, all of it is used as
+/// parents.
 ///
 /// @param population        Current generation's specifications
 /// @param target_size       Number of offspring to produce
 /// @param fitness_function  Non-empty weighted fitness function for scoring
-/// @param filter_functions  Filters applied to the population before scoring
+/// @param filter_functions  Filters applied to the offspring after crossover
+///                          and mutation, before scoring
 /// @param random_source     Random source for crossover and mutation
 /// @param on_progress       Optional callback invoked after each individual is
 ///                          scored; receives (done, total) counts
 /// @return                  Next generation of up to target_size specifications
 /// @throws std::invalid_argument if random_source is not callable, if
 ///                               fitness_function is empty, if rates are
-///                               outside [0, 1], or if the filtered population
+///                               outside [0, 1], or if the filtered offspring
 ///                               is empty
 std::vector<ScoredSpecification> evolve_generation(
     const std::vector<ScoredSpecification>& population, std::size_t target_size,

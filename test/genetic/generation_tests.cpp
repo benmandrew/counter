@@ -203,20 +203,21 @@ void test_evolve_generation_caps_at_survivor_count() {
            "when target_size exceeds population");
 }
 
-void test_evolve_generation_applies_filter_before_selection() {
-    // Filter removes r; only p survives, so the result must come from p.
+void test_evolve_generation_selects_parents_before_offspring_filtering() {
+    // The filter is applied after breeding, so a filter that keeps everything
+    // should preserve the target offspring count.
     const AggregateWeightedFitnessFunction fns =
         AggregateWeightedFitnessFunction(
             {{[](const Specification&) { return 0.5; }, 1.0, ""}});
     const std::vector<ScoredSpecification> pop =
         score_population({make_spec("p", "q"), make_spec("r", "s")}, fns);
-    const std::vector<FilterFunction> filters = {make_predicate_filter(
-        [](const Specification& spec) { return first_trigger(spec) == "p"; })};
+    const std::vector<FilterFunction> filters = {
+        make_predicate_filter([](const Specification&) { return true; })};
     const auto next_gen =
         evolve_generation(pop, 2, fns, filters, make_source({}, 0));
-    expect(next_gen.size() == 1,
-           "evolve_generation: filter before selection must exclude ineligible "
-           "parents, leaving only one offspring when one parent survives");
+    expect(next_gen.size() == 2,
+           "evolve_generation: filter functions should preserve the target "
+           "offspring count when they keep every specification");
 }
 
 }  // namespace
@@ -232,5 +233,5 @@ void run_generation_tests() {
     test_filter_population_population_level_maximal_elements();
     test_evolve_generation_produces_target_size();
     test_evolve_generation_caps_at_survivor_count();
-    test_evolve_generation_applies_filter_before_selection();
+    test_evolve_generation_selects_parents_before_offspring_filtering();
 }

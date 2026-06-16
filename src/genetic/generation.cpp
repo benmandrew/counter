@@ -122,43 +122,25 @@ std::vector<ScoredSpecification> evolve_generation(
     assert(!fitness_functions.empty());
     assert(Config::crossover_rate >= 0.0 && Config::crossover_rate <= 1.0);
     assert(Config::mutation_rate >= 0.0 && Config::mutation_rate <= 1.0);
+    assert(!population.empty());
 
-    // Filter input population to select eligible parents.
-    std::vector<Specification> raw_pop;
-    raw_pop.reserve(population.size());
-    for (const auto& scored_spec : population) {
-        raw_pop.push_back(scored_spec.specification);
-    }
-    const std::vector<Specification> filtered_specs =
-        filter_population(raw_pop, filter_functions);
-    assert(!filtered_specs.empty());
-
-    // Reconstruct scored list for eligible parents, preserving existing scores.
-    std::vector<ScoredSpecification> eligible;
-    eligible.reserve(filtered_specs.size());
-    for (const Specification& fspec : filtered_specs) {
-        for (const ScoredSpecification& scored : population) {
-            if (scored.specification == fspec) {
-                eligible.push_back(scored);
-                break;
-            }
-        }
-    }
-
+    // Select parents from the whole population, unfiltered: the filter only
+    // screens the offspring produced below, after crossover and mutation.
+    std::vector<ScoredSpecification> sorted_pop = population;
     std::sort(
-        eligible.begin(), eligible.end(),
+        sorted_pop.begin(), sorted_pop.end(),
         [](const ScoredSpecification& lhs, const ScoredSpecification& rhs) {
             return lhs.fitness > rhs.fitness;
         });
-    const std::size_t top_n = std::min(target_size, eligible.size());
+    const std::size_t top_n = std::min(target_size, sorted_pop.size());
     std::vector<Specification> next_generation;
     next_generation.reserve(top_n);
     for (std::size_t i = 0; i < top_n; ++i) {
-        Specification offspring = eligible[i].specification;
+        Specification offspring = sorted_pop[i].specification;
         if (probability_check(Config::crossover_rate, random_source)) {
             const std::size_t partner = random_source.next_index(top_n);
             offspring = crossover_specifications(
-                offspring, eligible[partner].specification, random_source);
+                offspring, sorted_pop[partner].specification, random_source);
         }
         if (probability_check(Config::mutation_rate, random_source)) {
             offspring = mutate_specification(offspring, random_source);
@@ -166,8 +148,12 @@ std::vector<ScoredSpecification> evolve_generation(
         next_generation.push_back(simplify_offspring(std::move(offspring)));
     }
 
+    const std::vector<Specification> filtered_offspring =
+        filter_population(next_generation, filter_functions);
+    assert(!filtered_offspring.empty());
+
     std::vector<ScoredSpecification> scored =
-        score_population(next_generation, fitness_functions, on_progress);
+        score_population(filtered_offspring, fitness_functions, on_progress);
     std::sort(
         scored.begin(), scored.end(),
         [](const ScoredSpecification& lhs, const ScoredSpecification& rhs) {

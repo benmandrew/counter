@@ -207,12 +207,13 @@ std::vector<ScoredSpecification> run_evolution(
         population =
             evolve_generation(population, pop_size, fitness_function,
                               filter_functions, random_source, on_progress);
+        const std::size_t n_survivors = population.size();
         const double elapsed = std::chrono::duration<double>(
                                    std::chrono::steady_clock::now() - start)
                                    .count();
         std::cout << "\r\033[KGeneration " << std::setw(2) << gen_idx + 1
                   << ": 100%  " << std::fixed << std::setprecision(2) << elapsed
-                  << "s\n";
+                  << "s  (" << n_survivors << " survived filtering)\n";
     }
     return population;
 }
@@ -221,8 +222,8 @@ std::vector<Specification> collect_realizable_specifications(
     const std::vector<ScoredSpecification>& population) {
     std::vector<Specification> realizable_vec;
     for (const ScoredSpecification& scored : population) {
-        // The per-generation filter only screens breeding parents, so a
-        // false-triggered offspring produced in the final generation would
+        // The per-generation filter only screens offspring during evolution,
+        // so a false-triggered result from the final generation would
         // otherwise never be re-screened before being reported here.
         if (specification_status(scored.specification, global_sat_checker(),
                                  global_real_checker()) == 1.0 &&

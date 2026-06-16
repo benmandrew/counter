@@ -22,7 +22,7 @@ jobs:
       - name: Install system dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y libfmt-dev doxygen graphviz libunwind-dev
+          sudo apt-get install -y libfmt-dev doxygen graphviz libunwind-dev cppcheck
 
       - name: Install cpplint, Sphinx, and upgrade CMake
         run: |

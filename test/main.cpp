@@ -1,9 +1,11 @@
+#include <chrono>
 #include <exception>
 #include <iostream>
 #include <stdexcept>
 #include <string>
 #include <string_view>
 
+#include "config.hpp"
 #include "test_suite.hpp"
 
 namespace {
@@ -88,6 +90,11 @@ void run_suite(std::string_view suite_name) {
 }  // namespace
 
 int main(int argc, const char* const argv[]) {
+    // Restore the larger pre-optimisation timeout for tests: the production
+    // default in config.hpp is now tuned tight for real runs, but CI has
+    // previously been slow enough to make that value flaky for tests that
+    // expect a definite SAT/UNSAT answer rather than a timeout.
+    Config::black_timeout = std::chrono::seconds{10};
     try {
         if (argc == 1) {
             run_transfer_matrix_tests();

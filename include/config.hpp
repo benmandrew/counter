@@ -7,11 +7,11 @@
 struct Config {
     // --- Run parameters ---
     static constexpr std::size_t generations = 10;
-    static constexpr std::size_t population_size = 100;
+    static constexpr std::size_t population_size = 1000;
 
     // --- Fitness weights ---
-    static constexpr double fitness_weight_syntactic = 0.25;
-    static constexpr double fitness_weight_semantic = 0.25;
+    static constexpr double fitness_weight_syntactic = 0.5;
+    static constexpr double fitness_weight_semantic = 0.5;
     static constexpr double fitness_weight_halstead = 0.1;
     static constexpr double fitness_weight_status = 0.5;
 
@@ -22,7 +22,13 @@ struct Config {
     static constexpr bool run_implication_filter = true;
 
     // --- External tool timeouts ---
-    static constexpr std::chrono::seconds black_timeout{10};
+    // Not constexpr: the test binary overrides this to a larger value at
+    // startup (see test/main.cpp) since this default is tuned for the
+    // common case during a real run, where a timeout is just a sound but
+    // conservative "implication not proven" result, not an error. CI
+    // environments can be slow enough that this value is too tight for
+    // some test assertions that expect a definite SAT/UNSAT answer.
+    inline static std::chrono::seconds black_timeout{2};
 
     // --- Evolution ---
     static constexpr double crossover_rate = 0.1;

@@ -26,8 +26,11 @@ void test_semantic_similarity_formula_value_explicit_step_count() {
     const Requirement other_requirement{Formula("P"), Formula("P|Q"),
                                         timing::immediately()};
     const double score = semantic_similarity(requirement, other_requirement, 1);
-    expect(std::fabs(score - 0.875) < 1e-12,
-           "semantic-similarity: expected score 0.875 from formula");
+    // (P -> Q) traces are a strict subset of (P -> P|Q) traces, so the
+    // conjunction count equals the (P -> Q) count exactly: first == 1.0,
+    // second == 0.75, harmonic mean == 2*1.0*0.75/1.75 == 6/7.
+    expect(std::fabs(score - (6.0 / 7.0)) < 1e-12,
+           "semantic-similarity: expected score 6/7 from formula");
 }
 
 void test_semantic_similarity_default_overload_matches_explicit_step_count() {
@@ -78,6 +81,24 @@ void test_semantic_similarity_specification_averages_requirements() {
     expect(std::fabs(score - expected) < 1e-12,
            "semantic-similarity: specification score should average only the "
            "requirement pairs that differ, excluding unchanged pairs");
+}
+
+// A requirement weakened to a tautology (trigger entails response trivially,
+// so it accepts every trace) trivially contains the original's accepting
+// set, making the "recall" ratio exactly 1 regardless of how small the
+// original's footprint is. Under the old arithmetic mean of the two
+// directional ratios this floored the score at 0.5 no matter how vacuous the
+// weakening was; the harmonic mean lets a near-zero "precision" ratio pull
+// the score down toward 0 instead.
+void test_semantic_similarity_tautology_scores_near_zero() {
+    const Requirement original{Formula("P"), Formula("Q"),
+                               timing::after_ticks(1)};
+    const Requirement tautology{Formula("Q"), Formula("Q"),
+                                timing::within_ticks(2)};
+    const double score = semantic_similarity(tautology, original, 20);
+    expect(score < 0.01,
+           "semantic-similarity: a requirement weakened to a tautology "
+           "should score near 0, not float at the old 0.5 floor");
 }
 
 // Two distinct eventually-timing requirements. Their conjunction produces a
@@ -133,6 +154,7 @@ void run_semantic_similarity_tests() {
     test_semantic_similarity_default_overload_matches_explicit_step_count();
     test_semantic_similarity_identical_specifications_score_one();
     test_semantic_similarity_specification_averages_requirements();
+    test_semantic_similarity_tautology_scores_near_zero();
     test_semantic_similarity_liveness_in_range();
     test_semantic_similarity_all_timings_in_range();
 }

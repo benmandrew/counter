@@ -77,11 +77,20 @@ double semantic_similarity_from_counts(const SemanticSimilarityCounts& counts) {
         counts.m_other_requirement_count == 0) {
         return 0.0;
     }
-    double first =
+    const double first =
         ratio_or_throw(counts.m_conjunction_count, counts.m_requirement_count);
-    double second = ratio_or_throw(counts.m_conjunction_count,
-                                   counts.m_other_requirement_count);
-    return (first + second) * 0.5;
+    const double second = ratio_or_throw(counts.m_conjunction_count,
+                                         counts.m_other_requirement_count);
+    // Harmonic mean of the two directional containment ratios: unlike the
+    // arithmetic mean, this can't be pulled up to 0.5 by one ratio alone
+    // hitting 1 (e.g. a requirement weakened to a tautology, which trivially
+    // contains the original and makes second == 1 regardless of how small
+    // first is). Mutually exclusive requirements give first == second == 0,
+    // which the formula below would otherwise divide as 0/0.
+    if (first == 0.0 && second == 0.0) {
+        return 0.0;
+    }
+    return (2.0 * first * second) / (first + second);
 }
 
 }  // namespace

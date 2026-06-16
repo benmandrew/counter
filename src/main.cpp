@@ -35,7 +35,7 @@ AggregateWeightedFitnessFunction get_fitness_function(
     }
     if (Config::fitness_weight_semantic > 0.0) {
         auto semsim = [original_spec](const Specification& spec) -> double {
-            return semantic_similarity(spec, original_spec, 10);
+            return semantic_similarity(spec, original_spec);
         };
         fitness_functions.push_back(
             {semsim, Config::fitness_weight_semantic, "semantic"});
@@ -251,7 +251,8 @@ std::vector<Specification> filter_maximal_specifications(
                   << std::setprecision(2) << elapsed << "s  ("
                   << ImplicationFilterStats::n_comparisons << " cmp, "
                   << ImplicationFilterStats::n_skipped << " skip, "
-                  << ImplicationFilterStats::n_duplicates << " dup)"
+                  << ImplicationFilterStats::n_duplicates << " dup, "
+                  << ImplicationFilterStats::n_timeouts << " timeout)"
                   << std::flush;
     };
     const FilterFunction implication_filter =
@@ -265,7 +266,8 @@ std::vector<Specification> filter_maximal_specifications(
               << std::setprecision(2) << impl_elapsed << "s  ("
               << ImplicationFilterStats::n_comparisons << " cmp, "
               << ImplicationFilterStats::n_skipped << " skip, "
-              << ImplicationFilterStats::n_duplicates << " dup)\n";
+              << ImplicationFilterStats::n_duplicates << " dup, "
+              << ImplicationFilterStats::n_timeouts << " timeout)\n";
     return maximal;
 }
 

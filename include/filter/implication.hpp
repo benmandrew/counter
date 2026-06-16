@@ -18,6 +18,8 @@ struct ImplicationFilterStats {
     /// population, and so were excluded from the pairwise sweep entirely
     /// (their result is copied from their representative instead).
     inline static std::atomic<std::size_t> n_duplicates{0};
+    /// black calls that timed out (inconclusive) during this sweep.
+    inline static std::atomic<std::size_t> n_timeouts{0};
 };
 
 /// Returns a FilterFunction that keeps only the maximal specifications of the

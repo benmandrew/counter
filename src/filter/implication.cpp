@@ -29,7 +29,12 @@ bool requirement_implies(const Requirement& from, const Requirement& dest,
     assert(from.m_ltl.has_value() && dest.m_ltl.has_value());
     const std::optional<bool> sat = checker.check_satisfiability(
         "(" + *from.m_ltl + ") & !(" + *dest.m_ltl + ")");
-    return sat.has_value() && !sat.value();
+    if (!sat.has_value()) {
+        ImplicationFilterStats::n_timeouts.fetch_add(1,
+                                                     std::memory_order_relaxed);
+        return false;
+    }
+    return !sat.value();
 }
 
 // Returns true if every requirement in `to_reqs` is implied by some
@@ -188,6 +193,7 @@ FilterFunction make_implication_filter(
         ImplicationFilterStats::n_skipped.store(0, std::memory_order_relaxed);
         ImplicationFilterStats::n_duplicates.store(0,
                                                    std::memory_order_relaxed);
+        ImplicationFilterStats::n_timeouts.store(0, std::memory_order_relaxed);
         if (pop.size() <= 1) {
             return pop;
         }

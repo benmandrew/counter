@@ -4,7 +4,6 @@
 #include <atomic>
 #include <cassert>
 #include <cstdint>
-#include <deque>
 #include <future>
 #include <optional>
 #include <string>
@@ -12,6 +11,7 @@
 #include <utility>
 #include <vector>
 
+#include "bounded_async.hpp"
 #include "requirement.hpp"
 
 namespace {
@@ -84,32 +84,22 @@ std::vector<uint8_t> compute_subsumed(
     }
     const std::size_t n_hw = std::thread::hardware_concurrency();
     const std::size_t max_in_flight = n_hw > 0 ? n_hw * 2 : 1;
-    std::deque<std::future<void>> in_flight;
     std::size_t completed = 0;
-    for (const auto& pair : pairs) {
-        const std::size_t from_idx = pair.first;
-        const std::size_t to_idx = pair.second;
-        if (in_flight.size() >= max_in_flight) {
-            in_flight.front().get();
-            in_flight.pop_front();
-            ++completed;
-            if (on_progress) {
-                on_progress(completed, pairs.size());
-            }
-        }
-        in_flight.push_back(std::async(
-            std::launch::async, [&checker, &ltls, &subsumed, from_idx, to_idx] {
+    run_bounded_async(
+        pairs.size(), max_in_flight,
+        [&checker, &ltls, &subsumed, &pairs](std::size_t idx) {
+            const std::size_t from_idx = pairs[idx].first;
+            const std::size_t to_idx = pairs[idx].second;
+            return std::async(std::launch::async, [&checker, &ltls, &subsumed,
+                                                   from_idx, to_idx] {
                 check_pair(ltls, subsumed, checker, from_idx, to_idx);
-            }));
-    }
-    while (!in_flight.empty()) {
-        in_flight.front().get();
-        in_flight.pop_front();
-        ++completed;
-        if (on_progress) {
-            on_progress(completed, pairs.size());
-        }
-    }
+            });
+        },
+        [&on_progress, &completed, total = pairs.size()](std::size_t) {
+            if (on_progress) {
+                on_progress(++completed, total);
+            }
+        });
     std::vector<uint8_t> result(pop_size);
     for (std::size_t i = 0; i < pop_size; ++i) {
         result[i] = subsumed[i].load();

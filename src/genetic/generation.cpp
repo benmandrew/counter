@@ -2,12 +2,12 @@
 
 #include <algorithm>
 #include <cassert>
-#include <deque>
 #include <future>
 #include <numeric>
 #include <utility>
 #include <vector>
 
+#include "bounded_async.hpp"
 #include "config.hpp"
 
 namespace {
@@ -50,34 +50,23 @@ std::vector<ScoredSpecification> score_population(
     assert(!fitness_function.empty());
     const std::size_t max_in_flight =
         Config::n_hw_threads > 0 ? Config::n_hw_threads * 4 : 1;
-    std::vector<ScoredSpecification> scored;
-    scored.reserve(population.size());
+    std::vector<ScoredSpecification> scored(population.size());
     std::size_t done = 0;
-    std::deque<std::pair<const Specification*, std::future<double>>> in_flight;
-    for (std::size_t i = 0; i < population.size(); ++i) {
-        if (in_flight.size() >= max_in_flight) {
-            scored.push_back(
-                {*in_flight.front().first, in_flight.front().second.get()});
-            in_flight.pop_front();
+    run_bounded_async(
+        population.size(), max_in_flight,
+        [&fitness_function, &population](std::size_t idx) {
+            return std::async(std::launch::async,
+                              [&fitness_function, &spec = population[idx]] {
+                                  return fitness_function(spec);
+                              });
+        },
+        [&scored, &population, &on_progress, &done, total = population.size()](
+            std::size_t idx, double fitness) {
+            scored[idx] = {population[idx], fitness};
             if (on_progress) {
-                on_progress(++done, population.size());
+                on_progress(++done, total);
             }
-        }
-        in_flight.emplace_back(
-            &population[i],
-            std::async(std::launch::async,
-                       [&fitness_function, &spec = population[i]] {
-                           return fitness_function(spec);
-                       }));
-    }
-    while (!in_flight.empty()) {
-        scored.push_back(
-            {*in_flight.front().first, in_flight.front().second.get()});
-        in_flight.pop_front();
-        if (on_progress) {
-            on_progress(++done, population.size());
-        }
-    }
+        });
     return scored;
 }
 

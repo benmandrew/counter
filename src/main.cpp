@@ -261,7 +261,9 @@ std::vector<Specification> filter_maximal_specifications(
               << std::setprecision(2) << impl_elapsed << "s  ("
               << ImplicationFilterStats::n_comparisons << " comparisons, "
               << ImplicationFilterStats::n_skipped
-              << " skipped via subsumption)\n";
+              << " skipped via subsumption, "
+              << ImplicationFilterStats::n_duplicates
+              << " duplicate specs excluded)\n";
     return maximal;
 }
 

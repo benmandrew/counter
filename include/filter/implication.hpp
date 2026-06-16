@@ -14,6 +14,10 @@ struct ImplicationFilterStats {
     /// Unordered pairs skipped because one endpoint was already known
     /// subsumed by an earlier comparison.
     inline static std::atomic<std::size_t> n_skipped{0};
+    /// Specs that were exact duplicates of an earlier spec in the
+    /// population, and so were excluded from the pairwise sweep entirely
+    /// (their result is copied from their representative instead).
+    inline static std::atomic<std::size_t> n_duplicates{0};
 };
 
 /// Returns a FilterFunction that keeps only the maximal specifications of the

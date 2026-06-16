@@ -7,6 +7,7 @@
 #include <optional>
 #include <string>
 #include <thread>
+#include <unordered_map>
 #include <utility>
 #include <vector>
 
@@ -62,46 +63,74 @@ bool spec_implies(const Specification& from, const Specification& dest,
            all_implied_by_some(from.m_guarantees, dest.m_guarantees, checker);
 }
 
-// Checks one unordered pair {a, b} in both directions and marks whichever
-// side is strictly dominated, if any. Short-circuits if either endpoint is
-// already subsumed (the "subsumption optimisation": once a spec is known
-// redundant, no further comparison against it can change the outcome).
+// Checks one unordered pair of representative positions {a, b} in both
+// directions and marks whichever side is strictly dominated, if any.
+// Short-circuits if either endpoint is already subsumed (the "subsumption
+// optimisation": once a spec is known redundant, no further comparison
+// against it can change the outcome).
 void check_pair(const std::vector<Specification>& pop,
+                const std::vector<std::size_t>& representatives,
                 std::vector<std::atomic<uint8_t>>& subsumed,
-                SatisfiabilityChecker& checker, std::size_t a_idx,
-                std::size_t b_idx) {
-    if (subsumed[a_idx].load(std::memory_order_relaxed) != 0U ||
-        subsumed[b_idx].load(std::memory_order_relaxed) != 0U) {
+                SatisfiabilityChecker& checker, std::size_t a_pos,
+                std::size_t b_pos) {
+    if (subsumed[a_pos].load(std::memory_order_relaxed) != 0U ||
+        subsumed[b_pos].load(std::memory_order_relaxed) != 0U) {
         ImplicationFilterStats::n_skipped.fetch_add(1,
                                                     std::memory_order_relaxed);
         return;
     }
     ImplicationFilterStats::n_comparisons.fetch_add(1,
                                                     std::memory_order_relaxed);
-    const bool a_implies_b = spec_implies(pop[a_idx], pop[b_idx], checker);
-    const bool b_implies_a = spec_implies(pop[b_idx], pop[a_idx], checker);
+    const Specification& spec_a = pop[representatives[a_pos]];
+    const Specification& spec_b = pop[representatives[b_pos]];
+    const bool a_implies_b = spec_implies(spec_a, spec_b, checker);
+    const bool b_implies_a = spec_implies(spec_b, spec_a, checker);
     if (a_implies_b && !b_implies_a) {
-        subsumed[b_idx].store(1, std::memory_order_relaxed);
+        subsumed[b_pos].store(1, std::memory_order_relaxed);
     } else if (b_implies_a && !a_implies_b) {
-        subsumed[a_idx].store(1, std::memory_order_relaxed);
+        subsumed[a_pos].store(1, std::memory_order_relaxed);
     }
 }
 
 // Computes which specs are subsumed: subsumed[j] = 1 iff some i strictly
 // dominates j (i implies j but j does not imply i).
+//
+// Specs that are exact duplicates of an earlier spec relate identically to
+// every other spec in the population (since spec_implies only depends on
+// requirement structure), so only one representative per group of
+// duplicates is run through the pairwise sweep; its result is copied to
+// every member of the group afterwards.
 std::vector<uint8_t> compute_subsumed(
     const std::vector<Specification>& pop, SatisfiabilityChecker& checker,
     const GenerationProgressCallback& on_progress) {
     const std::size_t pop_size = pop.size();
-    std::vector<std::pair<std::size_t, std::size_t>> pairs;
-    pairs.reserve(pop_size * (pop_size - 1) / 2);
+
+    std::unordered_map<Specification, std::size_t> rep_position_of;
+    std::vector<std::size_t> representatives;
+    std::vector<std::vector<std::size_t>> members;
     for (std::size_t i = 0; i < pop_size; ++i) {
-        for (std::size_t j = i + 1; j < pop_size; ++j) {
+        const auto [iter, inserted] =
+            rep_position_of.try_emplace(pop[i], representatives.size());
+        if (inserted) {
+            representatives.push_back(i);
+            members.push_back({i});
+        } else {
+            members[iter->second].push_back(i);
+        }
+    }
+    const std::size_t n_reps = representatives.size();
+    ImplicationFilterStats::n_duplicates.fetch_add(pop_size - n_reps,
+                                                   std::memory_order_relaxed);
+
+    std::vector<std::pair<std::size_t, std::size_t>> pairs;
+    pairs.reserve(n_reps * (n_reps - 1) / 2);
+    for (std::size_t i = 0; i < n_reps; ++i) {
+        for (std::size_t j = i + 1; j < n_reps; ++j) {
             pairs.emplace_back(i, j);
         }
     }
-    std::vector<std::atomic<uint8_t>> subsumed(pop_size);
-    for (auto& flag : subsumed) {
+    std::vector<std::atomic<uint8_t>> subsumed_reps(n_reps);
+    for (auto& flag : subsumed_reps) {
         flag.store(0, std::memory_order_relaxed);
     }
     const std::size_t n_hw = std::thread::hardware_concurrency();
@@ -109,22 +138,29 @@ std::vector<uint8_t> compute_subsumed(
     std::size_t completed = 0;
     run_bounded_async(
         pairs.size(), max_in_flight,
-        [&checker, &pop, &subsumed, &pairs](std::size_t idx) {
-            const std::size_t a_idx = pairs[idx].first;
-            const std::size_t b_idx = pairs[idx].second;
-            return global_thread_pool().submit(
-                [&checker, &pop, &subsumed, a_idx, b_idx] {
-                    check_pair(pop, subsumed, checker, a_idx, b_idx);
-                });
+        [&checker, &pop, &representatives, &subsumed_reps,
+         &pairs](std::size_t idx) {
+            const std::size_t a_pos = pairs[idx].first;
+            const std::size_t b_pos = pairs[idx].second;
+            return global_thread_pool().submit([&checker, &pop,
+                                                &representatives,
+                                                &subsumed_reps, a_pos, b_pos] {
+                check_pair(pop, representatives, subsumed_reps, checker, a_pos,
+                           b_pos);
+            });
         },
         [&on_progress, &completed, total = pairs.size()](std::size_t) {
             if (on_progress) {
                 on_progress(++completed, total);
             }
         });
-    std::vector<uint8_t> result(pop_size);
-    for (std::size_t i = 0; i < pop_size; ++i) {
-        result[i] = subsumed[i].load();
+
+    std::vector<uint8_t> result(pop_size, 0);
+    for (std::size_t rep_pos = 0; rep_pos < n_reps; ++rep_pos) {
+        const uint8_t status = subsumed_reps[rep_pos].load();
+        for (const std::size_t idx : members[rep_pos]) {
+            result[idx] = status;
+        }
     }
     return result;
 }
@@ -150,6 +186,8 @@ FilterFunction make_implication_filter(
         ImplicationFilterStats::n_comparisons.store(0,
                                                     std::memory_order_relaxed);
         ImplicationFilterStats::n_skipped.store(0, std::memory_order_relaxed);
+        ImplicationFilterStats::n_duplicates.store(0,
+                                                   std::memory_order_relaxed);
         if (pop.size() <= 1) {
             return pop;
         }

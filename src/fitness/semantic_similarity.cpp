@@ -85,17 +85,29 @@ double semantic_similarity(const Specification& specification,
     assert(total_count > 0 && (other_specification.m_assumptions.size() +
                                other_specification.m_guarantees.size()) > 0);
     double total = 0.0;
+    std::size_t changed_count = 0;
+    // Requirement pairs that are identical contribute a trivial 1.0 and
+    // dilute the average toward 1 as the specification grows, drowning out
+    // the pairs that actually differ. Excluding them keeps the score
+    // sensitive to the requirements a mutation actually touched.
     auto accumulate = [&](const std::vector<Requirement>& reqs1,
                           const std::vector<Requirement>& reqs2) {
         auto it1 = reqs1.begin();
         auto it2 = reqs2.begin();
         for (; it1 != reqs1.end(); ++it1, ++it2) {
+            if (*it1 == *it2) {
+                continue;
+            }
             total += semantic_similarity(*it1, *it2, step_count);
+            ++changed_count;
         }
     };
     accumulate(specification.m_assumptions, other_specification.m_assumptions);
     accumulate(specification.m_guarantees, other_specification.m_guarantees);
-    return total / static_cast<double>(total_count);
+    if (changed_count == 0) {
+        return 1.0;
+    }
+    return total / static_cast<double>(changed_count);
 }
 
 double semantic_similarity(const Specification& specification,

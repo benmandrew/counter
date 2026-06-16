@@ -56,26 +56,28 @@ void test_semantic_similarity_identical_specifications_score_one() {
 }
 
 void test_semantic_similarity_specification_averages_requirements() {
-    // Requirements ordered by timing variant index: immediately(0) < within(2)
     const Requirement req_imm{Formula("P"), Formula("Q"),
                               timing::immediately()};
-    const Requirement req_within{Formula("P"), Formula("Q"),
-                                 timing::within_ticks(3)};
-    // next_timepoint(1) falls between them, so ordering in spec2 is the same:
-    // req_next first, req_within second
     const Requirement req_next{Formula("P"), Formula("Q"),
                                timing::next_timepoint()};
-    // spec1 iteration order: req_imm, req_within
-    const Specification spec1({}, {req_imm, req_within}, {"P"}, {"Q"});
-    // spec2 iteration order: req_next, req_within
-    const Specification spec2({}, {req_next, req_within}, {"P"}, {"Q"});
+    const Requirement req_within{Formula("P"), Formula("Q"),
+                                 timing::within_ticks(3)};
+    const Requirement req_for{Formula("P"), Formula("Q"), timing::for_ticks(2)};
+    const Requirement req_after{Formula("P"), Formula("Q"),
+                                timing::after_ticks(2)};
+    // req_within is identical in both specs and should be excluded from the
+    // average; req_imm/req_next and req_for/req_after differ and should be
+    // averaged together.
+    const Specification spec1({}, {req_imm, req_within, req_for}, {"P"}, {"Q"});
+    const Specification spec2({}, {req_next, req_within, req_after}, {"P"},
+                              {"Q"});
     const double score = semantic_similarity(spec1, spec2, 1);
     const double expected = (semantic_similarity(req_imm, req_next, 1) +
-                             semantic_similarity(req_within, req_within, 1)) /
+                             semantic_similarity(req_for, req_after, 1)) /
                             2.0;
     expect(std::fabs(score - expected) < 1e-12,
-           "semantic-similarity: specification score should average pairwise "
-           "requirement scores");
+           "semantic-similarity: specification score should average only the "
+           "requirement pairs that differ, excluding unchanged pairs");
 }
 
 // Two distinct eventually-timing requirements. Their conjunction produces a

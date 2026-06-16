@@ -6,7 +6,7 @@
 
 struct Config {
     // --- Run parameters ---
-    static constexpr std::size_t generations = 10;
+    static constexpr std::size_t generations = 20;
     static constexpr std::size_t population_size = 1000;
 
     // --- Fitness weights ---
@@ -28,7 +28,7 @@ struct Config {
     // conservative "implication not proven" result, not an error. CI
     // environments can be slow enough that this value is too tight for
     // some test assertions that expect a definite SAT/UNSAT answer.
-    inline static std::chrono::seconds black_timeout{2};
+    inline static std::chrono::milliseconds black_timeout{500};
 
     // --- Evolution ---
     static constexpr double crossover_rate = 0.1;

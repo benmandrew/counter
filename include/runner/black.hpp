@@ -24,7 +24,7 @@ class SatisfiabilityChecker {
     // shared lock so concurrent hits don't serialise on one another; only an
     // actual insert needs the exclusive lock.
     mutable std::shared_mutex m_cache_mutex;
-    std::unordered_map<std::string, bool> m_cache;
+    std::unordered_map<std::string, std::optional<bool>> m_cache;
 };
 
 /// Returns the process-lifetime SatisfiabilityChecker instance. All callers

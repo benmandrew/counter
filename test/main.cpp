@@ -94,7 +94,7 @@ int main(int argc, const char* const argv[]) {
     // default in config.hpp is now tuned tight for real runs, but CI has
     // previously been slow enough to make that value flaky for tests that
     // expect a definite SAT/UNSAT answer rather than a timeout.
-    Config::black_timeout = std::chrono::seconds{10};
+    Config::black_timeout = std::chrono::milliseconds{10000};
     try {
         if (argc == 1) {
             run_transfer_matrix_tests();

@@ -85,7 +85,7 @@ std::pair<std::string, bool> read_with_timeout(
 }
 
 ProcessResult execute_and_capture(const std::vector<std::string>& arguments,
-                                  std::chrono::seconds timeout) {
+                                  std::chrono::milliseconds timeout) {
     assert(!arguments.empty());
     // Build argv before forking: heap allocation inside the child between
     // fork() and execv() can deadlock if another thread held the allocator
@@ -173,6 +173,7 @@ std::optional<bool> SatisfiabilityChecker::check_satisfiability(
     total_time_s += elapsed;
     if (result.m_timed_out) {
         n_timeouts++;
+        m_cache.emplace(ltl_formula, std::nullopt);
         return std::nullopt;
     }
     // Check UNSAT before SAT: the former contains the latter as a substring.

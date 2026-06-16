@@ -334,6 +334,7 @@ int main(int argc, const char* const argv[]) {
                                filter_functions, random_source);
     const std::vector<Specification> realizable_vec =
         collect_realizable_specifications(population);
+    std::cout << "Realizable specifications: " << realizable_vec.size() << "\n";
     const std::vector<Specification> maximal =
         filter_maximal_specifications(realizable_vec);
     const std::vector<ScoredSpecification> scored_maximal =

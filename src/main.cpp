@@ -321,16 +321,67 @@ void print_top_specifications(
     }
 }
 
+bool has_flag(int argc, const char* const* argv, const char* flag) {
+    for (int i = 1; i < argc; ++i) {
+        if (argv[i] != nullptr && std::string(argv[i]) == flag) {
+            return true;
+        }
+    }
+    return false;
+}
+
+void print_help(const char* prog) {
+    std::cout
+        << "Usage: " << prog << " --input <spec.json> [--seed <n>]\n"
+        << "\n"
+        << "Repair an unrealisable FRETISH specification using a genetic\n"
+        << "algorithm. The input specification is read from a JSON file and\n"
+        << "the algorithm evolves a population of candidate repairs, scoring\n"
+        << "each by syntactic similarity, semantic similarity, Halstead\n"
+        << "complexity, and LTL realisability.\n"
+        << "\n"
+        << "Options:\n"
+        << "  --input <spec.json>  Path to the input specification "
+           "(required).\n"
+        << "                       Accepts plain Specification JSON or a\n"
+        << "                       ScoredSpecification with an optional\n"
+        << "                       \"fitness\" field.\n"
+        << "  --seed <n>           RNG seed for reproducible runs. If omitted\n"
+        << "                       a random seed is chosen and printed.\n"
+        << "  -h, --help           Show this help message and exit.\n"
+        << "\n"
+        << "Input format (examples/takeoff.json):\n"
+        << "  {\n"
+        << "    \"assumptions\": [],\n"
+        << "    \"guarantees\":  [ { \"trigger\": \"<formula>\",\n"
+        << "                        \"response\": \"<formula>\",\n"
+        << "                        \"timing\":   { \"type\": \"Immediately\" "
+           "} } ],\n"
+        << "    \"in_atoms\":  [\"a\", \"b\"],\n"
+        << "    \"out_atoms\": [\"x\", \"y\"]\n"
+        << "  }\n"
+        << "\n"
+        << "Timing types: Immediately, NextTimepoint, Eventually,\n"
+        << "              WithinTicks {\"ticks\": n}, ForTicks {\"ticks\": "
+           "n},\n"
+        << "              AfterTicks  {\"ticks\": n}\n";
+}
+
 int main(int argc, const char* const argv[]) {
     if (argc == 0 || argv == nullptr || argv[0] == nullptr) {
         std::cerr << "fatal: missing argv[0]\n";
         return 1;
     }
     init_cpptrace(argv[0]);
+    if (has_flag(argc, argv, "-h") || has_flag(argc, argv, "--help")) {
+        print_help(argv[0]);
+        return 0;
+    }
     const std::optional<std::string> input_path = parse_input_arg(argc, argv);
     if (!input_path.has_value()) {
         std::cerr << "Usage: " << argv[0]
-                  << " --input <spec.json> [--seed <n>]\n";
+                  << " --input <spec.json> [--seed <n>]\n"
+                  << "Try '" << argv[0] << " --help' for more information.\n";
         return 1;
     }
     Specification original_spec;

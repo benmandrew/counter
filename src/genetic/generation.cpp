@@ -9,6 +9,7 @@
 
 #include "bounded_async.hpp"
 #include "config.hpp"
+#include "filter/bloat.hpp"
 #include "filter/implication.hpp"
 #include "thread_pool.hpp"
 
@@ -166,6 +167,7 @@ std::vector<ScoredSpecification> evolve_generation(
 std::vector<FilterFunction> get_filter_functions(
     Specification original, SatisfiabilityChecker& checker) {
     return {
+        make_bloat_cap_filter(original),
         // A false trigger is vacuously satisfied by every trace, so it
         // imposes no constraint; forbid it from surviving as a breeding
         // candidate rather than letting the fitness function alone

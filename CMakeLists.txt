@@ -61,6 +61,7 @@ target_sources(counter_fitness PRIVATE
     src/runner/ganak.cpp
     src/runner/spot.cpp
     src/thread_pool.cpp
+    src/filter/bloat.cpp
     src/filter/implication.cpp
     src/fitness/halstead.cpp
     src/fitness/model_counter.cpp

@@ -36,6 +36,7 @@ Repairing unrealisable FRETish specifications.
    :maxdepth: 1
    :caption: Filter
 
+   api/filter/bloat
    api/filter/implication
 
 .. toctree::

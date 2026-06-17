@@ -91,3 +91,9 @@ class AggregateWeightedFitnessFunction {
     [[nodiscard]] auto begin() const { return m_fitness_functions.begin(); }
     [[nodiscard]] auto end() const { return m_fitness_functions.end(); }
 };
+
+/// Builds the standard set of weighted fitness functions from Config weights.
+/// Functions with a zero weight are omitted. The caller owns the returned
+/// object and may invoke it repeatedly; results are memoised internally.
+AggregateWeightedFitnessFunction get_fitness_function(
+    const Specification& original_spec);

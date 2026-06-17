@@ -1,13 +1,11 @@
 #include <algorithm>
 #include <chrono>
 #include <cstdlib>
-#include <fstream>
 #include <iomanip>
 #include <iostream>
 #include <optional>
 #include <random>
 #include <sstream>
-#include <stdexcept>
 #include <string>
 #include <utility>
 #include <vector>
@@ -15,63 +13,14 @@
 #include "config.hpp"
 #include "crash/crash_handler.hpp"
 #include "filter/implication.hpp"
-#include "fitness/halstead.hpp"
-#include "fitness/semantic_similarity.hpp"
+#include "fitness/function.hpp"
 #include "fitness/status.hpp"
-#include "fitness/syntactic_similarity.hpp"
 #include "genetic/generation.hpp"
 #include "requirement.hpp"
 #include "runner/black.hpp"
 #include "runner/ganak.hpp"
 #include "runner/spot.hpp"
 #include "serialisation.hpp"
-
-AggregateWeightedFitnessFunction get_fitness_function(
-    const Specification& original_spec) {
-    std::vector<WeightedFitnessFunction> fitness_functions{};
-    if (Config::fitness_weight_syntactic > 0.0) {
-        auto synsim = [original_spec](const Specification& spec) -> double {
-            return syntactic_similarity(spec, original_spec);
-        };
-        fitness_functions.push_back(
-            {synsim, Config::fitness_weight_syntactic, "syntactic"});
-    }
-    if (Config::fitness_weight_semantic > 0.0) {
-        auto semsim = [original_spec](const Specification& spec) -> double {
-            return semantic_similarity(spec, original_spec);
-        };
-        fitness_functions.push_back(
-            {semsim, Config::fitness_weight_semantic, "semantic"});
-    }
-    if (Config::fitness_weight_halstead > 0.0) {
-        auto halstead = [original_spec](const Specification& spec) -> double {
-            return halstead_fitness(spec, original_spec);
-        };
-        fitness_functions.push_back(
-            {halstead, Config::fitness_weight_halstead, "halstead"});
-    }
-    if (Config::fitness_weight_status > 0.0) {
-        auto status = [](const Specification& spec) -> double {
-            return specification_status(spec, global_sat_checker(),
-                                        global_real_checker());
-        };
-        fitness_functions.push_back(
-            {status, Config::fitness_weight_status, "status"});
-    }
-    return AggregateWeightedFitnessFunction(std::move(fitness_functions));
-}
-
-std::vector<FilterFunction> get_filter_functions() {
-    return {
-        // A false trigger is vacuously satisfied by every trace, so it
-        // imposes no constraint; forbid it from surviving as a breeding
-        // candidate rather than letting the fitness function alone
-        // discourage it.
-        make_predicate_filter([](const Specification& spec) {
-            return !specification_has_false_trigger(spec);
-        }),
-    };
-}
 
 std::optional<std::string> parse_input_arg(int argc, const char* const* argv) {
     for (int i = 1; i < argc - 1; ++i) {
@@ -82,26 +31,6 @@ std::optional<std::string> parse_input_arg(int argc, const char* const* argv) {
         }
     }
     return std::nullopt;
-}
-
-Specification load_specification(const std::string& path) {
-    std::ifstream file(path);
-    if (!file) {
-        throw std::runtime_error("cannot open input file: " + path);
-    }
-    nlohmann::json json_in;
-    try {
-        file >> json_in;
-    } catch (const nlohmann::json::parse_error& exc) {
-        throw std::runtime_error("JSON parse error in " + path + ": " +
-                                 exc.what());
-    }
-    try {
-        return json_in.get<Specification>();
-    } catch (const nlohmann::json::exception& exc) {
-        throw std::runtime_error("invalid specification in " + path + ": " +
-                                 exc.what());
-    }
 }
 
 void print_timing_report() {
@@ -182,14 +111,11 @@ std::string format_crash_metadata(std::size_t seed,
     return out.str();
 }
 
-RandomSource init_random_source(int argc, const char* const* argv,
-                                const std::string& input_path) {
+RandomSource init_random_source(int argc, const char* const* argv) {
     const std::optional<std::size_t> seed_arg = parse_seed_arg(argc, argv);
     std::random_device rng_dev;
     const std::size_t seed =
         seed_arg.has_value() ? *seed_arg : static_cast<std::size_t>(rng_dev());
-    std::cout << "Seed: " << seed << "\n";
-    register_crash_metadata(format_crash_metadata(seed, input_path));
     return make_random_source_from_seed(seed);
 }
 
@@ -275,22 +201,6 @@ std::vector<Specification> filter_maximal_specifications(
               << ImplicationFilterStats::n_duplicates << " dup, "
               << ImplicationFilterStats::n_timeouts << " timeout)\n";
     return maximal;
-}
-
-std::vector<ScoredSpecification> score_and_sort_specifications(
-    const std::vector<Specification>& specs,
-    const AggregateWeightedFitnessFunction& fitness_function) {
-    std::vector<ScoredSpecification> scored;
-    scored.reserve(specs.size());
-    for (const Specification& spec : specs) {
-        scored.push_back({spec, fitness_function(spec)});
-    }
-    std::sort(scored.begin(), scored.end(),
-              [](const ScoredSpecification& first,
-                 const ScoredSpecification& second) {
-                  return first.fitness > second.fitness;
-              });
-    return scored;
 }
 
 void print_top_specifications(
@@ -398,7 +308,14 @@ int main(int argc, const char* const argv[]) {
     const std::vector<FilterFunction> filter_functions = get_filter_functions();
     std::vector<ScoredSpecification> population = original_population(
         original_spec, fitness_function, Config::population_size);
-    RandomSource random_source = init_random_source(argc, argv, *input_path);
+    RandomSource random_source = init_random_source(argc, argv);
+    if (!random_source.seed().has_value()) {
+        std::cerr << "fatal: random source has no seed\n";
+        return 1;
+    }
+    const std::size_t seed = *random_source.seed();
+    std::cout << "Seed: " << seed << "\n";
+    register_crash_metadata(format_crash_metadata(seed, *input_path));
     population = run_evolution(std::move(population), fitness_function,
                                filter_functions, random_source);
     const std::vector<Specification> realizable_vec =

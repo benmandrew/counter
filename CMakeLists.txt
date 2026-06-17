@@ -56,6 +56,7 @@ target_include_directories(counter_core SYSTEM PUBLIC ${nlohmann_json_SOURCE_DIR
 
 add_library(counter_fitness STATIC)
 target_sources(counter_fitness PRIVATE
+    src/fitness/function.cpp
     src/runner/black.cpp
     src/runner/ganak.cpp
     src/runner/spot.cpp

@@ -1,5 +1,6 @@
 #pragma once
 
+#include <fstream>
 #include <optional>
 #include <stdexcept>
 #include <string>
@@ -163,4 +164,26 @@ inline void from_json(const nlohmann::json& jobj, Specification& spc) {
                         parse_reqs(jobj.at("guarantees")),
                         jobj.at("in_atoms").get<std::vector<std::string>>(),
                         jobj.at("out_atoms").get<std::vector<std::string>>());
+}
+
+/// Reads a JSON file at @p path and deserialises it as a Specification.
+/// Throws std::runtime_error on I/O failure, malformed JSON, or missing fields.
+inline Specification load_specification(const std::string& path) {
+    std::ifstream file(path);
+    if (!file) {
+        throw std::runtime_error("cannot open input file: " + path);
+    }
+    nlohmann::json json_in;
+    try {
+        file >> json_in;
+    } catch (const nlohmann::json::parse_error& exc) {
+        throw std::runtime_error("JSON parse error in " + path + ": " +
+                                 exc.what());
+    }
+    try {
+        return json_in.get<Specification>();
+    } catch (const nlohmann::json::exception& exc) {
+        throw std::runtime_error("invalid specification in " + path + ": " +
+                                 exc.what());
+    }
 }

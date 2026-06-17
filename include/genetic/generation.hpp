@@ -59,6 +59,15 @@ std::vector<Specification> filter_population(
     const std::vector<Specification>& population,
     const std::vector<FilterFunction>& filter_functions);
 
+/// Returns the standard set of filter functions used during evolution.
+std::vector<FilterFunction> get_filter_functions();
+
+/// Scores each specification in @p specs and returns them sorted by fitness
+/// descending.
+std::vector<ScoredSpecification> score_and_sort_specifications(
+    const std::vector<Specification>& specs,
+    const AggregateWeightedFitnessFunction& fitness_function);
+
 /// Evolves a population for one generation using truncation selection:
 ///   1. Sort the population by fitness (descending) and take the top
 ///      target_size as parents

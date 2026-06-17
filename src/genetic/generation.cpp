@@ -160,3 +160,15 @@ std::vector<ScoredSpecification> evolve_generation(
 
     return scored;
 }
+
+std::vector<FilterFunction> get_filter_functions() {
+    return {
+        // A false trigger is vacuously satisfied by every trace, so it
+        // imposes no constraint; forbid it from surviving as a breeding
+        // candidate rather than letting the fitness function alone
+        // discourage it.
+        make_predicate_filter([](const Specification& spec) {
+            return !specification_has_false_trigger(spec);
+        }),
+    };
+}

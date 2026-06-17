@@ -3,6 +3,7 @@
 #include <cassert>
 #include <cstddef>
 #include <functional>
+#include <optional>
 #include <random>
 #include <utility>
 
@@ -15,6 +16,10 @@ class RandomSource {
 
     explicit RandomSource(std::function<std::size_t(std::size_t)> generator)
         : m_fn(std::move(generator)) {}
+
+    RandomSource(std::function<std::size_t(std::size_t)> generator,
+                 std::size_t seed)
+        : m_fn(std::move(generator)), m_seed(seed) {}
 
     /// Returns a pseudo-random index in [0, upper_bound).
     [[nodiscard]] std::size_t next_index(std::size_t upper_bound) const {
@@ -35,8 +40,13 @@ class RandomSource {
 
     explicit operator bool() const { return static_cast<bool>(m_fn); }
 
+    /// The seed used to initialise this source, if it was created via
+    /// make_random_source_from_seed; std::nullopt for unseeded sources.
+    [[nodiscard]] std::optional<std::size_t> seed() const { return m_seed; }
+
    private:
     std::function<std::size_t(std::size_t)> m_fn;
+    std::optional<std::size_t> m_seed;
 };
 
 /// @brief Creates a RandomSource from a given seed, using `std::mt19937` as the
@@ -49,5 +59,5 @@ inline RandomSource make_random_source_from_seed(std::size_t seed) {
         std::uniform_int_distribution<std::size_t> dist(0, upper_bound - 1);
         return dist(rng);
     };
-    return RandomSource(generator);
+    return {generator, seed};
 }

@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cstddef>
 #include <fstream>
 #include <optional>
 #include <stdexcept>
@@ -166,8 +167,148 @@ inline void from_json(const nlohmann::json& jobj, Specification& spc) {
                         jobj.at("out_atoms").get<std::vector<std::string>>());
 }
 
+namespace detail {
+
+inline std::optional<std::string> validate_requirement_json(
+    const nlohmann::json& req, const std::string& path) {
+    if (!req.is_object()) {
+        return path + ": expected object";
+    }
+    for (const char* field : {"trigger", "response"}) {
+        if (!req.contains(field)) {
+            return path + "." + field + ": missing required field";
+        }
+        if (!req.at(field).is_string()) {
+            return path + "." + field + ": must be a string";
+        }
+    }
+    if (!req.contains("timing")) {
+        return path + ".timing: missing required field";
+    }
+    const nlohmann::json& timing = req.at("timing");
+    if (!timing.is_object()) {
+        return path + ".timing: must be an object";
+    }
+    if (!timing.contains("type") || !timing.at("type").is_string()) {
+        return path + ".timing.type: must be a string";
+    }
+    const std::string ttype = timing.at("type").get<std::string>();
+    if (ttype != "Immediately" && ttype != "NextTimepoint" &&
+        ttype != "WithinTicks" && ttype != "ForTicks" &&
+        ttype != "AfterTicks" && ttype != "Eventually") {
+        return path + ".timing.type: unknown value '" + ttype + "'";
+    }
+    if (ttype == "WithinTicks" || ttype == "ForTicks" ||
+        ttype == "AfterTicks") {
+        if (!timing.contains("ticks") ||
+            !timing.at("ticks").is_number_unsigned()) {
+            return path + ".timing.ticks: must be a non-negative integer";
+        }
+    }
+    return std::nullopt;
+}
+
+inline std::optional<std::string> validate_string_array_json(
+    const nlohmann::json& jobj, const char* field) {
+    if (!jobj.contains(field)) {
+        return std::string(field) + ": missing required field";
+    }
+    if (!jobj.at(field).is_array()) {
+        return std::string(field) + ": must be an array";
+    }
+    for (std::size_t i = 0; i < jobj.at(field).size(); ++i) {
+        if (!jobj.at(field).at(i).is_string()) {
+            return std::string(field) + "[" + std::to_string(i) +
+                   "]: must be a string";
+        }
+    }
+    return std::nullopt;
+}
+
+inline std::optional<std::string> validate_requirement_array_json(
+    const nlohmann::json& jobj, const char* field) {
+    if (!jobj.contains(field)) {
+        return std::string(field) + ": missing required field";
+    }
+    if (!jobj.at(field).is_array()) {
+        return std::string(field) + ": must be an array";
+    }
+    for (std::size_t i = 0; i < jobj.at(field).size(); ++i) {
+        const std::string epath =
+            std::string(field) + "[" + std::to_string(i) + "]";
+        if (auto err = validate_requirement_json(jobj.at(field).at(i), epath)) {
+            return err;
+        }
+    }
+    return std::nullopt;
+}
+
+inline std::optional<std::string> validate_fitness_json(
+    const nlohmann::json& fitness) {
+    if (!fitness.is_object()) {
+        return "fitness: must be an object";
+    }
+    if (!fitness.contains("total") || !fitness.at("total").is_number()) {
+        return "fitness.total: must be a number";
+    }
+    if (!fitness.contains("components") ||
+        !fitness.at("components").is_array()) {
+        return "fitness.components: must be an array";
+    }
+    for (std::size_t i = 0; i < fitness.at("components").size(); ++i) {
+        const nlohmann::json& comp = fitness.at("components").at(i);
+        const std::string cpath =
+            "fitness.components[" + std::to_string(i) + "]";
+        if (!comp.is_object()) {
+            return cpath + ": expected object";
+        }
+        if (!comp.contains("name") || !comp.at("name").is_string()) {
+            return cpath + ".name: must be a string";
+        }
+        if (!comp.contains("score") || !comp.at("score").is_number()) {
+            return cpath + ".score: must be a number";
+        }
+        if (!comp.contains("weight") || !comp.at("weight").is_number()) {
+            return cpath + ".weight: must be a number";
+        }
+    }
+    return std::nullopt;
+}
+
+}  // namespace detail
+
+/// Validates that @p jobj conforms to the Specification JSON schema.
+///
+/// Checks required fields (assumptions, guarantees, in_atoms, out_atoms) and
+/// their types, validates each requirement's trigger/response/timing, and
+/// validates the optional fitness block if present.
+///
+/// @return A human-readable error description, or std::nullopt if the object
+///         is valid.
+inline std::optional<std::string> validate_specification_json(
+    const nlohmann::json& jobj) {
+    if (!jobj.is_object()) {
+        return std::string("root: expected object");
+    }
+    for (const char* field : {"in_atoms", "out_atoms"}) {
+        if (auto err = detail::validate_string_array_json(jobj, field)) {
+            return err;
+        }
+    }
+    for (const char* field : {"assumptions", "guarantees"}) {
+        if (auto err = detail::validate_requirement_array_json(jobj, field)) {
+            return err;
+        }
+    }
+    if (jobj.contains("fitness")) {
+        return detail::validate_fitness_json(jobj.at("fitness"));
+    }
+    return std::nullopt;
+}
+
 /// Reads a JSON file at @p path and deserialises it as a Specification.
-/// Throws std::runtime_error on I/O failure, malformed JSON, or missing fields.
+/// Throws std::runtime_error on I/O failure, malformed JSON, or schema
+/// violations.
 inline Specification load_specification(const std::string& path) {
     std::ifstream file(path);
     if (!file) {
@@ -179,6 +320,10 @@ inline Specification load_specification(const std::string& path) {
     } catch (const nlohmann::json::parse_error& exc) {
         throw std::runtime_error("JSON parse error in " + path + ": " +
                                  exc.what());
+    }
+    if (const auto err = validate_specification_json(json_in)) {
+        throw std::runtime_error("invalid specification in " + path + ": " +
+                                 *err);
     }
     try {
         return json_in.get<Specification>();

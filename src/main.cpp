@@ -38,16 +38,26 @@ std::optional<std::string> parse_string_arg(int argc, const char* const* argv,
     return std::nullopt;
 }
 
-void write_specifications(const std::vector<Specification>& specs,
-                          const std::string& output_dir) {
-    for (std::size_t i = 0; i < specs.size(); ++i) {
+void write_specifications(
+    const std::vector<ScoredSpecification>& scored,
+    const AggregateWeightedFitnessFunction& fitness_function,
+    const std::string& output_dir) {
+    for (std::size_t i = 0; i < scored.size(); ++i) {
         const std::string path =
             output_dir + "/repair_" + std::to_string(i) + ".json";
         std::ofstream file(path);
         if (!file) {
             throw std::runtime_error("cannot open output file: " + path);
         }
-        nlohmann::json jobj = specs[i];
+        serialisation::FitnessRecord record;
+        record.total = scored[i].fitness;
+        for (const WeightedFitnessFunction& wff : fitness_function) {
+            record.components.push_back(
+                {wff.name, wff.function(scored[i].specification), wff.weight});
+        }
+        const serialisation::ScoredSpecification ssc{scored[i].specification,
+                                                     record};
+        nlohmann::json jobj = ssc;
         file << jobj.dump(2) << "\n";
     }
 }
@@ -364,13 +374,8 @@ int main(int argc, const char* const argv[]) {
         filter_maximal_specifications(realizable_vec);
     const std::vector<ScoredSpecification> scored_maximal =
         score_and_sort_specifications(maximal, fitness_function);
-    std::vector<Specification> sorted_specs;
-    sorted_specs.reserve(scored_maximal.size());
-    for (const ScoredSpecification& scored : scored_maximal) {
-        sorted_specs.push_back(scored.specification);
-    }
     try {
-        write_specifications(sorted_specs, *output_dir);
+        write_specifications(scored_maximal, fitness_function, *output_dir);
     } catch (const std::exception& exc) {
         std::cerr << exc.what() << "\n";
         return 1;

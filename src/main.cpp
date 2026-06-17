@@ -33,6 +33,29 @@ std::optional<std::string> parse_input_arg(int argc, const char* const* argv) {
     return std::nullopt;
 }
 
+struct FilterRunStats {
+    std::string name;
+    std::size_t total_in{0};
+    std::size_t total_out{0};
+};
+
+void print_filter_report(const std::vector<FilterRunStats>& stats) {
+    std::cout << "\nFilter report:\n";
+    for (const FilterRunStats& s : stats) {
+        if (s.name.empty() || s.total_in == 0) {
+            continue;
+        }
+        const double pct_drop =
+            100.0 * (1.0 - static_cast<double>(s.total_out) /
+                               static_cast<double>(s.total_in));
+        std::cout << std::left << std::setw(16) << s.name << std::right
+                  << std::setw(8) << s.total_in << " in  " << std::setw(8)
+                  << s.total_out << " out  " << std::fixed
+                  << std::setprecision(1) << std::setw(5) << pct_drop
+                  << "% avg drop\n";
+    }
+}
+
 void print_timing_report() {
     auto print_row = [](const char* name, std::size_t calls, double total_s,
                         std::size_t cache_hits, std::size_t timeouts = 0) {
@@ -119,11 +142,16 @@ RandomSource init_random_source(int argc, const char* const* argv) {
     return make_random_source_from_seed(seed);
 }
 
-std::vector<ScoredSpecification> run_evolution(
-    std::vector<ScoredSpecification> population,
-    const AggregateWeightedFitnessFunction& fitness_function,
-    const std::vector<FilterFunction>& filter_functions,
-    RandomSource& random_source) {
+std::pair<std::vector<ScoredSpecification>, std::vector<FilterRunStats>>
+run_evolution(std::vector<ScoredSpecification> population,
+              const AggregateWeightedFitnessFunction& fitness_function,
+              const std::vector<FilterFunction>& filter_functions,
+              RandomSource& random_source) {
+    std::vector<FilterRunStats> filter_stats;
+    filter_stats.reserve(filter_functions.size());
+    for (const FilterFunction& flt : filter_functions) {
+        filter_stats.push_back({flt.name(), 0, 0});
+    }
     const std::size_t pop_size = population.size();
     for (std::size_t gen_idx = 0; gen_idx < Config::generations; ++gen_idx) {
         const auto start = std::chrono::steady_clock::now();
@@ -144,16 +172,13 @@ std::vector<ScoredSpecification> run_evolution(
                                    .count();
         std::cout << "\r\033[KGeneration " << std::setw(2) << gen_idx + 1
                   << ": 100%  " << std::fixed << std::setprecision(2) << elapsed
-                  << "s";
-        for (const FilterFunction& flt : filter_functions) {
-            if (!flt.name().empty() && flt.n_in() > 0) {
-                std::cout << "  (" << flt.name() << ": " << flt.n_out() << "/"
-                          << flt.n_in() << ")";
-            }
+                  << "s\n";
+        for (std::size_t i = 0; i < filter_functions.size(); ++i) {
+            filter_stats[i].total_in += filter_functions[i].n_in();
+            filter_stats[i].total_out += filter_functions[i].n_out();
         }
-        std::cout << "\n";
     }
-    return population;
+    return {std::move(population), std::move(filter_stats)};
 }
 
 std::vector<Specification> collect_realizable_specifications(
@@ -325,8 +350,10 @@ int main(int argc, const char* const argv[]) {
     const std::size_t seed = *maybe_seed;
     std::cout << "Seed: " << seed << "\n";
     register_crash_metadata(format_crash_metadata(seed, *input_path));
-    population = run_evolution(std::move(population), fitness_function,
-                               filter_functions, random_source);
+    auto [population_result, filter_stats] =
+        run_evolution(std::move(population), fitness_function, filter_functions,
+                      random_source);
+    population = std::move(population_result);
     const std::vector<Specification> realizable_vec =
         collect_realizable_specifications(population);
     std::cout << "Realizable specifications: " << realizable_vec.size() << "\n";
@@ -336,6 +363,7 @@ int main(int argc, const char* const argv[]) {
         score_and_sort_specifications(maximal, fitness_function);
     print_top_specifications(scored_maximal, fitness_function,
                              realizable_vec.size());
+    print_filter_report(filter_stats);
     print_timing_report();
     return 0;
 }

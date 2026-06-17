@@ -38,7 +38,11 @@ std::optional<Args> parse_args(int argc, const char* const* argv) {
             continue;
         }
         const std::string arg(argv[i]);
-        if (arg == "--repairs" && i + 1 < argc && argv[i + 1] != nullptr) {
+        if (arg == "--help" || arg == "-h") {
+            print_usage(argv[0]);
+            std::exit(0);
+        } else if (arg == "--repairs" && i + 1 < argc &&
+                   argv[i + 1] != nullptr) {
             args.repairs_dir = argv[++i];
         } else if (arg == "--ideal" && i + 1 < argc && argv[i + 1] != nullptr) {
             args.ideal_paths.emplace_back(argv[++i]);

@@ -1,11 +1,13 @@
 #include <algorithm>
 #include <chrono>
 #include <cstdlib>
+#include <fstream>
 #include <iomanip>
 #include <iostream>
 #include <optional>
 #include <random>
 #include <sstream>
+#include <stdexcept>
 #include <string>
 #include <utility>
 #include <vector>
@@ -22,6 +24,7 @@
 #include "runner/black.hpp"
 #include "runner/ganak.hpp"
 #include "runner/spot.hpp"
+#include "serialisation.hpp"
 
 AggregateWeightedFitnessFunction get_fitness_function(
     const Specification& original_spec) {
@@ -70,35 +73,35 @@ std::vector<FilterFunction> get_filter_functions() {
     };
 }
 
-// Specification get_spec() {
-//     std::vector<Requirement> assumptions = {};
-//     std::vector<Requirement> guarantees = {
-//         Requirement(Formula("r1"), Formula("g1"), timing::eventually(),
-//                     "G(r1 -> F g1)"),
-//         Requirement(Formula("r2"), Formula("g2"), timing::eventually(),
-//                     "G(r2 -> F g2)"),
-//         Requirement(Formula("!a"), Formula("!g1 & !g2"),
-//         timing::immediately(),
-//                     "G(!a -> (!g1 & !g2))"),
-//     };
-//     std::vector<std::string> in_atoms = {"a", "r1", "r2"};
-//     std::vector<std::string> out_atoms = {"g1", "g2"};
-//     return Specification(assumptions, guarantees, in_atoms, out_atoms);
-// }
+std::optional<std::string> parse_input_arg(int argc, const char* const* argv) {
+    for (int i = 1; i < argc - 1; ++i) {
+        if (argv[i] != nullptr && std::string(argv[i]) == "--input") {
+            if (argv[i + 1] != nullptr) {
+                return std::string(argv[i + 1]);
+            }
+        }
+    }
+    return std::nullopt;
+}
 
-Specification get_spec() {
-    std::vector<Requirement> assumptions = {};
-    std::vector<Requirement> guarantees = {
-        Requirement(Formula("true"), Formula("takeoff_roll"),
-                    timing::for_ticks(5)),
-        Requirement(Formula("true"), Formula("!takeoff_roll & lift_off"),
-                    timing::within_ticks(5)),
-        Requirement(Formula("takeoff_roll"), Formula("lift_off"),
-                    timing::after_ticks(1)),
-    };
-    std::vector<std::string> in_atoms = {};
-    std::vector<std::string> out_atoms = {"takeoff_roll", "lift_off"};
-    return Specification(assumptions, guarantees, in_atoms, out_atoms);
+Specification load_specification(const std::string& path) {
+    std::ifstream file(path);
+    if (!file) {
+        throw std::runtime_error("cannot open input file: " + path);
+    }
+    nlohmann::json json_in;
+    try {
+        file >> json_in;
+    } catch (const nlohmann::json::parse_error& exc) {
+        throw std::runtime_error("JSON parse error in " + path + ": " +
+                                 exc.what());
+    }
+    try {
+        return json_in.get<Specification>();
+    } catch (const nlohmann::json::exception& exc) {
+        throw std::runtime_error("invalid specification in " + path + ": " +
+                                 exc.what());
+    }
 }
 
 void print_timing_report() {
@@ -159,8 +162,10 @@ std::optional<std::size_t> parse_seed_arg(int argc, const char* const* argv) {
     return std::nullopt;
 }
 
-std::string format_crash_metadata(std::size_t seed) {
+std::string format_crash_metadata(std::size_t seed,
+                                  const std::string& input_path) {
     std::ostringstream out;
+    out << "Input:            " << input_path << "\n";
     out << "Config:\n";
     out << "  Seed:           " << seed << "\n";
     out << "  Generations:    " << Config::generations << "\n";
@@ -177,13 +182,14 @@ std::string format_crash_metadata(std::size_t seed) {
     return out.str();
 }
 
-RandomSource init_random_source(int argc, const char* const* argv) {
+RandomSource init_random_source(int argc, const char* const* argv,
+                                const std::string& input_path) {
     const std::optional<std::size_t> seed_arg = parse_seed_arg(argc, argv);
     std::random_device rng_dev;
     const std::size_t seed =
         seed_arg.has_value() ? *seed_arg : static_cast<std::size_t>(rng_dev());
     std::cout << "Seed: " << seed << "\n";
-    register_crash_metadata(format_crash_metadata(seed));
+    register_crash_metadata(format_crash_metadata(seed, input_path));
     return make_random_source_from_seed(seed);
 }
 
@@ -321,7 +327,19 @@ int main(int argc, const char* const argv[]) {
         return 1;
     }
     init_cpptrace(argv[0]);
-    Specification original_spec = get_spec();
+    const std::optional<std::string> input_path = parse_input_arg(argc, argv);
+    if (!input_path.has_value()) {
+        std::cerr << "Usage: " << argv[0]
+                  << " --input <spec.json> [--seed <n>]\n";
+        return 1;
+    }
+    Specification original_spec;
+    try {
+        original_spec = load_specification(*input_path);
+    } catch (const std::exception& exc) {
+        std::cerr << exc.what() << "\n";
+        return 1;
+    }
     std::cout << "Original specification:\n"
               << original_spec.to_string() << "\n";
     AggregateWeightedFitnessFunction fitness_function =
@@ -329,7 +347,7 @@ int main(int argc, const char* const argv[]) {
     const std::vector<FilterFunction> filter_functions = get_filter_functions();
     std::vector<ScoredSpecification> population = original_population(
         original_spec, fitness_function, Config::population_size);
-    RandomSource random_source = init_random_source(argc, argv);
+    RandomSource random_source = init_random_source(argc, argv, *input_path);
     population = run_evolution(std::move(population), fitness_function,
                                filter_functions, random_source);
     const std::vector<Specification> realizable_vec =

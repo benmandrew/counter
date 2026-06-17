@@ -1,0 +1,22 @@
+{
+  "assumptions": [],
+  "guarantees": [
+    {
+      "trigger": "r1",
+      "response": "g1",
+      "timing": { "type": "Eventually" }
+    },
+    {
+      "trigger": "r2",
+      "response": "g2",
+      "timing": { "type": "Eventually" }
+    },
+    {
+      "trigger": "!(a)",
+      "response": "!(g1) & !(g2)",
+      "timing": { "type": "Immediately" }
+    }
+  ],
+  "in_atoms": ["a", "r1", "r2"],
+  "out_atoms": ["g1", "g2"]
+}

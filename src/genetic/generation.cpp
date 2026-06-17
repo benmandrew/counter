@@ -3,11 +3,13 @@
 #include <algorithm>
 #include <cassert>
 #include <numeric>
+#include <string>
 #include <utility>
 #include <vector>
 
 #include "bounded_async.hpp"
 #include "config.hpp"
+#include "filter/implication.hpp"
 #include "thread_pool.hpp"
 
 namespace {
@@ -29,18 +31,18 @@ bool probability_check(double rate, const RandomSource& random_source) {
 }  // namespace
 
 FilterFunction make_predicate_filter(
-    std::function<bool(const Specification&)> predicate) {
-    return [predicate =
-                std::move(predicate)](const std::vector<Specification>& pop) {
-        std::vector<Specification> survivors;
-        survivors.reserve(pop.size());
-        for (const Specification& spec : pop) {
-            if (predicate(spec)) {
-                survivors.push_back(spec);
-            }
-        }
-        return survivors;
-    };
+    std::string name, std::function<bool(const Specification&)> predicate) {
+    return {std::move(name), [predicate = std::move(predicate)](
+                                 const std::vector<Specification>& pop) {
+                std::vector<Specification> survivors;
+                survivors.reserve(pop.size());
+                for (const Specification& spec : pop) {
+                    if (predicate(spec)) {
+                        survivors.push_back(spec);
+                    }
+                }
+                return survivors;
+            }};
 }
 
 std::vector<ScoredSpecification> score_population(
@@ -161,14 +163,18 @@ std::vector<ScoredSpecification> evolve_generation(
     return scored;
 }
 
-std::vector<FilterFunction> get_filter_functions() {
+std::vector<FilterFunction> get_filter_functions(
+    Specification original, SatisfiabilityChecker& checker) {
     return {
         // A false trigger is vacuously satisfied by every trace, so it
         // imposes no constraint; forbid it from surviving as a breeding
         // candidate rather than letting the fitness function alone
         // discourage it.
-        make_predicate_filter([](const Specification& spec) {
-            return !specification_has_false_trigger(spec);
-        }),
+        make_predicate_filter("false-trigger",
+                              [](const Specification& spec) {
+                                  return !specification_has_false_trigger(spec);
+                              }),
+        // NOLINTNEXTLINE(clang-analyzer-cplusplus.NewDeleteLeaks)
+        make_weakening_filter(std::move(original), checker),
     };
 }

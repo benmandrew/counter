@@ -144,7 +144,14 @@ std::vector<ScoredSpecification> run_evolution(
                                    .count();
         std::cout << "\r\033[KGeneration " << std::setw(2) << gen_idx + 1
                   << ": 100%  " << std::fixed << std::setprecision(2) << elapsed
-                  << "s\n";
+                  << "s";
+        for (const FilterFunction& flt : filter_functions) {
+            if (!flt.name().empty() && flt.n_in() > 0) {
+                std::cout << "  (" << flt.name() << ": " << flt.n_out() << "/"
+                          << flt.n_in() << ")";
+            }
+        }
+        std::cout << "\n";
     }
     return population;
 }
@@ -305,15 +312,17 @@ int main(int argc, const char* const argv[]) {
               << original_spec.to_string() << "\n";
     AggregateWeightedFitnessFunction fitness_function =
         get_fitness_function(original_spec);
-    const std::vector<FilterFunction> filter_functions = get_filter_functions();
+    const std::vector<FilterFunction> filter_functions =
+        get_filter_functions(original_spec, global_sat_checker());
     std::vector<ScoredSpecification> population = original_population(
         original_spec, fitness_function, Config::population_size);
     RandomSource random_source = init_random_source(argc, argv);
-    if (!random_source.seed().has_value()) {
+    const std::optional<std::size_t> maybe_seed = random_source.seed();
+    if (!maybe_seed.has_value()) {
         std::cerr << "fatal: random source has no seed\n";
         return 1;
     }
-    const std::size_t seed = *random_source.seed();
+    const std::size_t seed = *maybe_seed;
     std::cout << "Seed: " << seed << "\n";
     register_crash_metadata(format_crash_metadata(seed, *input_path));
     population = run_evolution(std::move(population), fitness_function,

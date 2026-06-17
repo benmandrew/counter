@@ -1,6 +1,10 @@
 #pragma once
 
+#include <cstddef>
 #include <functional>
+#include <string>
+#include <type_traits>
+#include <utility>
 #include <vector>
 
 #include "fitness/function.hpp"
@@ -8,13 +12,51 @@
 #include "genetic/mutation.hpp"
 #include "genetic/random_source.hpp"
 #include "requirement.hpp"
+#include "runner/black.hpp"
 
 /// A filter function transforms a population into a surviving subset.
 /// Receives the entire population, enabling both per-element predicates and
 /// population-level relations such as keeping only maximal elements under a
 /// partial order.
-using FilterFunction = std::function<std::vector<Specification>(
-    const std::vector<Specification>&)>;
+///
+/// Tracks the input and output population sizes of the most recent invocation
+/// via n_in() and n_out(), for per-generation diagnostic output.
+class FilterFunction {
+   public:
+    using Fn = std::function<std::vector<Specification>(
+        const std::vector<Specification>&)>;
+
+    FilterFunction(std::string name, Fn func)
+        : m_name(std::move(name)), m_fn(std::move(func)) {}
+
+    /// Implicit construction from any compatible callable (for tests and
+    /// inline construction where a display name is not needed).
+    template <
+        typename Callable,
+        std::enable_if_t<
+            !std::is_same_v<std::decay_t<Callable>, FilterFunction>, int> = 0>
+    FilterFunction(  // NOLINT(google-explicit-constructor,runtime/explicit)
+        Callable&& func)
+        : FilterFunction("", Fn(std::forward<Callable>(func))) {}
+
+    std::vector<Specification> operator()(
+        const std::vector<Specification>& pop) const {
+        std::vector<Specification> survivors = m_fn(pop);
+        m_n_in = pop.size();
+        m_n_out = survivors.size();
+        return survivors;
+    }
+
+    const std::string& name() const { return m_name; }
+    std::size_t n_in() const { return m_n_in; }
+    std::size_t n_out() const { return m_n_out; }
+
+   private:
+    std::string m_name;
+    Fn m_fn;
+    mutable std::size_t m_n_in{0};
+    mutable std::size_t m_n_out{0};
+};
 
 /// Callback invoked after each individual is produced during a generation.
 /// @p done is the count produced so far; @p total is the generation size.
@@ -29,10 +71,11 @@ struct ScoredSpecification {
 
 /// Wraps a per-element predicate as a population-level FilterFunction.
 ///
+/// @param name      Display name used in diagnostic output
 /// @param predicate A predicate returning true for specifications to keep
 /// @return          A FilterFunction that applies the predicate element-wise
 FilterFunction make_predicate_filter(
-    std::function<bool(const Specification&)> predicate);
+    std::string name, std::function<bool(const Specification&)> predicate);
 
 /// Scores each specification using a weighted average of all fitness functions:
 ///   fitness = sum(fn_i(spec) * w_i) / sum(w_i)
@@ -59,8 +102,16 @@ std::vector<Specification> filter_population(
     const std::vector<Specification>& population,
     const std::vector<FilterFunction>& filter_functions);
 
-/// Returns the standard set of filter functions used during evolution.
-std::vector<FilterFunction> get_filter_functions();
+/// Returns the standard set of filter functions used during evolution,
+/// including a weakening filter that keeps only specifications implied by
+/// @p original.
+///
+/// @param original  The reference specification for the weakening filter;
+///                  captured by value inside the filter
+/// @param checker   Satisfiability checker; captured by reference, must
+///                  outlive the returned filters
+std::vector<FilterFunction> get_filter_functions(
+    Specification original, SatisfiabilityChecker& checker);
 
 /// Scores each specification in @p specs and returns them sorted by fitness
 /// descending.

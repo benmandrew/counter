@@ -22,6 +22,19 @@ struct ImplicationFilterStats {
     inline static std::atomic<std::size_t> n_timeouts{0};
 };
 
+/// Returns a FilterFunction that keeps only specifications that are logical
+/// weakenings of @p original — i.e. those that @p original logically implies.
+///
+/// A candidate is retained when original => candidate: every behaviour allowed
+/// by the original is also allowed by the candidate. The same sufficient
+/// assume-guarantee decomposition used by make_implication_filter is applied.
+///
+/// @param original  The reference specification; captured by value
+/// @param checker   Satisfiability checker; captured by reference, must
+///                  outlive the returned FilterFunction
+FilterFunction make_weakening_filter(Specification original,
+                                     SatisfiabilityChecker& checker);
+
 /// Returns a FilterFunction that keeps only the maximal specifications of the
 /// population under the implication partial order.
 ///

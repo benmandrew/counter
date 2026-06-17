@@ -90,6 +90,7 @@ void test_make_predicate_filter_keeps_matching() {
     const std::vector<Specification> pop = {make_spec("p", "q"),
                                             make_spec("r", "s")};
     const FilterFunction filter = make_predicate_filter(
+        "",
         [](const Specification& spec) { return first_trigger(spec) == "p"; });
     const auto survivors = filter(pop);
     expect(survivors.size() == 1,
@@ -111,6 +112,7 @@ void test_filter_population_removes_failing() {
     const std::vector<Specification> pop = {make_spec("p", "q"),
                                             make_spec("r", "s")};
     const std::vector<FilterFunction> filters = {make_predicate_filter(
+        "",
         [](const Specification& spec) { return first_trigger(spec) == "p"; })};
     const auto survivors = filter_population(pop, filters);
     expect(survivors.size() == 1,
@@ -125,10 +127,11 @@ void test_filter_population_applies_sequentially() {
         make_spec("p", "q"), make_spec("r", "s"), make_spec("t", "u")};
     // First filter removes t; second filter removes r — only p survives.
     const std::vector<FilterFunction> filters = {
-        make_predicate_filter([](const Specification& spec) {
-            return first_trigger(spec) != "t";
-        }),
-        make_predicate_filter([](const Specification& spec) {
+        make_predicate_filter("",
+                              [](const Specification& spec) {
+                                  return first_trigger(spec) != "t";
+                              }),
+        make_predicate_filter("", [](const Specification& spec) {
             return first_trigger(spec) != "r";
         })};
     const auto survivors = filter_population(pop, filters);

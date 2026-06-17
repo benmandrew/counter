@@ -18,6 +18,7 @@ add_executable(counter_tests
     prop_formula/cnf_tests.cpp
     prop_formula/rewrite_tests.cpp
     prop_formula/similarity_tests.cpp
+    serialisation_tests.cpp
 )
 
 target_include_directories(counter_tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
@@ -47,6 +48,7 @@ add_test(NAME counter_tests.fitness_function COMMAND counter_tests fitness_funct
 add_test(NAME counter_tests.status COMMAND counter_tests status)
 add_test(NAME counter_tests.implication_filter COMMAND counter_tests implication_filter)
 add_test(NAME counter_tests.requirement COMMAND counter_tests requirement)
+add_test(NAME counter_tests.serialisation COMMAND counter_tests serialisation)
 
 add_custom_target(tests
     COMMAND ${CMAKE_CTEST_COMMAND} --output-on-failure

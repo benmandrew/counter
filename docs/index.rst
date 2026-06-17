@@ -11,6 +11,7 @@ Repairing unrealisable FRETish specifications.
    api/config
    api/prop_formula
    api/requirement
+   api/serialisation
    api/thread_pool
 
 .. toctree::

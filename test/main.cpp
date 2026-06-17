@@ -83,6 +83,10 @@ void run_suite(std::string_view suite_name) {
         run_requirement_tests();
         return;
     }
+    if (suite_name == "serialisation") {
+        run_serialisation_tests();
+        return;
+    }
     throw std::invalid_argument("Unknown test suite: " +
                                 std::string(suite_name));
 }
@@ -115,6 +119,7 @@ int main(int argc, const char* const argv[]) {
             run_status_tests();
             run_implication_filter_tests();
             run_requirement_tests();
+            run_serialisation_tests();
             return 0;
         }
         if (argc != 2) {

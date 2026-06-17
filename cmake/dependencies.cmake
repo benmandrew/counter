@@ -3,6 +3,7 @@ include(FetchContent)
 set(BUILD_TESTING OFF CACHE BOOL "" FORCE)
 set(EIGEN_BUILD_DOC OFF CACHE BOOL "" FORCE)
 set(EIGEN_BUILD_PKGCONFIG OFF CACHE BOOL "" FORCE)
+set(JSON_BuildTests OFF CACHE BOOL "" FORCE)
 
 FetchContent_Declare(
     cpptrace
@@ -30,3 +31,11 @@ set(CMAKE_Fortran_COMPILER "" CACHE FILEPATH "" FORCE)
 FetchContent_MakeAvailable(eigen)
 unset(CMAKE_Fortran_COMPILER CACHE)
 FetchContent_MakeAvailable(cpptrace)
+
+FetchContent_Declare(
+    nlohmann_json
+    GIT_REPOSITORY https://github.com/nlohmann/json.git
+    GIT_TAG v3.11.3
+    GIT_SHALLOW TRUE
+)
+FetchContent_MakeAvailable(nlohmann_json)

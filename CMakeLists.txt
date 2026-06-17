@@ -50,6 +50,9 @@ target_sources(counter_core PRIVATE
     src/requirement.cpp
 )
 target_include_directories(counter_core PUBLIC include)
+target_link_libraries(counter_core PUBLIC nlohmann_json::nlohmann_json)
+# Include nlohmann as a system directory so clang-tidy skips warnings inside it.
+target_include_directories(counter_core SYSTEM PUBLIC ${nlohmann_json_SOURCE_DIR}/include)
 
 add_library(counter_fitness STATIC)
 target_sources(counter_fitness PRIVATE

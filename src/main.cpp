@@ -1,6 +1,7 @@
 #include <algorithm>
 #include <chrono>
 #include <cstdlib>
+#include <filesystem>
 #include <fstream>
 #include <iomanip>
 #include <iostream>
@@ -351,6 +352,10 @@ int main(int argc, const char* const argv[]) {
     }
     const std::optional<std::string> output_dir =
         parse_string_arg(argc, argv, "--output-dir");
+    if (output_dir.has_value() && !std::filesystem::is_directory(*output_dir)) {
+        std::cerr << "Output directory does not exist: " << *output_dir << "\n";
+        return 1;
+    }
     Specification original_spec;
     try {
         original_spec = load_specification(*input_path);

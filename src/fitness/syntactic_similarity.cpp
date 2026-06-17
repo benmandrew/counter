@@ -7,6 +7,7 @@
 #include <variant>
 #include <vector>
 
+#include "config.hpp"
 #include "prop_formula.hpp"
 #include "requirement.hpp"
 
@@ -190,8 +191,13 @@ double syntactic_similarity(const Requirement& requirement,
         other_requirement.m_response);
     double timing_similarity = timing_syntactic_similarity(
         requirement.m_timing, other_requirement.m_timing);
-    return (condition_similarity + response_similarity + timing_similarity) /
-           3.0;
+    constexpr double total_weight = Config::syntactic_weight_trigger +
+                                    Config::syntactic_weight_response +
+                                    Config::syntactic_weight_timing;
+    return (Config::syntactic_weight_trigger * condition_similarity +
+            Config::syntactic_weight_response * response_similarity +
+            Config::syntactic_weight_timing * timing_similarity) /
+           total_weight;
 }
 
 double syntactic_similarity(const Specification& specification,
@@ -208,5 +214,11 @@ double syntactic_similarity(const Specification& specification,
             .syntactic_similarity(conjoin_responses(other_specification));
     double timing_similarity =
         average_timing_similarity(specification, other_specification);
-    return (trigger_similarity + response_similarity + timing_similarity) / 3.0;
+    constexpr double total_weight = Config::syntactic_weight_trigger +
+                                    Config::syntactic_weight_response +
+                                    Config::syntactic_weight_timing;
+    return (Config::syntactic_weight_trigger * trigger_similarity +
+            Config::syntactic_weight_response * response_similarity +
+            Config::syntactic_weight_timing * timing_similarity) /
+           total_weight;
 }

@@ -15,6 +15,11 @@ struct Config {
     static constexpr double fitness_weight_halstead = 0.1;
     static constexpr double fitness_weight_status = 0.5;
 
+    // --- Syntactic similarity component weights ---
+    static constexpr double syntactic_weight_trigger = 1.0;
+    static constexpr double syntactic_weight_response = 1.0;
+    static constexpr double syntactic_weight_timing = 1.0;
+
     // --- Model counting ---
     static constexpr std::size_t default_model_counting_bound = 20;
 
@@ -35,9 +40,9 @@ struct Config {
     static constexpr double mutation_rate = 1.0;
 
     // --- Requirement mutation probabilities ---
-    static constexpr double p_trigger = 0.5;
-    static constexpr double p_response = 0.5;
-    static constexpr double p_timing = 0.1;
+    static constexpr double p_trigger = 0.2;
+    static constexpr double p_response = 0.2;
+    static constexpr double p_timing = 0.2;
 
     // --- Hardware ---
     inline static const std::size_t n_hw_threads =

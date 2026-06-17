@@ -254,34 +254,6 @@ std::vector<Specification> filter_maximal_specifications(
     return maximal;
 }
 
-void print_top_specifications(
-    const std::vector<ScoredSpecification>& scored_maximal,
-    const AggregateWeightedFitnessFunction& fitness_function,
-    std::size_t realizable_count) {
-    const std::size_t print_count =
-        std::min(scored_maximal.size(), std::size_t{5});
-    std::cout << "\nRealizable specifications after " << Config::generations
-              << " generations (";
-    if (Config::run_implication_filter) {
-        std::cout << scored_maximal.size() << " reduced from "
-                  << realizable_count;
-    } else {
-        std::cout << scored_maximal.size();
-    }
-    std::cout << "):\n";
-    for (std::size_t i = 0; i < print_count; ++i) {
-        const Specification& spec = scored_maximal[i].specification;
-        std::cout << "Fitness: " << std::fixed << std::setprecision(4)
-                  << scored_maximal[i].fitness << "\n";
-        for (const WeightedFitnessFunction& wff : fitness_function) {
-            std::cout << "  " << std::left << std::setw(10) << wff.name
-                      << " (w=" << wff.weight << "): " << std::fixed
-                      << std::setprecision(4) << wff.function(spec) << "\n";
-        }
-        std::cout << spec.to_string() << "\n\n";
-    }
-}
-
 bool has_flag(int argc, const char* const* argv, const char* flag) {
     for (int i = 1; i < argc; ++i) {
         if (argv[i] != nullptr && std::string(argv[i]) == flag) {
@@ -294,7 +266,7 @@ bool has_flag(int argc, const char* const* argv, const char* flag) {
 void print_help(const char* prog) {
     std::cout
         << "Usage: " << prog
-        << " --input <spec.json> [--seed <n>] [--output-dir <dir>]\n"
+        << " --input <spec.json> --output-dir <dir> [--seed <n>]\n"
         << "\n"
         << "Repair an unrealisable FRETISH specification using a genetic\n"
         << "algorithm. The input specification is read from a JSON file and\n"
@@ -308,11 +280,13 @@ void print_help(const char* prog) {
         << "                       Accepts plain Specification JSON or a\n"
         << "                       ScoredSpecification with an optional\n"
         << "                       \"fitness\" field.\n"
+        << "  --output-dir <dir>   Directory to write maximal realizable\n"
+        << "                       repairs to as repair_0.json, "
+           "repair_1.json,\n"
+        << "                       ... (required; directory must already "
+           "exist).\n"
         << "  --seed <n>           RNG seed for reproducible runs. If omitted\n"
         << "                       a random seed is chosen and printed.\n"
-        << "  --output-dir <dir>   Write each maximal realizable repair to\n"
-        << "                       <dir>/repair_0.json, repair_1.json, ...\n"
-        << "                       The directory must already exist.\n"
         << "  -h, --help           Show this help message and exit.\n"
         << "\n"
         << "Input format (examples/takeoff.json):\n"
@@ -344,15 +318,15 @@ int main(int argc, const char* const argv[]) {
     }
     const std::optional<std::string> input_path =
         parse_string_arg(argc, argv, "--input");
-    if (!input_path.has_value()) {
+    const std::optional<std::string> output_dir =
+        parse_string_arg(argc, argv, "--output-dir");
+    if (!input_path.has_value() || !output_dir.has_value()) {
         std::cerr << "Usage: " << argv[0]
-                  << " --input <spec.json> [--seed <n>] [--output-dir <dir>]\n"
+                  << " --input <spec.json> --output-dir <dir> [--seed <n>]\n"
                   << "Try '" << argv[0] << " --help' for more information.\n";
         return 1;
     }
-    const std::optional<std::string> output_dir =
-        parse_string_arg(argc, argv, "--output-dir");
-    if (output_dir.has_value() && !std::filesystem::is_directory(*output_dir)) {
+    if (!std::filesystem::is_directory(*output_dir)) {
         std::cerr << "Output directory does not exist: " << *output_dir << "\n";
         return 1;
     }
@@ -386,23 +360,26 @@ int main(int argc, const char* const argv[]) {
     population = std::move(population_result);
     const std::vector<Specification> realizable_vec =
         collect_realizable_specifications(population);
-    std::cout << "Realizable specifications: " << realizable_vec.size() << "\n";
     const std::vector<Specification> maximal =
         filter_maximal_specifications(realizable_vec);
-    if (output_dir.has_value()) {
-        try {
-            write_specifications(maximal, *output_dir);
-            std::cout << "Wrote " << maximal.size() << " repair(s) to "
-                      << *output_dir << "/\n";
-        } catch (const std::exception& exc) {
-            std::cerr << exc.what() << "\n";
-            return 1;
-        }
-    }
     const std::vector<ScoredSpecification> scored_maximal =
         score_and_sort_specifications(maximal, fitness_function);
-    print_top_specifications(scored_maximal, fitness_function,
-                             realizable_vec.size());
+    std::vector<Specification> sorted_specs;
+    sorted_specs.reserve(scored_maximal.size());
+    for (const ScoredSpecification& scored : scored_maximal) {
+        sorted_specs.push_back(scored.specification);
+    }
+    try {
+        write_specifications(sorted_specs, *output_dir);
+    } catch (const std::exception& exc) {
+        std::cerr << exc.what() << "\n";
+        return 1;
+    }
+    std::cout << "Realizable specifications: " << realizable_vec.size();
+    if (Config::run_implication_filter) {
+        std::cout << " (" << maximal.size() << " maximal)";
+    }
+    std::cout << ", written to " << *output_dir << "/\n";
     print_filter_report(filter_stats);
     print_timing_report();
     return 0;

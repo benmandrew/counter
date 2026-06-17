@@ -63,6 +63,7 @@ target_sources(counter_fitness PRIVATE
     src/thread_pool.cpp
     src/filter/bloat.cpp
     src/filter/implication.cpp
+    src/filter/implication_check.cpp
     src/fitness/halstead.cpp
     src/fitness/model_counter.cpp
     src/fitness/semantic_similarity.cpp
@@ -98,6 +99,9 @@ target_link_libraries(counter PRIVATE counter_fitness cpptrace::cpptrace)
 add_executable(signal_tracer src/crash/signal_tracer.cpp)
 target_link_libraries(signal_tracer PRIVATE cpptrace::cpptrace)
 
+add_executable(compare src/compare.cpp)
+target_link_libraries(compare PRIVATE counter_fitness)
+
 add_custom_target(ganak_binary ALL DEPENDS "${GANAK_EXECUTABLE}")
 add_custom_target(black_binary ALL DEPENDS "${BLACK_EXECUTABLE}")
 if(DEFINED BLACK_EXTERNAL_TARGET)
@@ -112,7 +116,7 @@ include(cmake/docs.cmake)
 include(cmake/format.cmake)
 include(cmake/lint.cmake)
 
-foreach(counter_target counter_core counter_fitness counter)
+foreach(counter_target counter_core counter_fitness counter compare)
     if(MSVC)
         target_compile_options(${counter_target} PRIVATE /W4 /permissive-)
     else()

@@ -1,6 +1,7 @@
 #include <algorithm>
 #include <chrono>
 #include <cstdlib>
+#include <fstream>
 #include <iomanip>
 #include <iostream>
 #include <optional>
@@ -9,6 +10,8 @@
 #include <string>
 #include <utility>
 #include <vector>
+
+#include <nlohmann/json.hpp>
 
 #include "config.hpp"
 #include "crash/crash_handler.hpp"
@@ -22,15 +25,30 @@
 #include "runner/spot.hpp"
 #include "serialisation.hpp"
 
-std::optional<std::string> parse_input_arg(int argc, const char* const* argv) {
+std::optional<std::string> parse_string_arg(int argc, const char* const* argv,
+                                            const char* flag) {
     for (int i = 1; i < argc - 1; ++i) {
-        if (argv[i] != nullptr && std::string(argv[i]) == "--input") {
+        if (argv[i] != nullptr && std::string(argv[i]) == flag) {
             if (argv[i + 1] != nullptr) {
                 return std::string(argv[i + 1]);
             }
         }
     }
     return std::nullopt;
+}
+
+void write_specifications(const std::vector<Specification>& specs,
+                          const std::string& output_dir) {
+    for (std::size_t i = 0; i < specs.size(); ++i) {
+        const std::string path =
+            output_dir + "/repair_" + std::to_string(i) + ".json";
+        std::ofstream file(path);
+        if (!file) {
+            throw std::runtime_error("cannot open output file: " + path);
+        }
+        nlohmann::json jobj = specs[i];
+        file << jobj.dump(2) << "\n";
+    }
 }
 
 struct FilterRunStats {
@@ -274,7 +292,8 @@ bool has_flag(int argc, const char* const* argv, const char* flag) {
 
 void print_help(const char* prog) {
     std::cout
-        << "Usage: " << prog << " --input <spec.json> [--seed <n>]\n"
+        << "Usage: " << prog
+        << " --input <spec.json> [--seed <n>] [--output-dir <dir>]\n"
         << "\n"
         << "Repair an unrealisable FRETISH specification using a genetic\n"
         << "algorithm. The input specification is read from a JSON file and\n"
@@ -290,6 +309,9 @@ void print_help(const char* prog) {
         << "                       \"fitness\" field.\n"
         << "  --seed <n>           RNG seed for reproducible runs. If omitted\n"
         << "                       a random seed is chosen and printed.\n"
+        << "  --output-dir <dir>   Write each maximal realizable repair to\n"
+        << "                       <dir>/repair_0.json, repair_1.json, ...\n"
+        << "                       The directory must already exist.\n"
         << "  -h, --help           Show this help message and exit.\n"
         << "\n"
         << "Input format (examples/takeoff.json):\n"
@@ -319,13 +341,16 @@ int main(int argc, const char* const argv[]) {
         print_help(argv[0]);
         return 0;
     }
-    const std::optional<std::string> input_path = parse_input_arg(argc, argv);
+    const std::optional<std::string> input_path =
+        parse_string_arg(argc, argv, "--input");
     if (!input_path.has_value()) {
         std::cerr << "Usage: " << argv[0]
-                  << " --input <spec.json> [--seed <n>]\n"
+                  << " --input <spec.json> [--seed <n>] [--output-dir <dir>]\n"
                   << "Try '" << argv[0] << " --help' for more information.\n";
         return 1;
     }
+    const std::optional<std::string> output_dir =
+        parse_string_arg(argc, argv, "--output-dir");
     Specification original_spec;
     try {
         original_spec = load_specification(*input_path);
@@ -359,6 +384,16 @@ int main(int argc, const char* const argv[]) {
     std::cout << "Realizable specifications: " << realizable_vec.size() << "\n";
     const std::vector<Specification> maximal =
         filter_maximal_specifications(realizable_vec);
+    if (output_dir.has_value()) {
+        try {
+            write_specifications(maximal, *output_dir);
+            std::cout << "Wrote " << maximal.size() << " repair(s) to "
+                      << *output_dir << "/\n";
+        } catch (const std::exception& exc) {
+            std::cerr << exc.what() << "\n";
+            return 1;
+        }
+    }
     const std::vector<ScoredSpecification> scored_maximal =
         score_and_sort_specifications(maximal, fitness_function);
     print_top_specifications(scored_maximal, fitness_function,

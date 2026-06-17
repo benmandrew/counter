@@ -1,72 +1,18 @@
 #include "filter/implication.hpp"
 
-#include <algorithm>
 #include <atomic>
-#include <cassert>
 #include <cstdint>
-#include <optional>
-#include <string>
 #include <thread>
 #include <unordered_map>
 #include <utility>
 #include <vector>
 
 #include "bounded_async.hpp"
+#include "filter/implication_check.hpp"
 #include "requirement.hpp"
 #include "thread_pool.hpp"
 
 namespace {
-
-// Returns true if `from` implies `to`, i.e. sat(from & !to) is UNSAT.
-// Shortcuts on syntactically identical requirements (a requirement always
-// implies itself) to avoid a black call, and to reuse this requirement pair's
-// result across every spec pair that happens to share it.
-bool requirement_implies(const Requirement& from, const Requirement& dest,
-                         SatisfiabilityChecker& checker) {
-    if (from == dest) {
-        return true;
-    }
-    assert(from.m_ltl.has_value() && dest.m_ltl.has_value());
-    const std::optional<bool> sat = checker.check_satisfiability(
-        "(" + *from.m_ltl + ") & !(" + *dest.m_ltl + ")");
-    if (!sat.has_value()) {
-        ImplicationFilterStats::n_timeouts.fetch_add(1,
-                                                     std::memory_order_relaxed);
-        return false;
-    }
-    return !sat.value();
-}
-
-// Returns true if every requirement in `to_reqs` is implied by some
-// requirement in `from_reqs`. Sufficient (but not necessary) for the
-// conjunction of from_reqs to imply the conjunction of to_reqs: a true
-// implication that only holds via a combination of several from_reqs is
-// missed, so this under-detects domination rather than ever over-detecting
-// it.
-bool all_implied_by_some(const std::vector<Requirement>& from_reqs,
-                         const std::vector<Requirement>& to_reqs,
-                         SatisfiabilityChecker& checker) {
-    return std::all_of(
-        to_reqs.begin(), to_reqs.end(), [&](const Requirement& dest) {
-            return std::any_of(from_reqs.begin(), from_reqs.end(),
-                               [&](const Requirement& from) {
-                                   return requirement_implies(from, dest,
-                                                              checker);
-                               });
-        });
-}
-
-// Sufficient condition for spec `from` to imply spec `to`, decomposed
-// per-requirement following the standard assume-guarantee contract
-// refinement rule: from's assumptions must each be implied by some
-// assumption of `to` (to assumes no more than from requires), and to's
-// guarantees must each be implied by some guarantee of `from`.
-bool spec_implies(const Specification& from, const Specification& dest,
-                  SatisfiabilityChecker& checker) {
-    return all_implied_by_some(dest.m_assumptions, from.m_assumptions,
-                               checker) &&
-           all_implied_by_some(from.m_guarantees, dest.m_guarantees, checker);
-}
 
 // Checks one unordered pair of representative positions {a, b} in both
 // directions and marks whichever side is strictly dominated, if any.

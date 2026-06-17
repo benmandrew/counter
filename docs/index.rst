@@ -38,6 +38,7 @@ Repairing unrealisable FRETish specifications.
 
    api/filter/bloat
    api/filter/implication
+   api/filter/implication_check
 
 .. toctree::
    :maxdepth: 1

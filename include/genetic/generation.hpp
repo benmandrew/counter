@@ -113,6 +113,18 @@ std::vector<Specification> filter_population(
 std::vector<FilterFunction> get_filter_functions(
     Specification original, SatisfiabilityChecker& checker);
 
+/// Returns the set of filter functions applied to the final realizable
+/// population after evolution: deduplication, and (if
+/// Config::run_implication_filter) the implication filter.
+///
+/// @param checker          Satisfiability checker for the implication filter;
+///                         captured by reference, must outlive the filters
+/// @param on_impl_progress Optional progress callback forwarded to the
+///                         implication filter
+std::vector<FilterFunction> get_final_filter_functions(
+    SatisfiabilityChecker& checker,
+    const GenerationProgressCallback& on_impl_progress = nullptr);
+
 /// Scores each specification in @p specs and returns them sorted by fitness
 /// descending.
 std::vector<ScoredSpecification> score_and_sort_specifications(

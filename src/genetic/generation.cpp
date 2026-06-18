@@ -180,3 +180,14 @@ std::vector<FilterFunction> get_filter_functions(
         // make_weakening_filter(std::move(original), checker),
     };
 }
+
+std::vector<FilterFunction> get_final_filter_functions(
+    SatisfiabilityChecker& checker,
+    const GenerationProgressCallback& on_impl_progress) {
+    std::vector<FilterFunction> filters;
+    filters.push_back(make_dedup_filter());
+    if (Config::run_implication_filter) {
+        filters.push_back(make_implication_filter(checker, on_impl_progress));
+    }
+    return filters;
+}

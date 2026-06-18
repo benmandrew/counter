@@ -227,16 +227,11 @@ std::vector<Specification> collect_realizable_specifications(
 }
 
 // Reduces realizable specifications to those maximal under implication, when
-// Config::run_implication_filter is enabled; otherwise returns them unchanged.
+// Config::run_implication_filter is enabled; otherwise deduplicates only.
 std::vector<Specification> filter_maximal_specifications(
     const std::vector<Specification>& realizable_vec) {
-    const FilterFunction dedup_filter = make_dedup_filter();
-    const std::vector<Specification> deduped = dedup_filter(realizable_vec);
-    if (!Config::run_implication_filter) {
-        return deduped;
-    }
     const auto impl_start = std::chrono::steady_clock::now();
-    auto on_impl_progress = [&](std::size_t done, std::size_t total) {
+    auto on_impl_progress = [&impl_start](std::size_t done, std::size_t total) {
         const double elapsed =
             std::chrono::duration<double>(std::chrono::steady_clock::now() -
                                           impl_start)
@@ -250,20 +245,23 @@ std::vector<Specification> filter_maximal_specifications(
                   << ImplicationFilterStats::n_timeouts << " timeout)"
                   << std::flush;
     };
-    const FilterFunction implication_filter =
-        make_implication_filter(global_sat_checker(), on_impl_progress);
-    std::vector<Specification> maximal = implication_filter(deduped);
-    const double impl_elapsed =
-        std::chrono::duration<double>(std::chrono::steady_clock::now() -
-                                      impl_start)
-            .count();
-    std::cout << "\r\033[KImplication filter: 100%  " << std::fixed
-              << std::setprecision(2) << impl_elapsed << "s  ("
-              << ImplicationFilterStats::n_comparisons << " cmp, "
-              << ImplicationFilterStats::n_skipped << " skip, "
-              << ImplicationFilterStats::n_duplicates << " dup, "
-              << ImplicationFilterStats::n_timeouts << " timeout)\n";
-    return maximal;
+    const std::vector<FilterFunction> filters =
+        get_final_filter_functions(global_sat_checker(), on_impl_progress);
+    const std::vector<Specification> result =
+        filter_population(realizable_vec, filters);
+    if (Config::run_implication_filter) {
+        const double impl_elapsed =
+            std::chrono::duration<double>(std::chrono::steady_clock::now() -
+                                          impl_start)
+                .count();
+        std::cout << "\r\033[KImplication filter: 100%  " << std::fixed
+                  << std::setprecision(2) << impl_elapsed << "s  ("
+                  << ImplicationFilterStats::n_comparisons << " cmp, "
+                  << ImplicationFilterStats::n_skipped << " skip, "
+                  << ImplicationFilterStats::n_duplicates << " dup, "
+                  << ImplicationFilterStats::n_timeouts << " timeout)\n";
+    }
+    return result;
 }
 
 bool has_flag(int argc, const char* const* argv, const char* flag) {

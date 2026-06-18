@@ -230,8 +230,10 @@ std::vector<Specification> collect_realizable_specifications(
 // Config::run_implication_filter is enabled; otherwise returns them unchanged.
 std::vector<Specification> filter_maximal_specifications(
     const std::vector<Specification>& realizable_vec) {
+    const FilterFunction dedup_filter = make_dedup_filter();
+    const std::vector<Specification> deduped = dedup_filter(realizable_vec);
     if (!Config::run_implication_filter) {
-        return realizable_vec;
+        return deduped;
     }
     const auto impl_start = std::chrono::steady_clock::now();
     auto on_impl_progress = [&](std::size_t done, std::size_t total) {
@@ -250,7 +252,7 @@ std::vector<Specification> filter_maximal_specifications(
     };
     const FilterFunction implication_filter =
         make_implication_filter(global_sat_checker(), on_impl_progress);
-    std::vector<Specification> maximal = implication_filter(realizable_vec);
+    std::vector<Specification> maximal = implication_filter(deduped);
     const double impl_elapsed =
         std::chrono::duration<double>(std::chrono::steady_clock::now() -
                                       impl_start)

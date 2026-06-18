@@ -165,7 +165,7 @@ std::vector<ScoredSpecification> evolve_generation(
 }
 
 std::vector<FilterFunction> get_filter_functions(
-    Specification original, SatisfiabilityChecker& checker) {
+    Specification original, [[maybe_unused]] SatisfiabilityChecker& checker) {
     return {
         make_bloat_cap_filter(original),
         // A false trigger is vacuously satisfied by every trace, so it
@@ -177,6 +177,6 @@ std::vector<FilterFunction> get_filter_functions(
                                   return !specification_has_false_trigger(spec);
                               }),
         // NOLINTNEXTLINE(clang-analyzer-cplusplus.NewDeleteLeaks)
-        make_weakening_filter(std::move(original), checker),
+        // make_weakening_filter(std::move(original), checker),
     };
 }

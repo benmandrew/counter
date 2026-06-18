@@ -35,6 +35,11 @@ struct ImplicationFilterStats {
 FilterFunction make_weakening_filter(Specification original,
                                      SatisfiabilityChecker& checker);
 
+/// Returns a FilterFunction that removes syntactically identical (structurally
+/// equal) duplicate specifications, keeping the first occurrence of each
+/// distinct spec in the input order.
+FilterFunction make_dedup_filter();
+
 /// Returns a FilterFunction that keeps only the maximal specifications of the
 /// population under the implication partial order.
 ///

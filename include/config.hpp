@@ -10,7 +10,7 @@ struct Config {
     static constexpr std::size_t population_size = 1000;
 
     // --- Fitness weights ---
-    static constexpr double fitness_weight_syntactic = 0.5;
+    static constexpr double fitness_weight_syntactic = 0.2;
     static constexpr double fitness_weight_semantic = 0.5;
     static constexpr double fitness_weight_halstead = 0.1;
     static constexpr double fitness_weight_status = 0.5;
@@ -42,7 +42,7 @@ struct Config {
     // --- Requirement mutation probabilities ---
     static constexpr double p_trigger = 0.2;
     static constexpr double p_response = 0.2;
-    static constexpr double p_timing = 0.2;
+    static constexpr double p_timing = 0.05;
 
     // --- Hardware ---
     inline static const std::size_t n_hw_threads =

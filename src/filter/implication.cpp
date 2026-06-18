@@ -4,6 +4,7 @@
 #include <cstdint>
 #include <thread>
 #include <unordered_map>
+#include <unordered_set>
 #include <utility>
 #include <vector>
 
@@ -129,6 +130,21 @@ std::vector<Specification> keep_non_subsumed(
 }
 
 }  // namespace
+
+FilterFunction make_dedup_filter() {
+    return {"dedup", [](const std::vector<Specification>& pop) {
+                std::unordered_set<Specification> seen;
+                seen.reserve(pop.size());
+                std::vector<Specification> survivors;
+                survivors.reserve(pop.size());
+                for (const Specification& spec : pop) {
+                    if (seen.insert(spec).second) {
+                        survivors.push_back(spec);
+                    }
+                }
+                return survivors;
+            }};
+}
 
 FilterFunction make_weakening_filter(Specification original,
                                      SatisfiabilityChecker& checker) {

@@ -165,20 +165,22 @@ std::vector<ScoredSpecification> evolve_generation(
 }
 
 std::vector<FilterFunction> get_filter_functions(
-    Specification original, [[maybe_unused]] SatisfiabilityChecker& checker) {
-    return {
-        make_bloat_cap_filter(original),
-        // A false trigger is vacuously satisfied by every trace, so it
-        // imposes no constraint; forbid it from surviving as a breeding
-        // candidate rather than letting the fitness function alone
-        // discourage it.
-        make_predicate_filter("false-trigger",
-                              [](const Specification& spec) {
-                                  return !specification_has_false_trigger(spec);
-                              }),
+    Specification original, SatisfiabilityChecker& checker) {
+    std::vector<FilterFunction> filters;
+    filters.push_back(make_bloat_cap_filter(original));
+    // A false trigger is vacuously satisfied by every trace, so it
+    // imposes no constraint; forbid it from surviving as a breeding
+    // candidate rather than letting the fitness function alone
+    // discourage it.
+    filters.push_back(
+        make_predicate_filter("false-trigger", [](const Specification& spec) {
+            return !specification_has_false_trigger(spec);
+        }));
+    if (Config::run_weakening_filter) {
         // NOLINTNEXTLINE(clang-analyzer-cplusplus.NewDeleteLeaks)
-        // make_weakening_filter(std::move(original), checker),
-    };
+        filters.push_back(make_weakening_filter(std::move(original), checker));
+    }
+    return filters;
 }
 
 std::vector<FilterFunction> get_final_filter_functions(

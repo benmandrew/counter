@@ -24,6 +24,7 @@ struct Config {
     static constexpr std::size_t default_model_counting_bound = 20;
 
     // --- Filtering ---
+    static constexpr bool run_weakening_filter = true;
     static constexpr bool run_implication_filter = true;
 
     // --- External tool timeouts ---

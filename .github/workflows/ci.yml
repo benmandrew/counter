@@ -47,12 +47,14 @@ jobs:
 
     strategy:
       matrix:
-        preset: [debug, release]
+        preset: [debug, release, tsan]
         include:
           - preset: debug
             build_dir: build
           - preset: release
             build_dir: build-release
+          - preset: tsan
+            build_dir: build-tsan
 
     steps:
       - name: Check out repository

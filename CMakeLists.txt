@@ -102,6 +102,9 @@ target_link_libraries(signal_tracer PRIVATE cpptrace::cpptrace)
 add_executable(compare src/compare.cpp)
 target_link_libraries(compare PRIVATE counter_fitness)
 
+add_executable(realize src/realize.cpp)
+target_link_libraries(realize PRIVATE counter_fitness)
+
 add_custom_target(ganak_binary ALL DEPENDS "${GANAK_EXECUTABLE}")
 add_custom_target(black_binary ALL DEPENDS "${BLACK_EXECUTABLE}")
 if(DEFINED BLACK_EXTERNAL_TARGET)
@@ -116,7 +119,7 @@ include(cmake/docs.cmake)
 include(cmake/format.cmake)
 include(cmake/lint.cmake)
 
-foreach(counter_target counter_core counter_fitness counter compare)
+foreach(counter_target counter_core counter_fitness counter compare realize)
     if(MSVC)
         target_compile_options(${counter_target} PRIVATE /W4 /permissive-)
     else()

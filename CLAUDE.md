@@ -54,11 +54,56 @@ Every header file in `include/` must have a corresponding `.rst` page under `doc
 - **Overflow**: arithmetic on `Count` values must go through `count_add_overflow` / `count_mul_overflow` with an assert on the overflow flag.
 - **Visitor pattern**: prefer `std::visit` with `if constexpr` branches over chains of `std::get_if` when dispatching on `std::variant` (see `requirement_to_ltl`, `mutate_timing`).
 
+## Algorithm flow (`counter`)
+
+1. Load `Specification` from `--input` JSON.
+2. Build `AggregateWeightedFitnessFunction` (syntactic + semantic + Halstead + status) and per-generation `FilterFunction` list from the original spec.
+3. Seed an RNG (from `--seed` or `std::random_device`); register crash metadata.
+4. Run `Config::generations` rounds of `evolve_generation`: crossover + mutation, score offspring in a thread pool, apply filters (false-trigger, dedup, optional weakening).
+5. Collect the realizable survivors from the final population (re-checked with `black` + `ltlsynt`).
+6. Apply final filters: dedup, then optional implication filter to keep only maximal specs.
+7. Score, sort, and write each maximal spec to `<output-dir>/repair_N.json`.
+
+## CLI reference
+
+**`counter`** — genetic repair
+
+| Flag | Description |
+|---|---|
+| `--input <spec.json>` | Input specification (required) |
+| `--output-dir <dir>` | Directory for `repair_N.json` outputs (required, must exist) |
+| `--seed <n>` | RNG seed for reproducible runs |
+| `-h`, `--help` | Show help |
+
+**`realize`** — realizability check
+
+| Flag | Description |
+|---|---|
+| `--input <spec.json>` | Input specification (required) |
+| `-h`, `--help` | Show help |
+
+Prints `REALIZABLE` or `UNREALIZABLE`.
+
+**`compare`** — implication comparison of repairs vs ideals
+
+| Flag | Description |
+|---|---|
+| `--repairs <dir>` | Directory of repair JSON files (required) |
+| `--ideal <file>` | Ideal repair to compare against (repeatable, required) |
+| `-h`, `--help` | Show help |
+
+## External tools
+
+- `ltl2tgba`, `ltlsynt` — from SPOT, built from source via `cmake/spot.cmake`; located via the `SPOT_BIN_DIR` compile macro.
+- `black` — LTL satisfiability checker (`black-sat`); found on `PATH` or downloaded/built via `cmake/black.cmake`; path passed as `BLACK_EXECUTABLE_PATH`.
+- `ganak` — model counter; downloaded as a release binary via `cmake/ganak.cmake`; path passed as `GANAK_EXECUTABLE_PATH`.
+
 ## Project layout
 
 ```
 include/
   crash/          — crash_handler.hpp
+  filter/         — bloat.hpp, implication.hpp, implication_check.hpp
   fitness/        — syntactic_similarity, semantic_similarity, model_counter, transfer_matrix
   genetic/        — mutation, crossover, generation
   prop_formula.hpp

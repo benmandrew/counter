@@ -47,10 +47,13 @@ jobs:
 
     strategy:
       matrix:
-        preset: [debug, release, tsan]
         include:
           - preset: debug
             build_dir: build
+          - preset: debug
+            build_dir: build
+            compiler: gcc
+            cmake_args: -DCMAKE_C_COMPILER=gcc -DCMAKE_CXX_COMPILER=g++
           - preset: release
             build_dir: build-release
           - preset: tsan
@@ -74,12 +77,12 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ${{ matrix.build_dir }}/third_party
-          key: ${{ runner.os }}-${{ matrix.preset }}-third-party-${{ hashFiles('cmake/spot.cmake', 'cmake/ganak.cmake', 'cmake/black.cmake') }}
+          key: ${{ runner.os }}-${{ matrix.preset }}-${{ matrix.compiler || 'clang' }}-third-party-${{ hashFiles('cmake/spot.cmake', 'cmake/ganak.cmake', 'cmake/black.cmake') }}
           restore-keys: |
-            ${{ runner.os }}-${{ matrix.preset }}-third-party-
+            ${{ runner.os }}-${{ matrix.preset }}-${{ matrix.compiler || 'clang' }}-third-party-
 
       - name: Configure project
-        run: cmake --preset ${{ matrix.preset }}
+        run: cmake --preset ${{ matrix.preset }} ${{ matrix.cmake_args }}
 
       - name: Build project
         run: cmake --build --preset ${{ matrix.preset }}

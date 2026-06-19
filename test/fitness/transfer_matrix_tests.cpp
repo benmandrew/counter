@@ -110,17 +110,17 @@ bool satisfies_after_ticks(const Trace& trace, std::size_t ticks) {
             if (response) {
                 return false;
             }
-            countdown = ticks;
+            countdown = ticks + 1;
         } else if (countdown == 1) {
             if (!response || trigger) {
                 return false;
             }
             countdown = 0;
         } else {
-            if (response) {
+            if (response || trigger) {
                 return false;
             }
-            countdown = trigger ? ticks : countdown - 1;
+            --countdown;
         }
     }
     return true;

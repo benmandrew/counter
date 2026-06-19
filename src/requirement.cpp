@@ -43,13 +43,13 @@ std::string expand_for(const std::string& response, std::size_t ticks) {
     return inner;
 }
 
-// Expands G[0..n-1](!R) & F[n..n] R as !R & X(!R & X(... & X R))
-// (n nestings: n occurrences of !R followed by R). Caller handles n=0.
+// Expands G[0..n](!R) & F[n+1..n+1] R as !R & X(!R & X(... & X R))
+// (n+1 nestings: n+1 occurrences of !R followed by R).
 std::string expand_after(const std::string& response, std::size_t ticks) {
     std::string not_response = "!";
     not_response += response;
     std::string inner = response;
-    for (std::size_t i = 0; i < ticks; ++i) {
+    for (std::size_t i = 0; i <= ticks; ++i) {
         std::string next = not_response;
         next += " & X(";
         next += inner;
@@ -255,9 +255,6 @@ std::string requirement_to_ltl(const Requirement& requirement) {
                 return "G(" + trigger_str + " -> (" +
                        expand_for(response_str, variant.m_ticks) + "))";
             } else if constexpr (std::is_same_v<T, timing::AfterTicks>) {
-                if (variant.m_ticks == 0) {
-                    return "G(" + trigger_str + " -> " + response_str + ")";
-                }
                 return "G(" + trigger_str + " -> (" +
                        expand_after(response_str, variant.m_ticks) + "))";
             } else {

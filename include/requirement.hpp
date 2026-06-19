@@ -139,7 +139,7 @@ std::string to_string(const Timing& timing);
 /// timing variants are expanded into X (next) operator chains: WithinTicks(n)
 /// yields G(T -> (R | X(R | ... | X R))) and ForTicks(n) yields
 /// G(T -> (R & X(R & ... & X R))). AfterTicks(n) yields
-/// G(T -> (!R & X(!R & ... & X R))) with n occurrences of !R before R.
+/// G(T -> (!R & X(!R & ... & X R))) with n+1 occurrences of !R before R.
 /// The result is suitable for passing directly to ltl2tgba or ltlsynt.
 std::string requirement_to_ltl(const Requirement& requirement);
 

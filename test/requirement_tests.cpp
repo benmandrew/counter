@@ -78,23 +78,24 @@ void test_for_ticks_two() {
 void test_after_ticks_zero() {
     const std::string result =
         ltl(Formula("t"), Formula("r"), timing::after_ticks(0));
-    expect(result == "G((t) -> (r))",
-           "requirement_to_ltl: AfterTicks(0) should produce G(T -> R)");
+    expect(result == "G((t) -> (!(r) & X((r))))",
+           "requirement_to_ltl: AfterTicks(0) should expand to !R & X(R)");
 }
 
 void test_after_ticks_one() {
     const std::string result =
         ltl(Formula("t"), Formula("r"), timing::after_ticks(1));
-    expect(result == "G((t) -> (!(r) & X((r))))",
-           "requirement_to_ltl: AfterTicks(1) should expand to !R & X(R)");
+    expect(
+        result == "G((t) -> (!(r) & X(!(r) & X((r)))))",
+        "requirement_to_ltl: AfterTicks(1) should expand to !R & X(!R & X(R))");
 }
 
 void test_after_ticks_two() {
     const std::string result =
         ltl(Formula("t"), Formula("r"), timing::after_ticks(2));
-    expect(
-        result == "G((t) -> (!(r) & X(!(r) & X((r)))))",
-        "requirement_to_ltl: AfterTicks(2) should expand to !R & X(!R & X(R))");
+    expect(result == "G((t) -> (!(r) & X(!(r) & X(!(r) & X((r))))))",
+           "requirement_to_ltl: AfterTicks(2) should expand to !R & X(!R & "
+           "X(!R & X(R)))");
 }
 
 void test_specification_has_false_trigger_detects_assumption() {

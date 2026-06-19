@@ -77,12 +77,15 @@ Every header file in `include/` must have a corresponding `.rst` page under `doc
 
 **`realize`** — realizability check
 
+```
+realize <spec.json> [<spec.json> ...]
+```
+
 | Flag | Description |
 |---|---|
-| `--input <spec.json>` | Input specification (required) |
 | `-h`, `--help` | Show help |
 
-Prints `REALIZABLE` or `UNREALIZABLE`.
+One file: prints `REALIZABLE` or `UNREALIZABLE`. Multiple files: prints `<path>: REALIZABLE` (or `UNREALIZABLE`) per line.
 
 **`compare`** — implication comparison of repairs vs ideals
 

@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstddef>
+#include <cstdint>
 #include <functional>
 #include <optional>
 #include <string>
@@ -12,31 +13,31 @@
 
 namespace timing {
 
-/// Response must hold immediately when trigger is true.
+/// Response must hold immediately when condition is true.
 struct Immediately {};
 
-/// Response must hold at the next timepoint after trigger.
+/// Response must hold at the next timepoint after condition.
 struct NextTimepoint {};
 
-/// Response must hold within `m_ticks` ticks of trigger, including the trigger
-/// tick.
+/// Response must hold within `m_ticks` ticks of condition, including the
+/// condition tick.
 struct WithinTicks {
     std::size_t m_ticks;
 };
 
-/// Response must hold for `m_ticks` consecutive ticks, including the trigger
+/// Response must hold for `m_ticks` consecutive ticks, including the condition
 /// tick.
 struct ForTicks {
     std::size_t m_ticks;
 };
 
-/// Response must not hold for `m_ticks` ticks (including the trigger tick),
+/// Response must not hold for `m_ticks` ticks (including the condition tick),
 /// then must hold on the (`m_ticks` + 1)th tick.
 struct AfterTicks {
     std::size_t m_ticks;
 };
 
-/// Response must hold at some timepoint at or after the trigger.
+/// Response must hold at some timepoint at or after the condition.
 struct Eventually {};
 
 /// Algebraic data type for requirement timing.
@@ -57,29 +58,40 @@ using Timing = timing::Timing;
 bool operator<(const Timing& lhs, const Timing& rhs);
 bool operator==(const Timing& lhs, const Timing& rhs);
 
-/// A FRET requirement specifying a system obligation. Consists of a trigger
-/// condition and a response that must be satisfied according to the specified
-/// timing constraint. These are used as the basic units for repair and for
-/// computing semantic and syntactic similarity metrics in genetic algorithms.
+/// Distinguishes how the condition field activates the requirement.
+/// - Trigger: requirement fires on a rising edge of the condition (false→true),
+///   or if the condition already holds at t=0.
+/// - Continual: requirement fires at every timepoint where the condition holds.
+enum class ConditionType : std::uint8_t { Trigger, Continual };
+
+/// A FRET requirement specifying a system obligation. Consists of a condition
+/// and a response that must be satisfied according to the specified timing
+/// constraint. These are used as the basic units for repair and for computing
+/// semantic and syntactic similarity metrics in genetic algorithms.
 struct Requirement {
-    /// The trigger condition (propositional formula)
-    Formula m_trigger;
+    /// The condition (propositional formula) that activates the requirement
+    Formula m_condition;
     /// The response obligation (propositional formula)
     Formula m_response;
     /// The timing constraint for satisfaction
     Timing m_timing;
-    /// The LTL formula equivalent to (m_trigger, m_response, m_timing),
-    /// derived automatically by the constructor via requirement_to_ltl.
+    /// Whether the condition is evaluated as a trigger (rising-edge) or
+    /// continually (at every timepoint where it holds)
+    ConditionType m_condition_type;
+    /// The LTL formula equivalent to (m_condition, m_response, m_timing,
+    /// m_condition_type), derived automatically by the constructor via
+    /// requirement_to_ltl.
     std::optional<std::string> m_ltl;
 
     friend bool operator<(const Requirement& lhs, const Requirement& rhs);
     friend bool operator==(const Requirement& lhs, const Requirement& rhs);
 
-    explicit Requirement(Formula trigger, Formula response,
-                         const Timing& timing);
+    explicit Requirement(
+        Formula condition, Formula response, const Timing& timing,
+        ConditionType condition_type = ConditionType::Continual);
 
     /// Returns a one-line human-readable string of the form
-    /// "If <trigger>, <timing> <response>".
+    /// "If <condition>, <timing> <response>".
     [[nodiscard]] std::string to_string() const;
 };
 
@@ -99,7 +111,7 @@ struct Specification {
     friend bool operator==(const Specification& lhs, const Specification& rhs);
 
     /// Returns one line per requirement (assumptions then guarantees),
-    /// each in the form "If <trigger>, <timing> <response>", joined by
+    /// each in the form "If <condition>, <timing> <response>", joined by
     /// newlines.
     [[nodiscard]] std::string to_string() const;
 };
@@ -108,8 +120,8 @@ struct Specification {
 /// the state of a requirement automaton at a particular timepoint, used to
 /// compute both individual and joint requirement model counts.
 struct State {
-    /// Whether the trigger condition holds
-    bool m_trigger_holds = false;
+    /// Whether the condition holds
+    bool m_condition_holds = false;
     /// Whether the response condition holds
     bool m_response_holds = false;
     /// Countdown mechanism state (for timed constraints)
@@ -121,25 +133,26 @@ struct State {
     [[nodiscard]] std::string label() const;
 };
 
-/// Returns the set of canonical states based on the cross-product of trigger
-/// and response boolean valuations: {(T,R) | T,R ∈ {true, false}}.
+/// Returns the set of canonical states based on the cross-product of condition
+/// and response boolean valuations: {(C,R) | C,R ∈ {true, false}}.
 std::vector<State> canonical_states();
 
-/// Returns true if any assumption or guarantee has a trigger that is the
+/// Returns true if any assumption or guarantee has a condition that is the
 /// literal atom "false" (e.g. after simplifying "!(true)"). Such a
 /// requirement is vacuously satisfied by every trace and imposes no
 /// constraint, so specifications containing one should be excluded from the
 /// population rather than treated as ordinary candidates.
-bool specification_has_false_trigger(const Specification& specification);
+bool specification_has_false_condition(const Specification& specification);
 
 /// Converts a Timing enum value to a human-readable string representation.
 std::string to_string(const Timing& timing);
 
-/// Converts a Requirement to an LTL formula string in SPOT syntax. Bounded
-/// timing variants are expanded into X (next) operator chains: WithinTicks(n)
-/// yields G(T -> (R | X(R | ... | X R))) and ForTicks(n) yields
-/// G(T -> (R & X(R & ... & X R))). AfterTicks(n) yields
-/// G(T -> (!R & X(!R & ... & X R))) with n+1 occurrences of !R before R.
+/// Converts a Requirement to an LTL formula string in SPOT syntax. For
+/// Continual condition type, bounded timing variants are expanded into X (next)
+/// operator chains: WithinTicks(n) yields G(C -> (R | X(R | ... | X R))) and
+/// ForTicks(n) yields G(C -> (R & X(R & ... & X R))). For Trigger condition
+/// type, the formula encodes a rising-edge detector:
+/// G((!C & X(C)) -> X(body)) & (C -> body).
 /// The result is suitable for passing directly to ltl2tgba or ltlsynt.
 std::string requirement_to_ltl(const Requirement& requirement);
 
@@ -173,9 +186,11 @@ struct hash<Requirement> {
         auto combine = [](std::size_t seed, std::size_t val) noexcept {
             return seed ^ (val + 0x9e3779b9U + (seed << 6) + (seed >> 2));
         };
-        std::size_t seed = std::hash<Formula>{}(req.m_trigger);
+        std::size_t seed = std::hash<Formula>{}(req.m_condition);
         seed = combine(seed, std::hash<Formula>{}(req.m_response));
         seed = combine(seed, std::hash<Timing>{}(req.m_timing));
+        seed = combine(seed, std::hash<bool>{}(req.m_condition_type ==
+                                               ConditionType::Trigger));
         seed = combine(seed, std::hash<bool>{}(req.m_ltl.has_value()));
         if (req.m_ltl.has_value()) {
             seed = combine(seed, std::hash<std::string>{}(*req.m_ltl));

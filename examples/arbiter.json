@@ -2,17 +2,20 @@
   "assumptions": [],
   "guarantees": [
     {
-      "trigger": "r1",
+      "condition": "r1",
+      "condition-type": "trigger",
       "response": "g1",
       "timing": { "type": "Eventually" }
     },
     {
-      "trigger": "r2",
+      "condition": "r2",
+      "condition-type": "trigger",
       "response": "g2",
       "timing": { "type": "Eventually" }
     },
     {
-      "trigger": "!(a)",
+      "condition": "!(a)",
+      "condition-type": "continual",
       "response": "!(g1) & !(g2)",
       "timing": { "type": "Immediately" }
     }

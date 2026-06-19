@@ -30,8 +30,8 @@ void test_crossover_prefers_first_parent_with_false_source() {
                                     timing::next_timepoint()};
     const Requirement offspring = crossover_requirements(
         first_parent, second_parent, make_source({}, 0U));
-    expect(offspring.m_trigger.to_string() == "P",
-           "crossover: false source should keep first parent's trigger");
+    expect(offspring.m_condition.to_string() == "P",
+           "crossover: false source should keep first parent's condition");
     expect(offspring.m_response.to_string() == "Q",
            "crossover: false source should keep first parent's response");
     expect(std::holds_alternative<timing::Immediately>(offspring.m_timing),
@@ -60,8 +60,8 @@ void test_formula_crossover_can_combine_atoms() {
                                     timing::next_timepoint()};
     const Requirement offspring = crossover_requirements(
         first_parent, second_parent, make_source({3, 1, 1, 0}, 0));
-    expect(offspring.m_trigger.to_string() == "(P) & (R)",
-           "crossover: trigger crossover should be able to combine atoms");
+    expect(offspring.m_condition.to_string() == "(P) & (R)",
+           "crossover: condition crossover should be able to combine atoms");
 }
 
 }  // namespace

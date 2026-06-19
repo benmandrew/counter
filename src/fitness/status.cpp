@@ -23,7 +23,7 @@ double specification_status(const Specification& specification,
             conj_a += " & ";
             conj_g += " & ";
         }
-        conj_a += "(" + req.m_trigger.to_string() + ")";
+        conj_a += "(" + req.m_condition.to_string() + ")";
         conj_g += "(" + req.m_response.to_string() + ")";
         first = false;
     };

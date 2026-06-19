@@ -36,8 +36,8 @@ RandomSource make_source(std::vector<std::size_t> values,
         });
 }
 
-std::string first_trigger(const Specification& spec) {
-    return spec.m_guarantees.begin()->m_trigger.to_string();
+std::string first_condition(const Specification& spec) {
+    return spec.m_guarantees.begin()->m_condition.to_string();
 }
 
 // --- score_population ---
@@ -91,11 +91,11 @@ void test_make_predicate_filter_keeps_matching() {
                                             make_spec("r", "s")};
     const FilterFunction filter = make_predicate_filter(
         "",
-        [](const Specification& spec) { return first_trigger(spec) == "p"; });
+        [](const Specification& spec) { return first_condition(spec) == "p"; });
     const auto survivors = filter(pop);
     expect(survivors.size() == 1,
            "make_predicate_filter: should remove non-matching specifications");
-    expect(first_trigger(survivors[0]) == "p",
+    expect(first_condition(survivors[0]) == "p",
            "make_predicate_filter: should keep the matching specification");
 }
 
@@ -111,14 +111,15 @@ void test_filter_population_empty_filter_list_keeps_all() {
 void test_filter_population_removes_failing() {
     const std::vector<Specification> pop = {make_spec("p", "q"),
                                             make_spec("r", "s")};
-    const std::vector<FilterFunction> filters = {make_predicate_filter(
-        "",
-        [](const Specification& spec) { return first_trigger(spec) == "p"; })};
+    const std::vector<FilterFunction> filters = {
+        make_predicate_filter("", [](const Specification& spec) {
+            return first_condition(spec) == "p";
+        })};
     const auto survivors = filter_population(pop, filters);
     expect(survivors.size() == 1,
            "filter_population: should remove specifications failing the "
            "predicate");
-    expect(first_trigger(survivors[0]) == "p",
+    expect(first_condition(survivors[0]) == "p",
            "filter_population: should keep the passing specification");
 }
 
@@ -129,52 +130,54 @@ void test_filter_population_applies_sequentially() {
     const std::vector<FilterFunction> filters = {
         make_predicate_filter("",
                               [](const Specification& spec) {
-                                  return first_trigger(spec) != "t";
+                                  return first_condition(spec) != "t";
                               }),
         make_predicate_filter("", [](const Specification& spec) {
-            return first_trigger(spec) != "r";
+            return first_condition(spec) != "r";
         })};
     const auto survivors = filter_population(pop, filters);
     expect(survivors.size() == 1,
            "filter_population: filters should be applied sequentially");
-    expect(first_trigger(survivors[0]) == "p",
+    expect(first_condition(survivors[0]) == "p",
            "filter_population: sequential filters should leave only p");
 }
 
 void test_filter_population_population_level_maximal_elements() {
-    // Keep only specs with the simplest (fewest-node) trigger formula.
+    // Keep only specs with the simplest (fewest-node) condition formula.
     const std::vector<Specification> pop = {make_spec("p", "q"),
                                             make_spec("p & r", "q")};
-    const FilterFunction simplest_trigger = [](const std::vector<Specification>&
-                                                   candidates) {
-        if (candidates.empty()) {
-            return candidates;
-        }
-        const std::size_t min_nodes =
-            std::min_element(
-                candidates.begin(), candidates.end(),
-                [](const Specification& lhs, const Specification& rhs) {
-                    return lhs.m_guarantees.begin()->m_trigger.n_subformulae() <
-                           rhs.m_guarantees.begin()->m_trigger.n_subformulae();
-                })
-                ->m_guarantees.begin()
-                ->m_trigger.n_subformulae();
-        std::vector<Specification> result;
-        for (const Specification& spec : candidates) {
-            if (spec.m_guarantees.begin()->m_trigger.n_subformulae() ==
-                min_nodes) {
-                result.push_back(spec);
+    const FilterFunction simplest_condition =
+        [](const std::vector<Specification>& candidates) {
+            if (candidates.empty()) {
+                return candidates;
             }
-        }
-        return result;
-    };
-    const auto survivors = filter_population(pop, {simplest_trigger});
+            const std::size_t min_nodes =
+                std::min_element(
+                    candidates.begin(), candidates.end(),
+                    [](const Specification& lhs, const Specification& rhs) {
+                        return lhs.m_guarantees.begin()
+                                   ->m_condition.n_subformulae() <
+                               rhs.m_guarantees.begin()
+                                   ->m_condition.n_subformulae();
+                    })
+                    ->m_guarantees.begin()
+                    ->m_condition.n_subformulae();
+            std::vector<Specification> result;
+            for (const Specification& spec : candidates) {
+                if (spec.m_guarantees.begin()->m_condition.n_subformulae() ==
+                    min_nodes) {
+                    result.push_back(spec);
+                }
+            }
+            return result;
+        };
+    const auto survivors = filter_population(pop, {simplest_condition});
     expect(survivors.size() == 1,
            "filter_population: population-level filter should keep only "
            "maximal (simplest) elements");
-    expect(first_trigger(survivors[0]) == "p",
+    expect(first_condition(survivors[0]) == "p",
            "filter_population: should retain the specification with the "
-           "simpler trigger");
+           "simpler condition");
 }
 
 // --- evolve_generation ---
@@ -226,8 +229,8 @@ void test_evolve_generation_selects_parents_before_offspring_filtering() {
     expect(next_gen.size() == 2,
            "evolve_generation: the generation should be padded back to the "
            "requested target size after filtering");
-    expect(first_trigger(next_gen[0].specification) ==
-               first_trigger(next_gen[1].specification),
+    expect(first_condition(next_gen[0].specification) ==
+               first_condition(next_gen[1].specification),
            "evolve_generation: padded offspring should duplicate the "
            "surviving specification");
 }

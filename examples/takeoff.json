@@ -2,17 +2,20 @@
   "assumptions": [],
   "guarantees": [
     {
-      "trigger": "true",
+      "condition": "true",
+      "condition-type": "trigger",
       "response": "takeoff_roll",
       "timing": { "type": "ForTicks", "ticks": 5 }
     },
     {
-      "trigger": "true",
+      "condition": "true",
+      "condition-type": "trigger",
       "response": "!(takeoff_roll) & (lift_off)",
       "timing": { "type": "WithinTicks", "ticks": 5 }
     },
     {
-      "trigger": "takeoff_roll",
+      "condition": "takeoff_roll",
+      "condition-type": "trigger",
       "response": "lift_off",
       "timing": { "type": "AfterTicks", "ticks": 1 }
     }

@@ -31,24 +31,29 @@
   },
   "$defs": {
     "Requirement": {
-      "description": "A single FRETISH requirement with trigger, response, and timing.",
+      "description": "A single FRETISH requirement with condition, condition-type, response, and timing.",
       "type": "object",
-      "required": ["trigger", "response", "timing"],
+      "required": ["condition", "condition-type", "response", "timing"],
       "additionalProperties": false,
       "properties": {
-        "trigger": {
+        "condition": {
           "description": "Propositional formula that activates the requirement.",
           "type": "string"
         },
+        "condition-type": {
+          "description": "Whether the condition activates on a rising edge (trigger) or at every timepoint it holds (continual).",
+          "type": "string",
+          "enum": ["trigger", "continual"]
+        },
         "response": {
-          "description": "Propositional formula that must hold when triggered.",
+          "description": "Propositional formula that must hold when the condition activates.",
           "type": "string"
         },
         "timing": { "$ref": "#/$defs/Timing" }
       }
     },
     "Timing": {
-      "description": "Temporal modifier controlling when the response must hold relative to the trigger.",
+      "description": "Temporal modifier controlling when the response must hold relative to the condition.",
       "type": "object",
       "required": ["type"],
       "additionalProperties": false,

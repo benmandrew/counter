@@ -114,7 +114,7 @@ RawCounts count_timing(const Timing& timing) {
 }
 
 RawCounts count_requirement(const Requirement& req) {
-    RawCounts counts = count_formula(req.m_trigger);
+    RawCounts counts = count_formula(req.m_condition);
     counts.merge(count_formula(req.m_response));
     counts.merge(count_timing(req.m_timing));
     return counts;

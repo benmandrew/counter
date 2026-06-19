@@ -12,7 +12,7 @@ jobs:
 
     steps:
       - name: Check out repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Install LLVM 21
         run: |
@@ -61,7 +61,7 @@ jobs:
 
     steps:
       - name: Check out repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Install system dependencies
         run: |
@@ -74,7 +74,7 @@ jobs:
           python3 -m pip install --upgrade pip cmake
 
       - name: Cache third-party dependencies
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: ${{ matrix.build_dir }}/third_party
           key: ${{ runner.os }}-${{ matrix.preset }}-${{ matrix.compiler || 'clang' }}-third-party-${{ hashFiles('cmake/spot.cmake', 'cmake/ganak.cmake', 'cmake/black.cmake') }}

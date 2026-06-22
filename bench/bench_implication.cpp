@@ -56,7 +56,7 @@ BENCHMARK(BenchSpecImpliesWarmCache);
 // Each pair: same condition/timing/type, unrelated responses (propositional
 // SAT). After the authoritative-shortcut fix: 1 black call per pair. Before
 // the fix: 2 (propositional SAT fell through to a redundant LTL call).
-static bool check_sat_black_calls() {
+static void check_sat_black_calls() {
     constexpr std::size_t k_pairs = 20;
     SatisfiabilityChecker checker;
     const auto miss_before =
@@ -91,11 +91,10 @@ static bool check_sat_black_calls() {
                    " exceeds threshold " + std::to_string(threshold) +
                    " -- redundant LTL call per SAT pair?");
     }
-    return true;
 }
 
 // Propositional UNSAT pairs (from implies dest): also 1 black call each.
-static bool check_unsat_black_calls() {
+static void check_unsat_black_calls() {
     constexpr std::size_t k_pairs = 20;
     SatisfiabilityChecker checker;
     const auto miss_before =
@@ -125,11 +124,11 @@ static bool check_unsat_black_calls() {
         bench_fail("black calls " + std::to_string(calls) +
                    " exceeds threshold " + std::to_string(threshold));
     }
-    return true;
 }
 
 }  // namespace
 
-bool run_assertion_checks() {
-    return check_sat_black_calls() && check_unsat_black_calls();
+void run_assertion_checks() {
+    check_sat_black_calls();
+    check_unsat_black_calls();
 }

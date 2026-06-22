@@ -1,3 +1,3 @@
 #pragma once
 
-bool run_assertion_checks();
+void run_assertion_checks();

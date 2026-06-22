@@ -1,0 +1,241 @@
+#include "genetic/mutation.hpp"
+
+#include <cassert>
+#include <cstdlib>
+#include <optional>
+#include <string>
+#include <type_traits>
+#include <utility>
+#include <variant>
+#include <vector>
+
+#include "config.hpp"
+#include "prop_formula.hpp"
+
+namespace {
+
+Formula::Kind pick_binary_kind(const RandomSource& random_source) {
+    const int selector = static_cast<int>(random_source.next_index(4));
+    switch (selector) {
+        case 0:
+            return Formula::Kind::And;
+        case 1:
+            return Formula::Kind::Or;
+        case 2:
+            return Formula::Kind::Implies;
+        case 3:
+            return Formula::Kind::Iff;
+        default:
+            assert(false);
+            __builtin_unreachable();
+    }
+}
+
+std::string random_atom(const std::vector<std::string>& atoms,
+                        const RandomSource& random_source) {
+    assert(!atoms.empty());
+    return atoms[random_source.next_index(atoms.size())];
+}
+
+std::string mutate_atom_name(const std::string& atom,
+                             const std::vector<std::string>& atoms,
+                             const RandomSource& random_source) {
+    if (atom == "true") {
+        return "false";
+    }
+    if (atom == "false") {
+        return "true";
+    }
+    if (atoms.empty()) {
+        return atom;
+    }
+    return atoms[random_source.next_index(atoms.size())];
+}
+
+Formula mutate_atom_formula(const Formula& formula,
+                            const std::vector<std::string>& atoms,
+                            const RandomSource& random_source) {
+    const std::optional<std::string> atom = formula.atom_name();
+    assert(atom.has_value());
+    if (random_source.next_bool()) {
+        return Formula::make_atom(
+            mutate_atom_name(*atom, atoms, random_source));
+    }
+    return Formula::make_unary(Formula::Kind::Not, formula);
+}
+
+Formula mutate_not_subtree(Formula child, const std::vector<std::string>& atoms,
+                           const RandomSource& random_source) {
+    const int selector = static_cast<int>(random_source.next_index(3));
+    switch (selector) {
+        case 0:
+            return child;
+        case 1:
+            return Formula::make_unary(Formula::Kind::Not, child);
+        case 2:
+            break;
+        default:
+            assert(false);
+            __builtin_unreachable();
+    }
+    const Formula anchor =
+        Formula::make_atom(random_atom(atoms, random_source));
+    return Formula::make_binary(pick_binary_kind(random_source), anchor,
+                                Formula::make_unary(Formula::Kind::Not, child));
+}
+
+Formula mutate_binary_subtree(const std::pair<Formula, Formula>& children,
+                              const RandomSource& random_source) {
+    if (!random_source.next_bool()) {
+        return random_source.next_bool() ? children.first : children.second;
+    }
+    Formula combined = Formula::make_binary(pick_binary_kind(random_source),
+                                            children.first, children.second);
+    if (!random_source.next_bool()) {
+        return combined;
+    }
+    return Formula::make_unary(Formula::Kind::Not, combined);
+}
+
+}  // namespace
+
+Formula mutate_formula(const Formula& formula,
+                       const std::vector<std::string>& atoms,
+                       const RandomSource& random_source) {
+    assert(random_source);
+    const std::size_t n_subformulas = formula.n_subformulae();
+    const auto mutation_function =
+        [&](const Formula& subtree) -> std::optional<Formula> {
+        if (random_source.next_index(n_subformulas) != 0) {
+            return std::nullopt;
+        }
+        switch (subtree.kind()) {
+            case Formula::Kind::Atom:
+                return mutate_atom_formula(subtree, atoms, random_source);
+            case Formula::Kind::Not: {
+                auto child_opt = subtree.unary_child();
+                if (!child_opt.has_value()) {
+                    assert(false);
+                    __builtin_unreachable();
+                }
+                return mutate_not_subtree(*child_opt, atoms, random_source);
+            }
+            case Formula::Kind::And:
+            case Formula::Kind::Or:
+            case Formula::Kind::Implies:
+            case Formula::Kind::Iff: {
+                const auto children_opt = subtree.binary_children();
+                if (!children_opt.has_value()) {
+                    assert(false);
+                    __builtin_unreachable();
+                }
+                return mutate_binary_subtree(*children_opt, random_source);
+            }
+        }
+        return std::nullopt;
+    };
+    auto mutated = formula.rewrite_post_order(mutation_function);
+    mutated.remove_double_negation();
+    return mutated;
+}
+
+Timing mutate_timing(const Timing& timing, const RandomSource& random_source) {
+    assert(random_source);
+    const auto mutation_function = [&](const auto& value) -> Timing {
+        using T = std::decay_t<decltype(value)>;
+        if constexpr (std::is_same_v<T, timing::Immediately> ||
+                      std::is_same_v<T, timing::NextTimepoint>) {
+            return timing::within_ticks(1);
+        } else if constexpr (std::is_same_v<T, timing::Eventually>) {
+            return timing::eventually();
+        } else if constexpr (std::is_same_v<T, timing::AfterTicks>) {
+            return timing::within_ticks(value.m_ticks + 1);
+        } else if constexpr (std::is_same_v<T, timing::ForTicks>) {
+            if (value.m_ticks == 1) {
+                return random_source.next_bool() ? timing::next_timepoint()
+                                                 : timing::immediately();
+            }
+            return random_source.next_bool()
+                       ? timing::for_ticks(value.m_ticks - 1)
+                       : timing::for_ticks(value.m_ticks / 2);
+        } else {
+            std::size_t index = random_source.next_index(3);
+            switch (index) {
+                case 0:
+                    return timing::within_ticks(value.m_ticks + 1);
+                case 1:
+                    return timing::within_ticks(value.m_ticks * 2);
+                case 2:
+                    return timing::eventually();
+                default:
+                    assert(false);
+                    __builtin_unreachable();
+            }
+        }
+    };
+    return std::visit(mutation_function, timing);
+}
+
+Requirement mutate_requirement(const Requirement& requirement,
+                               const std::vector<std::string>& atoms,
+                               const RandomSource& random_source) {
+    Requirement mutated = requirement;
+    if (random_source.next_real() < Config::p_response) {
+        mutated.m_response =
+            mutate_formula(requirement.m_response, atoms, random_source);
+    }
+    if (random_source.next_real() < Config::p_trigger) {
+        mutated.m_condition =
+            mutate_formula(requirement.m_condition, atoms, random_source);
+    }
+    if (random_source.next_real() < Config::p_timing) {
+        mutated.m_timing = mutate_timing(requirement.m_timing, random_source);
+    }
+    mutated.m_ltl = requirement_to_ltl(mutated);
+    return mutated;
+}
+
+Specification mutate_specification(const Specification& specification,
+                                   const RandomSource& random_source) {
+    assert(random_source);
+    const std::size_t n_assumptions = specification.m_assumptions.size();
+    const std::size_t n_guarantees = specification.m_guarantees.size();
+    assert(n_assumptions + n_guarantees > 0);
+    std::vector<std::string> atoms;
+    atoms.insert(atoms.end(), specification.m_in_atoms.begin(),
+                 specification.m_in_atoms.end());
+    atoms.insert(atoms.end(), specification.m_out_atoms.begin(),
+                 specification.m_out_atoms.end());
+    const std::size_t idx =
+        random_source.next_index(n_assumptions + n_guarantees);
+    std::vector<Requirement> assumptions = specification.m_assumptions;
+    std::vector<Requirement> guarantees = specification.m_guarantees;
+    if (idx < n_assumptions) {
+        assumptions[idx] =
+            mutate_requirement(assumptions[idx], atoms, random_source);
+        for (std::size_t i = 0; i < assumptions.size(); ++i) {
+            if (i != idx) {
+                const bool equal = !(assumptions[i] < assumptions[idx]) &&
+                                   !(assumptions[idx] < assumptions[i]);
+                if (equal) {
+                    return specification;
+                }
+            }
+        }
+    } else {
+        const std::size_t g_idx = idx - n_assumptions;
+        guarantees[g_idx] =
+            mutate_requirement(guarantees[g_idx], atoms, random_source);
+        for (std::size_t i = 0; i < guarantees.size(); ++i) {
+            if (i != g_idx) {
+                const bool equal = !(guarantees[i] < guarantees[g_idx]) &&
+                                   !(guarantees[g_idx] < guarantees[i]);
+                if (equal) {
+                    return specification;
+                }
+            }
+        }
+    }
+    return Specification(std::move(assumptions), std::move(guarantees),
+                         specification.m_in_atoms, specification.m_out_atoms);
+}

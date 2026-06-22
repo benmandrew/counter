@@ -1,0 +1,128 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "specification.schema.json",
+  "title": "Specification",
+  "description": "A FRETISH specification, optionally annotated with fitness metadata produced by the counter repair tool.",
+  "type": "object",
+  "required": ["assumptions", "guarantees", "in_atoms", "out_atoms"],
+  "additionalProperties": false,
+  "properties": {
+    "assumptions": {
+      "description": "Assume clauses of the specification.",
+      "type": "array",
+      "items": { "$ref": "#/$defs/Requirement" }
+    },
+    "guarantees": {
+      "description": "Guarantee clauses of the specification.",
+      "type": "array",
+      "items": { "$ref": "#/$defs/Requirement" }
+    },
+    "in_atoms": {
+      "description": "Input (uncontrollable) atomic propositions.",
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "out_atoms": {
+      "description": "Output (controllable) atomic propositions.",
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "fitness": { "$ref": "#/$defs/FitnessRecord" }
+  },
+  "$defs": {
+    "Requirement": {
+      "description": "A single FRETISH requirement with condition, condition-type, response, and timing.",
+      "type": "object",
+      "required": ["condition", "condition-type", "response", "timing"],
+      "additionalProperties": false,
+      "properties": {
+        "condition": {
+          "description": "Propositional formula that activates the requirement.",
+          "type": "string"
+        },
+        "condition-type": {
+          "description": "Whether the condition activates on a rising edge (trigger) or at every timepoint it holds (continual).",
+          "type": "string",
+          "enum": ["trigger", "continual"]
+        },
+        "response": {
+          "description": "Propositional formula that must hold when the condition activates.",
+          "type": "string"
+        },
+        "timing": { "$ref": "#/$defs/Timing" }
+      }
+    },
+    "Timing": {
+      "description": "Temporal modifier controlling when the response must hold relative to the condition.",
+      "type": "object",
+      "required": ["type"],
+      "additionalProperties": false,
+      "properties": {
+        "type": {
+          "type": "string",
+          "enum": [
+            "Immediately",
+            "NextTimepoint",
+            "WithinTicks",
+            "ForTicks",
+            "AfterTicks",
+            "Eventually"
+          ]
+        },
+        "ticks": {
+          "description": "Tick bound; required for WithinTicks, ForTicks, and AfterTicks.",
+          "type": "integer",
+          "minimum": 0
+        }
+      },
+      "if": {
+        "properties": {
+          "type": { "enum": ["WithinTicks", "ForTicks", "AfterTicks"] }
+        }
+      },
+      "then": { "required": ["ticks"] }
+    },
+    "ComponentScore": {
+      "description": "Score and weight for one fitness component.",
+      "type": "object",
+      "required": ["name", "score", "weight"],
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "description": "Identifier of the fitness component (e.g. syntactic, semantic, halstead, status).",
+          "type": "string"
+        },
+        "score": {
+          "description": "Raw score in [0, 1] produced by this component.",
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "weight": {
+          "description": "Relative weight used when computing the weighted average.",
+          "type": "number",
+          "minimum": 0
+        }
+      }
+    },
+    "FitnessRecord": {
+      "description": "Fitness breakdown produced by the counter repair tool. Present only on output files, never required on input.",
+      "type": "object",
+      "required": ["total", "components"],
+      "additionalProperties": false,
+      "properties": {
+        "total": {
+          "description": "Weighted average of all component scores, in [0, 1].",
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "components": {
+          "description": "Per-component score and weight breakdown.",
+          "type": "array",
+          "items": { "$ref": "#/$defs/ComponentScore" }
+        }
+      }
+    }
+  }
+}

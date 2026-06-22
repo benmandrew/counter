@@ -1,0 +1,20 @@
+BasedOnStyle: Google
+IndentWidth: 4
+ColumnLimit: 80
+IncludeBlocks: Regroup
+IncludeCategories:
+  # C and POSIX system headers (ending in .h)
+  - Regex: '^<[^>]+\.h>'
+    Priority: 1
+  # Extension-less headers with path separator (e.g. <Eigen/Dense>)
+  - Regex: '^<[^>]+/[^.>]+>'
+    Priority: 1
+  # Standard C++ headers (no path separator, no .h)
+  - Regex: '^<[^/]+>'
+    Priority: 2
+  # Third-party headers (e.g. .hpp headers like <cpptrace/cpptrace.hpp>)
+  - Regex: '^<'
+    Priority: 3
+  # Project headers
+  - Regex: '^"'
+    Priority: 4

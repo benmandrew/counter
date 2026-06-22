@@ -1,0 +1,25 @@
+{
+  "assumptions": [],
+  "guarantees": [
+    {
+      "condition": "true",
+      "condition-type": "trigger",
+      "response": "takeoff_roll",
+      "timing": { "type": "ForTicks", "ticks": 5 }
+    },
+    {
+      "condition": "true",
+      "condition-type": "trigger",
+      "response": "!(takeoff_roll) & (lift_off)",
+      "timing": { "type": "WithinTicks", "ticks": 7 }
+    },
+    {
+      "condition": "!takeoff_roll",
+      "condition-type": "trigger",
+      "response": "lift_off",
+      "timing": { "type": "AfterTicks", "ticks": 1 }
+    }
+  ],
+  "in_atoms": [],
+  "out_atoms": ["takeoff_roll", "lift_off"]
+}

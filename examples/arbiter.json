@@ -1,0 +1,25 @@
+{
+  "assumptions": [],
+  "guarantees": [
+    {
+      "condition": "r1",
+      "condition-type": "trigger",
+      "response": "g1",
+      "timing": { "type": "Eventually" }
+    },
+    {
+      "condition": "r2",
+      "condition-type": "trigger",
+      "response": "g2",
+      "timing": { "type": "Eventually" }
+    },
+    {
+      "condition": "!(a)",
+      "condition-type": "continual",
+      "response": "!(g1) & !(g2)",
+      "timing": { "type": "Immediately" }
+    }
+  ],
+  "in_atoms": ["a", "r1", "r2"],
+  "out_atoms": ["g1", "g2"]
+}

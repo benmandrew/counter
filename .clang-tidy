@@ -1,0 +1,15 @@
+---
+Checks: >
+  bugprone-*,
+  performance-*,
+  modernize-*,
+  readability-*,
+  google-*,
+  -modernize-use-trailing-return-type,
+  -readability-magic-numbers,
+  -bugprone-easily-swappable-parameters,
+  -bugprone-exception-escape
+
+WarningsAsErrors: "*"
+
+HeaderFilterRegex: ".*"

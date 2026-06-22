@@ -1,0 +1,33 @@
+#pragma once
+
+/// @file crossover.hpp
+/// @brief Crossover operators that combine two parent requirements or
+///        specifications to produce an offspring.
+
+#include "genetic/random_source.hpp"
+#include "requirement.hpp"
+
+/// Produces an offspring requirement by crossing over the parents' trigger,
+/// response, and timing components.
+///
+/// @param first_parent  First parent requirement
+/// @param second_parent Second parent requirement
+/// @param random_source Random source for branch and selector choices
+/// @return              Offspring requirement
+Requirement crossover_requirements(const Requirement& first_parent,
+                                   const Requirement& second_parent,
+                                   const RandomSource& random_source);
+
+/// Produces an offspring specification by pairwise crossing each pair of
+/// corresponding requirements from the two parent specifications. The
+/// offspring inherits the shared in/out atoms from the parents.
+///
+/// @param first_parent  First parent specification
+/// @param second_parent Second parent specification
+/// @param random_source Random source for branch and selector choices
+/// @return              Offspring specification
+/// @throws std::invalid_argument if the specifications differ in requirement
+///         count, in_atoms, or out_atoms
+Specification crossover_specifications(const Specification& first_parent,
+                                       const Specification& second_parent,
+                                       const RandomSource& random_source);

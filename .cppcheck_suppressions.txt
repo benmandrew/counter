@@ -15,3 +15,7 @@ constStatement
 # it reports the destructured variables as "not assigned a value" even when they
 # are read. Suppress globally since all uses in this codebase are legitimate.
 unassignedVariable
+
+# benchmark::State must be non-const (its begin()/end() advance internal
+# iteration state). cppcheck doesn't know this and suggests const.
+constParameterCallback

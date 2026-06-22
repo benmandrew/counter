@@ -12,6 +12,7 @@ set(BENCHMARK_DOWNLOAD_DEPENDENCIES OFF CACHE BOOL "" FORCE)
 FetchContent_MakeAvailable(googlebenchmark)
 
 add_executable(counter_bench
+    bench_formula.cpp
     bench_implication.cpp
     main.cpp
 )

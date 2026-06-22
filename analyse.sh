@@ -4,12 +4,15 @@ set -euo pipefail
 
 mkdir -p build-release results
 
-rm results/* || true
+rm -f results/*
 
 NPROC=$(nproc)
 
-INPUT=examples/arbiter.json
-IDEAL=examples/arbiter-fixed.json
+INPUT=examples/takeoff.json
+IDEALS=(
+    examples/takeoff-fixed-1.json
+    examples/takeoff-fixed-2.json
+)
 
 cmake --build --parallel "$NPROC" --preset release
 
@@ -17,6 +20,11 @@ cmake --build --parallel "$NPROC" --preset release
     --input "$INPUT" \
     --output-dir results
 
+IDEAL_ARGS=()
+for ideal in "${IDEALS[@]}"; do
+    IDEAL_ARGS+=(--ideal "$ideal")
+done
+
 ./build-release/compare \
     --repairs results \
-    --ideal "$IDEAL"
+    "${IDEAL_ARGS[@]}"

@@ -25,6 +25,7 @@
 #include "runner/ganak.hpp"
 #include "runner/spot.hpp"
 #include "serialisation.hpp"
+#include "status_line.hpp"
 
 std::optional<std::string> parse_string_arg(int argc, const char* const* argv,
                                             const char* flag) {
@@ -181,31 +182,69 @@ run_evolution(std::vector<ScoredSpecification> population,
     for (const FilterFunction& flt : filter_functions) {
         filter_stats.push_back({flt.name(), 0, 0});
     }
+    StatusLine status;
+    const std::size_t col_gen = status.add("gen");
+    const std::size_t col_pct = status.add("%");
+    const std::size_t col_time = status.add("time");
+    std::vector<std::optional<std::size_t>> col_filter;
+    col_filter.reserve(filter_functions.size());
+    for (const FilterFunction& flt : filter_functions) {
+        if (!flt.name().empty()) {
+            col_filter.push_back(status.add(flt.name()));
+        } else {
+            col_filter.push_back(std::nullopt);
+        }
+    }
+    const std::size_t col_best = status.add("best");
+
+    auto format_elapsed = [](double s) -> std::string {
+        std::ostringstream oss;
+        oss << std::fixed << std::setprecision(2) << s << "s";
+        return oss.str();
+    };
+
     const std::size_t pop_size = population.size();
+    const std::string total_str = std::to_string(Config::generations);
     for (std::size_t gen_idx = 0; gen_idx < Config::generations; ++gen_idx) {
         const auto start = std::chrono::steady_clock::now();
+        const std::string gen_str =
+            std::to_string(gen_idx + 1) + "/" + total_str;
+        status.set(col_gen, gen_str);
+
         auto on_progress = [&](std::size_t done, std::size_t total) {
             const double elapsed = std::chrono::duration<double>(
                                        std::chrono::steady_clock::now() - start)
                                        .count();
-            std::cout << "\rGeneration " << std::setw(2) << gen_idx + 1 << ": "
-                      << std::setw(3) << (done * 100 / total) << "%  "
-                      << std::fixed << std::setprecision(2) << elapsed << "s"
-                      << std::flush;
+            status.set(col_pct, std::to_string(done * 100 / total) + "%");
+            status.set(col_time, format_elapsed(elapsed));
+            status.render();
         };
+
         population =
             evolve_generation(population, pop_size, fitness_function,
                               filter_functions, random_source, on_progress);
+
         const double elapsed = std::chrono::duration<double>(
                                    std::chrono::steady_clock::now() - start)
                                    .count();
-        std::cout << "\r\033[KGeneration " << std::setw(2) << gen_idx + 1
-                  << ": 100%  " << std::fixed << std::setprecision(2) << elapsed
-                  << "s\n";
+        status.set(col_pct, "100%");
+        status.set(col_time, format_elapsed(elapsed));
         for (std::size_t i = 0; i < filter_functions.size(); ++i) {
+            if (col_filter[i]) {
+                const std::size_t dropped =
+                    filter_functions[i].n_in() - filter_functions[i].n_out();
+                status.set(*col_filter[i], std::to_string(dropped));
+            }
             filter_stats[i].total_in += filter_functions[i].n_in();
             filter_stats[i].total_out += filter_functions[i].n_out();
         }
+        if (!population.empty()) {
+            std::ostringstream oss;
+            oss << std::fixed << std::setprecision(3) << population[0].fitness;
+            status.set(col_best, oss.str());
+        }
+        status.render();
+        status.finish();
     }
     return {std::move(population), std::move(filter_stats)};
 }

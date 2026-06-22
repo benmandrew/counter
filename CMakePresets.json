@@ -55,6 +55,17 @@
         "CMAKE_EXE_LINKER_FLAGS": "-fsanitize=thread",
         "COUNTER_TSAN": "ON"
       }
+    },
+    {
+      "name": "bench",
+      "displayName": "Bench",
+      "inherits": "base",
+      "binaryDir": "${sourceDir}/build-bench",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "CMAKE_CXX_FLAGS": "-Wall -Werror",
+        "COUNTER_BENCH": "ON"
+      }
     }
   ],
   "buildPresets": [
@@ -73,6 +84,10 @@
     {
       "name": "tsan",
       "configurePreset": "tsan"
+    },
+    {
+      "name": "bench",
+      "configurePreset": "bench"
     }
   ],
   "testPresets": [
@@ -102,6 +117,18 @@
       "configurePreset": "tsan",
       "output": {
         "outputOnFailure": true
+      }
+    },
+    {
+      "name": "bench",
+      "configurePreset": "bench",
+      "output": {
+        "outputOnFailure": true
+      },
+      "filter": {
+        "include": {
+          "label": "bench"
+        }
       }
     }
   ],
@@ -136,6 +163,14 @@
         { "type": "configure", "name": "tsan" },
         { "type": "build", "name": "tsan" },
         { "type": "test", "name": "tsan" }
+      ]
+    },
+    {
+      "name": "bench",
+      "steps": [
+        { "type": "configure", "name": "bench" },
+        { "type": "build", "name": "bench" },
+        { "type": "test", "name": "bench" }
       ]
     }
   ]

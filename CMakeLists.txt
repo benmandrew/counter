@@ -116,6 +116,11 @@ endif()
 
 add_subdirectory(test)
 
+option(COUNTER_BENCH "Build and register benchmark tests" OFF)
+if(COUNTER_BENCH)
+    add_subdirectory(bench)
+endif()
+
 install(PROGRAMS "${GANAK_EXECUTABLE}" DESTINATION bin RENAME ganak)
 
 include(cmake/docs.cmake)
@@ -129,3 +134,4 @@ foreach(counter_target counter_core counter_fitness counter compare realize ltl)
         target_compile_options(${counter_target} PRIVATE -Wall -Wextra -Wpedantic -Werror)
     endif()
 endforeach()
+

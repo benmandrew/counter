@@ -1,5 +1,9 @@
 #pragma once
 
+/// @file crash_handler.hpp
+/// @brief Signal handlers (SIGSEGV/SIGABRT/SIGFPE) that fork a symbol-resolver
+///        child and write crash reports to crashes/.
+
 #include <string>
 
 /// Initialises cpptrace crash logging. Registers signal handlers for

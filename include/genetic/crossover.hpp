@@ -1,5 +1,9 @@
 #pragma once
 
+/// @file crossover.hpp
+/// @brief Crossover operators that combine two parent requirements or
+///        specifications to produce an offspring.
+
 #include "genetic/random_source.hpp"
 #include "requirement.hpp"
 

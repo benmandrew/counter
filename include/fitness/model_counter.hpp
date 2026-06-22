@@ -1,5 +1,9 @@
 #pragma once
 
+/// @file model_counter.hpp
+/// @brief Trace counting via transfer matrix exponentiation: counts the number
+///        of valid bounded traces in a requirement automaton.
+
 #include <cstddef>
 
 #include "fitness/transfer_matrix.hpp"

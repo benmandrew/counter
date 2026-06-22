@@ -1,5 +1,9 @@
 #pragma once
 
+/// @file random_source.hpp
+/// @brief RandomSource abstraction wrapping a generator function, enabling
+///        deterministic seeding and easy injection in tests.
+
 #include <cassert>
 #include <cstddef>
 #include <functional>

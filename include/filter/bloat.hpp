@@ -1,5 +1,9 @@
 #pragma once
 
+/// @file bloat.hpp
+/// @brief Filter that drops specifications whose formulae exceed a size ratio
+///        relative to the original, preventing bloat during evolution.
+
 #include "genetic/generation.hpp"
 
 /// Returns a FilterFunction that drops specifications containing any single

@@ -1,5 +1,9 @@
 #pragma once
 
+/// @file syntactic_similarity.hpp
+/// @brief Syntactic similarity between requirements and specifications by
+///        comparing shared sub-formula structure.
+
 #include <cstddef>
 
 #include "requirement.hpp"

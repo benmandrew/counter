@@ -1,5 +1,10 @@
 #pragma once
 
+/// @file black.hpp
+/// @brief Wrapper around the black LTL satisfiability checker, with a
+///        memoising SatisfiabilityChecker and a process-lifetime global
+///        instance.
+
 #include <atomic>
 #include <cstddef>
 #include <optional>

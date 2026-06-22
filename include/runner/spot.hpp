@@ -1,5 +1,9 @@
 #pragma once
 
+/// @file spot.hpp
+/// @brief Wrappers for SPOT tools: ltl2tgba (automaton construction) and
+///        ltlsynt (realizability checking), with memoising checker classes.
+
 #include <mutex>
 #include <string>
 #include <unordered_map>

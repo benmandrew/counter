@@ -1,5 +1,9 @@
 #pragma once
 
+/// @file halstead.hpp
+/// @brief Halstead complexity metrics for formulae, requirements, and
+///        specifications, used as a size-penalty fitness component.
+
 #include <cstddef>
 
 #include "requirement.hpp"

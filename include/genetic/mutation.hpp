@@ -1,5 +1,9 @@
 #pragma once
 
+/// @file mutation.hpp
+/// @brief Mutation operators for formulae, timing constraints, requirements,
+///        and full specifications used in the genetic algorithm.
+
 #include <string>
 #include <vector>
 

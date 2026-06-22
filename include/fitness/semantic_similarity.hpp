@@ -1,5 +1,9 @@
 #pragma once
 
+/// @file semantic_similarity.hpp
+/// @brief Semantic similarity between requirements and specifications using
+///        bounded model counting of satisfying traces.
+
 #include <cstddef>
 
 #include "fitness/transfer_matrix.hpp"

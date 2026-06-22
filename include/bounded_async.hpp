@@ -1,5 +1,10 @@
 #pragma once
 
+/// @file bounded_async.hpp
+/// @brief Bounded-concurrency async dispatch: runs at most N futures in flight
+///        at once, collecting whichever completes first to avoid head-of-line
+///        blocking on slow outliers.
+
 #include <chrono>
 #include <cstddef>
 #include <deque>

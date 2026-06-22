@@ -1,5 +1,10 @@
 #pragma once
 
+/// @file generation.hpp
+/// @brief One generation of the genetic repair loop: scoring, filtering,
+///        crossover, mutation, and the FilterFunction / ScoredSpecification
+///        types.
+
 #include <cstddef>
 #include <functional>
 #include <string>

@@ -1,5 +1,9 @@
 #pragma once
 
+/// @file status.hpp
+/// @brief Realizability status fitness score: maps SAT/UNSAT/realizable
+///        outcomes to a score in {0.0, 0.1, 0.2, 0.5, 1.0}.
+
 #include "requirement.hpp"
 #include "runner/black.hpp"
 #include "runner/spot.hpp"

@@ -1,5 +1,8 @@
 #pragma once
 
+/// @file config.hpp
+/// @brief Compile-time algorithm parameters for the genetic repair loop.
+
 #include <chrono>
 #include <cstddef>
 #include <thread>

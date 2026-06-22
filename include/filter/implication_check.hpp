@@ -1,5 +1,9 @@
 #pragma once
 
+/// @file implication_check.hpp
+/// @brief Pairwise assume-guarantee implication check between two
+///        specifications, used by the implication and weakening filters.
+
 #include "requirement.hpp"
 #include "runner/black.hpp"
 

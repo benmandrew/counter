@@ -1,5 +1,9 @@
 #pragma once
 
+/// @file transfer_matrix.hpp
+/// @brief TransferSystem type and construction: finite-state automaton
+///        (via ltl2tgba + Ganak) used for bounded trace model counting.
+
 #include <Eigen/Dense>
 
 #include <algorithm>

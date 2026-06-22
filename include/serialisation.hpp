@@ -1,5 +1,9 @@
 #pragma once
 
+/// @file serialisation.hpp
+/// @brief JSON serialisation and deserialisation for Timing, Requirement,
+///        Specification, and related types via nlohmann/json.
+
 #include <cstddef>
 #include <fstream>
 #include <optional>

@@ -1,5 +1,9 @@
 #pragma once
 
+/// @file ganak.hpp
+/// @brief Wrapper around the Ganak weighted model counter, used to count
+///        satisfying valuations for automaton transitions.
+
 #include <string>
 
 #include "fitness/transfer_matrix.hpp"

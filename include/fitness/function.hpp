@@ -1,5 +1,10 @@
 #pragma once
 
+/// @file function.hpp
+/// @brief Fitness function types: FitnessFunction, WeightedFitnessFunction,
+///        AggregateWeightedFitnessFunction, and the factory
+///        get_fitness_function.
+
 #include <functional>
 #include <memory>
 #include <mutex>

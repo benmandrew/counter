@@ -1,5 +1,9 @@
 #pragma once
 
+/// @file thread_pool.hpp
+/// @brief Fixed-size worker thread pool and the process-lifetime global pool
+///        used by all bounded-async dispatch sites.
+
 #include <condition_variable>
 #include <cstddef>
 #include <functional>

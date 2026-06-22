@@ -1,5 +1,9 @@
 #pragma once
 
+/// @file requirement.hpp
+/// @brief Core domain types: Timing, ConditionType, Requirement, Specification,
+///        and the automaton State used for model counting.
+
 #include <cstddef>
 #include <cstdint>
 #include <functional>

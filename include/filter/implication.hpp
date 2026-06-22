@@ -1,5 +1,10 @@
 #pragma once
 
+/// @file implication.hpp
+/// @brief Population filters based on logical implication: weakening filter,
+///        deduplication, and maximal-element (implication partial order)
+///        filter.
+
 #include <atomic>
 #include <cstddef>
 

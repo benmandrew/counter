@@ -1,5 +1,9 @@
 #pragma once
 
+/// @file prop_formula.hpp
+/// @brief Propositional formula AST with parsing, simplification, DIMACS
+///        conversion, and syntactic similarity.
+
 #include <cstdint>
 #include <functional>
 #include <memory>

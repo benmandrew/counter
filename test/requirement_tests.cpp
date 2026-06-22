@@ -94,16 +94,18 @@ void test_after_ticks_zero() {
 void test_after_ticks_one() {
     const std::string result =
         ltl_continual(Formula("t"), Formula("r"), timing::after_ticks(1));
-    expect(result == "G((t) -> (!(r) & X((r))))",
-           "requirement_to_ltl: AfterTicks(1) should expand to !R & X(R)");
+    expect(
+        result == "G((t) -> (!(r) & X(!(r) & X((r)))))",
+        "requirement_to_ltl: AfterTicks(1) should expand to !R & X(!R & X(R))");
 }
 
 void test_after_ticks_two() {
     const std::string result =
         ltl_continual(Formula("t"), Formula("r"), timing::after_ticks(2));
     expect(
-        result == "G((t) -> (!(r) & X(!(r) & X((r)))))",
-        "requirement_to_ltl: AfterTicks(2) should expand to !R & X(!R & X(R))");
+        result == "G((t) -> (!(r) & X(!(r) & X(!(r) & X((r))))))",
+        "requirement_to_ltl: AfterTicks(2) should expand to !R & X(!R & X(!R & "
+        "X(R)))");
 }
 
 // --- Trigger semantics ---
@@ -156,10 +158,11 @@ void test_trigger_after_ticks_one() {
     const std::string result =
         ltl_trigger(Formula("c"), Formula("r"), timing::after_ticks(1));
     expect(result ==
-               "G((!(c) & X(c)) -> X((!(r) & X((r))))) & "
-               "((c) -> (!(r) & X((r))))",
+               "G((!(c) & X(c)) -> X((!(r) & X(!(r) & X((r)))))) & "
+               "((c) -> (!(r) & X(!(r) & X((r)))))",
            "requirement_to_ltl trigger: AfterTicks(1) should produce "
-           "G((!C & XC) -> X((!R & X(R)))) & (C -> (!R & X(R)))");
+           "G((!C & XC) -> X((!R & X(!R & X(R))))) & (C -> (!R & X(!R & "
+           "X(R))))");
 }
 
 // --- specification_has_false_condition ---

@@ -43,13 +43,15 @@ std::string expand_for(const std::string& response, std::size_t ticks) {
     return inner;
 }
 
-// Expands G[0..n-1](!R) & F[n..n] R as !R & X(!R & X(... & X R))
-// (n nestings: n occurrences of !R followed by R). Caller handles n=0.
+// Expands G[0..n](!R) & F[n+1..n+1] R as !R & X(!R & X(... & X R))
+// (n+1 nestings of !R followed by R). Implements FRET "after n":
+// (for n ¬R) ∧ (within (n+1) R) = ¬R at t=0..n, R at t=n+1.
+// Caller handles n=0 (treated as "immediately").
 std::string expand_after(const std::string& response, std::size_t ticks) {
     std::string not_response = "!";
     not_response += response;
     std::string inner = response;
-    for (std::size_t i = 0; i < ticks; ++i) {
+    for (std::size_t i = 0; i <= ticks; ++i) {
         std::string next = not_response;
         next += " & X(";
         next += inner;

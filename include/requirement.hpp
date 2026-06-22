@@ -31,8 +31,10 @@ struct ForTicks {
     std::size_t m_ticks;
 };
 
-/// Response must not hold for `m_ticks` ticks (including the condition tick),
-/// then must hold on the (`m_ticks` + 1)th tick.
+/// Response must not hold for `m_ticks` + 1 ticks starting from the condition
+/// tick (i.e., at t=0,...,m_ticks), then must hold at t=m_ticks+1.
+/// Implements FRET: after m_ticks res = (for m_ticks ¬res) ∧ (within
+/// (m_ticks+1) res).
 struct AfterTicks {
     std::size_t m_ticks;
 };

@@ -5,6 +5,12 @@ Repairing unrealisable FRETish specifications.
 
 .. toctree::
    :maxdepth: 1
+   :caption: Overview
+
+   architecture
+
+.. toctree::
+   :maxdepth: 1
    :caption: Core
 
    api/bounded_async

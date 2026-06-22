@@ -31,9 +31,10 @@ std::optional<bool> requirement_implies(const Requirement& from,
                                        ") & !(" + dest.m_response.to_string() +
                                        ")";
         const auto prop_sat = checker.check_satisfiability(prop_check);
-        if (prop_sat.has_value() && !prop_sat.value()) {
-            return true;
+        if (prop_sat.has_value()) {
+            return !prop_sat.value();
         }
+        // Timeout (rare for propositional): fall through to LTL.
     }
     assert(from.m_ltl.has_value() && dest.m_ltl.has_value());
     const std::optional<bool> sat = checker.check_satisfiability(

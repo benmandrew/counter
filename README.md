@@ -14,7 +14,8 @@ cmake --build build               # incremental build only
 ```
 counter --input <spec.json> --output-dir <dir> [--seed <n>]
 compare --repairs <dir> --ideal <file> [--ideal <file>...]
-realize --input <spec.json>
+realize <spec.json> [<spec.json> ...]
+ltl <spec.json> [<spec.json> ...]
 ```
 
 Run any binary with `--help` for full option descriptions.

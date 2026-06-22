@@ -95,6 +95,18 @@ One file: prints `REALIZABLE` or `UNREALIZABLE`. Multiple files: prints `<path>:
 | `--ideal <file>` | Ideal repair to compare against (repeatable, required) |
 | `-h`, `--help` | Show help |
 
+**`ltl`** — print LTL formulae for specification requirements
+
+```
+ltl <spec.json> [<spec.json> ...]
+```
+
+| Flag | Description |
+|---|---|
+| `-h`, `--help` | Show help |
+
+One file: prints assumptions and guarantees with their LTL formulae. Multiple files: prefixes each block with the file path. Each requirement prints as `[assumption]`/`[guarantee] <string>` followed by `LTL: <formula>` if one is present.
+
 ## External tools
 
 - `ltl2tgba`, `ltlsynt` — from SPOT, built from source via `cmake/spot.cmake`; located via the `SPOT_BIN_DIR` compile macro.

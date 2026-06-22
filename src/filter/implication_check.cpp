@@ -16,6 +16,23 @@ bool requirement_implies(const Requirement& from, const Requirement& dest,
     if (from == dest) {
         return true;
     }
+    // Propositional shortcut: when condition, timing, and condition_type are
+    // identical the full LTL implication reduces to a propositional check on
+    // the response formulas alone.  Propositional SAT is cheap and avoids the
+    // black timeout that can block valid weakenings when many checks run
+    // concurrently (the nested X-operator formulae from expand_for /
+    // expand_within are complex enough to time out under thread-pool load).
+    if (from.m_condition == dest.m_condition &&
+        from.m_timing == dest.m_timing &&
+        from.m_condition_type == dest.m_condition_type) {
+        const std::string prop_check = "(" + from.m_response.to_string() +
+                                       ") & !(" + dest.m_response.to_string() +
+                                       ")";
+        const auto prop_sat = checker.check_satisfiability(prop_check);
+        if (prop_sat.has_value() && !prop_sat.value()) {
+            return true;
+        }
+    }
     assert(from.m_ltl.has_value() && dest.m_ltl.has_value());
     const std::optional<bool> sat = checker.check_satisfiability(
         "(" + *from.m_ltl + ") & !(" + *dest.m_ltl + ")");

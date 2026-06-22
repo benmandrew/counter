@@ -3,6 +3,7 @@
 #include <vector>
 
 #include "filter/implication.hpp"
+#include "filter/implication_check.hpp"
 #include "requirement.hpp"
 #include "runner/black.hpp"
 #include "test_suite.hpp"
@@ -106,6 +107,49 @@ void test_mixed_population() {
 
 }  // namespace
 
+// --- spec_implies propositional shortcut ---
+// These tests cover the propositional-response shortcut in requirement_implies:
+// when two requirements share the same condition, timing, and condition_type,
+// implication reduces to a propositional check on the responses alone, avoiding
+// the expensive temporal LTL check that can time out under concurrent load.
+
+void test_weakening_response_implies() {
+    // A weaker (dropped-conjunct) response on the same condition/timing
+    // must be recognised as implied by the original: the propositional shortcut
+    // should confirm that (!a & b) -> b without needing a temporal LTL check.
+    SatisfiabilityChecker checker;
+    const Specification original(
+        {},
+        {Requirement(Formula("true"), Formula("!a & b"),
+                     timing::within_ticks(5))},
+        {}, {});
+    const Specification candidate(
+        {},
+        {Requirement(Formula("true"), Formula("b"), timing::within_ticks(5))},
+        {}, {});
+    expect(spec_implies(original, candidate, checker),
+           "spec_implies: weaker response (b) implied by (!a & b)");
+    expect(!spec_implies(candidate, original, checker),
+           "spec_implies: stronger response (!a & b) not implied by (b)");
+}
+
+void test_independent_responses_not_implied() {
+    // Two requirements with unrelated responses: neither implies the other.
+    SatisfiabilityChecker checker;
+    const Specification spec_a(
+        {},
+        {Requirement(Formula("true"), Formula("a"), timing::within_ticks(5))},
+        {}, {});
+    const Specification spec_b(
+        {},
+        {Requirement(Formula("true"), Formula("b"), timing::within_ticks(5))},
+        {}, {});
+    expect(!spec_implies(spec_a, spec_b, checker),
+           "spec_implies: unrelated responses should not imply each other (a)");
+    expect(!spec_implies(spec_b, spec_a, checker),
+           "spec_implies: unrelated responses should not imply each other (b)");
+}
+
 void run_implication_filter_tests() {
     test_single_spec_returned_unchanged();
     test_independent_specs_both_kept();
@@ -113,4 +157,6 @@ void run_implication_filter_tests() {
     test_equivalent_specs_both_kept();
     test_chain_keeps_only_strongest();
     test_mixed_population();
+    test_weakening_response_implies();
+    test_independent_responses_not_implied();
 }

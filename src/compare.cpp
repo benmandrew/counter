@@ -134,9 +134,9 @@ int main(int argc, const char* const argv[]) {
     for (const auto& [repair_name, repair_spec] : repairs) {
         for (const auto& [ideal_name, ideal_spec] : ideals) {
             const bool repair_implies_ideal =
-                spec_implies(repair_spec, ideal_spec, checker);
+                spec_implies(repair_spec, ideal_spec, checker).value_or(false);
             const bool ideal_implies_repair =
-                spec_implies(ideal_spec, repair_spec, checker);
+                spec_implies(ideal_spec, repair_spec, checker).value_or(false);
             const char* label =
                 classify(repair_implies_ideal, ideal_implies_repair);
             std::cout << std::left << std::setw(24) << repair_name << "  vs  "

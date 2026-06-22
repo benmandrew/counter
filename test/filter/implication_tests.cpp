@@ -127,9 +127,9 @@ void test_weakening_response_implies() {
         {},
         {Requirement(Formula("true"), Formula("b"), timing::within_ticks(5))},
         {}, {});
-    expect(spec_implies(original, candidate, checker),
+    expect(spec_implies(original, candidate, checker).value_or(false),
            "spec_implies: weaker response (b) implied by (!a & b)");
-    expect(!spec_implies(candidate, original, checker),
+    expect(!spec_implies(candidate, original, checker).value_or(true),
            "spec_implies: stronger response (!a & b) not implied by (b)");
 }
 
@@ -144,9 +144,9 @@ void test_independent_responses_not_implied() {
         {},
         {Requirement(Formula("true"), Formula("b"), timing::within_ticks(5))},
         {}, {});
-    expect(!spec_implies(spec_a, spec_b, checker),
+    expect(!spec_implies(spec_a, spec_b, checker).value_or(true),
            "spec_implies: unrelated responses should not imply each other (a)");
-    expect(!spec_implies(spec_b, spec_a, checker),
+    expect(!spec_implies(spec_b, spec_a, checker).value_or(true),
            "spec_implies: unrelated responses should not imply each other (b)");
 }
 

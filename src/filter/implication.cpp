@@ -35,8 +35,10 @@ void check_pair(const std::vector<Specification>& pop,
                                                     std::memory_order_relaxed);
     const Specification& spec_a = pop[representatives[a_pos]];
     const Specification& spec_b = pop[representatives[b_pos]];
-    const bool a_implies_b = spec_implies(spec_a, spec_b, checker);
-    const bool b_implies_a = spec_implies(spec_b, spec_a, checker);
+    const bool a_implies_b =
+        spec_implies(spec_a, spec_b, checker).value_or(false);
+    const bool b_implies_a =
+        spec_implies(spec_b, spec_a, checker).value_or(false);
     if (a_implies_b && !b_implies_a) {
         subsumed[b_pos].store(1, std::memory_order_relaxed);
     } else if (b_implies_a && !a_implies_b) {
@@ -162,7 +164,8 @@ FilterFunction make_weakening_filter(Specification original,
                     [&checker, &pop, &original, &keep](std::size_t idx) {
                         return global_thread_pool().submit(
                             [&checker, &pop, &original, &keep, idx] {
-                                if (spec_implies(original, pop[idx], checker)) {
+                                if (spec_implies(original, pop[idx], checker)
+                                        .value_or(true)) {
                                     keep[idx].store(1,
                                                     std::memory_order_relaxed);
                                 }

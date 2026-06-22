@@ -78,6 +78,24 @@ void test_status_unrealizable_returns_point_five() {
            "status: satisfiable but unrealizable spec should score 0.5");
 }
 
+void test_status_jointly_unsat_responses_pass_individual_checks() {
+    // Two requirements whose responses are individually satisfiable but
+    // jointly contradictory: old conjunction check returned 0.1 because
+    // (b) & (!b) is unsat.  The per-requirement check passes both, reaching
+    // the realizability call.
+    // G(a -> b) & G(!a -> !b) = G(a <-> b) is realizable (set b := a).
+    SatisfiabilityChecker sat;
+    RealizabilityChecker real;
+    const Specification spec(
+        {},
+        {Requirement(Formula("a"), Formula("b"), timing::immediately()),
+         Requirement(Formula("!a"), Formula("!b"), timing::immediately())},
+        {"a"}, {"b"});
+    expect(specification_status(spec, sat, real) == 1.0,
+           "status: jointly unsat responses that are individually sat should "
+           "not score 0.1");
+}
+
 void test_status_realizable_returns_one() {
     // G(i -> o): controller mirrors the input. Strategy o := i always works.
     SatisfiabilityChecker sat;
@@ -93,6 +111,7 @@ void run_status_tests() {
     test_status_unsat_trigger_returns_zero();
     test_status_unsat_response_returns_point_one();
     test_status_unsat_conjunction_returns_point_two();
+    test_status_jointly_unsat_responses_pass_individual_checks();
     test_status_unrealizable_returns_point_five();
     test_status_realizable_returns_one();
 }

@@ -185,8 +185,8 @@ Requirement mutate_requirement(const Requirement& requirement,
             mutate_formula(requirement.m_response, atoms, random_source);
     }
     if (random_source.next_real() < Config::p_trigger) {
-        mutated.m_trigger =
-            mutate_formula(requirement.m_trigger, atoms, random_source);
+        mutated.m_condition =
+            mutate_formula(requirement.m_condition, atoms, random_source);
     }
     if (random_source.next_real() < Config::p_timing) {
         mutated.m_timing = mutate_timing(requirement.m_timing, random_source);

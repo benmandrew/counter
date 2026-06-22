@@ -44,3 +44,8 @@ Temporary/
 .vscode/
 crashes/
 results/
+.claude/
+
+# FRET semantics reference paper (large binary / copyright)
+semantics.pdf
+semantics.txt

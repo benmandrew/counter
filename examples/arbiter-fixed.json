@@ -14,9 +14,9 @@
       "timing": { "type": "Eventually" }
     },
     {
-      "condition": "!(a)",
+      "condition": "true",
       "condition-type": "continual",
-      "response": "!(g1) & !(g2)",
+      "response": "!(g1 & g2)",
       "timing": { "type": "Immediately" }
     }
   ],

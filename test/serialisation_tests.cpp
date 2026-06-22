@@ -75,7 +75,7 @@ void test_timing_eventually() {
 
 void test_requirement_round_trip() {
     const Requirement req(Formula("(P) & (Q)"), Formula("R"),
-                          timing::within_ticks(3));
+                          timing::within_ticks(3), ConditionType::Trigger);
     nlohmann::json jobj;
     to_json(jobj, req);
     const Requirement req2 = serialisation::requirement_from_json(jobj);
@@ -84,11 +84,16 @@ void test_requirement_round_trip() {
 }
 
 void test_requirement_json_keys() {
-    const Requirement req(Formula("t"), Formula("r"), timing::immediately());
+    const Requirement req(Formula("t"), Formula("r"), timing::immediately(),
+                          ConditionType::Continual);
     nlohmann::json jobj;
     to_json(jobj, req);
-    expect(jobj.contains("trigger"),
-           "to_json(Requirement): should have trigger key");
+    expect(jobj.contains("condition"),
+           "to_json(Requirement): should have condition key");
+    expect(jobj.contains("condition-type"),
+           "to_json(Requirement): should have condition-type key");
+    expect(jobj.at("condition-type") == "continual",
+           "to_json(Requirement): condition-type should be continual");
     expect(jobj.contains("response"),
            "to_json(Requirement): should have response key");
     expect(jobj.contains("timing"),
@@ -97,11 +102,23 @@ void test_requirement_json_keys() {
            "to_json(Requirement): timing type should be embedded");
 }
 
+void test_requirement_json_keys_trigger() {
+    const Requirement req(Formula("c"), Formula("r"), timing::immediately(),
+                          ConditionType::Trigger);
+    nlohmann::json jobj;
+    to_json(jobj, req);
+    expect(jobj.at("condition-type") == "trigger",
+           "to_json(Requirement): condition-type should be trigger");
+}
+
 void test_specification_round_trip() {
     const Specification spec(
-        {Requirement(Formula("a"), Formula("b"), timing::immediately())},
-        {Requirement(Formula("t"), Formula("r"), timing::for_ticks(2)),
-         Requirement(Formula("p"), Formula("q"), timing::after_ticks(1))},
+        {Requirement(Formula("a"), Formula("b"), timing::immediately(),
+                     ConditionType::Continual)},
+        {Requirement(Formula("t"), Formula("r"), timing::for_ticks(2),
+                     ConditionType::Trigger),
+         Requirement(Formula("p"), Formula("q"), timing::after_ticks(1),
+                     ConditionType::Continual)},
         {"a", "t", "p"}, {"b", "r", "q"});
     nlohmann::json jobj;
     to_json(jobj, spec);
@@ -194,6 +211,7 @@ void run_serialisation_tests() {
     test_timing_eventually();
     test_requirement_round_trip();
     test_requirement_json_keys();
+    test_requirement_json_keys_trigger();
     test_specification_round_trip();
     test_specification_json_structure();
     test_scored_specification_without_fitness();

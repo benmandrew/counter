@@ -202,8 +202,8 @@ Requirement crossover_requirements(const Requirement& first_parent,
                                    const RandomSource& random_source) {
     assert(random_source);
     Requirement offspring = first_parent;
-    offspring.m_trigger = crossover_formula(
-        first_parent.m_trigger, second_parent.m_trigger, random_source);
+    offspring.m_condition = crossover_formula(
+        first_parent.m_condition, second_parent.m_condition, random_source);
     offspring.m_response = crossover_formula(
         first_parent.m_response, second_parent.m_response, random_source);
     offspring.m_timing = crossover_timing(

@@ -5,7 +5,7 @@
       "condition": "true",
       "condition-type": "trigger",
       "response": "takeoff_roll",
-      "timing": { "type": "ForTicks", "ticks": 5 }
+      "timing": { "type": "ForTicks", "ticks": 2 }
     },
     {
       "condition": "true",

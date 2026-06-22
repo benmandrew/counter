@@ -176,6 +176,8 @@ for those build types), so:
 ## Key types
 
 - `Timing` — `std::variant<Immediately, NextTimepoint, WithinTicks, ForTicks, AfterTicks, Eventually>` (see `requirement.hpp`).
+- `ConditionType` — `enum class { Trigger, Continual }` controlling how the condition activates a `Requirement`: rising-edge (Trigger) or at every timepoint where it holds (Continual).
+- `Requirement` — holds `m_condition`, `m_response`, `m_timing`, `m_condition_type`, and the derived `m_ltl` string.
 - `Formula` — propositional AST with `syntactic_similarity`, `rewrite_post_order`, `n_subformulae`.
 - `TransferSystem` — weighted automaton transition matrix for bounded model counting.
 - `Count` — `uint64_t` or `unsigned __int128` (selected at configure time via `COUNTER_USE_UINT128`).

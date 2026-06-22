@@ -86,12 +86,12 @@ std::vector<Specification> filter_population(
 Specification simplify_offspring(Specification offspring) {
     Specification pre_simplify = offspring;
     for (auto& req : offspring.m_assumptions) {
-        req.m_trigger.simplify();
+        req.m_condition.simplify();
         req.m_response.simplify();
         req.m_ltl = requirement_to_ltl(req);
     }
     for (auto& req : offspring.m_guarantees) {
-        req.m_trigger.simplify();
+        req.m_condition.simplify();
         req.m_response.simplify();
         req.m_ltl = requirement_to_ltl(req);
     }
@@ -168,13 +168,13 @@ std::vector<FilterFunction> get_filter_functions(
     Specification original, SatisfiabilityChecker& checker) {
     std::vector<FilterFunction> filters;
     filters.push_back(make_bloat_cap_filter(original));
-    // A false trigger is vacuously satisfied by every trace, so it
+    // A false condition is vacuously satisfied by every trace, so it
     // imposes no constraint; forbid it from surviving as a breeding
     // candidate rather than letting the fitness function alone
     // discourage it.
     filters.push_back(
-        make_predicate_filter("false-trigger", [](const Specification& spec) {
-            return !specification_has_false_trigger(spec);
+        make_predicate_filter("false-condition", [](const Specification& spec) {
+            return !specification_has_false_condition(spec);
         }));
     if (Config::run_weakening_filter) {
         // NOLINTNEXTLINE(clang-analyzer-cplusplus.NewDeleteLeaks)

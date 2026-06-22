@@ -155,7 +155,7 @@ Formula conjoin_field(const Specification& spec, Formula Requirement::* field) {
 }
 
 Formula conjoin_triggers(const Specification& spec) {
-    return conjoin_field(spec, &Requirement::m_trigger);
+    return conjoin_field(spec, &Requirement::m_condition);
 }
 
 Formula conjoin_responses(const Specification& spec) {
@@ -185,8 +185,8 @@ double average_timing_similarity(const Specification& spec1,
 
 double syntactic_similarity(const Requirement& requirement,
                             const Requirement& other_requirement) {
-    double condition_similarity =
-        requirement.m_trigger.syntactic_similarity(other_requirement.m_trigger);
+    double condition_similarity = requirement.m_condition.syntactic_similarity(
+        other_requirement.m_condition);
     double response_similarity = requirement.m_response.syntactic_similarity(
         other_requirement.m_response);
     double timing_similarity = timing_syntactic_similarity(

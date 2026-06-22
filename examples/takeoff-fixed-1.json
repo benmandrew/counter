@@ -11,7 +11,7 @@
       "condition": "true",
       "condition-type": "trigger",
       "response": "!(takeoff_roll) & (lift_off)",
-      "timing": { "type": "WithinTicks", "ticks": 5 }
+      "timing": { "type": "WithinTicks", "ticks": 8 }
     },
     {
       "condition": "!takeoff_roll",

@@ -35,7 +35,7 @@ std::set<std::string> collect_formula_atoms(const Formula& formula) {
 
 // Returns the number of unique atoms across both formulas.
 std::size_t count_requirement_atoms(const Requirement& req) {
-    std::set<std::string> atoms = collect_formula_atoms(req.m_trigger);
+    std::set<std::string> atoms = collect_formula_atoms(req.m_condition);
     const std::set<std::string> resp = collect_formula_atoms(req.m_response);
     atoms.insert(resp.begin(), resp.end());
     return atoms.size();
@@ -45,13 +45,13 @@ std::size_t count_requirement_atoms(const Requirement& req) {
 
 std::size_t count_joint_atoms(const Requirement& req1,
                               const Requirement& req2) {
-    std::set<std::string> atoms = collect_formula_atoms(req1.m_trigger);
+    std::set<std::string> atoms = collect_formula_atoms(req1.m_condition);
     auto ins = [&](const Formula& sub_formula) {
         const auto sub_atoms = collect_formula_atoms(sub_formula);
         atoms.insert(sub_atoms.begin(), sub_atoms.end());
     };
     ins(req1.m_response);
-    ins(req2.m_trigger);
+    ins(req2.m_condition);
     ins(req2.m_response);
     return atoms.size();
 }

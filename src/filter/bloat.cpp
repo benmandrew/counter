@@ -9,11 +9,11 @@ namespace {
 std::size_t max_formula_size(const Specification& spec) {
     std::size_t max = 0;
     for (const Requirement& req : spec.m_assumptions) {
-        max = std::max(max, req.m_trigger.n_subformulae());
+        max = std::max(max, req.m_condition.n_subformulae());
         max = std::max(max, req.m_response.n_subformulae());
     }
     for (const Requirement& req : spec.m_guarantees) {
-        max = std::max(max, req.m_trigger.n_subformulae());
+        max = std::max(max, req.m_condition.n_subformulae());
         max = std::max(max, req.m_response.n_subformulae());
     }
     return max;
@@ -21,7 +21,7 @@ std::size_t max_formula_size(const Specification& spec) {
 
 bool any_formula_exceeds(const Specification& spec, std::size_t cap) {
     auto req_exceeds = [cap](const Requirement& req) {
-        return req.m_trigger.n_subformulae() > cap ||
+        return req.m_condition.n_subformulae() > cap ||
                req.m_response.n_subformulae() > cap;
     };
     return std::any_of(spec.m_assumptions.begin(), spec.m_assumptions.end(),

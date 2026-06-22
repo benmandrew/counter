@@ -110,17 +110,22 @@ bool satisfies_after_ticks(const Trace& trace, std::size_t ticks) {
             if (response) {
                 return false;
             }
-            countdown = ticks;
+            // FRET: after n res = (for n !res) & (within (n+1) res)
+            // = !res at t=0..n, res at t=n+1, so n+1 waiting steps.
+            countdown = ticks + 1;
         } else if (countdown == 1) {
             if (!response || trigger) {
                 return false;
             }
             countdown = 0;
         } else {
-            if (response) {
+            // Re-triggering during the waiting period is a violation: the
+            // SPOT automaton for G(P -> body) reaches a dead state when P
+            // fires while an obligation is already pending.
+            if (response || trigger) {
                 return false;
             }
-            countdown = trigger ? ticks : countdown - 1;
+            --countdown;
         }
     }
     return true;

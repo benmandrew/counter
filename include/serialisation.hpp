@@ -62,7 +62,10 @@ inline void from_json(const nlohmann::json& jobj, Timing& tim) {
 // --- Requirement ---
 
 inline void to_json(nlohmann::json& jobj, const Requirement& req) {
-    jobj = {{"trigger", req.m_trigger.to_string()},
+    jobj = {{"condition", req.m_condition.to_string()},
+            {"condition-type", req.m_condition_type == ConditionType::Trigger
+                                   ? "trigger"
+                                   : "continual"},
             {"response", req.m_response.to_string()},
             {"timing", req.m_timing}};
 }
@@ -82,9 +85,13 @@ namespace serialisation {
 /// as a from_json ADL overload because Requirement is not
 /// default-constructible.
 inline Requirement requirement_from_json(const nlohmann::json& jobj) {
-    return Requirement(Formula(jobj.at("trigger").get<std::string>()),
+    const auto ctype_str = jobj.at("condition-type").get<std::string>();
+    const ConditionType ctype = ctype_str == "trigger"
+                                    ? ConditionType::Trigger
+                                    : ConditionType::Continual;
+    return Requirement(Formula(jobj.at("condition").get<std::string>()),
                        Formula(jobj.at("response").get<std::string>()),
-                       jobj.at("timing").get<Timing>());
+                       jobj.at("timing").get<Timing>(), ctype);
 }
 
 /// Per-component breakdown entry stored alongside a scored specification.
@@ -174,12 +181,24 @@ inline std::optional<std::string> validate_requirement_json(
     if (!req.is_object()) {
         return path + ": expected object";
     }
-    for (const char* field : {"trigger", "response"}) {
+    for (const char* field : {"condition", "response"}) {
         if (!req.contains(field)) {
             return path + "." + field + ": missing required field";
         }
         if (!req.at(field).is_string()) {
             return path + "." + field + ": must be a string";
+        }
+    }
+    if (!req.contains("condition-type")) {
+        return path + ".condition-type: missing required field";
+    }
+    if (!req.at("condition-type").is_string()) {
+        return path + ".condition-type: must be a string";
+    }
+    {
+        const std::string ctype = req.at("condition-type").get<std::string>();
+        if (ctype != "trigger" && ctype != "continual") {
+            return path + ".condition-type: unknown value '" + ctype + "'";
         }
     }
     if (!req.contains("timing")) {
@@ -280,8 +299,8 @@ inline std::optional<std::string> validate_fitness_json(
 /// Validates that @p jobj conforms to the Specification JSON schema.
 ///
 /// Checks required fields (assumptions, guarantees, in_atoms, out_atoms) and
-/// their types, validates each requirement's trigger/response/timing, and
-/// validates the optional fitness block if present.
+/// their types, validates each requirement's condition/condition-type/response/
+/// timing, and validates the optional fitness block if present.
 ///
 /// @return A human-readable error description, or std::nullopt if the object
 ///         is valid.

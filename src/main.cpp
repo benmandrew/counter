@@ -215,11 +215,11 @@ std::vector<Specification> collect_realizable_specifications(
     std::vector<Specification> realizable_vec;
     for (const ScoredSpecification& scored : population) {
         // The per-generation filter only screens offspring during evolution,
-        // so a false-triggered result from the final generation would
+        // so a false-condition result from the final generation would
         // otherwise never be re-screened before being reported here.
         if (specification_status(scored.specification, global_sat_checker(),
                                  global_real_checker()) == 1.0 &&
-            !specification_has_false_trigger(scored.specification)) {
+            !specification_has_false_condition(scored.specification)) {
             realizable_vec.push_back(scored.specification);
         }
     }

@@ -3,9 +3,11 @@
 /// @file status_line.hpp
 /// @brief Terminal status line that overwrites itself in place.
 
+#include <sys/ioctl.h>
+#include <unistd.h>
+
 #include <cstddef>
 #include <iostream>
-#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
@@ -15,8 +17,12 @@
 ///
 /// Columns are registered once with add() and updated between renders with
 /// set(). Each column grows to accommodate the widest value it has ever
-/// held, so the layout never shrinks mid-run. Padding clears any characters
-/// left over from a previously longer line.
+/// held, so the layout never shrinks mid-run.
+///
+/// When the rendered content is wider than the terminal and wraps onto
+/// multiple rows, render() queries the terminal width via TIOCGWINSZ,
+/// moves the cursor back to the first row of the previous output, and
+/// uses @c \\033[J to erase to end of screen before reprinting.
 ///
 /// Typical use:
 /// @code
@@ -47,8 +53,11 @@ class StatusLine {
         col.value = std::move(value);
     }
 
-    /// Overwrites the current terminal line with all columns formatted as
+    /// Overwrites the previous render with all columns formatted as
     /// @c "label: value", separated by two spaces.
+    /// Moves the cursor back to the start of the previous output block
+    /// (accounting for terminal wrapping) and erases to end of screen
+    /// before printing.
     void render() {
         std::string line;
         for (std::size_t i = 0; i < m_cols.size(); ++i) {
@@ -63,11 +72,16 @@ class StatusLine {
                 line.append(cell_width - cell.size(), ' ');
             }
         }
-        if (line.size() < m_prev_len) {
-            line.append(m_prev_len - line.size(), ' ');
+
+        const std::size_t prev_rows = rows_for(m_prev_len, terminal_width());
+        if (prev_rows > 1) {
+            std::cout << "\033[" << (prev_rows - 1) << "A\r\033[J";
+        } else if (prev_rows == 1) {
+            std::cout << "\r\033[J";
         }
+
+        std::cout << line << std::flush;
         m_prev_len = line.size();
-        std::cout << '\r' << line << std::flush;
     }
 
     /// Ends the current line with a newline and resets the length tracker.
@@ -84,4 +98,25 @@ class StatusLine {
     };
     std::vector<Column> m_cols;
     std::size_t m_prev_len{0};
+
+    static std::size_t terminal_width() {
+        struct winsize ws{};
+        if (ioctl(STDOUT_FILENO, TIOCGWINSZ, &ws) == 0 && ws.ws_col > 0) {
+            return static_cast<std::size_t>(ws.ws_col);
+        }
+        return 0;
+    }
+
+    // Returns the number of terminal rows occupied by `len` characters.
+    // Returns 0 for an empty previous render (nothing to clear).
+    // Falls back to 1 row when the terminal width is unknown.
+    static std::size_t rows_for(std::size_t len, std::size_t width) {
+        if (len == 0) {
+            return 0;
+        }
+        if (width == 0) {
+            return 1;
+        }
+        return (len + width - 1) / width;
+    }
 };

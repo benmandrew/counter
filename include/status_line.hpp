@@ -6,6 +6,7 @@
 #include <sys/ioctl.h>
 #include <unistd.h>
 
+#include <algorithm>
 #include <cstddef>
 #include <iostream>
 #include <string>
@@ -47,9 +48,7 @@ class StatusLine {
     /// The column's display width grows to fit the widest value seen.
     void set(std::size_t idx, std::string value) {
         Column& col = m_cols[idx];
-        if (value.size() > col.min_width) {
-            col.min_width = value.size();
-        }
+        col.min_width = std::max(value.size(), col.min_width);
         col.value = std::move(value);
     }
 
@@ -100,9 +99,9 @@ class StatusLine {
     std::size_t m_prev_len{0};
 
     static std::size_t terminal_width() {
-        struct winsize ws{};
-        if (ioctl(STDOUT_FILENO, TIOCGWINSZ, &ws) == 0 && ws.ws_col > 0) {
-            return static_cast<std::size_t>(ws.ws_col);
+        struct winsize win{};
+        if (ioctl(STDOUT_FILENO, TIOCGWINSZ, &win) == 0 && win.ws_col > 0) {
+            return static_cast<std::size_t>(win.ws_col);
         }
         return 0;
     }

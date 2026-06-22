@@ -190,16 +190,16 @@ run_evolution(std::vector<ScoredSpecification> population,
     col_filter.reserve(filter_functions.size());
     for (const FilterFunction& flt : filter_functions) {
         if (!flt.name().empty()) {
-            col_filter.push_back(status.add(flt.name()));
+            col_filter.emplace_back(status.add(flt.name()));
         } else {
-            col_filter.push_back(std::nullopt);
+            col_filter.emplace_back(std::nullopt);
         }
     }
     const std::size_t col_best = status.add("best");
 
-    auto format_elapsed = [](double s) -> std::string {
+    auto format_elapsed = [](double secs) -> std::string {
         std::ostringstream oss;
-        oss << std::fixed << std::setprecision(2) << s << "s";
+        oss << std::fixed << std::setprecision(2) << secs << "s";
         return oss.str();
     };
 
@@ -230,10 +230,10 @@ run_evolution(std::vector<ScoredSpecification> population,
         status.set(col_pct, "100%");
         status.set(col_time, format_elapsed(elapsed));
         for (std::size_t i = 0; i < filter_functions.size(); ++i) {
-            if (col_filter[i]) {
+            if (const auto& col = col_filter[i]) {
                 const std::size_t dropped =
                     filter_functions[i].n_in() - filter_functions[i].n_out();
-                status.set(*col_filter[i], std::to_string(dropped));
+                status.set(*col, std::to_string(dropped));
             }
             filter_stats[i].total_in += filter_functions[i].n_in();
             filter_stats[i].total_out += filter_functions[i].n_out();

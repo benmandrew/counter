@@ -89,3 +89,62 @@ jobs:
 
       - name: Run tests
         run: ctest --preset ${{ matrix.preset }}
+
+  benchmark:
+    runs-on: ubuntu-latest
+    needs: build-and-test
+    permissions:
+      contents: write
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libfmt-dev libunwind-dev
+
+      - name: Upgrade CMake
+        run: |
+          sudo apt-get remove --purge -y cmake
+          python3 -m pip install --upgrade pip cmake
+
+      - name: Cache third-party dependencies
+        uses: actions/cache@v5
+        with:
+          path: |
+            build-bench/third_party
+            build-bench/_deps
+          key: ${{ runner.os }}-bench-${{ hashFiles('cmake/spot.cmake', 'cmake/ganak.cmake', 'cmake/black.cmake', 'bench/CMakeLists.txt') }}
+          restore-keys: |
+            ${{ runner.os }}-bench-
+
+      - name: Configure and build
+        run: |
+          cmake --preset bench
+          cmake --build --preset bench --target counter_bench
+
+      - name: Check regression assertions
+        run: ./build-bench/bench/counter_bench --check-assertions
+
+      - name: Run benchmarks
+        run: |
+          ./build-bench/bench/counter_bench \
+            --benchmark_format=json \
+            --benchmark_out=bench_results.json \
+            --benchmark_time_unit=ns
+
+      - name: Store benchmark results
+        uses: benchmark-action/github-action-benchmark@v1
+        with:
+          name: counter benchmarks
+          tool: googlecpp
+          output-file-path: bench_results.json
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          auto-push: ${{ github.ref == 'refs/heads/main' }}
+          alert-threshold: '150%'
+          comment-on-alert: true
+          fail-on-alert: true
+          gh-pages-branch: gh-pages
+          benchmark-data-dir-path: dev/bench

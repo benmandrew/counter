@@ -7,6 +7,9 @@ set(COUNTER_FORMAT_GLOBS
     ${CMAKE_CURRENT_SOURCE_DIR}/test/*.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/test/*.hpp
     ${CMAKE_CURRENT_SOURCE_DIR}/test/*.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/bench/*.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/bench/*.hpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/bench/*.h
     ${CMAKE_CURRENT_SOURCE_DIR}/include/*.hpp
     ${CMAKE_CURRENT_SOURCE_DIR}/include/*.h
 )

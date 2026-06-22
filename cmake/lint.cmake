@@ -10,6 +10,9 @@ set(COUNTER_LINT_GLOBS
     ${CMAKE_CURRENT_SOURCE_DIR}/test/*.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/test/*.hpp
     ${CMAKE_CURRENT_SOURCE_DIR}/test/*.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/bench/*.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/bench/*.hpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/bench/*.h
     ${CMAKE_CURRENT_SOURCE_DIR}/include/*.hpp
     ${CMAKE_CURRENT_SOURCE_DIR}/include/*.h
 )
@@ -17,6 +20,7 @@ set(COUNTER_LINT_GLOBS
 set(COUNTER_LINT_CPP_GLOBS
     ${CMAKE_CURRENT_SOURCE_DIR}/src/*.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/test/*.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/bench/*.cpp
 )
 
 file(GLOB_RECURSE COUNTER_LINT_FILES CONFIGURE_DEPENDS ${COUNTER_LINT_GLOBS})
@@ -55,7 +59,7 @@ if(RUN_CLANG_TIDY_EXE)
             -DRUN_CLANG_TIDY_EXE=${RUN_CLANG_TIDY_EXE}
             -DCLANG_TIDY_EXE=${CLANG_TIDY_EXE}
             -DBUILD_DIR=${CMAKE_BINARY_DIR}
-            "-DFILES_PATTERN=^${CMAKE_CURRENT_SOURCE_DIR}/(src|test)/.*\\.cpp$"
+            "-DFILES_PATTERN=^${CMAKE_CURRENT_SOURCE_DIR}/(src|test|bench)/.*\\.cpp$"
             -P ${CMAKE_CURRENT_SOURCE_DIR}/cmake/run_clang_tidy.cmake
         COMMENT "Running clang-tidy on C++ sources"
         VERBATIM

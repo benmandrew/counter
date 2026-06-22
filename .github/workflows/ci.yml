@@ -147,4 +147,4 @@ jobs:
           comment-on-alert: true
           fail-on-alert: true
           gh-pages-branch: gh-pages
-          benchmark-data-dir-path: dev/bench
+          benchmark-data-dir-path: .

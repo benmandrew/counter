@@ -12,6 +12,7 @@
 #include "requirement.hpp"
 #include "runner/black.hpp"
 #include "serialisation.hpp"
+#include "config.hpp"
 
 namespace {
 
@@ -93,6 +94,7 @@ int main(int argc, const char* const argv[]) {
         return 1;
     }
     const Args& args = *maybe_args;
+    Config::black_timeout = std::chrono::milliseconds{20'000};
 
     std::vector<std::pair<std::string, serialisation::ScoredSpecification>>
         repairs;

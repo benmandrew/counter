@@ -43,7 +43,7 @@ Temporary/
 
 .vscode/
 crashes/
-results/
+results*/
 .claude/
 
 # FRET semantics reference paper (large binary / copyright)

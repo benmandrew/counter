@@ -12,11 +12,11 @@
 /// which must be runtime values (overridable in tests and queried at startup).
 struct Config {
     /// Number of generations the genetic loop runs before collecting survivors.
-    static constexpr std::size_t generations = 20;
+    static constexpr std::size_t generations = 10;
 
     /// Number of specifications maintained per generation. Larger values
     /// improve coverage at the cost of more fitness evaluations per round.
-    static constexpr std::size_t population_size = 1000;
+    static constexpr std::size_t population_size = 200;
 
     /// Weight of the syntactic similarity component in the aggregated fitness
     /// score. Higher values bias repair towards structurally similar
@@ -62,7 +62,7 @@ struct Config {
     /// override this to a larger value at startup because a timeout is a sound
     /// "not proven" result during a run but would falsely fail test assertions
     /// that expect a definite SAT/UNSAT answer on slow CI machines.
-    inline static std::chrono::milliseconds black_timeout{500};
+    inline static std::chrono::milliseconds black_timeout{1000};
 
     /// Probability that a parent pair undergoes crossover instead of one parent
     /// being copied directly. In [0, 1].
@@ -73,15 +73,15 @@ struct Config {
     static constexpr double mutation_rate = 1.0;
 
     /// Per-requirement probability of mutating the condition (trigger) formula.
-    static constexpr double p_trigger = 0.2;
+    static constexpr double p_trigger = 0.5;
 
     /// Per-requirement probability of mutating the response formula.
-    static constexpr double p_response = 0.2;
+    static constexpr double p_response = 0.5;
 
     /// Per-requirement probability of mutating the timing constraint.
     /// Lower than p_trigger/p_response because timing changes are more
     /// disruptive to semantic similarity.
-    static constexpr double p_timing = 0.05;
+    static constexpr double p_timing = 0.15;
 
     /// Number of hardware threads available; used to size the global thread
     /// pool for concurrent fitness evaluation.

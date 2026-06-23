@@ -116,6 +116,35 @@ void test_semantic_similarity_liveness_in_range() {
            "semantic-similarity: eventually cross-score must lie in [0, 1]");
 }
 
+// Propositionally-equivalent responses that differ syntactically must produce
+// the same semantic similarity when scored against the same original.
+// Regression: repair_2 and repair_13 from the takeoff-unfixed-1 run had
+// divergent stored scores because the automata happened to differ in an older
+// version of requirement_to_ltl; the current code must agree.
+void test_semantic_similarity_propequiv_responses_score_equal() {
+    // repair_2.req2: response = !((!tr & lo) -> tr)  ≡  !tr & lo
+    const Requirement repair2_req2{
+        Formula("true"),
+        Formula("!(((!(takeoff_roll)) & (lift_off)) -> (takeoff_roll))"),
+        timing::within_ticks(5), ConditionType::Trigger};
+    // repair_13.req2: response = !tr & lo  (same formula, simpler string)
+    const Requirement repair13_req2{
+        Formula("true"), Formula("(!(takeoff_roll)) & (lift_off)"),
+        timing::within_ticks(5), ConditionType::Trigger};
+    // original req2
+    const Requirement original_req2{
+        Formula("true"), Formula("!(takeoff_roll) & (lift_off)"),
+        timing::within_ticks(7), ConditionType::Trigger};
+    const double score2 = semantic_similarity(
+        repair2_req2, original_req2, Config::default_model_counting_bound);
+    const double score13 = semantic_similarity(
+        repair13_req2, original_req2, Config::default_model_counting_bound);
+    expect(std::fabs(score2 - score13) < 1e-12,
+           "semantic-similarity: propositionally-equivalent responses must "
+           "score identically against the same original (got " +
+               std::to_string(score2) + " vs " + std::to_string(score13) + ")");
+}
+
 // Checks that all timing variants produce similarity in [0, 1] when compared
 // cross-requirement. This exercises both safety and liveness automaton paths.
 void test_semantic_similarity_all_timings_in_range() {
@@ -157,4 +186,5 @@ void run_semantic_similarity_tests() {
     test_semantic_similarity_tautology_scores_near_zero();
     test_semantic_similarity_liveness_in_range();
     test_semantic_similarity_all_timings_in_range();
+    test_semantic_similarity_propequiv_responses_score_equal();
 }

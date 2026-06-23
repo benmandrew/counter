@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1782216992940,
+  "lastUpdate": 1782221643305,
   "repoUrl": "https://github.com/benmandrew/counter",
   "entries": {
     "counter benchmarks": [
@@ -102,6 +102,78 @@ window.BENCHMARK_DATA = {
             "value": 2770.3142134922327,
             "unit": "ns/iter",
             "extra": "iterations: 251606\ncpu: 2770.232355349236 ns\nthreads: 1"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "benmandrew@gmail.com",
+            "name": "benmandrew",
+            "username": "benmandrew"
+          },
+          "committer": {
+            "email": "benmandrew@gmail.com",
+            "name": "benmandrew",
+            "username": "benmandrew"
+          },
+          "distinct": true,
+          "id": "f33fcc916392347e03fc4e3f6f17034e22d8a14f",
+          "message": "compare: sort by fitness descending, show fitness, fix LTL timeout\n\nThree related changes:\n\n1. compare now loads repairs as ScoredSpecification so it can read the\n   stored fitness.total; sorts repairs by fitness descending before\n   printing; appends [fitness: X.XXXX] to each output line.\n   load_scored_specification added to serialisation.hpp for this.\n\n2. requirement_to_ltl: when condition is \"true\" and condition_type is\n   Trigger, the G-clause G((!(true) & X(true)) -> X(body)) is\n   vacuously true (!(true) is always false). Emitting it caused black's\n   BMC to time out on the deeply-nested X bodies produced by\n   WithinTicks/ForTicks, making spec_implies return nullopt and compare\n   report everything as \"incomparable\". The clause is now omitted for\n   this case, emitting only the initial obligation (true) -> body.",
+          "timestamp": "2026-06-23T13:58:04+01:00",
+          "tree_id": "48aac8f1a081ea08b3a47c44561dd037d6f32743",
+          "url": "https://github.com/benmandrew/counter/commit/f33fcc916392347e03fc4e3f6f17034e22d8a14f"
+        },
+        "date": 1782221642973,
+        "tool": "googlecpp",
+        "benches": [
+          {
+            "name": "BenchSyntacticSimilaritySmall",
+            "value": 708.7921632125745,
+            "unit": "ns/iter",
+            "extra": "iterations: 993698\ncpu: 708.6703495428188 ns\nthreads: 1"
+          },
+          {
+            "name": "BenchSyntacticSimilarityLarge",
+            "value": 2594.892382524769,
+            "unit": "ns/iter",
+            "extra": "iterations: 270142\ncpu: 2594.6016132256373 ns\nthreads: 1"
+          },
+          {
+            "name": "BenchSpecImpliesWarmCache",
+            "value": 755.4961293524084,
+            "unit": "ns/iter",
+            "extra": "iterations: 914834\ncpu: 755.4035300393297 ns\nthreads: 1"
+          },
+          {
+            "name": "BenchCountTraces/5",
+            "value": 207.08440672276967,
+            "unit": "ns/iter",
+            "extra": "iterations: 3378783\ncpu: 207.02782125990333 ns\nthreads: 1"
+          },
+          {
+            "name": "BenchCountTraces/10",
+            "value": 234.14850611995303,
+            "unit": "ns/iter",
+            "extra": "iterations: 2986786\ncpu: 234.0919731108959 ns\nthreads: 1"
+          },
+          {
+            "name": "BenchCountTraces/20",
+            "value": 261.215140472842,
+            "unit": "ns/iter",
+            "extra": "iterations: 2682796\ncpu: 261.16674655844133 ns\nthreads: 1"
+          },
+          {
+            "name": "BenchCountTraces/50",
+            "value": 314.23938528183515,
+            "unit": "ns/iter",
+            "extra": "iterations: 2227167\ncpu: 314.20546775342825 ns\nthreads: 1"
+          },
+          {
+            "name": "BenchMutateSpecification",
+            "value": 2705.6932078943446,
+            "unit": "ns/iter",
+            "extra": "iterations: 261907\ncpu: 2705.340498726649 ns\nthreads: 1"
           }
         ]
       }

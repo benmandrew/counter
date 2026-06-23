@@ -181,8 +181,9 @@ int main(int argc, const char* const argv[]) {
                 break;
         }
         if (repair_scored.fitness) {
+            const double total = repair_scored.fitness->total;
             std::cout << std::fixed << std::setprecision(4)
-                      << "  [fitness: " << repair_scored.fitness->total << "]";
+                      << "  [fitness: " << total << "]";
         }
         std::cout << "\n";
     }

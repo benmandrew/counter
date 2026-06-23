@@ -23,6 +23,10 @@ void run_suite(std::string_view suite_name) {
         run_ganak_runner_tests();
         return;
     }
+    if (suite_name == "ltlfilt_runner") {
+        run_ltlfilt_runner_tests();
+        return;
+    }
     if (suite_name == "spot_runner") {
         run_spot_runner_tests();
         return;
@@ -104,6 +108,7 @@ int main(int argc, const char* const argv[]) {
             run_transfer_matrix_tests();
             run_black_runner_tests();
             run_ganak_runner_tests();
+            run_ltlfilt_runner_tests();
             run_spot_runner_tests();
             run_crossover_tests();
             run_generation_tests();

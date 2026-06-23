@@ -1,4 +1,5 @@
 #include <algorithm>
+#include <cstdint>
 #include <filesystem>
 #include <iomanip>
 #include <iostream>
@@ -57,19 +58,25 @@ std::optional<Args> parse_args(int argc, const char* const* argv) {
     return args;
 }
 
-std::vector<std::pair<std::string, Specification>> load_repairs(
-    const std::string& dir) {
-    std::vector<std::pair<std::string, Specification>> repairs;
+std::vector<std::pair<std::string, serialisation::ScoredSpecification>>
+load_repairs(const std::string& dir) {
+    std::vector<std::pair<std::string, serialisation::ScoredSpecification>>
+        repairs;
     for (const auto& entry : std::filesystem::directory_iterator(dir)) {
         if (entry.path().extension() != ".json") {
             continue;
         }
         repairs.emplace_back(entry.path().filename().string(),
-                             load_specification(entry.path().string()));
+                             load_scored_specification(entry.path().string()));
     }
-    std::sort(
-        repairs.begin(), repairs.end(),
-        [](const auto& lhs, const auto& rhs) { return lhs.first < rhs.first; });
+    std::sort(repairs.begin(), repairs.end(),
+              [](const auto& lhs, const auto& rhs) {
+                  const double lfit =
+                      lhs.second.fitness ? lhs.second.fitness->total : 0.0;
+                  const double rfit =
+                      rhs.second.fitness ? rhs.second.fitness->total : 0.0;
+                  return lfit > rfit;
+              });
     return repairs;
 }
 
@@ -87,7 +94,8 @@ int main(int argc, const char* const argv[]) {
     }
     const Args& args = *maybe_args;
 
-    std::vector<std::pair<std::string, Specification>> repairs;
+    std::vector<std::pair<std::string, serialisation::ScoredSpecification>>
+        repairs;
     try {
         repairs = load_repairs(args.repairs_dir);
     } catch (const std::exception& exc) {
@@ -119,16 +127,23 @@ int main(int argc, const char* const argv[]) {
     std::size_t n_incomparable = 0;
 
     // Priority: equivalent > stronger > weaker > incomparable
-    enum class Relation { Incomparable, Weaker, Stronger, Equivalent };
+    enum class Relation : std::uint8_t {
+        Incomparable,
+        Weaker,
+        Stronger,
+        Equivalent
+    };
 
-    for (const auto& [repair_name, repair_spec] : repairs) {
+    for (const auto& [repair_name, repair_scored] : repairs) {
         Relation best = Relation::Incomparable;
         std::string best_ideal;
         for (const auto& [ideal_name, ideal_spec] : ideals) {
             const bool repair_implies_ideal =
-                spec_implies(repair_spec, ideal_spec, checker).value_or(false);
+                spec_implies(repair_scored.spec, ideal_spec, checker)
+                    .value_or(false);
             const bool ideal_implies_repair =
-                spec_implies(ideal_spec, repair_spec, checker).value_or(false);
+                spec_implies(ideal_spec, repair_scored.spec, checker)
+                    .value_or(false);
             Relation rel;
             if (repair_implies_ideal && ideal_implies_repair) {
                 rel = Relation::Equivalent;
@@ -162,6 +177,10 @@ int main(int argc, const char* const argv[]) {
                 std::cout << "incomparable";
                 ++n_incomparable;
                 break;
+        }
+        if (repair_scored.fitness) {
+            std::cout << std::fixed << std::setprecision(4)
+                      << "  [fitness: " << repair_scored.fitness->total << "]";
         }
         std::cout << "\n";
     }

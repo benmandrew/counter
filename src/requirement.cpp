@@ -277,7 +277,14 @@ std::string requirement_to_ltl(const Requirement& requirement) {
         return "G(" + condition_str + " -> " + body + ")";
     }
     // Trigger: fires on rising edge (!C & X(C)) -> X(body), plus bare (C ->
-    // body) at t=0.
+    // body) at t=0.  When C is the constant true the rising-edge clause is
+    // vacuously true (!(true) is always false), so the formula collapses to
+    // just the initial obligation.  Emitting the full G form causes black's
+    // BMC to time out on deeply-nested X bodies even though it is trivially
+    // satisfied.
+    if (requirement.m_condition.to_string() == "true") {
+        return condition_str + " -> " + body;
+    }
     return "G((!" + condition_str + " & X" + condition_str + ") -> X(" + body +
            ")) & (" + condition_str + " -> " + body + ")";
 }

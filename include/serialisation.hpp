@@ -329,6 +329,34 @@ inline std::optional<std::string> validate_specification_json(
     return std::nullopt;
 }
 
+/// Reads a JSON file at @p path and deserialises it as a ScoredSpecification.
+/// Throws std::runtime_error on I/O failure, malformed JSON, or schema
+/// violations.
+inline serialisation::ScoredSpecification load_scored_specification(
+    const std::string& path) {
+    std::ifstream file(path);
+    if (!file) {
+        throw std::runtime_error("cannot open input file: " + path);
+    }
+    nlohmann::json json_in;
+    try {
+        file >> json_in;
+    } catch (const nlohmann::json::parse_error& exc) {
+        throw std::runtime_error("JSON parse error in " + path + ": " +
+                                 exc.what());
+    }
+    if (const auto err = validate_specification_json(json_in)) {
+        throw std::runtime_error("invalid specification in " + path + ": " +
+                                 *err);
+    }
+    try {
+        return json_in.get<serialisation::ScoredSpecification>();
+    } catch (const nlohmann::json::exception& exc) {
+        throw std::runtime_error("invalid specification in " + path + ": " +
+                                 exc.what());
+    }
+}
+
 /// Reads a JSON file at @p path and deserialises it as a Specification.
 /// Throws std::runtime_error on I/O failure, malformed JSON, or schema
 /// violations.

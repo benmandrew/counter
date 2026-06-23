@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1782226326989,
+  "lastUpdate": 1782232769156,
   "repoUrl": "https://github.com/benmandrew/counter",
   "entries": {
     "counter benchmarks": [
@@ -390,6 +390,78 @@ window.BENCHMARK_DATA = {
             "value": 3915.6859361807647,
             "unit": "ns/iter",
             "extra": "iterations: 178849\ncpu: 3915.2928336194186 ns\nthreads: 1"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "benmandrew@gmail.com",
+            "name": "benmandrew",
+            "username": "benmandrew"
+          },
+          "committer": {
+            "email": "benmandrew@gmail.com",
+            "name": "benmandrew",
+            "username": "benmandrew"
+          },
+          "distinct": true,
+          "id": "15b1f69f0aee53d2f7ddb3fa4fd8e9dddff36ee7",
+          "message": "fix: work around clang-tidy-18 false positive on optional access via struct member\n\nTwo changes bundled because one addresses the symptom and the other the root cause:\n\nci.yml: add run-clang-tidy-21 symlink alongside clang-tidy-21\n\n  CI was installing LLVM 21 and symlinking clang-tidy → clang-tidy-21, but\n  not symlinking run-clang-tidy. find_program then found the system default\n  run-clang-tidy (from Ubuntu 24.04's LLVM 18 package), which has clang-tidy-18\n  baked in as its default binary. The -clang-tidy-binary override in\n  run_clang_tidy.cmake was silently ignored because LLVM 18's run-clang-tidy.py\n  expects --clang-tidy-binary (two dashes) while the cmake passes one dash.\n  Adding the run-clang-tidy-21 symlink ensures the version-21 script is used,\n  which agrees with the clang-tidy binary already pinned.\n\ncompare.cpp: extract optional member to local ref before the guard\n\n  clang-tidy-18's bugprone-unchecked-optional-access does not propagate\n  optional state through member access on a structured-binding variable, so\n  if (repair_scored.fitness) did not suppress the warning on\n  repair_scored.fitness->total in the same block. Binding the member to a\n  local const ref first gives the checker a plain optional variable to track,\n  satisfying both clang-tidy-18 and clang-tidy-21.",
+          "timestamp": "2026-06-23T17:34:33+01:00",
+          "tree_id": "504d7e9a742efaa67dc5bd9805ffa684c5f8f592",
+          "url": "https://github.com/benmandrew/counter/commit/15b1f69f0aee53d2f7ddb3fa4fd8e9dddff36ee7"
+        },
+        "date": 1782232768312,
+        "tool": "googlecpp",
+        "benches": [
+          {
+            "name": "BenchSyntacticSimilaritySmall",
+            "value": 645.9108445160294,
+            "unit": "ns/iter",
+            "extra": "iterations: 1062952\ncpu: 645.7531976984851 ns\nthreads: 1"
+          },
+          {
+            "name": "BenchSyntacticSimilarityLarge",
+            "value": 2437.216814840547,
+            "unit": "ns/iter",
+            "extra": "iterations: 279289\ncpu: 2437.0812455914843 ns\nthreads: 1"
+          },
+          {
+            "name": "BenchSpecImpliesWarmCache",
+            "value": 849.6119132358837,
+            "unit": "ns/iter",
+            "extra": "iterations: 876353\ncpu: 849.5326928760444 ns\nthreads: 1"
+          },
+          {
+            "name": "BenchCountTraces/5",
+            "value": 203.96213286857443,
+            "unit": "ns/iter",
+            "extra": "iterations: 3438074\ncpu: 203.95197805515522 ns\nthreads: 1"
+          },
+          {
+            "name": "BenchCountTraces/10",
+            "value": 231.87441787524776,
+            "unit": "ns/iter",
+            "extra": "iterations: 3041659\ncpu: 231.83765274148095 ns\nthreads: 1"
+          },
+          {
+            "name": "BenchCountTraces/20",
+            "value": 257.012394511184,
+            "unit": "ns/iter",
+            "extra": "iterations: 2723867\ncpu: 256.9977146461265 ns\nthreads: 1"
+          },
+          {
+            "name": "BenchCountTraces/50",
+            "value": 310.2235865877932,
+            "unit": "ns/iter",
+            "extra": "iterations: 2260717\ncpu: 310.1963832713252 ns\nthreads: 1"
+          },
+          {
+            "name": "BenchMutateSpecification",
+            "value": 4023.0142609675986,
+            "unit": "ns/iter",
+            "extra": "iterations: 173761\ncpu: 4022.420589200108 ns\nthreads: 1"
           }
         ]
       }

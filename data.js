@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1782223709851,
+  "lastUpdate": 1782226326989,
   "repoUrl": "https://github.com/benmandrew/counter",
   "entries": {
     "counter benchmarks": [
@@ -318,6 +318,78 @@ window.BENCHMARK_DATA = {
             "value": 3918.7757494566654,
             "unit": "ns/iter",
             "extra": "iterations: 179897\ncpu: 3918.6963317898594 ns\nthreads: 1"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "benmandrew@gmail.com",
+            "name": "benmandrew",
+            "username": "benmandrew"
+          },
+          "committer": {
+            "email": "benmandrew@gmail.com",
+            "name": "benmandrew",
+            "username": "benmandrew"
+          },
+          "distinct": true,
+          "id": "27ce99c6870a2c145561ba788cb767c8e67465f6",
+          "message": "fix: extract optional fitness total before stream chain to satisfy clang-tidy\n\nbugprone-unchecked-optional-access in clang-tidy-18 does not track an\noptional liveness check (if (repair_scored.fitness)) through chained <<\noperator calls, so it flags the fitness->total dereference on the third\nlink of the chain as unchecked. Extracting the value into a local variable\nbefore the stream expression makes the guarded access unambiguous.",
+          "timestamp": "2026-06-23T15:46:50+01:00",
+          "tree_id": "fd949f7293d945973d0d2d3bab94e58582d48794",
+          "url": "https://github.com/benmandrew/counter/commit/27ce99c6870a2c145561ba788cb767c8e67465f6"
+        },
+        "date": 1782226326533,
+        "tool": "googlecpp",
+        "benches": [
+          {
+            "name": "BenchSyntacticSimilaritySmall",
+            "value": 682.3906553560178,
+            "unit": "ns/iter",
+            "extra": "iterations: 995993\ncpu: 682.1723054278496 ns\nthreads: 1"
+          },
+          {
+            "name": "BenchSyntacticSimilarityLarge",
+            "value": 2446.1334287709324,
+            "unit": "ns/iter",
+            "extra": "iterations: 286400\ncpu: 2445.7001710893865 ns\nthreads: 1"
+          },
+          {
+            "name": "BenchSpecImpliesWarmCache",
+            "value": 743.7455806327994,
+            "unit": "ns/iter",
+            "extra": "iterations: 947251\ncpu: 743.6772903908255 ns\nthreads: 1"
+          },
+          {
+            "name": "BenchCountTraces/5",
+            "value": 206.44233403291295,
+            "unit": "ns/iter",
+            "extra": "iterations: 3385385\ncpu: 206.43071142573152 ns\nthreads: 1"
+          },
+          {
+            "name": "BenchCountTraces/10",
+            "value": 233.8878787868668,
+            "unit": "ns/iter",
+            "extra": "iterations: 2993537\ncpu: 233.86723698420965 ns\nthreads: 1"
+          },
+          {
+            "name": "BenchCountTraces/20",
+            "value": 262.96430091081373,
+            "unit": "ns/iter",
+            "extra": "iterations: 2688584\ncpu: 262.9443298033463 ns\nthreads: 1"
+          },
+          {
+            "name": "BenchCountTraces/50",
+            "value": 313.5961126159806,
+            "unit": "ns/iter",
+            "extra": "iterations: 2230909\ncpu: 313.5729126557828 ns\nthreads: 1"
+          },
+          {
+            "name": "BenchMutateSpecification",
+            "value": 3915.6859361807647,
+            "unit": "ns/iter",
+            "extra": "iterations: 178849\ncpu: 3915.2928336194186 ns\nthreads: 1"
           }
         ]
       }

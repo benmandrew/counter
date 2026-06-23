@@ -180,8 +180,9 @@ int main(int argc, const char* const argv[]) {
                 ++n_incomparable;
                 break;
         }
-        if (repair_scored.fitness) {
-            const double total = repair_scored.fitness->total;
+        const auto& fitness = repair_scored.fitness;
+        if (fitness) {
+            const double total = fitness->total;
             std::cout << std::fixed << std::setprecision(4)
                       << "  [fitness: " << total << "]";
         }

@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1782221643305,
+  "lastUpdate": 1782222721844,
   "repoUrl": "https://github.com/benmandrew/counter",
   "entries": {
     "counter benchmarks": [
@@ -174,6 +174,78 @@ window.BENCHMARK_DATA = {
             "value": 2705.6932078943446,
             "unit": "ns/iter",
             "extra": "iterations: 261907\ncpu: 2705.340498726649 ns\nthreads: 1"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "benmandrew@gmail.com",
+            "name": "benmandrew",
+            "username": "benmandrew"
+          },
+          "committer": {
+            "email": "benmandrew@gmail.com",
+            "name": "benmandrew",
+            "username": "benmandrew"
+          },
+          "distinct": true,
+          "id": "bf300a7b2a61e4379d4460f35453104ec3890730",
+          "message": "test: add regression for propositionally-equivalent response scoring\n\nAdds test_semantic_similarity_propequiv_responses_score_equal: two\nWithinTicks-5 requirements whose responses are propositionally identical\n(!tr & lo, written two syntactically different ways) must score the same\nagainst the same WithinTicks-7 original. Guards against formula strings that\nproduce different HOA automata before SPOT normalises them.\n\nAlso squashes three changes left uncommitted from the previous session:\n- compare: set Config::black_timeout = 20s so implication checks don't time\n  out on deeply-nested formulae (the LTL fix addressed the root cause but\n  left compare without its own override)\n- config: reduced generations/population for faster dev iteration; raised\n  p_trigger/p_response/p_timing and black_timeout to match current tuning\n- gitignore: broaden results/ pattern to results*/ to cover results-foo dirs",
+          "timestamp": "2026-06-23T14:46:06+01:00",
+          "tree_id": "f17a8f44285abf08984eb9fa33c1ad5ae068fd99",
+          "url": "https://github.com/benmandrew/counter/commit/bf300a7b2a61e4379d4460f35453104ec3890730"
+        },
+        "date": 1782222720993,
+        "tool": "googlecpp",
+        "benches": [
+          {
+            "name": "BenchSyntacticSimilaritySmall",
+            "value": 514.5633808163244,
+            "unit": "ns/iter",
+            "extra": "iterations: 1369894\ncpu: 514.4459126034569 ns\nthreads: 1"
+          },
+          {
+            "name": "BenchSyntacticSimilarityLarge",
+            "value": 1904.4558991512238,
+            "unit": "ns/iter",
+            "extra": "iterations: 365934\ncpu: 1904.0196893428872 ns\nthreads: 1"
+          },
+          {
+            "name": "BenchSpecImpliesWarmCache",
+            "value": 586.2805499273181,
+            "unit": "ns/iter",
+            "extra": "iterations: 1170191\ncpu: 586.188923004877 ns\nthreads: 1"
+          },
+          {
+            "name": "BenchCountTraces/5",
+            "value": 160.40896672380683,
+            "unit": "ns/iter",
+            "extra": "iterations: 4360054\ncpu: 160.38171132742852 ns\nthreads: 1"
+          },
+          {
+            "name": "BenchCountTraces/10",
+            "value": 181.59176987076037,
+            "unit": "ns/iter",
+            "extra": "iterations: 3824703\ncpu: 181.52684326077082 ns\nthreads: 1"
+          },
+          {
+            "name": "BenchCountTraces/20",
+            "value": 204.71377292100132,
+            "unit": "ns/iter",
+            "extra": "iterations: 3457255\ncpu: 204.705159440076 ns\nthreads: 1"
+          },
+          {
+            "name": "BenchCountTraces/50",
+            "value": 243.59939901362148,
+            "unit": "ns/iter",
+            "extra": "iterations: 2873942\ncpu: 243.54695641039368 ns\nthreads: 1"
+          },
+          {
+            "name": "BenchMutateSpecification",
+            "value": 3043.2036957642244,
+            "unit": "ns/iter",
+            "extra": "iterations: 230913\ncpu: 3042.936118797989 ns\nthreads: 1"
           }
         ]
       }

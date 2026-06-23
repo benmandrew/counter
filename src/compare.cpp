@@ -73,19 +73,6 @@ std::vector<std::pair<std::string, Specification>> load_repairs(
     return repairs;
 }
 
-const char* classify(bool repair_implies_ideal, bool ideal_implies_repair) {
-    if (repair_implies_ideal && ideal_implies_repair) {
-        return "equivalent";
-    }
-    if (repair_implies_ideal) {
-        return "strictly stronger";
-    }
-    if (ideal_implies_repair) {
-        return "strictly weaker";
-    }
-    return "incomparable";
-}
-
 }  // namespace
 
 int main(int argc, const char* const argv[]) {
@@ -131,26 +118,52 @@ int main(int argc, const char* const argv[]) {
     std::size_t n_weaker = 0;
     std::size_t n_incomparable = 0;
 
+    // Priority: equivalent > stronger > weaker > incomparable
+    enum class Relation { Incomparable, Weaker, Stronger, Equivalent };
+
     for (const auto& [repair_name, repair_spec] : repairs) {
+        Relation best = Relation::Incomparable;
+        std::string best_ideal;
         for (const auto& [ideal_name, ideal_spec] : ideals) {
             const bool repair_implies_ideal =
                 spec_implies(repair_spec, ideal_spec, checker).value_or(false);
             const bool ideal_implies_repair =
                 spec_implies(ideal_spec, repair_spec, checker).value_or(false);
-            const char* label =
-                classify(repair_implies_ideal, ideal_implies_repair);
-            std::cout << std::left << std::setw(24) << repair_name << "  vs  "
-                      << std::setw(24) << ideal_name << " : " << label << "\n";
+            Relation rel;
             if (repair_implies_ideal && ideal_implies_repair) {
-                ++n_equivalent;
+                rel = Relation::Equivalent;
             } else if (repair_implies_ideal) {
-                ++n_stronger;
+                rel = Relation::Stronger;
             } else if (ideal_implies_repair) {
-                ++n_weaker;
+                rel = Relation::Weaker;
             } else {
-                ++n_incomparable;
+                rel = Relation::Incomparable;
+            }
+            if (rel > best) {
+                best = rel;
+                best_ideal = ideal_name;
             }
         }
+        std::cout << std::left << std::setw(24) << repair_name << " : ";
+        switch (best) {
+            case Relation::Equivalent:
+                std::cout << "equivalent to " << best_ideal;
+                ++n_equivalent;
+                break;
+            case Relation::Stronger:
+                std::cout << "strictly stronger than " << best_ideal;
+                ++n_stronger;
+                break;
+            case Relation::Weaker:
+                std::cout << "strictly weaker than " << best_ideal;
+                ++n_weaker;
+                break;
+            case Relation::Incomparable:
+                std::cout << "incomparable";
+                ++n_incomparable;
+                break;
+        }
+        std::cout << "\n";
     }
 
     std::cout << "\nSummary: " << n_equivalent << " equivalent, " << n_stronger

@@ -8,11 +8,11 @@
 #include <utility>
 #include <vector>
 
+#include "config.hpp"
 #include "filter/implication_check.hpp"
 #include "requirement.hpp"
 #include "runner/black.hpp"
 #include "serialisation.hpp"
-#include "config.hpp"
 
 namespace {
 

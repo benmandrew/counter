@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1782232769156,
+  "lastUpdate": 1782303000158,
   "repoUrl": "https://github.com/benmandrew/counter",
   "entries": {
     "counter benchmarks": [
@@ -462,6 +462,78 @@ window.BENCHMARK_DATA = {
             "value": 4023.0142609675986,
             "unit": "ns/iter",
             "extra": "iterations: 173761\ncpu: 4022.420589200108 ns\nthreads: 1"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "benmandrew@gmail.com",
+            "name": "Ben Andrew",
+            "username": "benmandrew"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "daa4cab66ff049611530ee0fa3d6581cd5bdad79",
+          "message": "Merge pull request #3 from benmandrew/feature/ltl-normalisation\n\nfeat: normalise LTL formulae via ltlfilt to improve cache hit rates",
+          "timestamp": "2026-06-24T13:05:19+01:00",
+          "tree_id": "0aed1d3c0da76a61d4bd6f5b6a8099fa098ddbd7",
+          "url": "https://github.com/benmandrew/counter/commit/daa4cab66ff049611530ee0fa3d6581cd5bdad79"
+        },
+        "date": 1782302999369,
+        "tool": "googlecpp",
+        "benches": [
+          {
+            "name": "BenchSyntacticSimilaritySmall",
+            "value": 646.1236353411457,
+            "unit": "ns/iter",
+            "extra": "iterations: 1081131\ncpu: 646.0624901145189 ns\nthreads: 1"
+          },
+          {
+            "name": "BenchSyntacticSimilarityLarge",
+            "value": 2449.434389074908,
+            "unit": "ns/iter",
+            "extra": "iterations: 277309\ncpu: 2449.2148253392425 ns\nthreads: 1"
+          },
+          {
+            "name": "BenchSpecImpliesWarmCache",
+            "value": 889.5611800338638,
+            "unit": "ns/iter",
+            "extra": "iterations: 780181\ncpu: 889.4613762703781 ns\nthreads: 1"
+          },
+          {
+            "name": "BenchCountTraces/5",
+            "value": 212.54400459459586,
+            "unit": "ns/iter",
+            "extra": "iterations: 3433596\ncpu: 212.5265022442944 ns\nthreads: 1"
+          },
+          {
+            "name": "BenchCountTraces/10",
+            "value": 229.32517131840757,
+            "unit": "ns/iter",
+            "extra": "iterations: 3051044\ncpu: 229.3075707856065 ns\nthreads: 1"
+          },
+          {
+            "name": "BenchCountTraces/20",
+            "value": 256.02639768250435,
+            "unit": "ns/iter",
+            "extra": "iterations: 2733990\ncpu: 256.01600261888314 ns\nthreads: 1"
+          },
+          {
+            "name": "BenchCountTraces/50",
+            "value": 309.37755454312776,
+            "unit": "ns/iter",
+            "extra": "iterations: 2265180\ncpu: 309.3340666083934 ns\nthreads: 1"
+          },
+          {
+            "name": "BenchMutateSpecification",
+            "value": 4088.0334235365426,
+            "unit": "ns/iter",
+            "extra": "iterations: 172573\ncpu: 4087.7621586227283 ns\nthreads: 1"
           }
         ]
       }

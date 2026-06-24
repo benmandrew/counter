@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1782303243117,
+  "lastUpdate": 1782304210748,
   "repoUrl": "https://github.com/benmandrew/counter",
   "entries": {
     "counter benchmarks": [
@@ -606,6 +606,78 @@ window.BENCHMARK_DATA = {
             "value": 3080.141827581695,
             "unit": "ns/iter",
             "extra": "iterations: 226310\ncpu: 3079.5150236401414 ns\nthreads: 1"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "benmandrew@gmail.com",
+            "name": "benmandrew",
+            "username": "benmandrew"
+          },
+          "committer": {
+            "email": "benmandrew@gmail.com",
+            "name": "benmandrew",
+            "username": "benmandrew"
+          },
+          "distinct": true,
+          "id": "525e27daed9903559471affa0fb3ea8dbf56e502",
+          "message": "feat: show ltlfilt cache stats in timing report\n\nAdds ltlfilt to the tool timing report alongside ltl2tgba, ltlsynt,\nblack, and ganak, so normalisation cache hit rates are visible at\nthe end of each run.",
+          "timestamp": "2026-06-24T13:15:45+01:00",
+          "tree_id": "61f3327884b35f9aad7bc6c5b60f13baffe15788",
+          "url": "https://github.com/benmandrew/counter/commit/525e27daed9903559471affa0fb3ea8dbf56e502"
+        },
+        "date": 1782304210440,
+        "tool": "googlecpp",
+        "benches": [
+          {
+            "name": "BenchSyntacticSimilaritySmall",
+            "value": 720.3233042567566,
+            "unit": "ns/iter",
+            "extra": "iterations: 987163\ncpu: 720.3053690221371 ns\nthreads: 1"
+          },
+          {
+            "name": "BenchSyntacticSimilarityLarge",
+            "value": 2599.682265377643,
+            "unit": "ns/iter",
+            "extra": "iterations: 268847\ncpu: 2599.1195661472884 ns\nthreads: 1"
+          },
+          {
+            "name": "BenchSpecImpliesWarmCache",
+            "value": 898.2810245594338,
+            "unit": "ns/iter",
+            "extra": "iterations: 787070\ncpu: 898.1782052422274 ns\nthreads: 1"
+          },
+          {
+            "name": "BenchCountTraces/5",
+            "value": 206.436092383235,
+            "unit": "ns/iter",
+            "extra": "iterations: 3380137\ncpu: 206.42466059807634 ns\nthreads: 1"
+          },
+          {
+            "name": "BenchCountTraces/10",
+            "value": 233.31474891921377,
+            "unit": "ns/iter",
+            "extra": "iterations: 2994355\ncpu: 233.29702790751267 ns\nthreads: 1"
+          },
+          {
+            "name": "BenchCountTraces/20",
+            "value": 260.1123180208702,
+            "unit": "ns/iter",
+            "extra": "iterations: 2687396\ncpu: 260.0936739505457 ns\nthreads: 1"
+          },
+          {
+            "name": "BenchCountTraces/50",
+            "value": 313.24492204450996,
+            "unit": "ns/iter",
+            "extra": "iterations: 2235250\ncpu: 313.2125578794321 ns\nthreads: 1"
+          },
+          {
+            "name": "BenchMutateSpecification",
+            "value": 3879.069239714254,
+            "unit": "ns/iter",
+            "extra": "iterations: 180590\ncpu: 3878.930378204772 ns\nthreads: 1"
           }
         ]
       }

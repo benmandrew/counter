@@ -1,5 +1,6 @@
 #include <benchmark/benchmark.h>
 
+#include "config.hpp"
 #include "genetic/mutation.hpp"
 #include "genetic/random_source.hpp"
 #include "requirement.hpp"
@@ -19,8 +20,9 @@ static void BenchMutateSpecification(benchmark::State& state) {
         },
         {"takeoff_roll"}, {"lift_off"});
     const RandomSource rng = make_random_source_from_seed(42);
+    const Config cfg;
     for (auto _ : state) {
-        benchmark::DoNotOptimize(mutate_specification(spec, rng));
+        benchmark::DoNotOptimize(mutate_specification(spec, rng, cfg));
     }
 }
 // NOLINTNEXTLINE(cert-err58-cpp)

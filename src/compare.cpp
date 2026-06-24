@@ -1,18 +1,22 @@
 #include <algorithm>
+#include <cstddef>
 #include <cstdint>
 #include <filesystem>
 #include <iomanip>
 #include <iostream>
 #include <stdexcept>
 #include <string>
+#include <thread>
 #include <utility>
 #include <vector>
 
+#include "bounded_async.hpp"
 #include "config.hpp"
 #include "filter/implication_check.hpp"
 #include "requirement.hpp"
 #include "runner/black.hpp"
 #include "serialisation.hpp"
+#include "thread_pool.hpp"
 
 namespace {
 
@@ -154,18 +158,44 @@ int main(int argc, const char* const argv[]) {
     std::size_t n_incomparable = 0;
     std::size_t n_timeout = 0;
 
-    for (const auto& [repair_name, repair_scored] : repairs) {
-        Relation best = Relation::Timeout;
-        std::string best_ideal;
-        for (const auto& [ideal_name, ideal_spec] : ideals) {
-            const Relation rel =
-                classify(spec_implies(repair_scored.spec, ideal_spec, checker),
-                         spec_implies(ideal_spec, repair_scored.spec, checker));
-            if (rel > best) {
-                best = rel;
-                best_ideal = ideal_name;
+    const std::size_t n_repairs = repairs.size();
+    const std::size_t n_ideals = ideals.size();
+    const std::size_t n_tasks = n_repairs * n_ideals;
+    const std::size_t n_hw = std::thread::hardware_concurrency();
+    const std::size_t max_in_flight = n_hw > 0 ? n_hw * 2 : 1;
+
+    struct BestResult {
+        Relation rel = Relation::Timeout;
+        std::size_t ideal_idx = 0;
+    };
+    std::vector<BestResult> best_per_repair(n_repairs);
+
+    run_bounded_async(
+        n_tasks, max_in_flight,
+        [&](std::size_t task_idx) {
+            const std::size_t rep = task_idx / n_ideals;
+            const std::size_t ide = task_idx % n_ideals;
+            return global_thread_pool().submit([&, rep, ide] {
+                return classify(
+                    spec_implies(repairs[rep].second.spec, ideals[ide].second,
+                                 checker),
+                    spec_implies(ideals[ide].second, repairs[rep].second.spec,
+                                 checker));
+            });
+        },
+        [&](std::size_t task_idx, Relation rel) {
+            const std::size_t rep = task_idx / n_ideals;
+            const std::size_t ide = task_idx % n_ideals;
+            if (rel > best_per_repair[rep].rel) {
+                best_per_repair[rep] = {rel, ide};
             }
-        }
+        });
+
+    for (std::size_t idx = 0; idx < n_repairs; ++idx) {
+        const auto& [repair_name, repair_scored] = repairs[idx];
+        const Relation best = best_per_repair[idx].rel;
+        const std::string& best_ideal =
+            ideals[best_per_repair[idx].ideal_idx].first;
         std::cout << std::left << std::setw(24) << repair_name << " : ";
         switch (best) {
             case Relation::Equivalent:

@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1782303000158,
+  "lastUpdate": 1782303243117,
   "repoUrl": "https://github.com/benmandrew/counter",
   "entries": {
     "counter benchmarks": [
@@ -534,6 +534,78 @@ window.BENCHMARK_DATA = {
             "value": 4088.0334235365426,
             "unit": "ns/iter",
             "extra": "iterations: 172573\ncpu: 4087.7621586227283 ns\nthreads: 1"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "benmandrew@gmail.com",
+            "name": "benmandrew",
+            "username": "benmandrew"
+          },
+          "committer": {
+            "email": "benmandrew@gmail.com",
+            "name": "benmandrew",
+            "username": "benmandrew"
+          },
+          "distinct": true,
+          "id": "db74e01cbef90495c44f075b4483353b982a05a3",
+          "message": "feat: show realizable candidate count in generation status line\n\nAdds a \"real\" column updated after each generation, counting candidates\nin the population that pass the realizability and false-condition checks.\nResults are cache hits (scoring already called both checkers during evolution).\n\nAlso removes the per-filter drop columns from the status line.",
+          "timestamp": "2026-06-24T13:08:46+01:00",
+          "tree_id": "f607521367a1ccbbac037c51d3f898db65f2de8f",
+          "url": "https://github.com/benmandrew/counter/commit/db74e01cbef90495c44f075b4483353b982a05a3"
+        },
+        "date": 1782303242596,
+        "tool": "googlecpp",
+        "benches": [
+          {
+            "name": "BenchSyntacticSimilaritySmall",
+            "value": 550.9257443169672,
+            "unit": "ns/iter",
+            "extra": "iterations: 1283996\ncpu: 550.8614014373876 ns\nthreads: 1"
+          },
+          {
+            "name": "BenchSyntacticSimilarityLarge",
+            "value": 2014.3897847840847,
+            "unit": "ns/iter",
+            "extra": "iterations: 348069\ncpu: 2014.1016436396235 ns\nthreads: 1"
+          },
+          {
+            "name": "BenchSpecImpliesWarmCache",
+            "value": 688.882850281401,
+            "unit": "ns/iter",
+            "extra": "iterations: 1030186\ncpu: 688.7903349492226 ns\nthreads: 1"
+          },
+          {
+            "name": "BenchCountTraces/5",
+            "value": 164.06170011939537,
+            "unit": "ns/iter",
+            "extra": "iterations: 4374481\ncpu: 164.04936402741265 ns\nthreads: 1"
+          },
+          {
+            "name": "BenchCountTraces/10",
+            "value": 180.86514583588567,
+            "unit": "ns/iter",
+            "extra": "iterations: 3875075\ncpu: 180.81228182680348 ns\nthreads: 1"
+          },
+          {
+            "name": "BenchCountTraces/20",
+            "value": 201.6657969409518,
+            "unit": "ns/iter",
+            "extra": "iterations: 3476575\ncpu: 201.6141161919419 ns\nthreads: 1"
+          },
+          {
+            "name": "BenchCountTraces/50",
+            "value": 245.26838983289034,
+            "unit": "ns/iter",
+            "extra": "iterations: 2885657\ncpu: 245.21789942463684 ns\nthreads: 1"
+          },
+          {
+            "name": "BenchMutateSpecification",
+            "value": 3080.141827581695,
+            "unit": "ns/iter",
+            "extra": "iterations: 226310\ncpu: 3079.5150236401414 ns\nthreads: 1"
           }
         ]
       }

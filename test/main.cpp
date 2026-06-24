@@ -11,13 +11,14 @@
 
 namespace {
 
-void run_suite(std::string_view suite_name) {
+void run_suite(std::string_view suite_name,
+               const std::chrono::milliseconds& timeout) {
     if (suite_name == "transfer_matrix") {
         run_transfer_matrix_tests();
         return;
     }
     if (suite_name == "black_runner") {
-        run_black_runner_tests();
+        run_black_runner_tests(timeout);
         return;
     }
     if (suite_name == "ganak_runner") {
@@ -113,7 +114,7 @@ int main(int argc, const char* const argv[]) {
     try {
         if (argc == 1) {
             run_transfer_matrix_tests();
-            run_black_runner_tests();
+            run_black_runner_tests(cfg.black_timeout);
             run_ganak_runner_tests();
             run_ltlfilt_runner_tests();
             run_spot_runner_tests();
@@ -139,7 +140,7 @@ int main(int argc, const char* const argv[]) {
             throw std::invalid_argument(
                 "Expected zero arguments or exactly one test suite name.");
         }
-        run_suite(argv[1]);
+        run_suite(argv[1], cfg.black_timeout);
     } catch (const std::exception& exception) {
         std::cerr << exception.what() << '\n';
         return 1;

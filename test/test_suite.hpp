@@ -1,7 +1,9 @@
 #pragma once
 
+#include <chrono>
+
 void run_transfer_matrix_tests();
-void run_black_runner_tests();
+void run_black_runner_tests(const std::chrono::milliseconds& timeout);
 void run_ganak_runner_tests();
 void run_ltlfilt_runner_tests();
 void run_spot_runner_tests();

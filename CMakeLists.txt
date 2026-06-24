@@ -59,6 +59,7 @@ target_sources(counter_fitness PRIVATE
     src/fitness/function.cpp
     src/runner/black.cpp
     src/runner/ganak.cpp
+    src/runner/ltlfilt.cpp
     src/runner/spot.cpp
     src/thread_pool.cpp
     src/filter/bloat.cpp

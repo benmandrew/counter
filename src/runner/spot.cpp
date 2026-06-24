@@ -19,6 +19,7 @@
 #include <vector>
 
 #include "requirement.hpp"
+#include "runner/ltlfilt.hpp"
 
 namespace {
 
@@ -192,11 +193,12 @@ std::string ltlsynt_path() { return spot_bin_dir() + "/ltlsynt"; }
 std::string ltl2tgba_path() { return spot_bin_dir() + "/ltl2tgba"; }
 
 std::string run_ltl2tgba_for_counting(const std::string& formula) {
+    const std::string normalised = normalize_ltl(formula);
     static std::unordered_map<std::string, std::string> cache;
     static std::mutex cache_mutex;
     {
         std::scoped_lock lock(cache_mutex);
-        const auto found = cache.find(formula);
+        const auto found = cache.find(normalised);
         if (found != cache.end()) {
             Ltl2tgbaStats::n_cache_hits++;
             return found->second;
@@ -207,7 +209,7 @@ std::string run_ltl2tgba_for_counting(const std::string& formula) {
     assert(access(binary.c_str(), F_OK) == 0);
     const auto start = std::chrono::steady_clock::now();
     const ProcessResult result =
-        execute_and_capture({binary, "-D", "-S", "-H", "-f", formula});
+        execute_and_capture({binary, "-D", "-S", "-H", "-f", normalised});
     const double elapsed =
         std::chrono::duration<double>(std::chrono::steady_clock::now() - start)
             .count();
@@ -216,11 +218,11 @@ std::string run_ltl2tgba_for_counting(const std::string& formula) {
         // concurrent forking) must not be cached as a successful result
         throw std::runtime_error("ltl2tgba exited with code " +
                                  std::to_string(result.m_exit_code) +
-                                 " for formula: " + formula);
+                                 " for formula: " + normalised);
     }
     std::scoped_lock lock(cache_mutex);
     Ltl2tgbaStats::total_time_s += elapsed;
-    cache.emplace(formula, result.m_output);
+    cache.emplace(normalised, result.m_output);
     return result.m_output;
 }
 
@@ -229,6 +231,7 @@ bool RealizabilityChecker::check_realizability(
     check_specification_ltls_present(specification);
     std::string conj_ltl;
     build_specification_formula(specification, conj_ltl);
+    conj_ltl = normalize_ltl(conj_ltl);
     const std::string cache_key = conj_ltl + "|" +
                                   join_comma(specification.m_in_atoms) + "|" +
                                   join_comma(specification.m_out_atoms);

@@ -62,4 +62,5 @@ Repairing unrealisable FRETish specifications.
 
    api/runner/black
    api/runner/ganak
+   api/runner/ltlfilt
    api/runner/spot

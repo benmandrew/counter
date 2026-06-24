@@ -21,6 +21,7 @@
 #include <vector>
 
 #include "prop_formula.hpp"
+#include "runner/ltlfilt.hpp"
 
 namespace {
 
@@ -176,9 +177,10 @@ Count run_ganak_on_dimacs(const std::string& dimacs_path, unsigned seed) {
 }
 
 Count run_ganak_on_formula(const std::string& formula, unsigned seed) {
+    const std::string normalised = normalize_ltl(formula);
     static std::unordered_map<std::string, Count> cache;
     static std::mutex cache_mutex;
-    const std::string key = formula + "|" + std::to_string(seed);
+    const std::string key = normalised + "|" + std::to_string(seed);
     {
         std::scoped_lock lock(cache_mutex);
         const auto found = cache.find(key);
@@ -188,7 +190,7 @@ Count run_ganak_on_formula(const std::string& formula, unsigned seed) {
         }
         GanakStats::n_cache_misses++;
     }
-    const Formula parsed = Formula(formula);
+    const Formula parsed = Formula(normalised);
     const std::string formula_dimacs_path =
         write_temporary_dimacs(parsed.to_dimacs());
     const auto start = std::chrono::steady_clock::now();

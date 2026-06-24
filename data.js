@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1782304449099,
+  "lastUpdate": 1782314683076,
   "repoUrl": "https://github.com/benmandrew/counter",
   "entries": {
     "counter benchmarks": [
@@ -822,6 +822,78 @@ window.BENCHMARK_DATA = {
             "value": 3830.207795898725,
             "unit": "ns/iter",
             "extra": "iterations: 182968\ncpu: 3829.8347579904703 ns\nthreads: 1"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "benmandrew@gmail.com",
+            "name": "Ben Andrew",
+            "username": "benmandrew"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "96c5dd969dd021949e7f3b62ce22993dd0bb6c90",
+          "message": "Merge pull request #4 from benmandrew/feat/toml-config\n\nfeat: TOML configuration file support (--config flag)",
+          "timestamp": "2026-06-24T16:20:09+01:00",
+          "tree_id": "38e81a9de0b619d79864ea270fdb1597d514faed",
+          "url": "https://github.com/benmandrew/counter/commit/96c5dd969dd021949e7f3b62ce22993dd0bb6c90"
+        },
+        "date": 1782314682247,
+        "tool": "googlecpp",
+        "benches": [
+          {
+            "name": "BenchSyntacticSimilaritySmall",
+            "value": 541.6393633174567,
+            "unit": "ns/iter",
+            "extra": "iterations: 1294774\ncpu: 541.4825205016474 ns\nthreads: 1"
+          },
+          {
+            "name": "BenchSyntacticSimilarityLarge",
+            "value": 1982.6293500821398,
+            "unit": "ns/iter",
+            "extra": "iterations: 351229\ncpu: 1982.4773011340183 ns\nthreads: 1"
+          },
+          {
+            "name": "BenchSpecImpliesWarmCache",
+            "value": 656.0269297494639,
+            "unit": "ns/iter",
+            "extra": "iterations: 1065216\ncpu: 655.918638097813 ns\nthreads: 1"
+          },
+          {
+            "name": "BenchCountTraces/5",
+            "value": 160.16023341295494,
+            "unit": "ns/iter",
+            "extra": "iterations: 4357256\ncpu: 160.14194093714025 ns\nthreads: 1"
+          },
+          {
+            "name": "BenchCountTraces/10",
+            "value": 180.54650794948225,
+            "unit": "ns/iter",
+            "extra": "iterations: 3878681\ncpu: 180.52800526777003 ns\nthreads: 1"
+          },
+          {
+            "name": "BenchCountTraces/20",
+            "value": 201.55954341454535,
+            "unit": "ns/iter",
+            "extra": "iterations: 3465463\ncpu: 201.5303981026488 ns\nthreads: 1"
+          },
+          {
+            "name": "BenchCountTraces/50",
+            "value": 243.09368162708256,
+            "unit": "ns/iter",
+            "extra": "iterations: 2883543\ncpu: 243.05924517165153 ns\nthreads: 1"
+          },
+          {
+            "name": "BenchMutateSpecification",
+            "value": 3066.2180672434197,
+            "unit": "ns/iter",
+            "extra": "iterations: 228989\ncpu: 3065.8800990440604 ns\nthreads: 1"
           }
         ]
       }

@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1782320685904,
+  "lastUpdate": 1782323692118,
   "repoUrl": "https://github.com/benmandrew/counter",
   "entries": {
     "counter benchmarks": [
@@ -1038,6 +1038,78 @@ window.BENCHMARK_DATA = {
             "value": 4011.879581421941,
             "unit": "ns/iter",
             "extra": "iterations: 174400\ncpu: 4011.5036295871555 ns\nthreads: 1"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "benmandrew@gmail.com",
+            "name": "benmandrew",
+            "username": "benmandrew"
+          },
+          "committer": {
+            "email": "benmandrew@gmail.com",
+            "name": "benmandrew",
+            "username": "benmandrew"
+          },
+          "distinct": true,
+          "id": "e0bf6152d306fbdb9135e77a9730ed6463e5bfbc",
+          "message": "fix: build black from source on non-noble Linux\n\nThe prebuilt ubuntu24.04 deb requires Ubuntu 24.04 (noble) system\nlibraries. On other releases (e.g. 22.04 jammy) the binary fails at\nruntime due to missing shared libraries such as libfmt.so.9.\n\nDetect the Ubuntu codename via lsb_release at configure time. On noble\nuse the existing deb path; on all other releases build black from source\nusing the same ExternalProject approach as macOS, requiring either\nlibz3-dev or libcryptominisat5-dev as the SAT solver backend.",
+          "timestamp": "2026-06-24T18:49:38+01:00",
+          "tree_id": "75b5f5cbed1c98dcdff75164d9f21726314616e7",
+          "url": "https://github.com/benmandrew/counter/commit/e0bf6152d306fbdb9135e77a9730ed6463e5bfbc"
+        },
+        "date": 1782323691806,
+        "tool": "googlecpp",
+        "benches": [
+          {
+            "name": "BenchSyntacticSimilaritySmall",
+            "value": 660.1080622746111,
+            "unit": "ns/iter",
+            "extra": "iterations: 1058473\ncpu: 660.0578928324105 ns\nthreads: 1"
+          },
+          {
+            "name": "BenchSyntacticSimilarityLarge",
+            "value": 2467.965369780051,
+            "unit": "ns/iter",
+            "extra": "iterations: 283885\ncpu: 2467.637423604629 ns\nthreads: 1"
+          },
+          {
+            "name": "BenchSpecImpliesWarmCache",
+            "value": 884.0656844506632,
+            "unit": "ns/iter",
+            "extra": "iterations: 803082\ncpu: 883.9563307358403 ns\nthreads: 1"
+          },
+          {
+            "name": "BenchCountTraces/5",
+            "value": 203.85652002548815,
+            "unit": "ns/iter",
+            "extra": "iterations: 3374450\ncpu: 203.82663871149376 ns\nthreads: 1"
+          },
+          {
+            "name": "BenchCountTraces/10",
+            "value": 230.5274037830084,
+            "unit": "ns/iter",
+            "extra": "iterations: 3037847\ncpu: 230.5238673968768 ns\nthreads: 1"
+          },
+          {
+            "name": "BenchCountTraces/20",
+            "value": 256.98247236471894,
+            "unit": "ns/iter",
+            "extra": "iterations: 2721702\ncpu: 256.9704997093729 ns\nthreads: 1"
+          },
+          {
+            "name": "BenchCountTraces/50",
+            "value": 309.9986514814435,
+            "unit": "ns/iter",
+            "extra": "iterations: 2258775\ncpu: 309.9607145466019 ns\nthreads: 1"
+          },
+          {
+            "name": "BenchMutateSpecification",
+            "value": 3978.64527489508,
+            "unit": "ns/iter",
+            "extra": "iterations: 176049\ncpu: 3978.2011485438693 ns\nthreads: 1"
           }
         ]
       }

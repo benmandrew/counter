@@ -49,3 +49,9 @@ results*/
 # FRET semantics reference paper (large binary / copyright)
 semantics.pdf
 semantics.txt
+
+# Experiment outputs (generated at runtime)
+/experiments/
+
+# Experiment planning (not committed)
+PLAN.md

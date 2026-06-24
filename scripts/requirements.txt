@@ -1,0 +1,7 @@
+pandas>=2.0
+scipy>=1.11
+matplotlib>=3.7
+seaborn>=0.13
+notebook>=7.0
+scikit-posthocs>=0.9
+tomli>=2.0; python_version < "3.11"

@@ -186,16 +186,8 @@ run_evolution(std::vector<ScoredSpecification> population,
     const std::size_t col_gen = status.add("gen");
     const std::size_t col_pct = status.add("%");
     const std::size_t col_time = status.add("time");
-    std::vector<std::optional<std::size_t>> col_filter;
-    col_filter.reserve(filter_functions.size());
-    for (const FilterFunction& flt : filter_functions) {
-        if (!flt.name().empty()) {
-            col_filter.emplace_back(status.add(flt.name()));
-        } else {
-            col_filter.emplace_back(std::nullopt);
-        }
-    }
     const std::size_t col_best = status.add("best");
+    const std::size_t col_real = status.add("real");
 
     auto format_elapsed = [](double secs) -> std::string {
         std::ostringstream oss;
@@ -229,20 +221,20 @@ run_evolution(std::vector<ScoredSpecification> population,
                                    .count();
         status.set(col_pct, "100%");
         status.set(col_time, format_elapsed(elapsed));
-        for (std::size_t i = 0; i < filter_functions.size(); ++i) {
-            if (const auto& col = col_filter[i]) {
-                const std::size_t dropped =
-                    filter_functions[i].n_in() - filter_functions[i].n_out();
-                status.set(*col, std::to_string(dropped));
-            }
-            filter_stats[i].total_in += filter_functions[i].n_in();
-            filter_stats[i].total_out += filter_functions[i].n_out();
-        }
         if (!population.empty()) {
             std::ostringstream oss;
             oss << std::fixed << std::setprecision(3) << population[0].fitness;
             status.set(col_best, oss.str());
         }
+        std::size_t n_real = 0;
+        for (const ScoredSpecification& cand : population) {
+            if (specification_status(cand.specification, global_sat_checker(),
+                                     global_real_checker()) == 1.0 &&
+                !specification_has_false_condition(cand.specification)) {
+                ++n_real;
+            }
+        }
+        status.set(col_real, std::to_string(n_real));
         status.render();
         status.finish();
     }

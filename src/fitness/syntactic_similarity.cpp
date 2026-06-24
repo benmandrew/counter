@@ -149,7 +149,10 @@ Formula conjoin_field(const Specification& spec, Formula Requirement::* field) {
     };
     accumulate(spec.m_assumptions);
     accumulate(spec.m_guarantees);
-    assert(conj.has_value());
+    if (!conj.has_value()) {
+        assert(false);
+        __builtin_unreachable();
+    }
     return *conj;
 }
 

@@ -87,7 +87,7 @@ struct Requirement {
     /// The LTL formula equivalent to (m_condition, m_response, m_timing,
     /// m_condition_type), derived automatically by the constructor via
     /// requirement_to_ltl.
-    std::optional<std::string> m_ltl;
+    std::string m_ltl;
 
     friend bool operator<(const Requirement& lhs, const Requirement& rhs);
     friend bool operator==(const Requirement& lhs, const Requirement& rhs);
@@ -197,10 +197,7 @@ struct hash<Requirement> {
         seed = combine(seed, std::hash<Timing>{}(req.m_timing));
         seed = combine(seed, std::hash<bool>{}(req.m_condition_type ==
                                                ConditionType::Trigger));
-        seed = combine(seed, std::hash<bool>{}(req.m_ltl.has_value()));
-        if (req.m_ltl.has_value()) {
-            seed = combine(seed, std::hash<std::string>{}(*req.m_ltl));
-        }
+        seed = combine(seed, std::hash<std::string>{}(req.m_ltl));
         return seed;
     }
 };

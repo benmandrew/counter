@@ -119,29 +119,14 @@ std::string join_comma(const std::vector<std::string>& items) {
     return result;
 }
 
-void check_specification_ltls_present(const Specification& specification) {
-    assert(!specification.m_guarantees.empty());
-    for ([[maybe_unused]] const Requirement& req :
-         specification.m_assumptions) {
-        assert(req.m_ltl.has_value());
-    }
-    for ([[maybe_unused]] const Requirement& req : specification.m_guarantees) {
-        assert(req.m_ltl.has_value());
-    }
-}
-
 void build_ltl_conjunction(const std::vector<Requirement>& reqs,
                            std::string& out) {
     bool first = true;
     for (const Requirement& req : reqs) {
-        if (!req.m_ltl.has_value()) {
-            assert(false);
-            __builtin_unreachable();
-        }
         if (!first) {
             out += " & ";
         }
-        out += "(" + *req.m_ltl + ")";
+        out += "(" + req.m_ltl + ")";
         first = false;
     }
 }
@@ -228,7 +213,6 @@ std::string run_ltl2tgba_for_counting(const std::string& formula) {
 
 bool RealizabilityChecker::check_realizability(
     const Specification& specification) {
-    check_specification_ltls_present(specification);
     std::string conj_ltl;
     build_specification_formula(specification, conj_ltl);
     conj_ltl = normalize_ltl(conj_ltl);

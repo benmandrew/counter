@@ -55,7 +55,10 @@ Formula mutate_atom_formula(const Formula& formula,
                             const std::vector<std::string>& atoms,
                             const RandomSource& random_source) {
     const std::optional<std::string> atom = formula.atom_name();
-    assert(atom.has_value());
+    if (!atom.has_value()) {
+        assert(false);
+        __builtin_unreachable();
+    }
     if (random_source.next_bool()) {
         return Formula::make_atom(
             mutate_atom_name(*atom, atoms, random_source));

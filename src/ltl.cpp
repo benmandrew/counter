@@ -30,15 +30,11 @@ void print_spec_ltl(const std::string& path, const Specification& spec,
     }
     for (const Requirement& req : spec.m_assumptions) {
         std::cout << "  [assumption] " << req.to_string() << "\n";
-        if (req.m_ltl.has_value()) {
-            std::cout << "    LTL: " << *req.m_ltl << "\n";
-        }
+        std::cout << "    LTL: " << req.m_ltl << "\n";
     }
     for (const Requirement& req : spec.m_guarantees) {
         std::cout << "  [guarantee] " << req.to_string() << "\n";
-        if (req.m_ltl.has_value()) {
-            std::cout << "    LTL: " << *req.m_ltl << "\n";
-        }
+        std::cout << "    LTL: " << req.m_ltl << "\n";
     }
     if (show_path) {
         std::cout << "\n";

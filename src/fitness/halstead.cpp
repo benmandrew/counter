@@ -51,7 +51,10 @@ void traverse_formula(const Formula& formula, RawCounts& counts) {
     switch (formula.kind()) {
         case Formula::Kind::Atom: {
             const auto name = formula.atom_name();
-            assert(name.has_value());
+            if (!name.has_value()) {
+                assert(false);
+                __builtin_unreachable();
+            }
             counts.operands.insert(*name);
             ++counts.n2;
             break;
@@ -60,7 +63,10 @@ void traverse_formula(const Formula& formula, RawCounts& counts) {
             counts.operators.insert(connective_string(formula.kind()));
             ++counts.n1;
             const auto child = formula.unary_child();
-            assert(child.has_value());
+            if (!child.has_value()) {
+                assert(false);
+                __builtin_unreachable();
+            }
             traverse_formula(*child, counts);
             break;
         }
@@ -68,7 +74,10 @@ void traverse_formula(const Formula& formula, RawCounts& counts) {
             counts.operators.insert(connective_string(formula.kind()));
             ++counts.n1;
             const auto children = formula.binary_children();
-            assert(children.has_value());
+            if (!children.has_value()) {
+                assert(false);
+                __builtin_unreachable();
+            }
             traverse_formula(children->first, counts);
             traverse_formula(children->second, counts);
             break;

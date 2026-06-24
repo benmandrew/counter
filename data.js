@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1782304380038,
+  "lastUpdate": 1782304449099,
   "repoUrl": "https://github.com/benmandrew/counter",
   "entries": {
     "counter benchmarks": [
@@ -750,6 +750,78 @@ window.BENCHMARK_DATA = {
             "value": 4103.5142082417115,
             "unit": "ns/iter",
             "extra": "iterations: 173702\ncpu: 4102.833283439457 ns\nthreads: 1"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "benmandrew@gmail.com",
+            "name": "benmandrew",
+            "username": "benmandrew"
+          },
+          "committer": {
+            "email": "benmandrew@gmail.com",
+            "name": "benmandrew",
+            "username": "benmandrew"
+          },
+          "distinct": true,
+          "id": "33d4d32095e7cf6ded4b5fd37d74ea3ee7c4879d",
+          "message": "feat: report timeout instead of incomparable in compare when black times out\n\nWhen spec_implies returns nullopt (black timeout) and neither direction\nis definitively true, classify the result as timeout rather than\nincomparable. Adds timeout count to the summary line.",
+          "timestamp": "2026-06-24T13:20:00+01:00",
+          "tree_id": "8b68ebf69b8c55a6fafe3641714e190ad4b76e14",
+          "url": "https://github.com/benmandrew/counter/commit/33d4d32095e7cf6ded4b5fd37d74ea3ee7c4879d"
+        },
+        "date": 1782304448605,
+        "tool": "googlecpp",
+        "benches": [
+          {
+            "name": "BenchSyntacticSimilaritySmall",
+            "value": 683.2748525437589,
+            "unit": "ns/iter",
+            "extra": "iterations: 990633\ncpu: 683.0776049253357 ns\nthreads: 1"
+          },
+          {
+            "name": "BenchSyntacticSimilarityLarge",
+            "value": 2560.3319545093755,
+            "unit": "ns/iter",
+            "extra": "iterations: 284542\ncpu: 2559.9049419769317 ns\nthreads: 1"
+          },
+          {
+            "name": "BenchSpecImpliesWarmCache",
+            "value": 941.2180467864887,
+            "unit": "ns/iter",
+            "extra": "iterations: 804121\ncpu: 941.0510855953272 ns\nthreads: 1"
+          },
+          {
+            "name": "BenchCountTraces/5",
+            "value": 205.95019524894045,
+            "unit": "ns/iter",
+            "extra": "iterations: 2535481\ncpu: 205.94007133163288 ns\nthreads: 1"
+          },
+          {
+            "name": "BenchCountTraces/10",
+            "value": 235.32424541885442,
+            "unit": "ns/iter",
+            "extra": "iterations: 2989208\ncpu: 235.28783610909633 ns\nthreads: 1"
+          },
+          {
+            "name": "BenchCountTraces/20",
+            "value": 261.70899830775426,
+            "unit": "ns/iter",
+            "extra": "iterations: 2693462\ncpu: 261.70348124458377 ns\nthreads: 1"
+          },
+          {
+            "name": "BenchCountTraces/50",
+            "value": 312.9046859994658,
+            "unit": "ns/iter",
+            "extra": "iterations: 2234614\ncpu: 312.85441825747097 ns\nthreads: 1"
+          },
+          {
+            "name": "BenchMutateSpecification",
+            "value": 3830.207795898725,
+            "unit": "ns/iter",
+            "extra": "iterations: 182968\ncpu: 3829.8347579904703 ns\nthreads: 1"
           }
         ]
       }

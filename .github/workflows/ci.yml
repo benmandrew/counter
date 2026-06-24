@@ -31,8 +31,22 @@ jobs:
           python3 -m pip install --upgrade pip
           python3 -m pip install cpplint cmake sphinx furo breathe clang-format
 
+      - name: Set up sccache
+        uses: mozilla-actions/sccache-action@v0.0.9
+
+      - name: Cache FetchContent dependencies
+        uses: actions/cache@v5
+        with:
+          path: build/_deps
+          key: ${{ runner.os }}-check-deps-${{ hashFiles('cmake/dependencies.cmake') }}
+          restore-keys: |
+            ${{ runner.os }}-check-deps-
+
       - name: Configure project
         run: cmake --preset debug
+        env:
+          CMAKE_C_COMPILER_LAUNCHER: sccache
+          CMAKE_CXX_COMPILER_LAUNCHER: sccache
 
       - name: Check formatting
         run: cmake --build --preset debug --target format-ci
@@ -74,16 +88,24 @@ jobs:
           sudo apt-get remove --purge -y cmake
           python3 -m pip install --upgrade pip cmake
 
+      - name: Set up sccache
+        uses: mozilla-actions/sccache-action@v0.0.9
+
       - name: Cache third-party dependencies
         uses: actions/cache@v5
         with:
-          path: ${{ matrix.build_dir }}/third_party
-          key: ${{ runner.os }}-${{ matrix.preset }}-${{ matrix.compiler || 'clang' }}-third-party-${{ hashFiles('cmake/spot.cmake', 'cmake/ganak.cmake', 'cmake/black.cmake') }}
+          path: |
+            ${{ matrix.build_dir }}/third_party
+            ${{ matrix.build_dir }}/_deps
+          key: ${{ runner.os }}-${{ matrix.preset }}-${{ matrix.compiler || 'clang' }}-third-party-${{ hashFiles('cmake/spot.cmake', 'cmake/ganak.cmake', 'cmake/black.cmake', 'cmake/dependencies.cmake') }}
           restore-keys: |
             ${{ runner.os }}-${{ matrix.preset }}-${{ matrix.compiler || 'clang' }}-third-party-
 
       - name: Configure project
         run: cmake --preset ${{ matrix.preset }} ${{ matrix.cmake_args }}
+        env:
+          CMAKE_C_COMPILER_LAUNCHER: sccache
+          CMAKE_CXX_COMPILER_LAUNCHER: sccache
 
       - name: Build project
         run: cmake --build --preset ${{ matrix.preset }}
@@ -111,13 +133,16 @@ jobs:
           sudo apt-get remove --purge -y cmake
           python3 -m pip install --upgrade pip cmake
 
+      - name: Set up sccache
+        uses: mozilla-actions/sccache-action@v0.0.9
+
       - name: Cache third-party dependencies
         uses: actions/cache@v5
         with:
           path: |
             build-bench/third_party
             build-bench/_deps
-          key: ${{ runner.os }}-bench-${{ hashFiles('cmake/spot.cmake', 'cmake/ganak.cmake', 'cmake/black.cmake', 'bench/CMakeLists.txt') }}
+          key: ${{ runner.os }}-bench-${{ hashFiles('cmake/spot.cmake', 'cmake/ganak.cmake', 'cmake/black.cmake', 'bench/CMakeLists.txt', 'cmake/dependencies.cmake') }}
           restore-keys: |
             ${{ runner.os }}-bench-
 
@@ -125,6 +150,9 @@ jobs:
         run: |
           cmake --preset bench
           cmake --build --preset bench --target counter_bench
+        env:
+          CMAKE_C_COMPILER_LAUNCHER: sccache
+          CMAKE_CXX_COMPILER_LAUNCHER: sccache
 
       - name: Check regression assertions
         run: ./build-bench/bench/counter_bench --check-assertions

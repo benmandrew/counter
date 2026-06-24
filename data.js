@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1782304210748,
+  "lastUpdate": 1782304380038,
   "repoUrl": "https://github.com/benmandrew/counter",
   "entries": {
     "counter benchmarks": [
@@ -678,6 +678,78 @@ window.BENCHMARK_DATA = {
             "value": 3879.069239714254,
             "unit": "ns/iter",
             "extra": "iterations: 180590\ncpu: 3878.930378204772 ns\nthreads: 1"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "benmandrew@gmail.com",
+            "name": "benmandrew",
+            "username": "benmandrew"
+          },
+          "committer": {
+            "email": "benmandrew@gmail.com",
+            "name": "benmandrew",
+            "username": "benmandrew"
+          },
+          "distinct": true,
+          "id": "db2901e532ac99cd1644f2ad347b9f63eb16816f",
+          "message": "ci: bump sccache-action to v0.0.10",
+          "timestamp": "2026-06-24T13:28:23+01:00",
+          "tree_id": "1da46ef96659e6fb71cd17e2c3002bf544f91391",
+          "url": "https://github.com/benmandrew/counter/commit/db2901e532ac99cd1644f2ad347b9f63eb16816f"
+        },
+        "date": 1782304379250,
+        "tool": "googlecpp",
+        "benches": [
+          {
+            "name": "BenchSyntacticSimilaritySmall",
+            "value": 676.6009487850833,
+            "unit": "ns/iter",
+            "extra": "iterations: 975985\ncpu: 676.4578328560377 ns\nthreads: 1"
+          },
+          {
+            "name": "BenchSyntacticSimilarityLarge",
+            "value": 2471.314277332858,
+            "unit": "ns/iter",
+            "extra": "iterations: 282938\ncpu: 2471.1319476351714 ns\nthreads: 1"
+          },
+          {
+            "name": "BenchSpecImpliesWarmCache",
+            "value": 907.1529124695841,
+            "unit": "ns/iter",
+            "extra": "iterations: 767596\ncpu: 907.0937863146762 ns\nthreads: 1"
+          },
+          {
+            "name": "BenchCountTraces/5",
+            "value": 226.13581890855173,
+            "unit": "ns/iter",
+            "extra": "iterations: 3092537\ncpu: 226.1045733648457 ns\nthreads: 1"
+          },
+          {
+            "name": "BenchCountTraces/10",
+            "value": 252.89359859996898,
+            "unit": "ns/iter",
+            "extra": "iterations: 2766223\ncpu: 252.87573163841094 ns\nthreads: 1"
+          },
+          {
+            "name": "BenchCountTraces/20",
+            "value": 283.40260159521904,
+            "unit": "ns/iter",
+            "extra": "iterations: 2502849\ncpu: 283.36610398789526 ns\nthreads: 1"
+          },
+          {
+            "name": "BenchCountTraces/50",
+            "value": 334.20467622166376,
+            "unit": "ns/iter",
+            "extra": "iterations: 2100542\ncpu: 334.19716530305044 ns\nthreads: 1"
+          },
+          {
+            "name": "BenchMutateSpecification",
+            "value": 4103.5142082417115,
+            "unit": "ns/iter",
+            "extra": "iterations: 173702\ncpu: 4102.833283439457 ns\nthreads: 1"
           }
         ]
       }

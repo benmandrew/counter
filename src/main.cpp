@@ -23,6 +23,7 @@
 #include "requirement.hpp"
 #include "runner/black.hpp"
 #include "runner/ganak.hpp"
+#include "runner/ltlfilt.hpp"
 #include "runner/spot.hpp"
 #include "serialisation.hpp"
 #include "status_line.hpp"
@@ -106,6 +107,8 @@ void print_timing_report() {
     std::cout << "\nTool timing report:\n";
     print_row("ltl2tgba", Ltl2tgbaStats::n_cache_misses,
               Ltl2tgbaStats::total_time_s, Ltl2tgbaStats::n_cache_hits);
+    print_row("ltlfilt", LtlfiltStats::n_cache_misses,
+              LtlfiltStats::total_time_s, LtlfiltStats::n_cache_hits);
     print_row("ltlsynt", RealizabilityChecker::n_cache_misses,
               RealizabilityChecker::total_time_s,
               RealizabilityChecker::n_cache_hits);

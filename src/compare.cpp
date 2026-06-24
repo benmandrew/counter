@@ -81,6 +81,31 @@ load_repairs(const std::string& dir) {
     return repairs;
 }
 
+// Priority: equivalent > stronger > weaker > incomparable > timeout
+enum class Relation : std::uint8_t {
+    Timeout,
+    Incomparable,
+    Weaker,
+    Stronger,
+    Equivalent
+};
+
+Relation classify(std::optional<bool> fwd, std::optional<bool> rev) {
+    if (fwd.value_or(false) && rev.value_or(false)) {
+        return Relation::Equivalent;
+    }
+    if (fwd.value_or(false)) {
+        return Relation::Stronger;
+    }
+    if (rev.value_or(false)) {
+        return Relation::Weaker;
+    }
+    if (fwd.has_value() && rev.has_value()) {
+        return Relation::Incomparable;
+    }
+    return Relation::Timeout;
+}
+
 }  // namespace
 
 int main(int argc, const char* const argv[]) {
@@ -127,35 +152,15 @@ int main(int argc, const char* const argv[]) {
     std::size_t n_stronger = 0;
     std::size_t n_weaker = 0;
     std::size_t n_incomparable = 0;
-
-    // Priority: equivalent > stronger > weaker > incomparable
-    enum class Relation : std::uint8_t {
-        Incomparable,
-        Weaker,
-        Stronger,
-        Equivalent
-    };
+    std::size_t n_timeout = 0;
 
     for (const auto& [repair_name, repair_scored] : repairs) {
-        Relation best = Relation::Incomparable;
+        Relation best = Relation::Timeout;
         std::string best_ideal;
         for (const auto& [ideal_name, ideal_spec] : ideals) {
-            const bool repair_implies_ideal =
-                spec_implies(repair_scored.spec, ideal_spec, checker)
-                    .value_or(false);
-            const bool ideal_implies_repair =
-                spec_implies(ideal_spec, repair_scored.spec, checker)
-                    .value_or(false);
-            Relation rel;
-            if (repair_implies_ideal && ideal_implies_repair) {
-                rel = Relation::Equivalent;
-            } else if (repair_implies_ideal) {
-                rel = Relation::Stronger;
-            } else if (ideal_implies_repair) {
-                rel = Relation::Weaker;
-            } else {
-                rel = Relation::Incomparable;
-            }
+            const Relation rel =
+                classify(spec_implies(repair_scored.spec, ideal_spec, checker),
+                         spec_implies(ideal_spec, repair_scored.spec, checker));
             if (rel > best) {
                 best = rel;
                 best_ideal = ideal_name;
@@ -179,6 +184,10 @@ int main(int argc, const char* const argv[]) {
                 std::cout << "incomparable";
                 ++n_incomparable;
                 break;
+            case Relation::Timeout:
+                std::cout << "timeout";
+                ++n_timeout;
+                break;
         }
         const auto& fitness = repair_scored.fitness;
         if (fitness) {
@@ -191,6 +200,7 @@ int main(int argc, const char* const argv[]) {
 
     std::cout << "\nSummary: " << n_equivalent << " equivalent, " << n_stronger
               << " strictly stronger, " << n_weaker << " strictly weaker, "
-              << n_incomparable << " incomparable\n";
+              << n_incomparable << " incomparable, " << n_timeout
+              << " timeout\n";
     return 0;
 }

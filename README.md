@@ -12,7 +12,7 @@ cmake --build build               # incremental build only
 ## Usage
 
 ```
-counter --input <spec.json> --output-dir <dir> [--seed <n>]
+counter --input <spec.json> --output-dir <dir> [--config <file.toml>] [--seed <n>]
 compare --repairs <dir> --ideal <file> [--ideal <file>...]
 realize <spec.json> [<spec.json> ...]
 ltl <spec.json> [<spec.json> ...]
@@ -20,13 +20,31 @@ ltl <spec.json> [<spec.json> ...]
 
 Run any binary with `--help` for full option descriptions.
 
+### Configuration file
+
+Algorithm parameters (population size, fitness weights, mutation rates, etc.)
+can be tuned without recompiling by passing a TOML file to `--config`.  All
+keys are optional — absent keys keep their built-in defaults:
+
+```toml
+[genetic]
+generations     = 20   # double the default evolution rounds
+population_size = 500
+
+[runtime]
+parallel = 16          # override thread pool size
+```
+
+A fully-annotated template with every key and its default is provided in
+[`counter.toml.example`](counter.toml.example).
+
 ## How it works
 
 Counter repairs an unrealisable FRETISH specification by running a genetic
 algorithm over the space of FRETISH requirements:
 
-1. **Seed** a population of `Config::population_size` specifications from the
-   input, each mutated slightly from the original.
+1. **Seed** a population of `population_size` (default 200) specifications from
+   the input, each mutated slightly from the original.
 2. **Score** each candidate with a weighted fitness function combining:
    - *Semantic similarity* — bounded model counting of satisfying LTL traces
      (dominant component, weight 0.5).
@@ -36,7 +54,7 @@ algorithm over the space of FRETISH requirements:
      (weight 0.2).
    - *Halstead complexity penalty* — penalises candidates larger than the
      original (weight 0.1).
-3. **Evolve** for `Config::generations` rounds: truncation selection →
+3. **Evolve** for `generations` (default 10) rounds: truncation selection →
    crossover → mutation → per-generation filters (false-trigger removal,
    deduplication, optional weakening).
 4. **Collect** realisable survivors, apply the implication filter to keep only

@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1782323692118,
+  "lastUpdate": 1782323797445,
   "repoUrl": "https://github.com/benmandrew/counter",
   "entries": {
     "counter benchmarks": [
@@ -1110,6 +1110,78 @@ window.BENCHMARK_DATA = {
             "value": 3978.64527489508,
             "unit": "ns/iter",
             "extra": "iterations: 176049\ncpu: 3978.2011485438693 ns\nthreads: 1"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "benmandrew@gmail.com",
+            "name": "benmandrew",
+            "username": "benmandrew"
+          },
+          "committer": {
+            "email": "benmandrew@gmail.com",
+            "name": "benmandrew",
+            "username": "benmandrew"
+          },
+          "distinct": true,
+          "id": "88b2ef2898897962a85e6769874bcb3da4ca3f03",
+          "message": "feat: add parameter sweep experiment scripts\n\nAdds scripts to run a three-sweep sensitivity analysis (generations,\npopulation size, fitness weights) and collect results for statistical\ntesting in a Jupyter notebook.\n\nFresh-machine workflow:\n  pip install -r scripts/requirements.txt\n  python scripts/gen_configs.py\n  python scripts/run_experiments.py\n  jupyter notebook scripts/analyse.ipynb\n\nAlso gitignores experiments/ (generated results) and PLAN.md.",
+          "timestamp": "2026-06-24T18:52:04+01:00",
+          "tree_id": "cbbefb853a69b508eeb07740a49b52aea784bafd",
+          "url": "https://github.com/benmandrew/counter/commit/88b2ef2898897962a85e6769874bcb3da4ca3f03"
+        },
+        "date": 1782323796893,
+        "tool": "googlecpp",
+        "benches": [
+          {
+            "name": "BenchSyntacticSimilaritySmall",
+            "value": 641.9501702837144,
+            "unit": "ns/iter",
+            "extra": "iterations: 1092882\ncpu: 641.9136960806383 ns\nthreads: 1"
+          },
+          {
+            "name": "BenchSyntacticSimilarityLarge",
+            "value": 2416.97410460866,
+            "unit": "ns/iter",
+            "extra": "iterations: 288198\ncpu: 2416.6380301043037 ns\nthreads: 1"
+          },
+          {
+            "name": "BenchSpecImpliesWarmCache",
+            "value": 907.051349532831,
+            "unit": "ns/iter",
+            "extra": "iterations: 771341\ncpu: 907.0333263757535 ns\nthreads: 1"
+          },
+          {
+            "name": "BenchCountTraces/5",
+            "value": 203.21656929619584,
+            "unit": "ns/iter",
+            "extra": "iterations: 3460666\ncpu: 203.20128986732615 ns\nthreads: 1"
+          },
+          {
+            "name": "BenchCountTraces/10",
+            "value": 229.84469444201258,
+            "unit": "ns/iter",
+            "extra": "iterations: 3031585\ncpu: 229.83508989521994 ns\nthreads: 1"
+          },
+          {
+            "name": "BenchCountTraces/20",
+            "value": 257.51699646773636,
+            "unit": "ns/iter",
+            "extra": "iterations: 2717800\ncpu: 257.50261645448523 ns\nthreads: 1"
+          },
+          {
+            "name": "BenchCountTraces/50",
+            "value": 310.0698401573944,
+            "unit": "ns/iter",
+            "extra": "iterations: 2257283\ncpu: 310.0511903026782 ns\nthreads: 1"
+          },
+          {
+            "name": "BenchMutateSpecification",
+            "value": 3993.292227762505,
+            "unit": "ns/iter",
+            "extra": "iterations: 176886\ncpu: 3993.1302194633813 ns\nthreads: 1"
           }
         ]
       }

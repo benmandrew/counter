@@ -3,6 +3,7 @@
 #include <utility>
 #include <vector>
 
+#include "config.hpp"
 #include "fitness/syntactic_similarity.hpp"
 #include "prop_formula.hpp"
 #include "requirement.hpp"
@@ -34,7 +35,8 @@ void test_req_similarity_averages_component_scores() {
     const Requirement other_requirement{Formula("P"), Formula("P|Q"),
                                         timing::immediately()};
 
-    const double synsim = syntactic_similarity(requirement, other_requirement);
+    const double synsim =
+        syntactic_similarity(requirement, other_requirement, Config{});
     // condition: P vs P -> 1.0. response: Q vs P|Q -> shared=1, n(Q)=1,
     // n(P|Q)=3, harmonic mean = 2*1*(1/3)/(4/3) = 0.5. timing: identical ->
     // 1.0. Average: (1.0 + 0.5 + 1.0) / 3 = 5/6.
@@ -48,7 +50,7 @@ void test_req_similarity_averages_component_scores() {
 void test_spec_similarity_identical_single_req() {
     // All components identical → 1.0
     const Specification spec = make_spec({{"p", "q"}});
-    const double result = syntactic_similarity(spec, spec);
+    const double result = syntactic_similarity(spec, spec, Config{});
     expect(std::fabs(result - 1.0) < 1e-12,
            "spec-similarity: identical single-req specs should score 1.0");
 }
@@ -58,7 +60,7 @@ void test_spec_similarity_disjoint_atoms() {
     // trigger_sim = 0, response_sim = 0, timing = 1 → (0+0+1)/3 = 1/3
     const Specification spec_a = make_spec({{"p", "q"}});
     const Specification spec_b = make_spec({{"r", "s"}});
-    const double result = syntactic_similarity(spec_a, spec_b);
+    const double result = syntactic_similarity(spec_a, spec_b, Config{});
     expect(std::fabs(result - (1.0 / 3.0)) < 1e-12,
            "spec-similarity: fully disjoint single-req specs should score 1/3");
 }
@@ -67,7 +69,7 @@ void test_spec_similarity_same_trigger_different_response() {
     // trigger_sim = 1, response_sim = 0, timing = 1 → (1+0+1)/3 = 2/3
     const Specification spec_a = make_spec({{"p", "q"}});
     const Specification spec_b = make_spec({{"p", "r"}});
-    const double result = syntactic_similarity(spec_a, spec_b);
+    const double result = syntactic_similarity(spec_a, spec_b, Config{});
     expect(
         std::fabs(result - (2.0 / 3.0)) < 1e-12,
         "spec-similarity: same trigger, different response should score 2/3");
@@ -76,7 +78,7 @@ void test_spec_similarity_same_trigger_different_response() {
 void test_spec_similarity_identical_multi_req() {
     // Identical two-requirement specs → 1.0
     const Specification spec = make_spec({{"p", "q"}, {"r", "s"}});
-    const double result = syntactic_similarity(spec, spec);
+    const double result = syntactic_similarity(spec, spec, Config{});
     expect(std::fabs(result - 1.0) < 1e-12,
            "spec-similarity: identical multi-req specs should score 1.0");
 }
@@ -92,7 +94,7 @@ void test_spec_similarity_partial_match_multi_req() {
     // timing = 1 → (1/3 + 1/3 + 1) / 3 = (5/3) / 3 = 5/9.
     const Specification spec_a = make_spec({{"p", "q"}, {"r", "s"}});
     const Specification spec_b = make_spec({{"p", "q"}, {"t", "u"}});
-    const double result = syntactic_similarity(spec_a, spec_b);
+    const double result = syntactic_similarity(spec_a, spec_b, Config{});
     expect(std::fabs(result - (5.0 / 9.0)) < 1e-12,
            "spec-similarity: specs sharing one of two requirements should "
            "score 5/9");
@@ -103,7 +105,7 @@ void test_spec_similarity_partial_match_multi_req() {
 // Identical timings always score 1.0.
 void test_timing_identical_immediately() {
     const Requirement req{Formula("p"), Formula("q"), timing::immediately()};
-    const double result = syntactic_similarity(req, req);
+    const double result = syntactic_similarity(req, req, Config{});
     // All three components equal 1.0 → average is 1.0
     expect(std::fabs(result - 1.0) < 1e-12,
            "timing-sim: identical requirements (immediately) should score 1.0");
@@ -111,7 +113,7 @@ void test_timing_identical_immediately() {
 
 void test_timing_identical_within_ticks() {
     const Requirement req{Formula("p"), Formula("p"), timing::within_ticks(3)};
-    const double result = syntactic_similarity(req, req);
+    const double result = syntactic_similarity(req, req, Config{});
     expect(std::fabs(result - 1.0) < 1e-12,
            "timing-sim: identical within_ticks requirements should score 1.0");
 }
@@ -130,7 +132,7 @@ void test_timing_comparable_for_ticks() {
                                timing::for_ticks(1)};
     const double timing_sim = 1.53 / 1.78;
     const double expected = (1.0 + 1.0 + timing_sim) / 3.0;
-    const double result = syntactic_similarity(req_strong, req_weak);
+    const double result = syntactic_similarity(req_strong, req_weak, Config{});
     expect(std::fabs(result - expected) < 1e-9,
            "timing-sim: for_ticks{2} vs for_ticks{1} should give 1.53/1.78 "
            "timing component");
@@ -145,7 +147,7 @@ void test_timing_for_ticks_vs_eventually() {
                                timing::eventually()};
     const double timing_sim = 0.01 / 1.53;
     const double expected = (1.0 + 1.0 + timing_sim) / 3.0;
-    const double result = syntactic_similarity(req_strong, req_weak);
+    const double result = syntactic_similarity(req_strong, req_weak, Config{});
     expect(std::fabs(result - expected) < 1e-9,
            "timing-sim: for_ticks{1} vs eventually should give tiny timing "
            "component");
@@ -162,7 +164,7 @@ void test_timing_immediately_vs_next_timepoint() {
                             timing::next_timepoint()};
     const double timing_sim = 1.01 / 1.03;
     const double expected = (1.0 + 1.0 + timing_sim) / 3.0;
-    const double result = syntactic_similarity(req_i, req_n);
+    const double result = syntactic_similarity(req_i, req_n, Config{});
     expect(std::fabs(result - expected) < 1e-9,
            "timing-sim: immediately vs next_timepoint should give 1.01/1.03 "
            "timing component");

@@ -123,7 +123,9 @@ int main(int argc, const char* const argv[]) {
         return 1;
     }
     const Args& args = *maybe_args;
-    Config::black_timeout = std::chrono::milliseconds{20'000};
+    Config cfg;
+    cfg.black_timeout = std::chrono::milliseconds{20'000};
+    global_sat_checker().set_timeout(cfg.black_timeout);
 
     std::vector<std::pair<std::string, serialisation::ScoredSpecification>>
         repairs;

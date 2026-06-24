@@ -39,12 +39,12 @@ void test_semantic_similarity_default_overload_matches_explicit_step_count() {
     const Requirement other_requirement{Formula("P"), Formula("P|Q"),
                                         timing::immediately()};
     const double with_default =
-        semantic_similarity(requirement, other_requirement);
+        semantic_similarity(requirement, other_requirement, Config{});
     const double with_explicit_step_count = semantic_similarity(
-        requirement, other_requirement, Config::default_model_counting_bound);
+        requirement, other_requirement, Config{}.default_model_counting_bound);
     expect(std::fabs(with_default - with_explicit_step_count) < 1e-12,
            "semantic-similarity: default overload should use "
-           "Config::default_model_counting_bound");
+           "Config{}.default_model_counting_bound");
 }
 
 void test_semantic_similarity_identical_specifications_score_one() {
@@ -136,9 +136,9 @@ void test_semantic_similarity_propequiv_responses_score_equal() {
         Formula("true"), Formula("!(takeoff_roll) & (lift_off)"),
         timing::within_ticks(7), ConditionType::Trigger};
     const double score2 = semantic_similarity(
-        repair2_req2, original_req2, Config::default_model_counting_bound);
+        repair2_req2, original_req2, Config{}.default_model_counting_bound);
     const double score13 = semantic_similarity(
-        repair13_req2, original_req2, Config::default_model_counting_bound);
+        repair13_req2, original_req2, Config{}.default_model_counting_bound);
     expect(std::fabs(score2 - score13) < 1e-12,
            "semantic-similarity: propositionally-equivalent responses must "
            "score identically against the same original (got " +

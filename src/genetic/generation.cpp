@@ -8,7 +8,6 @@
 #include <vector>
 
 #include "bounded_async.hpp"
-#include "config.hpp"
 #include "filter/bloat.hpp"
 #include "filter/implication.hpp"
 #include "thread_pool.hpp"
@@ -47,12 +46,11 @@ FilterFunction make_predicate_filter(
 }
 
 std::vector<ScoredSpecification> score_population(
-    const std::vector<Specification>& population,
+    const Config& cfg, const std::vector<Specification>& population,
     const AggregateWeightedFitnessFunction& fitness_function,
     const GenerationProgressCallback& on_progress) {
     assert(!fitness_function.empty());
-    const std::size_t max_in_flight =
-        Config::n_hw_threads > 0 ? Config::n_hw_threads * 4 : 1;
+    const std::size_t max_in_flight = cfg.parallel > 0 ? cfg.parallel * 4 : 1;
     std::vector<ScoredSpecification> scored(population.size());
     std::size_t done = 0;
     run_bounded_async(
@@ -105,15 +103,16 @@ Specification simplify_offspring(Specification offspring) {
 }
 
 std::vector<ScoredSpecification> evolve_generation(
-    const std::vector<ScoredSpecification>& population, std::size_t target_size,
+    const Config& cfg, const std::vector<ScoredSpecification>& population,
+    std::size_t target_size,
     const AggregateWeightedFitnessFunction& fitness_functions,
     const std::vector<FilterFunction>& filter_functions,
     const RandomSource& random_source,
     const GenerationProgressCallback& on_progress) {
     assert(random_source);
     assert(!fitness_functions.empty());
-    assert(Config::crossover_rate >= 0.0 && Config::crossover_rate <= 1.0);
-    assert(Config::mutation_rate >= 0.0 && Config::mutation_rate <= 1.0);
+    assert(cfg.crossover_rate >= 0.0 && cfg.crossover_rate <= 1.0);
+    assert(cfg.mutation_rate >= 0.0 && cfg.mutation_rate <= 1.0);
     assert(!population.empty());
 
     // Select parents from the whole population, unfiltered: the filter only
@@ -129,13 +128,13 @@ std::vector<ScoredSpecification> evolve_generation(
     next_generation.reserve(top_n);
     for (std::size_t i = 0; i < top_n; ++i) {
         Specification offspring = sorted_pop[i].specification;
-        if (probability_check(Config::crossover_rate, random_source)) {
+        if (probability_check(cfg.crossover_rate, random_source)) {
             const std::size_t partner = random_source.next_index(top_n);
             offspring = crossover_specifications(
                 offspring, sorted_pop[partner].specification, random_source);
         }
-        if (probability_check(Config::mutation_rate, random_source)) {
-            offspring = mutate_specification(offspring, random_source);
+        if (probability_check(cfg.mutation_rate, random_source)) {
+            offspring = mutate_specification(offspring, random_source, cfg);
         }
         next_generation.push_back(simplify_offspring(std::move(offspring)));
     }
@@ -153,8 +152,8 @@ std::vector<ScoredSpecification> evolve_generation(
             filtered_offspring[filtered_offspring.size() % filtered_count]);
     }
 
-    std::vector<ScoredSpecification> scored =
-        score_population(filtered_offspring, fitness_functions, on_progress);
+    std::vector<ScoredSpecification> scored = score_population(
+        cfg, filtered_offspring, fitness_functions, on_progress);
     std::sort(
         scored.begin(), scored.end(),
         [](const ScoredSpecification& lhs, const ScoredSpecification& rhs) {
@@ -165,7 +164,7 @@ std::vector<ScoredSpecification> evolve_generation(
 }
 
 std::vector<FilterFunction> get_filter_functions(
-    Specification original, SatisfiabilityChecker& checker) {
+    const Config& cfg, Specification original, SatisfiabilityChecker& checker) {
     std::vector<FilterFunction> filters;
     filters.push_back(make_bloat_cap_filter(original));
     // A false condition is vacuously satisfied by every trace, so it
@@ -176,7 +175,7 @@ std::vector<FilterFunction> get_filter_functions(
         make_predicate_filter("false-condition", [](const Specification& spec) {
             return !specification_has_false_condition(spec);
         }));
-    if (Config::run_weakening_filter) {
+    if (cfg.run_weakening_filter) {
         // NOLINTNEXTLINE(clang-analyzer-cplusplus.NewDeleteLeaks)
         filters.push_back(make_weakening_filter(std::move(original), checker));
     }
@@ -184,11 +183,11 @@ std::vector<FilterFunction> get_filter_functions(
 }
 
 std::vector<FilterFunction> get_final_filter_functions(
-    SatisfiabilityChecker& checker,
+    const Config& cfg, SatisfiabilityChecker& checker,
     const GenerationProgressCallback& on_impl_progress) {
     std::vector<FilterFunction> filters;
     filters.push_back(make_dedup_filter());
-    if (Config::run_implication_filter) {
+    if (cfg.run_implication_filter) {
         filters.push_back(make_implication_filter(checker, on_impl_progress));
     }
     return filters;

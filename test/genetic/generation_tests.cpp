@@ -4,6 +4,7 @@
 #include <utility>
 #include <vector>
 
+#include "config.hpp"
 #include "genetic/generation.hpp"
 #include "prop_formula.hpp"
 #include "requirement.hpp"
@@ -48,7 +49,7 @@ void test_score_population_single_function() {
     const AggregateWeightedFitnessFunction fns =
         AggregateWeightedFitnessFunction(
             {{[](const Specification&) { return 0.5; }, 1.0, ""}});
-    const auto scored = score_population(pop, fns);
+    const auto scored = score_population(Config{}, pop, fns);
     expect(scored.size() == 2,
            "score_population: should score every specification");
     expect(scored[0].fitness == 0.5,
@@ -64,7 +65,7 @@ void test_score_population_weighted_aggregation() {
         AggregateWeightedFitnessFunction(
             {{[](const Specification&) { return 0.0; }, 1.0, ""},
              {[](const Specification&) { return 1.0; }, 3.0, ""}});
-    const auto scored = score_population(pop, fns);
+    const auto scored = score_population(Config{}, pop, fns);
     expect(scored.size() == 1,
            "score_population: should produce one entry for a single-element "
            "population");
@@ -79,7 +80,7 @@ void test_score_population_equal_weights_give_average() {
         AggregateWeightedFitnessFunction(
             {{[](const Specification&) { return 0.2; }, 1.0, ""},
              {[](const Specification&) { return 0.8; }, 1.0, ""}});
-    const auto scored = score_population(pop, fns);
+    const auto scored = score_population(Config{}, pop, fns);
     expect(scored[0].fitness == 0.5,
            "score_population: equal weights should give arithmetic average");
 }
@@ -188,9 +189,10 @@ void test_evolve_generation_produces_target_size() {
             {{[](const Specification&) { return 0.5; }, 1.0, ""}});
 
     const std::vector<ScoredSpecification> pop = score_population(
+        Config{},
         {make_spec("p", "q"), make_spec("r", "s"), make_spec("t", "u")}, fns);
     const auto next_gen =
-        evolve_generation(pop, 2, fns, {}, make_source({}, 0));
+        evolve_generation(Config{}, pop, 2, fns, {}, make_source({}, 0));
     expect(
         next_gen.size() == 2,
         "evolve_generation: should produce the requested number of offspring");
@@ -200,10 +202,10 @@ void test_evolve_generation_pads_up_to_target_size() {
     const AggregateWeightedFitnessFunction fns =
         AggregateWeightedFitnessFunction(
             {{[](const Specification&) { return 0.5; }, 1.0, ""}});
-    const std::vector<ScoredSpecification> pop =
-        score_population({make_spec("p", "q"), make_spec("r", "s")}, fns);
+    const std::vector<ScoredSpecification> pop = score_population(
+        Config{}, {make_spec("p", "q"), make_spec("r", "s")}, fns);
     const auto next_gen =
-        evolve_generation(pop, 5, fns, {}, make_source({}, 0));
+        evolve_generation(Config{}, pop, 5, fns, {}, make_source({}, 0));
     expect(next_gen.size() == 5,
            "evolve_generation: should pad the next generation back to the "
            "requested target size");
@@ -215,8 +217,8 @@ void test_evolve_generation_selects_parents_before_offspring_filtering() {
     const AggregateWeightedFitnessFunction fns =
         AggregateWeightedFitnessFunction(
             {{[](const Specification&) { return 0.5; }, 1.0, ""}});
-    const std::vector<ScoredSpecification> pop =
-        score_population({make_spec("p", "q"), make_spec("r", "s")}, fns);
+    const std::vector<ScoredSpecification> pop = score_population(
+        Config{}, {make_spec("p", "q"), make_spec("r", "s")}, fns);
     const std::vector<FilterFunction> filters = {
         [](const std::vector<Specification>& candidates) {
             if (candidates.empty()) {
@@ -225,7 +227,7 @@ void test_evolve_generation_selects_parents_before_offspring_filtering() {
             return std::vector<Specification>{candidates.front()};
         }};
     const auto next_gen =
-        evolve_generation(pop, 2, fns, filters, make_source({}, 0));
+        evolve_generation(Config{}, pop, 2, fns, filters, make_source({}, 0));
     expect(next_gen.size() == 2,
            "evolve_generation: the generation should be padded back to the "
            "requested target size after filtering");

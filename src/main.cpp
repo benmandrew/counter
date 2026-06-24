@@ -15,6 +15,7 @@
 #include <nlohmann/json.hpp>
 
 #include "config.hpp"
+#include "config_io.hpp"
 #include "crash/crash_handler.hpp"
 #include "filter/implication.hpp"
 #include "fitness/function.hpp"
@@ -148,22 +149,23 @@ std::optional<std::size_t> parse_seed_arg(int argc, const char* const* argv) {
 }
 
 std::string format_crash_metadata(std::size_t seed,
-                                  const std::string& input_path) {
+                                  const std::string& input_path,
+                                  const Config& cfg) {
     std::ostringstream out;
     out << "Input:            " << input_path << "\n";
     out << "Config:\n";
     out << "  Seed:           " << seed << "\n";
-    out << "  Generations:    " << Config::generations << "\n";
-    out << "  Population:     " << Config::population_size << "\n";
-    out << "  Crossover rate: " << Config::crossover_rate << "\n";
-    out << "  Mutation rate:  " << Config::mutation_rate << "\n";
-    out << "  p_trigger:      " << Config::p_trigger << "\n";
-    out << "  p_response:     " << Config::p_response << "\n";
-    out << "  p_timing:       " << Config::p_timing << "\n";
-    out << "  Weight syn:     " << Config::fitness_weight_syntactic << "\n";
-    out << "  Weight sem:     " << Config::fitness_weight_semantic << "\n";
-    out << "  Weight halstead:" << Config::fitness_weight_halstead << "\n";
-    out << "  Weight status:  " << Config::fitness_weight_status;
+    out << "  Generations:    " << cfg.generations << "\n";
+    out << "  Population:     " << cfg.population_size << "\n";
+    out << "  Crossover rate: " << cfg.crossover_rate << "\n";
+    out << "  Mutation rate:  " << cfg.mutation_rate << "\n";
+    out << "  p_trigger:      " << cfg.p_trigger << "\n";
+    out << "  p_response:     " << cfg.p_response << "\n";
+    out << "  p_timing:       " << cfg.p_timing << "\n";
+    out << "  Weight syn:     " << cfg.fitness_weight_syntactic << "\n";
+    out << "  Weight sem:     " << cfg.fitness_weight_semantic << "\n";
+    out << "  Weight halstead:" << cfg.fitness_weight_halstead << "\n";
+    out << "  Weight status:  " << cfg.fitness_weight_status;
     return out.str();
 }
 
@@ -176,7 +178,7 @@ RandomSource init_random_source(int argc, const char* const* argv) {
 }
 
 std::pair<std::vector<ScoredSpecification>, std::vector<FilterRunStats>>
-run_evolution(std::vector<ScoredSpecification> population,
+run_evolution(const Config& cfg, std::vector<ScoredSpecification> population,
               const AggregateWeightedFitnessFunction& fitness_function,
               const std::vector<FilterFunction>& filter_functions,
               RandomSource& random_source) {
@@ -199,8 +201,8 @@ run_evolution(std::vector<ScoredSpecification> population,
     };
 
     const std::size_t pop_size = population.size();
-    const std::string total_str = std::to_string(Config::generations);
-    for (std::size_t gen_idx = 0; gen_idx < Config::generations; ++gen_idx) {
+    const std::string total_str = std::to_string(cfg.generations);
+    for (std::size_t gen_idx = 0; gen_idx < cfg.generations; ++gen_idx) {
         const auto start = std::chrono::steady_clock::now();
         const std::string gen_str =
             std::to_string(gen_idx + 1) + "/" + total_str;
@@ -216,7 +218,7 @@ run_evolution(std::vector<ScoredSpecification> population,
         };
 
         population =
-            evolve_generation(population, pop_size, fitness_function,
+            evolve_generation(cfg, population, pop_size, fitness_function,
                               filter_functions, random_source, on_progress);
 
         const double elapsed = std::chrono::duration<double>(
@@ -261,9 +263,9 @@ std::vector<Specification> collect_realizable_specifications(
 }
 
 // Reduces realizable specifications to those maximal under implication, when
-// Config::run_implication_filter is enabled; otherwise deduplicates only.
+// run_implication_filter is enabled; otherwise deduplicates only.
 std::vector<Specification> filter_maximal_specifications(
-    const std::vector<Specification>& realizable_vec) {
+    const Config& cfg, const std::vector<Specification>& realizable_vec) {
     const auto impl_start = std::chrono::steady_clock::now();
     auto on_impl_progress = [&impl_start](std::size_t done, std::size_t total) {
         const double elapsed =
@@ -280,10 +282,10 @@ std::vector<Specification> filter_maximal_specifications(
                   << std::flush;
     };
     const std::vector<FilterFunction> filters =
-        get_final_filter_functions(global_sat_checker(), on_impl_progress);
+        get_final_filter_functions(cfg, global_sat_checker(), on_impl_progress);
     const std::vector<Specification> result =
         filter_population(realizable_vec, filters);
-    if (Config::run_implication_filter) {
+    if (cfg.run_implication_filter) {
         const double impl_elapsed =
             std::chrono::duration<double>(std::chrono::steady_clock::now() -
                                           impl_start)
@@ -329,6 +331,8 @@ void print_help(const char* prog) {
            "repair_1.json,\n"
         << "                       ... (required; directory must already "
            "exist).\n"
+        << "  --config <file>      Path to a TOML configuration file.\n"
+        << "                       Absent keys use built-in defaults.\n"
         << "  --seed <n>           RNG seed for reproducible runs. If omitted\n"
         << "                       a random seed is chosen and printed.\n"
         << "  -h, --help           Show this help message and exit.\n"
@@ -356,6 +360,18 @@ int main(int argc, const char* const argv[]) {
         return 1;
     }
     init_cpptrace(argv[0]);
+    Config cfg;
+    const std::optional<std::string> config_path =
+        parse_string_arg(argc, argv, "--config");
+    if (config_path.has_value()) {
+        try {
+            cfg = config_from_toml(*config_path);
+        } catch (const std::exception& exc) {
+            std::cerr << exc.what() << "\n";
+            return 1;
+        }
+    }
+    global_sat_checker().set_timeout(cfg.black_timeout);
     if (has_flag(argc, argv, "-h") || has_flag(argc, argv, "--help")) {
         print_help(argv[0]);
         return 0;
@@ -384,11 +400,11 @@ int main(int argc, const char* const argv[]) {
     std::cout << "Original specification:\n"
               << original_spec.to_string() << "\n";
     AggregateWeightedFitnessFunction fitness_function =
-        get_fitness_function(original_spec);
+        get_fitness_function(original_spec, cfg);
     const std::vector<FilterFunction> filter_functions =
-        get_filter_functions(original_spec, global_sat_checker());
+        get_filter_functions(cfg, original_spec, global_sat_checker());
     std::vector<ScoredSpecification> population = original_population(
-        original_spec, fitness_function, Config::population_size);
+        original_spec, fitness_function, cfg.population_size);
     RandomSource random_source = init_random_source(argc, argv);
     const std::optional<std::size_t> maybe_seed = random_source.seed();
     if (!maybe_seed.has_value()) {
@@ -397,15 +413,15 @@ int main(int argc, const char* const argv[]) {
     }
     const std::size_t seed = *maybe_seed;
     std::cout << "Seed: " << seed << "\n";
-    register_crash_metadata(format_crash_metadata(seed, *input_path));
+    register_crash_metadata(format_crash_metadata(seed, *input_path, cfg));
     auto [population_result, filter_stats] =
-        run_evolution(std::move(population), fitness_function, filter_functions,
-                      random_source);
+        run_evolution(cfg, std::move(population), fitness_function,
+                      filter_functions, random_source);
     population = std::move(population_result);
     const std::vector<Specification> realizable_vec =
         collect_realizable_specifications(population);
     const std::vector<Specification> maximal =
-        filter_maximal_specifications(realizable_vec);
+        filter_maximal_specifications(cfg, realizable_vec);
     const std::vector<ScoredSpecification> scored_maximal =
         score_and_sort_specifications(maximal, fitness_function);
     try {
@@ -415,7 +431,7 @@ int main(int argc, const char* const argv[]) {
         return 1;
     }
     std::cout << "Realizable specifications: " << realizable_vec.size();
-    if (Config::run_implication_filter) {
+    if (cfg.run_implication_filter) {
         std::cout << " (" << maximal.size() << " maximal)";
     }
     std::cout << ", written to " << *output_dir << "/\n";

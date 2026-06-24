@@ -12,6 +12,7 @@
 #include <utility>
 #include <vector>
 
+#include "config.hpp"
 #include "fitness/function.hpp"
 #include "genetic/crossover.hpp"
 #include "genetic/mutation.hpp"
@@ -85,6 +86,7 @@ FilterFunction make_predicate_filter(
 /// Scores each specification using a weighted average of all fitness functions:
 ///   fitness = sum(fn_i(spec) * w_i) / sum(w_i)
 ///
+/// @param cfg               Algorithm configuration (parallel thread count)
 /// @param population        The population to score
 /// @param fitness_function  Non-empty set of weighted fitness functions
 /// @param on_progress       Optional callback invoked after each individual is
@@ -93,7 +95,7 @@ FilterFunction make_predicate_filter(
 /// @throws std::invalid_argument if fitness_function is empty or total weight
 ///                               is not positive
 std::vector<ScoredSpecification> score_population(
-    const std::vector<Specification>& population,
+    const Config& cfg, const std::vector<Specification>& population,
     const AggregateWeightedFitnessFunction& fitness_function,
     const GenerationProgressCallback& on_progress = nullptr);
 
@@ -111,23 +113,25 @@ std::vector<Specification> filter_population(
 /// including a weakening filter that keeps only specifications implied by
 /// @p original.
 ///
+/// @param cfg       Algorithm configuration (run_weakening_filter flag)
 /// @param original  The reference specification for the weakening filter;
 ///                  captured by value inside the filter
 /// @param checker   Satisfiability checker; captured by reference, must
 ///                  outlive the returned filters
 std::vector<FilterFunction> get_filter_functions(
-    Specification original, SatisfiabilityChecker& checker);
+    const Config& cfg, Specification original, SatisfiabilityChecker& checker);
 
 /// Returns the set of filter functions applied to the final realizable
 /// population after evolution: deduplication, and (if
-/// Config::run_implication_filter) the implication filter.
+/// run_implication_filter) the implication filter.
 ///
+/// @param cfg              Algorithm configuration (run_implication_filter)
 /// @param checker          Satisfiability checker for the implication filter;
 ///                         captured by reference, must outlive the filters
 /// @param on_impl_progress Optional progress callback forwarded to the
 ///                         implication filter
 std::vector<FilterFunction> get_final_filter_functions(
-    SatisfiabilityChecker& checker,
+    const Config& cfg, SatisfiabilityChecker& checker,
     const GenerationProgressCallback& on_impl_progress = nullptr);
 
 /// Scores each specification in @p specs and returns them sorted by fitness
@@ -149,6 +153,7 @@ std::vector<ScoredSpecification> score_and_sort_specifications(
 /// If the population is smaller than target_size, all of it is used as
 /// parents.
 ///
+/// @param cfg               Algorithm configuration (rates and filter flags)
 /// @param population        Current generation's specifications
 /// @param target_size       Number of offspring to produce
 /// @param fitness_function  Non-empty weighted fitness function for scoring
@@ -162,7 +167,8 @@ std::vector<ScoredSpecification> score_and_sort_specifications(
 ///                               fitness_function is empty, if rates are
 ///                               outside [0, 1]
 std::vector<ScoredSpecification> evolve_generation(
-    const std::vector<ScoredSpecification>& population, std::size_t target_size,
+    const Config& cfg, const std::vector<ScoredSpecification>& population,
+    std::size_t target_size,
     const AggregateWeightedFitnessFunction& fitness_function,
     const std::vector<FilterFunction>& filter_functions,
     const RandomSource& random_source,

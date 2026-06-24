@@ -6,6 +6,7 @@
 #include <string_view>
 
 #include "config.hpp"
+#include "runner/black.hpp"
 #include "test_suite.hpp"
 
 namespace {
@@ -91,6 +92,10 @@ void run_suite(std::string_view suite_name) {
         run_serialisation_tests();
         return;
     }
+    if (suite_name == "config_io") {
+        run_config_io_tests();
+        return;
+    }
     throw std::invalid_argument("Unknown test suite: " +
                                 std::string(suite_name));
 }
@@ -102,7 +107,9 @@ int main(int argc, const char* const argv[]) {
     // default in config.hpp is now tuned tight for real runs, but CI has
     // previously been slow enough to make that value flaky for tests that
     // expect a definite SAT/UNSAT answer rather than a timeout.
-    Config::black_timeout = std::chrono::milliseconds{10000};
+    Config cfg;
+    cfg.black_timeout = std::chrono::milliseconds{10000};
+    global_sat_checker().set_timeout(cfg.black_timeout);
     try {
         if (argc == 1) {
             run_transfer_matrix_tests();
@@ -125,6 +132,7 @@ int main(int argc, const char* const argv[]) {
             run_implication_filter_tests();
             run_requirement_tests();
             run_serialisation_tests();
+            run_config_io_tests();
             return 0;
         }
         if (argc != 2) {

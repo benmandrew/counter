@@ -6,6 +6,7 @@
 ///        instance.
 
 #include <atomic>
+#include <chrono>
 #include <cstddef>
 #include <optional>
 #include <shared_mutex>
@@ -24,7 +25,10 @@ class SatisfiabilityChecker {
     /// Returns true (SAT), false (UNSAT), or nullopt (timed out / unknown).
     std::optional<bool> check_satisfiability(const std::string& ltl_formula);
 
+    void set_timeout(std::chrono::milliseconds timeout) { m_timeout = timeout; }
+
    private:
+    std::chrono::milliseconds m_timeout{1000};
     // Cache lookups (the common case once the population converges) take a
     // shared lock so concurrent hits don't serialise on one another; only an
     // actual insert needs the exclusive lock.

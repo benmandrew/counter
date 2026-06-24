@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1782316621569,
+  "lastUpdate": 1782320685904,
   "repoUrl": "https://github.com/benmandrew/counter",
   "entries": {
     "counter benchmarks": [
@@ -966,6 +966,78 @@ window.BENCHMARK_DATA = {
             "value": 4004.4120880690116,
             "unit": "ns/iter",
             "extra": "iterations: 175181\ncpu: 4003.6046146557005 ns\nthreads: 1"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "benmandrew@gmail.com",
+            "name": "benmandrew",
+            "username": "benmandrew"
+          },
+          "committer": {
+            "email": "benmandrew@gmail.com",
+            "name": "benmandrew",
+            "username": "benmandrew"
+          },
+          "distinct": true,
+          "id": "812e1c266bff06302292d86be15c0b70fb49d89e",
+          "message": "fix: fall back to deb download when PATH black fails to run\n\nIf a black binary exists on PATH but has an unsatisfied shared-library\ndependency (e.g. libfmt.so.9 missing after apt install libfmt-dev gives\nlibfmt.so.8), find_program would accept it and return early, leaving the\nproject with a non-functional black executable.\n\nNow the candidate is tested with --version before being accepted. A\nnon-zero exit falls through to the deb download path, whose wrapper\nscript sets LD_LIBRARY_PATH to the bundled libraries inside the\nextracted package, avoiding any system libfmt dependency.",
+          "timestamp": "2026-06-24T17:59:48+01:00",
+          "tree_id": "bc7f2dd12c77ca98965d50f1c07df0d6dc6462c0",
+          "url": "https://github.com/benmandrew/counter/commit/812e1c266bff06302292d86be15c0b70fb49d89e"
+        },
+        "date": 1782320685610,
+        "tool": "googlecpp",
+        "benches": [
+          {
+            "name": "BenchSyntacticSimilaritySmall",
+            "value": 656.6056236320501,
+            "unit": "ns/iter",
+            "extra": "iterations: 1073221\ncpu: 656.5499212184629 ns\nthreads: 1"
+          },
+          {
+            "name": "BenchSyntacticSimilarityLarge",
+            "value": 2454.2441176884636,
+            "unit": "ns/iter",
+            "extra": "iterations: 284072\ncpu: 2454.011289391422 ns\nthreads: 1"
+          },
+          {
+            "name": "BenchSpecImpliesWarmCache",
+            "value": 911.6744102214268,
+            "unit": "ns/iter",
+            "extra": "iterations: 768424\ncpu: 911.5667509083528 ns\nthreads: 1"
+          },
+          {
+            "name": "BenchCountTraces/5",
+            "value": 203.71878762730063,
+            "unit": "ns/iter",
+            "extra": "iterations: 3431684\ncpu: 203.71246390984706 ns\nthreads: 1"
+          },
+          {
+            "name": "BenchCountTraces/10",
+            "value": 230.880719103405,
+            "unit": "ns/iter",
+            "extra": "iterations: 3034501\ncpu: 230.86700943581803 ns\nthreads: 1"
+          },
+          {
+            "name": "BenchCountTraces/20",
+            "value": 257.0545451673117,
+            "unit": "ns/iter",
+            "extra": "iterations: 2721946\ncpu: 257.037541523601 ns\nthreads: 1"
+          },
+          {
+            "name": "BenchCountTraces/50",
+            "value": 310.0780391392206,
+            "unit": "ns/iter",
+            "extra": "iterations: 2256560\ncpu: 310.0469980855817 ns\nthreads: 1"
+          },
+          {
+            "name": "BenchMutateSpecification",
+            "value": 4011.879581421941,
+            "unit": "ns/iter",
+            "extra": "iterations: 174400\ncpu: 4011.5036295871555 ns\nthreads: 1"
           }
         ]
       }

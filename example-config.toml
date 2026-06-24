@@ -8,10 +8,10 @@ crossover_rate  = 0.1   # probability of crossover between parents
 mutation_rate   = 1.0   # probability of mutating an offspring
 
 [fitness]
-weight_syntactic = 0.2  # syntactic similarity component weight
-weight_semantic  = 0.5  # semantic similarity (model counting) component weight
+weight_syntactic = 0.33  # syntactic similarity component weight
+weight_semantic  = 0.33  # semantic similarity (model counting) component weight
 weight_halstead  = 0.1  # Halstead complexity penalty weight
-weight_status    = 0.5  # realizability status weight
+weight_status    = 0.33  # realizability status weight
 
 [syntactic]
 weight_trigger  = 1.0   # contribution of trigger formula similarity

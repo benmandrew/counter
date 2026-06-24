@@ -18,7 +18,8 @@ cmake --build --parallel "$NPROC" --preset release
 
 ./build-release/counter \
     --input "$INPUT" \
-    --output-dir results
+    --output-dir results \
+    --config example-config.toml
 
 IDEAL_ARGS=()
 for ideal in "${IDEALS[@]}"; do

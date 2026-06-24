@@ -1,8 +1,23 @@
-find_program(BLACK_EXECUTABLE black)
-
-if(BLACK_EXECUTABLE)
-    message(STATUS "Using black executable: ${BLACK_EXECUTABLE}")
-    return()
+# Use a non-cache variable so a broken PATH binary doesn't get permanently cached.
+find_program(_black_candidate black)
+if(_black_candidate)
+    execute_process(
+        COMMAND "${_black_candidate}" --version
+        RESULT_VARIABLE _black_check
+        OUTPUT_QUIET
+        ERROR_QUIET
+    )
+    if(_black_check EQUAL 0)
+        set(BLACK_EXECUTABLE "${_black_candidate}"
+            CACHE FILEPATH "Path to black executable" FORCE)
+        message(STATUS "Using black executable: ${BLACK_EXECUTABLE}")
+        return()
+    else()
+        message(STATUS
+            "black found at ${_black_candidate} but failed to run "
+            "(likely a missing shared library such as libfmt.so.9); "
+            "falling back to downloading a self-contained binary")
+    endif()
 endif()
 
 set(BLACK_VERSION "25.09.0")

@@ -6,17 +6,19 @@
 #include <string_view>
 
 #include "config.hpp"
+#include "runner/black.hpp"
 #include "test_suite.hpp"
 
 namespace {
 
-void run_suite(std::string_view suite_name) {
+void run_suite(std::string_view suite_name,
+               const std::chrono::milliseconds& timeout) {
     if (suite_name == "transfer_matrix") {
         run_transfer_matrix_tests();
         return;
     }
     if (suite_name == "black_runner") {
-        run_black_runner_tests();
+        run_black_runner_tests(timeout);
         return;
     }
     if (suite_name == "ganak_runner") {
@@ -91,6 +93,10 @@ void run_suite(std::string_view suite_name) {
         run_serialisation_tests();
         return;
     }
+    if (suite_name == "config_io") {
+        run_config_io_tests();
+        return;
+    }
     throw std::invalid_argument("Unknown test suite: " +
                                 std::string(suite_name));
 }
@@ -102,11 +108,13 @@ int main(int argc, const char* const argv[]) {
     // default in config.hpp is now tuned tight for real runs, but CI has
     // previously been slow enough to make that value flaky for tests that
     // expect a definite SAT/UNSAT answer rather than a timeout.
-    Config::black_timeout = std::chrono::milliseconds{10000};
+    Config cfg;
+    cfg.black_timeout = std::chrono::milliseconds{10000};
+    global_sat_checker().set_timeout(cfg.black_timeout);
     try {
         if (argc == 1) {
             run_transfer_matrix_tests();
-            run_black_runner_tests();
+            run_black_runner_tests(cfg.black_timeout);
             run_ganak_runner_tests();
             run_ltlfilt_runner_tests();
             run_spot_runner_tests();
@@ -125,13 +133,14 @@ int main(int argc, const char* const argv[]) {
             run_implication_filter_tests();
             run_requirement_tests();
             run_serialisation_tests();
+            run_config_io_tests();
             return 0;
         }
         if (argc != 2) {
             throw std::invalid_argument(
                 "Expected zero arguments or exactly one test suite name.");
         }
-        run_suite(argv[1]);
+        run_suite(argv[1], cfg.black_timeout);
     } catch (const std::exception& exception) {
         std::cerr << exception.what() << '\n';
         return 1;

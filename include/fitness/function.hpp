@@ -13,6 +13,7 @@
 #include <utility>
 #include <vector>
 
+#include "config.hpp"
 #include "requirement.hpp"
 
 /// Default weight for WeightedFitnessFunction when not explicitly specified.
@@ -97,8 +98,11 @@ class AggregateWeightedFitnessFunction {
     [[nodiscard]] auto end() const { return m_fitness_functions.end(); }
 };
 
-/// Builds the standard set of weighted fitness functions from Config weights.
+/// Builds the standard set of weighted fitness functions from @p cfg weights.
 /// Functions with a zero weight are omitted. The caller owns the returned
 /// object and may invoke it repeatedly; results are memoised internally.
+///
+/// @param original_spec  Reference specification for similarity scoring
+/// @param cfg            Configuration providing fitness weights
 AggregateWeightedFitnessFunction get_fitness_function(
-    const Specification& original_spec);
+    const Specification& original_spec, const Config& cfg);

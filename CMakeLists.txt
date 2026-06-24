@@ -74,9 +74,10 @@ target_sources(counter_fitness PRIVATE
     src/genetic/crossover.cpp
     src/genetic/generation.cpp
     src/genetic/mutation.cpp
+    src/config_io.cpp
 )
 target_include_directories(counter_fitness PUBLIC include)
-target_link_libraries(counter_fitness PUBLIC counter_core)
+target_link_libraries(counter_fitness PUBLIC counter_core tomlplusplus::tomlplusplus)
 add_dependencies(counter_fitness spot_project)
 # Include Eigen as a system directory so clang-tidy skips warnings inside it.
 target_include_directories(counter_fitness SYSTEM PUBLIC ${eigen_SOURCE_DIR})

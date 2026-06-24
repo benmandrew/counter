@@ -6,7 +6,6 @@
 #include <unordered_map>
 #include <vector>
 
-#include "config.hpp"
 #include "fitness/model_counter.hpp"
 #include "fitness/transfer_matrix.hpp"
 
@@ -104,9 +103,10 @@ double semantic_similarity(const Requirement& requirement,
 }
 
 double semantic_similarity(const Requirement& requirement,
-                           const Requirement& other_requirement) {
+                           const Requirement& other_requirement,
+                           const Config& cfg) {
     return semantic_similarity(requirement, other_requirement,
-                               Config::default_model_counting_bound);
+                               cfg.default_model_counting_bound);
 }
 
 double semantic_similarity(const Specification& specification,
@@ -147,7 +147,8 @@ double semantic_similarity(const Specification& specification,
 }
 
 double semantic_similarity(const Specification& specification,
-                           const Specification& other_specification) {
+                           const Specification& other_specification,
+                           const Config& cfg) {
     return semantic_similarity(specification, other_specification,
-                               Config::default_model_counting_bound);
+                               cfg.default_model_counting_bound);
 }

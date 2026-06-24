@@ -6,6 +6,7 @@
 
 #include <cstddef>
 
+#include "config.hpp"
 #include "fitness/transfer_matrix.hpp"
 #include "requirement.hpp"
 
@@ -27,12 +28,14 @@ double semantic_similarity(const Requirement& requirement,
                            const Requirement& other_requirement,
                            std::size_t step_count);
 
-/// Overload of semantic_similarity using a default model-counting bound.
+/// Overload of semantic_similarity using the bound from @p cfg.
 /// @param requirement       The first requirement to compare
 /// @param other_requirement The second requirement to compare
+/// @param cfg               Configuration providing the model-counting bound
 /// @return                  A semantic similarity score in [0, 1]
 double semantic_similarity(const Requirement& requirement,
-                           const Requirement& other_requirement);
+                           const Requirement& other_requirement,
+                           const Config& cfg);
 
 /// Computes semantic similarity between two specifications by averaging the
 /// pairwise semantic similarities of corresponding requirements (matched in
@@ -47,10 +50,12 @@ double semantic_similarity(const Specification& specification,
                            const Specification& other_specification,
                            std::size_t step_count);
 
-/// Overload of specification-level semantic_similarity using the default
-/// model-counting bound.
+/// Overload of specification-level semantic_similarity using the bound from
+/// @p cfg.
 /// @param specification       The first specification to compare (non-empty)
 /// @param other_specification The second specification to compare (non-empty)
+/// @param cfg                 Configuration providing the model-counting bound
 /// @return                    A semantic similarity score in [0, 1]
 double semantic_similarity(const Specification& specification,
-                           const Specification& other_specification);
+                           const Specification& other_specification,
+                           const Config& cfg);

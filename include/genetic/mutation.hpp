@@ -7,6 +7,7 @@
 #include <string>
 #include <vector>
 
+#include "config.hpp"
 #include "genetic/random_source.hpp"
 #include "prop_formula.hpp"
 #include "requirement.hpp"
@@ -31,15 +32,17 @@ Formula mutate_formula(const Formula& formula,
 Timing mutate_timing(const Timing& timing, const RandomSource& random_source);
 
 /// Mutates a requirement. Each of trigger, response, and timing is mutated
-/// independently with the probabilities specified in @p config.
+/// independently with probabilities from @p cfg.
 ///
 /// @param requirement   The requirement to mutate
 /// @param atoms         Pool of atom names to draw replacements from
 /// @param random_source Random source for branch and selector choices
+/// @param cfg           Configuration providing mutation probabilities
 /// @return              A mutated requirement
 Requirement mutate_requirement(const Requirement& requirement,
                                const std::vector<std::string>& atoms,
-                               const RandomSource& random_source);
+                               const RandomSource& random_source,
+                               const Config& cfg);
 
 /// Mutates a specification by picking one requirement at random and replacing
 /// it with a mutated version. The pool of atom names is taken from the
@@ -47,8 +50,10 @@ Requirement mutate_requirement(const Requirement& requirement,
 ///
 /// @param specification The specification to mutate (must be non-empty)
 /// @param random_source Random source for index and mutation choices
+/// @param cfg           Configuration providing mutation probabilities
 /// @return              A specification with one requirement mutated
 /// @throws std::invalid_argument if specification is empty or random_source is
 ///         not callable
 Specification mutate_specification(const Specification& specification,
-                                   const RandomSource& random_source);
+                                   const RandomSource& random_source,
+                                   const Config& cfg);

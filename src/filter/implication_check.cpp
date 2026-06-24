@@ -36,9 +36,8 @@ std::optional<bool> requirement_implies(const Requirement& from,
         }
         // Timeout (rare for propositional): fall through to LTL.
     }
-    assert(from.m_ltl.has_value() && dest.m_ltl.has_value());
     const std::optional<bool> sat = checker.check_satisfiability(
-        "(" + *from.m_ltl + ") & !(" + *dest.m_ltl + ")");
+        "(" + from.m_ltl + ") & !(" + dest.m_ltl + ")");
     if (!sat.has_value()) {
         ImplicationFilterStats::n_timeouts.fetch_add(1,
                                                      std::memory_order_relaxed);

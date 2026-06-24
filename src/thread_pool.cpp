@@ -1,8 +1,7 @@
 #include "thread_pool.hpp"
 
+#include <thread>
 #include <utility>
-
-#include "config.hpp"
 
 ThreadPool::ThreadPool(std::size_t n_workers) {
     m_workers.reserve(n_workers);
@@ -42,6 +41,7 @@ void ThreadPool::worker_loop() {
 }
 
 ThreadPool& global_thread_pool() {
-    static ThreadPool pool(Config::n_hw_threads > 0 ? Config::n_hw_threads : 1);
+    const std::size_t hw_threads = std::thread::hardware_concurrency();
+    static ThreadPool pool(hw_threads > 0 ? hw_threads : 1);
     return pool;
 }

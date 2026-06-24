@@ -6,6 +6,7 @@
 
 #include <cstddef>
 
+#include "config.hpp"
 #include "requirement.hpp"
 
 /// Computes syntactic similarity between two requirements by comparing the
@@ -14,9 +15,11 @@
 ///
 /// @param requirement       The first requirement to compare
 /// @param other_requirement The second requirement to compare
+/// @param cfg               Configuration providing component weights
 /// @return                  A syntactic similarity score in the range [0, 1]
 double syntactic_similarity(const Requirement& requirement,
-                            const Requirement& other_requirement);
+                            const Requirement& other_requirement,
+                            const Config& cfg);
 
 /// Computes syntactic similarity between two specifications by conjoining all
 /// triggers into a single formula and all responses into a single formula for
@@ -25,7 +28,9 @@ double syntactic_similarity(const Requirement& requirement,
 ///
 /// @param specification       The first specification to compare (non-empty)
 /// @param other_specification The second specification to compare (non-empty)
+/// @param cfg                 Configuration providing component weights
 /// @return                    A syntactic similarity score in the range [0, 1]
 /// @throws std::invalid_argument if either specification has no requirements
 double syntactic_similarity(const Specification& specification,
-                            const Specification& other_specification);
+                            const Specification& other_specification,
+                            const Config& cfg);

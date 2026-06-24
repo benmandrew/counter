@@ -9,13 +9,6 @@
 double specification_status(const Specification& specification,
                             SatisfiabilityChecker& sat,
                             RealizabilityChecker& real) {
-    for ([[maybe_unused]] const Requirement& req :
-         specification.m_assumptions) {
-        assert(req.m_ltl.has_value());
-    }
-    for ([[maybe_unused]] const Requirement& req : specification.m_guarantees) {
-        assert(req.m_ltl.has_value());
-    }
     // Check each requirement independently: requirements fire at different
     // times (different conditions, Trigger vs Continual), so their conditions
     // and responses do not need to be simultaneously satisfiable across the

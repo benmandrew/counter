@@ -21,7 +21,6 @@
 #include <utility>
 #include <vector>
 
-#include "config.hpp"
 #include "runner/ltlfilt.hpp"
 
 namespace {
@@ -164,8 +163,7 @@ std::optional<bool> SatisfiabilityChecker::check_satisfiability(
     const std::string black = black_executable_path();
     assert(access(black.c_str(), F_OK) == 0);
     const auto timeout_s =
-        std::chrono::duration_cast<std::chrono::seconds>(Config::black_timeout)
-            .count();
+        std::chrono::duration_cast<std::chrono::seconds>(m_timeout).count();
     // Pass ltl_formula (not normalised) to black: SPOT's compact notation
     // (e.g. "FG!a", "GFa") is not valid in black's parser. The normalised form
     // is used only as the cache key; the original formula is always
@@ -174,8 +172,7 @@ std::optional<bool> SatisfiabilityChecker::check_satisfiability(
     const std::vector<std::string> command = {
         black, "solve", "-t", std::to_string(timeout_s), "-f", ltl_formula};
     const auto start = std::chrono::steady_clock::now();
-    const ProcessResult result =
-        execute_and_capture(command, Config::black_timeout);
+    const ProcessResult result = execute_and_capture(command, m_timeout);
     const double elapsed =
         std::chrono::duration<double>(std::chrono::steady_clock::now() - start)
             .count();

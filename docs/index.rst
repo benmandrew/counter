@@ -15,6 +15,7 @@ Repairing unrealisable FRETish specifications.
 
    api/bounded_async
    api/config
+   api/config_io
    api/prop_formula
    api/requirement
    api/serialisation

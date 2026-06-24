@@ -7,7 +7,6 @@
 #include <variant>
 #include <vector>
 
-#include "config.hpp"
 #include "prop_formula.hpp"
 #include "requirement.hpp"
 
@@ -150,7 +149,10 @@ Formula conjoin_field(const Specification& spec, Formula Requirement::* field) {
     };
     accumulate(spec.m_assumptions);
     accumulate(spec.m_guarantees);
-    assert(conj.has_value());
+    if (!conj.has_value()) {
+        assert(false);
+        __builtin_unreachable();
+    }
     return *conj;
 }
 
@@ -184,24 +186,26 @@ double average_timing_similarity(const Specification& spec1,
 }  // namespace
 
 double syntactic_similarity(const Requirement& requirement,
-                            const Requirement& other_requirement) {
+                            const Requirement& other_requirement,
+                            const Config& cfg) {
     double condition_similarity = requirement.m_condition.syntactic_similarity(
         other_requirement.m_condition);
     double response_similarity = requirement.m_response.syntactic_similarity(
         other_requirement.m_response);
     double timing_similarity = timing_syntactic_similarity(
         requirement.m_timing, other_requirement.m_timing);
-    constexpr double total_weight = Config::syntactic_weight_trigger +
-                                    Config::syntactic_weight_response +
-                                    Config::syntactic_weight_timing;
-    return (Config::syntactic_weight_trigger * condition_similarity +
-            Config::syntactic_weight_response * response_similarity +
-            Config::syntactic_weight_timing * timing_similarity) /
+    const double total_weight = cfg.syntactic_weight_trigger +
+                                cfg.syntactic_weight_response +
+                                cfg.syntactic_weight_timing;
+    return (cfg.syntactic_weight_trigger * condition_similarity +
+            cfg.syntactic_weight_response * response_similarity +
+            cfg.syntactic_weight_timing * timing_similarity) /
            total_weight;
 }
 
 double syntactic_similarity(const Specification& specification,
-                            const Specification& other_specification) {
+                            const Specification& other_specification,
+                            const Config& cfg) {
     assert((!specification.m_assumptions.empty() ||
             !specification.m_guarantees.empty()) &&
            (!other_specification.m_assumptions.empty() ||
@@ -214,11 +218,11 @@ double syntactic_similarity(const Specification& specification,
             .syntactic_similarity(conjoin_responses(other_specification));
     double timing_similarity =
         average_timing_similarity(specification, other_specification);
-    constexpr double total_weight = Config::syntactic_weight_trigger +
-                                    Config::syntactic_weight_response +
-                                    Config::syntactic_weight_timing;
-    return (Config::syntactic_weight_trigger * trigger_similarity +
-            Config::syntactic_weight_response * response_similarity +
-            Config::syntactic_weight_timing * timing_similarity) /
+    const double total_weight = cfg.syntactic_weight_trigger +
+                                cfg.syntactic_weight_response +
+                                cfg.syntactic_weight_timing;
+    return (cfg.syntactic_weight_trigger * trigger_similarity +
+            cfg.syntactic_weight_response * response_similarity +
+            cfg.syntactic_weight_timing * timing_similarity) /
            total_weight;
 }

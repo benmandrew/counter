@@ -20,24 +20,6 @@ ltl <spec.json> [<spec.json> ...]
 
 Run any binary with `--help` for full option descriptions.
 
-### Configuration file
-
-Algorithm parameters (population size, fitness weights, mutation rates, etc.)
-can be tuned without recompiling by passing a TOML file to `--config`.  All
-keys are optional — absent keys keep their built-in defaults:
-
-```toml
-[genetic]
-generations     = 20   # double the default evolution rounds
-population_size = 500
-
-[runtime]
-parallel = 16          # override thread pool size
-```
-
-A fully-annotated template with every key and its default is provided in
-[`counter.toml.example`](counter.toml.example).
-
 ## How it works
 
 Counter repairs an unrealisable FRETISH specification by running a genetic
@@ -67,6 +49,24 @@ realizability queries use [black](https://www.black-sat.org) and
 
 See [`docs/architecture.rst`](docs/architecture.rst) for a full description of
 the key types and module layout.
+
+### Configuration file
+
+Algorithm parameters (population size, fitness weights, mutation rates, etc.)
+can be tuned without recompiling by passing a TOML file to `--config`.  All
+keys are optional — absent keys keep their built-in defaults:
+
+```toml
+[genetic]
+generations     = 20   # double the default evolution rounds
+population_size = 500
+
+[runtime]
+parallel = 16          # override thread pool size
+```
+
+A fully-annotated template with every key and its default is provided in
+[`counter.toml.example`](counter.toml.example).
 
 ## Dependencies
 

@@ -4,6 +4,8 @@ Repairing unrealisable FRETish specifications using a genetic algorithm.
 
 ## Build
 
+Requires CMake ≥ 3.25 (for `--workflow` preset support) and a C++17 compiler.
+
 ```sh
 cmake --workflow --preset debug   # configure + build + test
 cmake --build build               # incremental build only
@@ -72,6 +74,10 @@ A fully-annotated template with every key and its default is provided in
 
 | Dependency | Platforms |
 |---|---|
+| CMake ≥ 3.25 | all |
+| C++17 compiler (gcc ≥ 7 or clang ≥ 5) | all |
 | [Ganak](https://github.com/meelgroup/ganak) | Linux, macOS — pre-built binary via [`cmake/ganak.cmake`](cmake/ganak.cmake) |
 | [Spot](https://spot.lre.epita.fr) | Linux, macOS — built from source via [`cmake/spot.cmake`](cmake/spot.cmake) |
 | [Black](https://www.black-sat.org) | Linux x86\_64, macOS — see [`cmake/black.cmake`](cmake/black.cmake) |
+
+> **Note on `libfmt`:** If a system `black` binary is found on `PATH`, it requires `libfmt.so.9` at runtime. If that library is absent the build automatically falls back to downloading a self-contained `black` binary, so `libfmt` is not a hard build requirement.

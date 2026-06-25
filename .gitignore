@@ -45,6 +45,7 @@ Temporary/
 crashes/
 results*/
 .claude/
+.venv/
 
 # FRET semantics reference paper (large binary / copyright)
 semantics.pdf

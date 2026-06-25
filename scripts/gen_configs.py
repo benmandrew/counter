@@ -83,11 +83,10 @@ def make_toml(overrides: dict) -> str:
 
 # Sweep A: vary generations (population_size fixed at 200)
 SWEEP_A: list[tuple[str, dict]] = [
-    ("gen5",   {"generations": 5}),
-    ("gen10",  {"generations": 10}),
-    ("gen20",  {"generations": 20}),
-    ("gen50",  {"generations": 50}),
-    ("gen100", {"generations": 100}),
+    ("gen5",  {"generations": 5}),
+    ("gen10", {"generations": 10}),
+    ("gen20", {"generations": 20}),
+    ("gen40", {"generations": 40}),
 ]
 
 # Sweep B: vary population size (generations fixed at 10)

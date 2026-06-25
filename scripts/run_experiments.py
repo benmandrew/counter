@@ -263,7 +263,11 @@ def main() -> None:
             f"No configs found at {CONFIGS_DIR}\n"
             f"Run: python scripts/gen_configs.py"
         )
-    all_configs = sorted(CONFIGS_DIR.glob("sweep_*.toml"))
+    def _config_sort_key(p: Path):
+        sweep, _, level_value = extract_metadata(p)
+        return (sweep, level_value if isinstance(level_value, int) else float("inf"), str(p))
+
+    all_configs = sorted(CONFIGS_DIR.glob("sweep_*.toml"), key=_config_sort_key)
     if args.sweeps:
         wanted = {s.upper() for s in args.sweeps}
         all_configs = [c for c in all_configs if extract_metadata(c)[0] in wanted]

@@ -189,8 +189,15 @@ std::optional<bool> SatisfiabilityChecker::check_satisfiability(
         sat = false;
     } else if (result.m_output.find("SAT") != std::string::npos) {
         sat = true;
+    } else if (result.m_output.find("UNKNOWN") != std::string::npos) {
+        // black's own internal timeout fired before our outer deadline: it
+        // exited normally with "UNKNOWN (stopped at k = N)".  Treat as
+        // indeterminate, same as a process-level timeout.
+        n_timeouts++;
+        m_cache.emplace(normalised, std::nullopt);
+        return std::nullopt;
     } else {
-        // black's output crossed a process boundary and didn't match either
+        // black's output crossed a process boundary and didn't match any
         // expected form: don't let assert() (a no-op in release builds) fall
         // through to __builtin_unreachable(), which is undefined behavior if
         // this branch is ever actually taken.

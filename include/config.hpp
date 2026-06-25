@@ -18,6 +18,7 @@ struct Config {
     bool run_weakening_filter = true;
     bool run_implication_filter = true;
     std::chrono::milliseconds black_timeout{1000};
+    double selection_rate = 0.5;
     double crossover_rate = 0.1;
     double mutation_rate = 1.0;
     double p_trigger = 0.5;

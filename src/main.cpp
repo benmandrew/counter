@@ -201,6 +201,9 @@ run_evolution(const Config& cfg, std::vector<ScoredSpecification> population,
     };
 
     const std::size_t pop_size = population.size();
+    const std::size_t selection_size = std::max(
+        std::size_t{1}, static_cast<std::size_t>(static_cast<double>(pop_size) *
+                                                 cfg.selection_rate));
     const std::string total_str = std::to_string(cfg.generations);
     for (std::size_t gen_idx = 0; gen_idx < cfg.generations; ++gen_idx) {
         const auto start = std::chrono::steady_clock::now();
@@ -218,7 +221,7 @@ run_evolution(const Config& cfg, std::vector<ScoredSpecification> population,
         };
 
         population =
-            evolve_generation(cfg, population, pop_size, fitness_function,
+            evolve_generation(cfg, population, selection_size, fitness_function,
                               filter_functions, random_source, on_progress);
 
         const double elapsed = std::chrono::duration<double>(

@@ -2,8 +2,9 @@
 # All sections and keys are optional; absent keys use the built-in defaults.
 
 [genetic]
-generations     = 10    # number of evolution rounds
-population_size = 200   # candidates per generation
+generations     = 5     # number of evolution rounds
+population_size = 100   # candidates per generation
+selection_rate  = 0.5   # fraction of population selected as parents each generation
 crossover_rate  = 0.1   # probability of crossover between parents
 mutation_rate   = 1.0   # probability of mutating an offspring
 
@@ -32,4 +33,4 @@ run_implication = true  # enable final implication maximality filter
 
 [runtime]
 black_timeout_ms = 1000  # timeout per black SAT query in milliseconds
-parallel         = 8     # thread pool size (omit to use hardware concurrency)
+# parallel         = 8     # thread pool size (omit to use hardware concurrency)

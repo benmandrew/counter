@@ -61,6 +61,10 @@ void apply_genetic(const toml::table& tbl, Config& cfg) {
         cfg.population_size = static_cast<std::size_t>(
             require_positive(*val, "genetic.population_size"));
     }
+    if (auto val = tbl["selection_rate"].value<double>()) {
+        require_probability(*val, "genetic.selection_rate");
+        cfg.selection_rate = *val;
+    }
     if (auto val = tbl["crossover_rate"].value<double>()) {
         require_probability(*val, "genetic.crossover_rate");
         cfg.crossover_rate = *val;

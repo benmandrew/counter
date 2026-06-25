@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1782396771895,
+  "lastUpdate": 1782397536576,
   "repoUrl": "https://github.com/benmandrew/counter",
   "entries": {
     "counter benchmarks": [
@@ -1398,6 +1398,78 @@ window.BENCHMARK_DATA = {
             "value": 3870.0895443049726,
             "unit": "ns/iter",
             "extra": "iterations: 178716\ncpu: 3869.836377268961 ns\nthreads: 1"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "benmandrew@gmail.com",
+            "name": "benmandrew",
+            "username": "benmandrew"
+          },
+          "committer": {
+            "email": "benmandrew@gmail.com",
+            "name": "benmandrew",
+            "username": "benmandrew"
+          },
+          "distinct": true,
+          "id": "d84febbc99028d44a2ad80f99398586916fff36e",
+          "message": "feat: implement truncation selection via configurable selection_rate\n\nPreviously target_size == pop_size, so no individuals were ever culled.\nNow the top selection_rate fraction of the population breeds each\ngeneration, with offspring padded back to pop_size. Defaults to 0.5.",
+          "timestamp": "2026-06-25T15:20:30+01:00",
+          "tree_id": "f2121f663aee1870e7edb72de998709790a8f046",
+          "url": "https://github.com/benmandrew/counter/commit/d84febbc99028d44a2ad80f99398586916fff36e"
+        },
+        "date": 1782397535979,
+        "tool": "googlecpp",
+        "benches": [
+          {
+            "name": "BenchSyntacticSimilaritySmall",
+            "value": 675.3392631029632,
+            "unit": "ns/iter",
+            "extra": "iterations: 983231\ncpu: 675.2428737499123 ns\nthreads: 1"
+          },
+          {
+            "name": "BenchSyntacticSimilarityLarge",
+            "value": 2573.3232490943237,
+            "unit": "ns/iter",
+            "extra": "iterations: 278256\ncpu: 2572.4704444827794 ns\nthreads: 1"
+          },
+          {
+            "name": "BenchSpecImpliesWarmCache",
+            "value": 859.9596834591463,
+            "unit": "ns/iter",
+            "extra": "iterations: 794463\ncpu: 859.9149551332159 ns\nthreads: 1"
+          },
+          {
+            "name": "BenchCountTraces/5",
+            "value": 205.70514053164965,
+            "unit": "ns/iter",
+            "extra": "iterations: 3396886\ncpu: 205.68545367727975 ns\nthreads: 1"
+          },
+          {
+            "name": "BenchCountTraces/10",
+            "value": 233.26467353261293,
+            "unit": "ns/iter",
+            "extra": "iterations: 2995751\ncpu: 233.25749503213055 ns\nthreads: 1"
+          },
+          {
+            "name": "BenchCountTraces/20",
+            "value": 264.0009713335887,
+            "unit": "ns/iter",
+            "extra": "iterations: 2692175\ncpu: 263.9601697512237 ns\nthreads: 1"
+          },
+          {
+            "name": "BenchCountTraces/50",
+            "value": 312.6949291843039,
+            "unit": "ns/iter",
+            "extra": "iterations: 2237569\ncpu: 312.6910128804965 ns\nthreads: 1"
+          },
+          {
+            "name": "BenchMutateSpecification",
+            "value": 3881.599149256207,
+            "unit": "ns/iter",
+            "extra": "iterations: 180783\ncpu: 3881.1789991315563 ns\nthreads: 1"
           }
         ]
       }

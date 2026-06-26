@@ -417,28 +417,28 @@ int main(int argc, const char* const argv[]) {
     const std::size_t seed = *maybe_seed;
     std::cout << "Seed: " << seed << "\n";
     register_crash_metadata(format_crash_metadata(seed, *input_path, cfg));
-    auto [population_result, filter_stats] =
-        run_evolution(cfg, std::move(population), fitness_function,
-                      filter_functions, random_source);
-    population = std::move(population_result);
-    const std::vector<Specification> realizable_vec =
-        collect_realizable_specifications(population);
-    const std::vector<Specification> maximal =
-        filter_maximal_specifications(cfg, realizable_vec);
-    const std::vector<ScoredSpecification> scored_maximal =
-        score_and_sort_specifications(maximal, fitness_function);
     try {
+        auto [population_result, filter_stats] =
+            run_evolution(cfg, std::move(population), fitness_function,
+                          filter_functions, random_source);
+        population = std::move(population_result);
+        const std::vector<Specification> realizable_vec =
+            collect_realizable_specifications(population);
+        const std::vector<Specification> maximal =
+            filter_maximal_specifications(cfg, realizable_vec);
+        const std::vector<ScoredSpecification> scored_maximal =
+            score_and_sort_specifications(maximal, fitness_function);
         write_specifications(scored_maximal, fitness_function, *output_dir);
+        std::cout << "Realizable specifications: " << realizable_vec.size();
+        if (cfg.run_implication_filter) {
+            std::cout << " (" << maximal.size() << " maximal)";
+        }
+        std::cout << ", written to " << *output_dir << "/\n";
+        print_filter_report(filter_stats);
+        print_timing_report();
     } catch (const std::exception& exc) {
-        std::cerr << exc.what() << "\n";
+        std::cerr << "fatal: " << exc.what() << "\n";
         return 1;
     }
-    std::cout << "Realizable specifications: " << realizable_vec.size();
-    if (cfg.run_implication_filter) {
-        std::cout << " (" << maximal.size() << " maximal)";
-    }
-    std::cout << ", written to " << *output_dir << "/\n";
-    print_filter_report(filter_stats);
-    print_timing_report();
     return 0;
 }

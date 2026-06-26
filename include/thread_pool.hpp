@@ -36,11 +36,15 @@ class ThreadPool {
         {
             std::scoped_lock lock(m_mutex);
             m_tasks.emplace([task = std::move(task), task_promise]() mutable {
-                if constexpr (std::is_void_v<T>) {
-                    task();
-                    task_promise->set_value();
-                } else {
-                    task_promise->set_value(task());
+                try {
+                    if constexpr (std::is_void_v<T>) {
+                        task();
+                        task_promise->set_value();
+                    } else {
+                        task_promise->set_value(task());
+                    }
+                } catch (...) {
+                    task_promise->set_exception(std::current_exception());
                 }
             });
         }

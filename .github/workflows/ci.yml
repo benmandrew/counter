@@ -6,6 +6,9 @@ on:
       - main
   pull_request:
 
+env:
+  SCCACHE_GHA_ENABLED: "true"
+
 jobs:
   check:
     runs-on: ubuntu-latest

@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1782481949618,
+  "lastUpdate": 1782495311604,
   "repoUrl": "https://github.com/benmandrew/counter",
   "entries": {
     "counter benchmarks": [
@@ -216,6 +216,78 @@ window.BENCHMARK_DATA = {
             "value": 3893.066275643462,
             "unit": "ns/iter",
             "extra": "iterations: 179870\ncpu: 3892.477533774393 ns\nthreads: 1"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "benmandrew@gmail.com",
+            "name": "benmandrew",
+            "username": "benmandrew"
+          },
+          "committer": {
+            "email": "benmandrew@gmail.com",
+            "name": "benmandrew",
+            "username": "benmandrew"
+          },
+          "distinct": true,
+          "id": "facb19a7eb443e765487648bc836fdbb30dd2c92",
+          "message": "fix: propagate worker thread exceptions to main thread instead of terminating\n\nAn uncaught exception in ThreadPool::worker_loop (e.g. from ganak or black\nreturning a non-zero exit code) caused std::terminate -> SIGABRT, crashing\nthe whole run with no useful error message. Store exceptions in the promise\nso they surface on future::get() in the main thread, then catch them in\nmain() and exit cleanly with a fatal: <message> diagnostic.",
+          "timestamp": "2026-06-26T15:13:29+01:00",
+          "tree_id": "2f092f01c1780bcc13c9cfca9a336fd3999e5ab4",
+          "url": "https://github.com/benmandrew/counter/commit/facb19a7eb443e765487648bc836fdbb30dd2c92"
+        },
+        "date": 1782495311227,
+        "tool": "googlecpp",
+        "benches": [
+          {
+            "name": "Syntactic similarity - small formulas (3 variables)",
+            "value": 682.2087287003706,
+            "unit": "ns/iter",
+            "extra": "iterations: 996437\ncpu: 682.0727110695408 ns\nthreads: 1"
+          },
+          {
+            "name": "Syntactic similarity - large formulas (11 variables, O(n*m) shared_subformulae)",
+            "value": 2445.482755954507,
+            "unit": "ns/iter",
+            "extra": "iterations: 284533\ncpu: 2445.2326057083014 ns\nthreads: 1"
+          },
+          {
+            "name": "Spec implication check - warm black cache",
+            "value": 865.8476959967734,
+            "unit": "ns/iter",
+            "extra": "iterations: 800281\ncpu: 865.7845431792082 ns\nthreads: 1"
+          },
+          {
+            "name": "Trace model counting - matrix exponentiation/steps:5",
+            "value": 206.2405216362074,
+            "unit": "ns/iter",
+            "extra": "iterations: 3391329\ncpu: 206.22404785852387 ns\nthreads: 1"
+          },
+          {
+            "name": "Trace model counting - matrix exponentiation/steps:10",
+            "value": 233.10898449399295,
+            "unit": "ns/iter",
+            "extra": "iterations: 3003675\ncpu: 233.0721263119346 ns\nthreads: 1"
+          },
+          {
+            "name": "Trace model counting - matrix exponentiation/steps:20",
+            "value": 259.9794118913435,
+            "unit": "ns/iter",
+            "extra": "iterations: 2694128\ncpu: 259.9687572379633 ns\nthreads: 1"
+          },
+          {
+            "name": "Trace model counting - matrix exponentiation/steps:50",
+            "value": 312.8954411672585,
+            "unit": "ns/iter",
+            "extra": "iterations: 2235660\ncpu: 312.85461250816314 ns\nthreads: 1"
+          },
+          {
+            "name": "Mutate specification - 3-guarantee takeoff spec",
+            "value": 3875.8243723046703,
+            "unit": "ns/iter",
+            "extra": "iterations: 181099\ncpu: 3875.6528583813288 ns\nthreads: 1"
           }
         ]
       }

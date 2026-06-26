@@ -1,4 +1,5 @@
 {
+  "$schema": "../schemas/specification.schema.json",
   "assumptions": [],
   "guarantees": [
     {

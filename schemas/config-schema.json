@@ -1,0 +1,70 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "counter config",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "genetic": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "generations":     { "type": "integer", "minimum": 1, "description": "Number of evolution rounds." },
+        "population_size": { "type": "integer", "minimum": 1, "description": "Candidates per generation." },
+        "selection_rate":  { "type": "number",  "minimum": 0, "maximum": 1, "description": "Fraction of population selected as parents each generation." },
+        "crossover_rate":  { "type": "number",  "minimum": 0, "maximum": 1, "description": "Probability of crossover between parents." },
+        "mutation_rate":   { "type": "number",  "minimum": 0, "maximum": 1, "description": "Probability of mutating an offspring." }
+      }
+    },
+    "fitness": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "weight_syntactic": { "type": "number", "minimum": 0, "description": "Syntactic similarity component weight." },
+        "weight_semantic":  { "type": "number", "minimum": 0, "description": "Semantic similarity (model counting) component weight." },
+        "weight_halstead":  { "type": "number", "minimum": 0, "description": "Halstead complexity penalty weight." },
+        "weight_status":    { "type": "number", "minimum": 0, "description": "Realizability status weight." }
+      }
+    },
+    "syntactic": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "weight_trigger":  { "type": "number", "minimum": 0, "description": "Contribution of trigger formula similarity." },
+        "weight_response": { "type": "number", "minimum": 0, "description": "Contribution of response formula similarity." },
+        "weight_timing":   { "type": "number", "minimum": 0, "description": "Contribution of timing constraint similarity." }
+      }
+    },
+    "mutation": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "p_trigger":  { "type": "number", "minimum": 0, "maximum": 1, "description": "Per-requirement probability of mutating the trigger." },
+        "p_response": { "type": "number", "minimum": 0, "maximum": 1, "description": "Per-requirement probability of mutating the response." },
+        "p_timing":   { "type": "number", "minimum": 0, "maximum": 1, "description": "Per-requirement probability of mutating the timing." }
+      }
+    },
+    "model_counting": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "default_bound": { "type": "integer", "minimum": 1, "description": "Trace-length bound k for bounded model counting." }
+      }
+    },
+    "filters": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "run_weakening":   { "type": "boolean", "description": "Enable per-generation weakening filter." },
+        "run_implication": { "type": "boolean", "description": "Enable final implication maximality filter." }
+      }
+    },
+    "runtime": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "black_timeout_ms": { "type": "integer", "minimum": 0, "description": "Timeout per black SAT query in milliseconds." },
+        "parallel":         { "type": "integer", "minimum": 1, "description": "Thread pool size. Omit to use hardware concurrency." }
+      }
+    }
+  }
+}

@@ -1,0 +1,3 @@
+[[rule]]
+include = ["results-*/configs/*.toml", "example-config.toml", "config.toml"]
+schema = { path = "./schemas/config-schema.json" }

@@ -1,3 +1,4 @@
+#:schema ./schemas/config-schema.json
 # counter configuration file
 # All sections and keys are optional; absent keys use the built-in defaults.
 

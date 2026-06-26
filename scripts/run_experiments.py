@@ -190,13 +190,15 @@ def run_one(config_path: Path, spec_name: str, seed: int) -> dict | None:
     try:
         subprocess.run(
             cmd, check=True, timeout=timeout,
-            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+            stdout=subprocess.DEVNULL, stderr=subprocess.PIPE,
         )
     except subprocess.TimeoutExpired:
         timed_out = True
         print(f"    TIMEOUT after {timeout}s")
     except subprocess.CalledProcessError as e:
-        print(f"    ERROR: counter exited {e.returncode}")
+        stderr = e.stderr.decode(errors="replace").strip() if e.stderr else ""
+        print(f"    ERROR: counter exited {e.returncode}"
+              + (f": {stderr}" if stderr else ""))
         return None
     wall = round(time.monotonic() - t_start, 2)
 

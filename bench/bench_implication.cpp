@@ -51,7 +51,8 @@ static void BenchSpecImpliesWarmCache(benchmark::State& state) {
         static_cast<double>(calls), benchmark::Counter::kAvgIterations);
 }
 // NOLINTNEXTLINE(cert-err58-cpp)
-BENCHMARK(BenchSpecImpliesWarmCache);
+BENCHMARK(BenchSpecImpliesWarmCache)
+    ->Name("Spec implication check - warm black cache");
 
 // Each pair: same condition/timing/type, unrelated responses (propositional
 // SAT). After the authoritative-shortcut fix: 1 black call per pair. Before

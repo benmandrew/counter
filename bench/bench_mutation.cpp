@@ -26,6 +26,7 @@ static void BenchMutateSpecification(benchmark::State& state) {
     }
 }
 // NOLINTNEXTLINE(cert-err58-cpp)
-BENCHMARK(BenchMutateSpecification);
+BENCHMARK(BenchMutateSpecification)
+    ->Name("Mutate specification - 3-guarantee takeoff spec");
 
 }  // namespace

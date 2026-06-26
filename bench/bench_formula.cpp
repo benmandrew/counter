@@ -12,7 +12,8 @@ static void BenchSyntacticSimilaritySmall(benchmark::State& state) {
     }
 }
 // NOLINTNEXTLINE(cert-err58-cpp)
-BENCHMARK(BenchSyntacticSimilaritySmall);
+BENCHMARK(BenchSyntacticSimilaritySmall)
+    ->Name("Syntactic similarity - small formulas (3 variables)");
 
 // Larger formulas to expose scaling in shared_subformulae (O(n*m)).
 static void BenchSyntacticSimilarityLarge(benchmark::State& state) {
@@ -25,6 +26,9 @@ static void BenchSyntacticSimilarityLarge(benchmark::State& state) {
     }
 }
 // NOLINTNEXTLINE(cert-err58-cpp)
-BENCHMARK(BenchSyntacticSimilarityLarge);
+BENCHMARK(BenchSyntacticSimilarityLarge)
+    ->Name(
+        "Syntactic similarity - large formulas (11 variables, O(n*m) "
+        "shared_subformulae)");
 
 }  // namespace

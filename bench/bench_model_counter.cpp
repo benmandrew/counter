@@ -21,6 +21,12 @@ static void BenchCountTraces(benchmark::State& state) {
     }
 }
 // NOLINTNEXTLINE(cert-err58-cpp)
-BENCHMARK(BenchCountTraces)->Arg(5)->Arg(10)->Arg(20)->Arg(50);
+BENCHMARK(BenchCountTraces)
+    ->Name("Trace model counting - matrix exponentiation")
+    ->ArgName("steps")
+    ->Arg(5)
+    ->Arg(10)
+    ->Arg(20)
+    ->Arg(50);
 
 }  // namespace

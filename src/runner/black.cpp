@@ -26,7 +26,7 @@
 namespace {
 
 struct ProcessResult {
-    int m_exit_code;
+    int m_exit_code = 0;
     std::string m_output;
     bool m_timed_out = false;
 };

@@ -10,7 +10,8 @@
 namespace {
 
 struct SubformulaKey {
-    prop_formula_internal::NodeType m_type;
+    prop_formula_internal::NodeType m_type =
+        prop_formula_internal::NodeType::Variable;
     std::size_t m_left = 0;
     std::size_t m_right = 0;
     std::string_view m_variable;

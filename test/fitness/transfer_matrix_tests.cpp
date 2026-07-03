@@ -277,7 +277,7 @@ struct TraceAcceptanceCase {
     std::string m_label;
     Requirement m_requirement;
     std::vector<std::pair<bool, bool>> m_trace;
-    bool m_expected_acceptance;
+    bool m_expected_acceptance = false;
 };
 
 void test_trace_acceptance_cases() {
@@ -372,7 +372,7 @@ void test_weighted_transition_matrix_cases() {
         std::string m_label;
         std::vector<Count> m_valuation_counts;
         CountGrid m_transition_matrix;
-        bool m_transition_matrix_is_weighted;
+        bool m_transition_matrix_is_weighted = false;
         CountGrid m_expected_weighted_matrix;
     };
 

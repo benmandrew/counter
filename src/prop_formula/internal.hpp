@@ -19,10 +19,10 @@ enum class NodeType : std::uint8_t {
 };
 
 struct Node {
-    NodeType m_type;
+    NodeType m_type = NodeType::Variable;
     std::string m_variable;
-    std::size_t m_left;
-    std::size_t m_right;
+    std::size_t m_left = 0;
+    std::size_t m_right = 0;
 
     friend bool operator<(const Node& lhs, const Node& rhs) {
         if (lhs.m_type != rhs.m_type) {
@@ -39,7 +39,7 @@ struct Node {
 };
 
 struct DimacsCnf {
-    int m_variable_count;
+    int m_variable_count = 0;
     std::vector<std::vector<int>> m_clauses;
 };
 

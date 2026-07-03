@@ -72,7 +72,7 @@ using GenerationProgressCallback =
 /// A specification paired with its aggregated fitness score.
 struct ScoredSpecification {
     Specification specification;
-    double fitness;
+    double fitness = 0.0;
 };
 
 /// Wraps a per-element predicate as a population-level FilterFunction.

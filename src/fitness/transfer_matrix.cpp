@@ -166,7 +166,7 @@ Count count_guard_models(const std::string& label,
 
 struct HoaTransition {
     std::string m_guard_label;  // Boolean formula over AP indices, e.g. "!0&1"
-    std::size_t m_destination;  // destination state index in the HOA
+    std::size_t m_destination = 0;  // destination state index in the HOA
 };
 
 // Parsed representation of a HOA v1 automaton as produced by ltl2tgba -H.

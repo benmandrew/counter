@@ -101,4 +101,4 @@ When using the Nix dev shell (`nix develop`), all build-time dependencies are pr
 
 Without Nix, you need CMake ≥ 3.25, a C++17 compiler (gcc ≥ 7 or clang ≥ 5), and `libunwind` installed system-wide.
 
-> **Note on `libfmt`:** If a system `black` binary is found on `PATH`, it requires `libfmt.so.9` at runtime. If that library is absent the build automatically falls back to downloading a self-contained `black` binary, so `libfmt` is not a hard build requirement.
+> **Note on `libfmt`:** `black` requires `libfmt.so.9` at runtime, whether it's a system binary found on `PATH` or the prebuilt `.deb` that `cmake/black.cmake` downloads as a fallback — the `.deb` does not bundle it. The Nix dev shell provides this via the `fmt_9` package; outside Nix, install `libfmt-dev` (or equivalent) system-wide.

@@ -36,12 +36,20 @@
             doxygen
             graphviz
             (python3.withPackages (ps: with ps; [ sphinx breathe furo ]))
+
+            # Runtime dependency of the prebuilt black-sat binary (cmake/black.cmake),
+            # which dynamically links libfmt.so.9 and does not bundle it.
+            fmt_9
           ];
 
           # Point curl/git at the nix CA bundle — required on NixOS, harmless on Ubuntu
           SSL_CERT_FILE = "${pkgs.cacert}/etc/ssl/certs/ca-bundle.crt";
           GIT_SSL_CAINFO = "${pkgs.cacert}/etc/ssl/certs/ca-bundle.crt";
           CURL_CA_BUNDLE = "${pkgs.cacert}/etc/ssl/certs/ca-bundle.crt";
+
+          # cmake/black.cmake's wrapper script prepends its own lib dir and
+          # preserves this, so the downloaded black-sat binary can find libfmt.
+          LD_LIBRARY_PATH = pkgs.lib.makeLibraryPath [ pkgs.fmt_9 ];
         };
       });
 }

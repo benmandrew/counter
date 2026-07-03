@@ -42,6 +42,7 @@
 Temporary/
 
 .vscode/
+.direnv/
 crashes/
 results*/
 .claude/

@@ -4,6 +4,12 @@ C++17 genetic algorithm for repairing unrealizable FRETISH specifications, using
 
 ## Build
 
+Enter the dev shell first (Nix is the primary workflow):
+
+```sh
+nix develop
+```
+
 Two presets — `debug` (ASAN+UBSAN, `build/`) and `release` (`build-release/`):
 
 ```sh
@@ -14,6 +20,8 @@ cmake --workflow --preset release
 cmake --build build
 cmake --build build-release
 ```
+
+Non-Nix: requires CMake ≥ 3.25, a C++17 compiler, and `libunwind`; everything else is fetched by CMake.
 
 ## Tests
 

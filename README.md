@@ -4,11 +4,29 @@ Repairing unrealisable FRETish specifications using a genetic algorithm.
 
 ## Build
 
-Requires CMake ≥ 3.25 (for `--workflow` preset support) and a C++17 compiler.
+### With Nix (recommended)
+
+Requires [Nix](https://nixos.org/download/) with flakes enabled.
 
 ```sh
-cmake --workflow --preset debug   # configure + build + test
-cmake --build build               # incremental build only
+nix develop                          # enter dev shell (first run fetches dependencies)
+cmake --workflow --preset debug      # configure + build + test
+cmake --build build                  # incremental build only
+```
+
+To enter the dev shell automatically on `cd`, install [direnv](https://direnv.net) and add a `.envrc`:
+
+```sh
+echo "use flake" > .envrc && direnv allow
+```
+
+### Without Nix
+
+Requires CMake ≥ 3.25, a C++17 compiler, and `libunwind`. All other dependencies are fetched automatically by CMake.
+
+```sh
+cmake --workflow --preset debug      # configure + build + test
+cmake --build build                  # incremental build only
 ```
 
 ## Usage
@@ -72,12 +90,15 @@ A fully-annotated template with every key and its default is provided in
 
 ## Dependencies
 
-| Dependency | Platforms |
+When using the Nix dev shell (`nix develop`), all build-time dependencies are provided automatically. The following are fetched or built by CMake at configure time regardless of workflow:
+
+| Dependency | How obtained |
 |---|---|
-| CMake ≥ 3.25 | all |
-| C++17 compiler (gcc ≥ 7 or clang ≥ 5) | all |
-| [Ganak](https://github.com/meelgroup/ganak) | Linux, macOS — pre-built binary via [`cmake/ganak.cmake`](cmake/ganak.cmake) |
-| [Spot](https://spot.lre.epita.fr) | Linux, macOS — built from source via [`cmake/spot.cmake`](cmake/spot.cmake) |
-| [Black](https://www.black-sat.org) | Linux x86\_64, macOS — see [`cmake/black.cmake`](cmake/black.cmake) |
+| [Ganak](https://github.com/meelgroup/ganak) | Pre-built binary — [`cmake/ganak.cmake`](cmake/ganak.cmake) |
+| [Spot](https://spot.lre.epita.fr) | Built from source — [`cmake/spot.cmake`](cmake/spot.cmake) |
+| [Black](https://www.black-sat.org) | Pre-built `.deb` (Ubuntu 24.04 x86\_64) or built from source — [`cmake/black.cmake`](cmake/black.cmake) |
+| Eigen, nlohmann\_json, tomlplusplus, cpptrace | FetchContent (header-only) — [`cmake/dependencies.cmake`](cmake/dependencies.cmake) |
+
+Without Nix, you need CMake ≥ 3.25, a C++17 compiler (gcc ≥ 7 or clang ≥ 5), and `libunwind` installed system-wide.
 
 > **Note on `libfmt`:** If a system `black` binary is found on `PATH`, it requires `libfmt.so.9` at runtime. If that library is absent the build automatically falls back to downloading a self-contained `black` binary, so `libfmt` is not a hard build requirement.

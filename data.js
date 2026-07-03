@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1782495311604,
+  "lastUpdate": 1783092449921,
   "repoUrl": "https://github.com/benmandrew/counter",
   "entries": {
     "counter benchmarks": [
@@ -288,6 +288,78 @@ window.BENCHMARK_DATA = {
             "value": 3875.8243723046703,
             "unit": "ns/iter",
             "extra": "iterations: 181099\ncpu: 3875.6528583813288 ns\nthreads: 1"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "benmandrew@gmail.com",
+            "name": "benmandrew",
+            "username": "benmandrew"
+          },
+          "committer": {
+            "email": "benmandrew@gmail.com",
+            "name": "benmandrew",
+            "username": "benmandrew"
+          },
+          "distinct": true,
+          "id": "78f9091b87c1f24fac147054e0158c571f02a2d4",
+          "message": "feat: add Nix dev shell as primary development workflow\n\nAdds flake.nix providing cmake, make, gcc, git, curl, libunwind, and\nlint tools (clang-tidy, clang-format, cppcheck, cpplint). CA bundle env\nvars ensure HTTPS downloads work on NixOS. SPOT, ganak, and black-sat\ncontinue to be fetched/built by CMake at configure time.\n\nUpdates README and CLAUDE.md to present `nix develop` as the\nfirst-class entry point, with the non-Nix path documented as supported\nbut secondary.",
+          "timestamp": "2026-07-03T16:23:28+01:00",
+          "tree_id": "af38aabdd586c39248127dffa3a6d8151a5c9447",
+          "url": "https://github.com/benmandrew/counter/commit/78f9091b87c1f24fac147054e0158c571f02a2d4"
+        },
+        "date": 1783092449584,
+        "tool": "googlecpp",
+        "benches": [
+          {
+            "name": "Syntactic similarity - small formulas (3 variables)",
+            "value": 648.3040554837355,
+            "unit": "ns/iter",
+            "extra": "iterations: 1082263\ncpu: 648.2735268599222 ns\nthreads: 1"
+          },
+          {
+            "name": "Syntactic similarity - large formulas (11 variables, O(n*m) shared_subformulae)",
+            "value": 2463.5509720628306,
+            "unit": "ns/iter",
+            "extra": "iterations: 285784\ncpu: 2463.438862917448 ns\nthreads: 1"
+          },
+          {
+            "name": "Spec implication check - warm black cache",
+            "value": 905.6133488355589,
+            "unit": "ns/iter",
+            "extra": "iterations: 760321\ncpu: 905.5480093276394 ns\nthreads: 1"
+          },
+          {
+            "name": "Trace model counting - matrix exponentiation/steps:5",
+            "value": 203.21336534099433,
+            "unit": "ns/iter",
+            "extra": "iterations: 3436261\ncpu: 203.1921259764611 ns\nthreads: 1"
+          },
+          {
+            "name": "Trace model counting - matrix exponentiation/steps:10",
+            "value": 230.2990312306697,
+            "unit": "ns/iter",
+            "extra": "iterations: 2919374\ncpu: 230.23883579150873 ns\nthreads: 1"
+          },
+          {
+            "name": "Trace model counting - matrix exponentiation/steps:20",
+            "value": 257.1070654230573,
+            "unit": "ns/iter",
+            "extra": "iterations: 2724437\ncpu: 257.0466734962123 ns\nthreads: 1"
+          },
+          {
+            "name": "Trace model counting - matrix exponentiation/steps:50",
+            "value": 309.7405745798356,
+            "unit": "ns/iter",
+            "extra": "iterations: 2257963\ncpu: 309.66705876048485 ns\nthreads: 1"
+          },
+          {
+            "name": "Mutate specification - 3-guarantee takeoff spec",
+            "value": 3930.9674294688944,
+            "unit": "ns/iter",
+            "extra": "iterations: 178290\ncpu: 3930.034903808402 ns\nthreads: 1"
           }
         ]
       }

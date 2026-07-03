@@ -17,22 +17,10 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@v7
 
-      - name: Install LLVM 21
-        run: |
-          wget -qO- https://apt.llvm.org/llvm.sh | sudo bash -s -- 21
-          sudo ln -sf /usr/bin/clang-tidy-21 /usr/bin/clang-tidy
-          sudo ln -sf /usr/bin/run-clang-tidy-21 /usr/bin/run-clang-tidy
-
-      - name: Install system dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y libfmt-dev doxygen graphviz libunwind-dev cppcheck
-
-      - name: Install cpplint, Sphinx, and upgrade CMake
-        run: |
-          sudo apt-get remove --purge -y cmake
-          python3 -m pip install --upgrade pip
-          python3 -m pip install cpplint cmake sphinx furo breathe clang-format
+      - name: Install Nix
+        uses: cachix/install-nix-action@v31
+        with:
+          github_access_token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Set up sccache
         uses: mozilla-actions/sccache-action@v0.0.10
@@ -46,19 +34,19 @@ jobs:
             ${{ runner.os }}-check-deps-
 
       - name: Configure project
-        run: cmake --preset debug
+        run: nix develop --command cmake --preset debug
         env:
           CMAKE_C_COMPILER_LAUNCHER: sccache
           CMAKE_CXX_COMPILER_LAUNCHER: sccache
 
       - name: Check formatting
-        run: cmake --build --preset debug --target format-ci
+        run: nix develop --command cmake --build --preset debug --target format-ci
 
       - name: Check linting
-        run: cmake --build --preset debug --target lint
+        run: nix develop --command cmake --build --preset debug --target lint
 
       - name: Build docs
-        run: cmake --build --preset debug --target docs
+        run: nix develop --command cmake --build --preset debug --target docs
 
   build-and-test:
     runs-on: ubuntu-latest
@@ -82,15 +70,10 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@v7
 
-      - name: Install system dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y libfmt-dev libunwind-dev
-
-      - name: Upgrade CMake
-        run: |
-          sudo apt-get remove --purge -y cmake
-          python3 -m pip install --upgrade pip cmake
+      - name: Install Nix
+        uses: cachix/install-nix-action@v31
+        with:
+          github_access_token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Set up sccache
         uses: mozilla-actions/sccache-action@v0.0.10
@@ -106,16 +89,16 @@ jobs:
             ${{ runner.os }}-${{ matrix.preset }}-${{ matrix.compiler || 'clang' }}-third-party-
 
       - name: Configure project
-        run: cmake --preset ${{ matrix.preset }} ${{ matrix.cmake_args }}
+        run: nix develop --command cmake --preset ${{ matrix.preset }} ${{ matrix.cmake_args }}
         env:
           CMAKE_C_COMPILER_LAUNCHER: sccache
           CMAKE_CXX_COMPILER_LAUNCHER: sccache
 
       - name: Build project
-        run: cmake --build --preset ${{ matrix.preset }}
+        run: nix develop --command cmake --build --preset ${{ matrix.preset }}
 
       - name: Run tests
-        run: ctest --preset ${{ matrix.preset }}
+        run: nix develop --command ctest --preset ${{ matrix.preset }}
 
   benchmark:
     runs-on: ubuntu-latest
@@ -127,15 +110,10 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@v7
 
-      - name: Install system dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y libfmt-dev libunwind-dev
-
-      - name: Upgrade CMake
-        run: |
-          sudo apt-get remove --purge -y cmake
-          python3 -m pip install --upgrade pip cmake
+      - name: Install Nix
+        uses: cachix/install-nix-action@v31
+        with:
+          github_access_token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Set up sccache
         uses: mozilla-actions/sccache-action@v0.0.10
@@ -152,8 +130,8 @@ jobs:
 
       - name: Configure and build
         run: |
-          cmake --preset bench
-          cmake --build --preset bench --target counter_bench
+          nix develop --command cmake --preset bench
+          nix develop --command cmake --build --preset bench --target counter_bench
         env:
           CMAKE_C_COMPILER_LAUNCHER: sccache
           CMAKE_CXX_COMPILER_LAUNCHER: sccache

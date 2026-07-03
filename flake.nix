@@ -30,7 +30,12 @@
             # Lint targets (clang-tidy, clang-format, cppcheck, cpplint)
             clang-tools
             cppcheck
-            python3Packages.cpplint
+            cpplint
+
+            # Docs targets (doxygen + sphinx)
+            doxygen
+            graphviz
+            (python3.withPackages (ps: with ps; [ sphinx breathe furo ]))
           ];
 
           # Point curl/git at the nix CA bundle — required on NixOS, harmless on Ubuntu

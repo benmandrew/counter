@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1783092449921,
+  "lastUpdate": 1783346503228,
   "repoUrl": "https://github.com/benmandrew/counter",
   "entries": {
     "counter benchmarks": [
@@ -360,6 +360,78 @@ window.BENCHMARK_DATA = {
             "value": 3930.9674294688944,
             "unit": "ns/iter",
             "extra": "iterations: 178290\ncpu: 3930.034903808402 ns\nthreads: 1"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "benmandrew@gmail.com",
+            "name": "benmandrew",
+            "username": "benmandrew"
+          },
+          "committer": {
+            "email": "benmandrew@gmail.com",
+            "name": "benmandrew",
+            "username": "benmandrew"
+          },
+          "distinct": true,
+          "id": "2340b3d507ca2007f8a4ff34f94704e596c0d0fa",
+          "message": "fix: stop leaking Nix dev shell LD_LIBRARY_PATH into unrelated processes\n\nExporting LD_LIBRARY_PATH shell-wide affects every child process launched\nfrom a terminal with this devShell active (via direnv's `use flake`),\nnot just build/test commands. This silently swapped a mismatched\nnix-store libgcc_s.so.1 into VS Code when launched as `code .` from the\nproject directory, crashing it with SIGTRAP.\n\nstdenv.cc.cc.lib turned out to be unnecessary: nix's gcc-wrapper already\nbakes a correct RPATH for its own libstdc++/libgcc_s automatically, since\nCMake treats nix store paths as non-system and includes them (verified by\nrunning the debug test binary with LD_LIBRARY_PATH explicitly unset).\n\nThe only genuine runtime need was fmt_9, for the prebuilt black-sat .deb's\nwrapper script. That's now passed via a plain, inert env var\n(COUNTER_FMT9_LIB_DIR) and baked directly into the wrapper at configure\ntime, scoped to just that one exec instead of the whole shell.",
+          "timestamp": "2026-07-06T14:30:29+01:00",
+          "tree_id": "38a2c41b6dd69ce616449c32af1b51d5e89aaae4",
+          "url": "https://github.com/benmandrew/counter/commit/2340b3d507ca2007f8a4ff34f94704e596c0d0fa"
+        },
+        "date": 1783346502391,
+        "tool": "googlecpp",
+        "benches": [
+          {
+            "name": "Syntactic similarity - small formulas (3 variables)",
+            "value": 526.3234429866371,
+            "unit": "ns/iter",
+            "extra": "iterations: 1336758\ncpu: 526.2670266420698 ns\nthreads: 1"
+          },
+          {
+            "name": "Syntactic similarity - large formulas (11 variables, O(n*m) shared_subformulae)",
+            "value": 2206.154235493687,
+            "unit": "ns/iter",
+            "extra": "iterations: 319278\ncpu: 2205.778083676295 ns\nthreads: 1"
+          },
+          {
+            "name": "Spec implication check - warm black cache",
+            "value": 877.7766466762449,
+            "unit": "ns/iter",
+            "extra": "iterations: 790380\ncpu: 877.7469672815605 ns\nthreads: 1"
+          },
+          {
+            "name": "Trace model counting - matrix exponentiation/steps:5",
+            "value": 129.25718770714042,
+            "unit": "ns/iter",
+            "extra": "iterations: 5420609\ncpu: 129.2353774271489 ns\nthreads: 1"
+          },
+          {
+            "name": "Trace model counting - matrix exponentiation/steps:10",
+            "value": 146.47547406727537,
+            "unit": "ns/iter",
+            "extra": "iterations: 4783182\ncpu: 146.4542687273868 ns\nthreads: 1"
+          },
+          {
+            "name": "Trace model counting - matrix exponentiation/steps:20",
+            "value": 164.54492556491326,
+            "unit": "ns/iter",
+            "extra": "iterations: 4241950\ncpu: 164.52736335883267 ns\nthreads: 1"
+          },
+          {
+            "name": "Trace model counting - matrix exponentiation/steps:50",
+            "value": 199.02178635796105,
+            "unit": "ns/iter",
+            "extra": "iterations: 3517660\ncpu: 198.96386944730284 ns\nthreads: 1"
+          },
+          {
+            "name": "Mutate specification - 3-guarantee takeoff spec",
+            "value": 3751.9125979699556,
+            "unit": "ns/iter",
+            "extra": "iterations: 186792\ncpu: 3750.591770525507 ns\nthreads: 1"
           }
         ]
       }

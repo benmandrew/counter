@@ -15,7 +15,16 @@
 
 std::string formaliser_script_path() {
 #ifdef FORMALISER_SCRIPT_PATH
-    return FORMALISER_SCRIPT_PATH;
+    const std::string path = FORMALISER_SCRIPT_PATH;
+    // Checked unconditionally (not assert()) since FORMALISER_SCRIPT_PATH is
+    // a machine-local, currently-temporary path: it can go stale between
+    // configure time and a run without CMake ever re-running, and assert()
+    // is a no-op in the NDEBUG release/relwithdebinfo builds, which would
+    // otherwise spawn `node` on a missing script and hang rather than fail.
+    if (access(path.c_str(), F_OK) != 0) {
+        throw std::runtime_error("formaliser script not found: " + path);
+    }
+    return path;
 #else
     assert(false);
     return "";

@@ -100,11 +100,18 @@ endif()
 # No default: fretCLI.main.js currently lives at a temporary, machine-local
 # path, so unlike GANAK_EXECUTABLE_PATH/BLACK_EXECUTABLE/SPOT_BIN_DIR (which
 # CMake fetches/builds itself) this must be supplied explicitly, e.g.
-# `cmake -DFORMALISER_SCRIPT_PATH=/path/to/fretCLI.main.js`.
-if(DEFINED FORMALISER_SCRIPT_PATH)
-    target_compile_definitions(counter_fitness PRIVATE
-        FORMALISER_SCRIPT_PATH="${FORMALISER_SCRIPT_PATH}")
+# `cmake -DFORMALISER_SCRIPT_PATH=/path/to/fretCLI.main.js`. Fail configure
+# rather than deferring to the assert()/hang at runtime that a silently
+# missing path causes (assert() is a no-op in NDEBUG builds, so the release
+# and relwithdebinfo presets would otherwise spawn `node` with an empty
+# script argument and hang indefinitely instead of failing fast).
+if(NOT FORMALISER_SCRIPT_PATH)
+    message(FATAL_ERROR
+        "FORMALISER_SCRIPT_PATH is not set. Configure with "
+        "-DFORMALISER_SCRIPT_PATH=/path/to/fretCLI.main.js")
 endif()
+target_compile_definitions(counter_fitness PRIVATE
+    FORMALISER_SCRIPT_PATH="${FORMALISER_SCRIPT_PATH}")
 
 add_executable(counter src/main.cpp src/crash/crash_handler.cpp)
 target_link_libraries(counter PRIVATE counter_fitness cpptrace::cpptrace)

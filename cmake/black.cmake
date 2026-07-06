@@ -81,8 +81,12 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
             message(FATAL_ERROR "black executable was not found after extraction: ${BLACK_BIN}")
         endif()
 
+        # Baked in directly (rather than read from the shell's ambient
+        # LD_LIBRARY_PATH) so the dev shell doesn't need to export it
+        # shell-wide, which would leak into unrelated child processes.
+        set(_black_fmt9_lib_dir "$ENV{COUNTER_FMT9_LIB_DIR}")
         file(WRITE "${BLACK_WRAPPER}"
-            "#!/bin/sh\nexport LD_LIBRARY_PATH=\"${BLACK_LIB_DIR}:\${LD_LIBRARY_PATH}\"\nexec \"${BLACK_BIN}\" \"$@\"\n")
+            "#!/bin/sh\nexport LD_LIBRARY_PATH=\"${BLACK_LIB_DIR}:${_black_fmt9_lib_dir}:\${LD_LIBRARY_PATH}\"\nexec \"${BLACK_BIN}\" \"$@\"\n")
         file(CHMOD "${BLACK_WRAPPER}"
             PERMISSIONS
                 OWNER_READ OWNER_WRITE OWNER_EXECUTE

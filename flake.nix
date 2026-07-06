@@ -51,15 +51,13 @@
           GIT_SSL_CAINFO = "${pkgs.cacert}/etc/ssl/certs/ca-bundle.crt";
           CURL_CA_BUNDLE = "${pkgs.cacert}/etc/ssl/certs/ca-bundle.crt";
 
-          # cmake/black.cmake's wrapper script prepends its own lib dir and
-          # preserves this, so the downloaded black-sat binary can find libfmt.
-          #
-          # stdenv.cc.cc.lib provides libstdc++.so.6: project binaries link it
-          # without an automatic RPATH entry (CMake only tracks explicitly
-          # find_library'd deps), so without this it falls back to the host's
-          # system libstdc++, which is ABI-incompatible with this nixpkgs
-          # generation's glibc (symbol lookup errors on glibc-private symbols).
-          LD_LIBRARY_PATH = pkgs.lib.makeLibraryPath [ pkgs.fmt_9 pkgs.stdenv.cc.cc.lib ];
+          # Deliberately not LD_LIBRARY_PATH: that leaks into every child
+          # process launched from a shell with this devShell active (e.g.
+          # `code .`), silently swapping in nix-store libs for unrelated
+          # programs and crashing them on ABI mismatches. cmake/black.cmake
+          # reads this plain var and bakes the path directly into the
+          # black-sat wrapper script instead, scoped to just that one exec.
+          COUNTER_FMT9_LIB_DIR = "${pkgs.fmt_9}/lib";
         };
       });
 }

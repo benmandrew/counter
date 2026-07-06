@@ -97,14 +97,19 @@ if(DEFINED COUNTER_DEFAULT_FITNESS_WEIGHT)
         COUNTER_DEFAULT_FITNESS_WEIGHT=${COUNTER_DEFAULT_FITNESS_WEIGHT})
 endif()
 
-# No default: fretCLI.main.js currently lives at a temporary, machine-local
-# path, so unlike GANAK_EXECUTABLE_PATH/BLACK_EXECUTABLE/SPOT_BIN_DIR (which
-# CMake fetches/builds itself) this must be supplied explicitly, e.g.
-# `cmake -DFORMALISER_SCRIPT_PATH=/path/to/fretCLI.main.js`. Fail configure
-# rather than deferring to the assert()/hang at runtime that a silently
-# missing path causes (assert() is a no-op in NDEBUG builds, so the release
-# and relwithdebinfo presets would otherwise spawn `node` with an empty
-# script argument and hang indefinitely instead of failing fast).
+# Defaults to the vendored copy (vendor/fretCLI.main.js, see vendor/README.md
+# for provenance); override with
+# `cmake -DFORMALISER_SCRIPT_PATH=/path/to/fretCLI.main.js` to point at a
+# different copy. Still fails configure rather than deferring to the
+# assert()/hang at runtime that a silently missing path causes (assert() is
+# a no-op in NDEBUG builds, so the release and relwithdebinfo presets would
+# otherwise spawn `node` with an empty script argument and hang indefinitely
+# instead of failing fast) — this only fires now if the vendored file itself
+# goes missing or an override is explicitly cleared.
+if(NOT DEFINED FORMALISER_SCRIPT_PATH)
+    set(FORMALISER_SCRIPT_PATH "${CMAKE_SOURCE_DIR}/vendor/fretCLI.main.js"
+        CACHE FILEPATH "Path to fretCLI.main.js (formalize --batch)")
+endif()
 if(NOT FORMALISER_SCRIPT_PATH)
     message(FATAL_ERROR
         "FORMALISER_SCRIPT_PATH is not set. Configure with "

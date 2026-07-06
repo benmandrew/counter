@@ -118,76 +118,104 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
                 "  sudo apt install libcryptominisat5-dev")
         endif()
 
+        # Propagated into each sub-project's CMAKE_ARGS below so a genuine
+        # cache miss at least compiles fast (e.g. sccache, when CI sets it).
+        set(_black_launcher_args
+            -DCMAKE_C_COMPILER_LAUNCHER=${CMAKE_C_COMPILER_LAUNCHER}
+            -DCMAKE_CXX_COMPILER_LAUNCHER=${CMAKE_CXX_COMPILER_LAUNCHER})
+
         # tsl-hopscotch-map: header-only hash map, not reliably packaged
         set(TSL_INSTALL_DIR "${BLACK_ROOT_DIR}/deps/tsl-hopscotch")
-        ExternalProject_Add(tsl_hopscotch_project
-            GIT_REPOSITORY "https://github.com/Tessil/hopscotch-map.git"
-            GIT_TAG "v2.4.0"
-            GIT_SHALLOW TRUE
-            PREFIX "${BLACK_ROOT_DIR}/deps/tsl-hopscotch-src"
-            INSTALL_DIR "${TSL_INSTALL_DIR}"
-            CMAKE_ARGS
-                -DCMAKE_BUILD_TYPE=Release
-                -DCMAKE_INSTALL_PREFIX=<INSTALL_DIR>
-            BUILD_COMMAND ""
-            INSTALL_COMMAND ${CMAKE_COMMAND} --install <BINARY_DIR>
-            LOG_CONFIGURE TRUE
-            LOG_INSTALL TRUE
-            LOG_OUTPUT_ON_FAILURE TRUE
-        )
+        set(TSL_PREFIX "${BLACK_ROOT_DIR}/deps/tsl-hopscotch-src")
+        # See the comment above SPOT_STAMP_DIR in cmake/spot.cmake: skip
+        # re-declaring the external project when a prior (possibly
+        # CI-cache-restored) run already completed it, so a cache hit
+        # actually avoids redoing the step.
+        if(EXISTS "${TSL_PREFIX}/src/tsl_hopscotch_project-stamp/tsl_hopscotch_project-done")
+            add_custom_target(tsl_hopscotch_project)
+        else()
+            ExternalProject_Add(tsl_hopscotch_project
+                GIT_REPOSITORY "https://github.com/Tessil/hopscotch-map.git"
+                GIT_TAG "v2.4.0"
+                GIT_SHALLOW TRUE
+                PREFIX "${TSL_PREFIX}"
+                INSTALL_DIR "${TSL_INSTALL_DIR}"
+                CMAKE_ARGS
+                    -DCMAKE_BUILD_TYPE=Release
+                    -DCMAKE_INSTALL_PREFIX=<INSTALL_DIR>
+                    ${_black_launcher_args}
+                BUILD_COMMAND ""
+                INSTALL_COMMAND ${CMAKE_COMMAND} --install <BINARY_DIR>
+                LOG_CONFIGURE TRUE
+                LOG_INSTALL TRUE
+                LOG_OUTPUT_ON_FAILURE TRUE
+            )
+        endif()
 
         # nlohmann_json: header-only JSON library
         set(NLOHMANN_INSTALL_DIR "${BLACK_ROOT_DIR}/deps/nlohmann")
-        ExternalProject_Add(nlohmann_json_project
-            GIT_REPOSITORY "https://github.com/nlohmann/json.git"
-            GIT_TAG "v3.12.0"
-            GIT_SHALLOW TRUE
-            PREFIX "${BLACK_ROOT_DIR}/deps/nlohmann-src"
-            INSTALL_DIR "${NLOHMANN_INSTALL_DIR}"
-            CMAKE_ARGS
-                -DCMAKE_BUILD_TYPE=Release
-                -DCMAKE_INSTALL_PREFIX=<INSTALL_DIR>
-                -DJSON_BuildTests=OFF
-                -DJSON_Install=ON
-            BUILD_COMMAND ""
-            INSTALL_COMMAND ${CMAKE_COMMAND} --install <BINARY_DIR>
-            LOG_CONFIGURE TRUE
-            LOG_INSTALL TRUE
-            LOG_OUTPUT_ON_FAILURE TRUE
-        )
+        set(NLOHMANN_PREFIX "${BLACK_ROOT_DIR}/deps/nlohmann-src")
+        if(EXISTS "${NLOHMANN_PREFIX}/src/nlohmann_json_project-stamp/nlohmann_json_project-done")
+            add_custom_target(nlohmann_json_project)
+        else()
+            ExternalProject_Add(nlohmann_json_project
+                GIT_REPOSITORY "https://github.com/nlohmann/json.git"
+                GIT_TAG "v3.12.0"
+                GIT_SHALLOW TRUE
+                PREFIX "${NLOHMANN_PREFIX}"
+                INSTALL_DIR "${NLOHMANN_INSTALL_DIR}"
+                CMAKE_ARGS
+                    -DCMAKE_BUILD_TYPE=Release
+                    -DCMAKE_INSTALL_PREFIX=<INSTALL_DIR>
+                    -DJSON_BuildTests=OFF
+                    -DJSON_Install=ON
+                    ${_black_launcher_args}
+                BUILD_COMMAND ""
+                INSTALL_COMMAND ${CMAKE_COMMAND} --install <BINARY_DIR>
+                LOG_CONFIGURE TRUE
+                LOG_INSTALL TRUE
+                LOG_OUTPUT_ON_FAILURE TRUE
+            )
+        endif()
 
         set(BLACK_INSTALL_DIR "${BLACK_ROOT_DIR}/install")
         set(BLACK_LIB_DIR "${BLACK_INSTALL_DIR}/lib")
         set(BLACK_BIN "${BLACK_INSTALL_DIR}/bin/black")
         set(BLACK_WRAPPER "${BLACK_ROOT_DIR}/black")
+        set(BLACK_PREFIX "${BLACK_ROOT_DIR}/src")
 
-        ExternalProject_Add(black_project
-            URL "https://github.com/black-sat/black/archive/refs/tags/v${BLACK_VERSION}.tar.gz"
-            TLS_VERIFY ON
-            DOWNLOAD_EXTRACT_TIMESTAMP ON
-            PREFIX "${BLACK_ROOT_DIR}/src"
-            INSTALL_DIR "${BLACK_INSTALL_DIR}"
-            LIST_SEPARATOR |
-            CMAKE_ARGS
-                -DCMAKE_BUILD_TYPE=Release
-                -DCMAKE_INSTALL_PREFIX=<INSTALL_DIR>
-                -DCMAKE_PREFIX_PATH=${TSL_INSTALL_DIR}|${NLOHMANN_INSTALL_DIR}
-                -DENABLE_TESTS=OFF
-                -DENABLE_FORMULAS_TESTS=OFF
-                -DGIT_UPDATE_SUBMODULES=OFF
-                ${_black_solver_flag}
-            BUILD_COMMAND
-                ${CMAKE_MAKE_PROGRAM} -j ${CMAKE_BUILD_PARALLEL_LEVEL} frontend
-            INSTALL_COMMAND
-                ${CMAKE_COMMAND} --install <BINARY_DIR>
-            DEPENDS
-                tsl_hopscotch_project
-                nlohmann_json_project
-            LOG_CONFIGURE TRUE
-            LOG_BUILD TRUE
-            LOG_INSTALL TRUE
-            LOG_OUTPUT_ON_FAILURE TRUE
-        )
+        if(EXISTS "${BLACK_PREFIX}/src/black_project-stamp/black_project-done")
+            add_custom_target(black_project)
+        else()
+            ExternalProject_Add(black_project
+                URL "https://github.com/black-sat/black/archive/refs/tags/v${BLACK_VERSION}.tar.gz"
+                TLS_VERIFY ON
+                DOWNLOAD_EXTRACT_TIMESTAMP ON
+                PREFIX "${BLACK_PREFIX}"
+                INSTALL_DIR "${BLACK_INSTALL_DIR}"
+                LIST_SEPARATOR |
+                CMAKE_ARGS
+                    -DCMAKE_BUILD_TYPE=Release
+                    -DCMAKE_INSTALL_PREFIX=<INSTALL_DIR>
+                    -DCMAKE_PREFIX_PATH=${TSL_INSTALL_DIR}|${NLOHMANN_INSTALL_DIR}
+                    -DENABLE_TESTS=OFF
+                    -DENABLE_FORMULAS_TESTS=OFF
+                    -DGIT_UPDATE_SUBMODULES=OFF
+                    ${_black_solver_flag}
+                    ${_black_launcher_args}
+                BUILD_COMMAND
+                    ${CMAKE_MAKE_PROGRAM} -j ${CMAKE_BUILD_PARALLEL_LEVEL} frontend
+                INSTALL_COMMAND
+                    ${CMAKE_COMMAND} --install <BINARY_DIR>
+                DEPENDS
+                    tsl_hopscotch_project
+                    nlohmann_json_project
+                LOG_CONFIGURE TRUE
+                LOG_BUILD TRUE
+                LOG_INSTALL TRUE
+                LOG_OUTPUT_ON_FAILURE TRUE
+            )
+        endif()
 
         file(WRITE "${BLACK_WRAPPER}"
             "#!/bin/sh\nexport LD_LIBRARY_PATH=\"${BLACK_LIB_DIR}:\${LD_LIBRARY_PATH}\"\nexec \"${BLACK_BIN}\" \"$@\"\n")
@@ -215,73 +243,101 @@ elseif(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
         set(HOMEBREW_PREFIX "/opt/homebrew")
     endif()
 
+    # Propagated into each sub-project's CMAKE_ARGS below so a genuine
+    # cache miss at least compiles fast (e.g. sccache, when CI sets it).
+    set(_black_launcher_args
+        -DCMAKE_C_COMPILER_LAUNCHER=${CMAKE_C_COMPILER_LAUNCHER}
+        -DCMAKE_CXX_COMPILER_LAUNCHER=${CMAKE_CXX_COMPILER_LAUNCHER})
+
     # tsl-hopscotch-map: header-only hash map, not in Homebrew
     set(TSL_INSTALL_DIR "${BLACK_ROOT_DIR}/deps/tsl-hopscotch")
-    ExternalProject_Add(tsl_hopscotch_project
-        GIT_REPOSITORY "https://github.com/Tessil/hopscotch-map.git"
-        GIT_TAG "v2.4.0"
-        GIT_SHALLOW TRUE
-        PREFIX "${BLACK_ROOT_DIR}/deps/tsl-hopscotch-src"
-        INSTALL_DIR "${TSL_INSTALL_DIR}"
-        CMAKE_ARGS
-            -DCMAKE_BUILD_TYPE=Release
-            -DCMAKE_INSTALL_PREFIX=<INSTALL_DIR>
-        BUILD_COMMAND ""
-        INSTALL_COMMAND ${CMAKE_COMMAND} --install <BINARY_DIR>
-        LOG_CONFIGURE TRUE
-        LOG_INSTALL TRUE
-        LOG_OUTPUT_ON_FAILURE TRUE
-    )
+    set(TSL_PREFIX "${BLACK_ROOT_DIR}/deps/tsl-hopscotch-src")
+    # See the comment above SPOT_STAMP_DIR in cmake/spot.cmake: skip
+    # re-declaring the external project when a prior (possibly
+    # CI-cache-restored) run already completed it, so a cache hit actually
+    # avoids redoing the step.
+    if(EXISTS "${TSL_PREFIX}/src/tsl_hopscotch_project-stamp/tsl_hopscotch_project-done")
+        add_custom_target(tsl_hopscotch_project)
+    else()
+        ExternalProject_Add(tsl_hopscotch_project
+            GIT_REPOSITORY "https://github.com/Tessil/hopscotch-map.git"
+            GIT_TAG "v2.4.0"
+            GIT_SHALLOW TRUE
+            PREFIX "${TSL_PREFIX}"
+            INSTALL_DIR "${TSL_INSTALL_DIR}"
+            CMAKE_ARGS
+                -DCMAKE_BUILD_TYPE=Release
+                -DCMAKE_INSTALL_PREFIX=<INSTALL_DIR>
+                ${_black_launcher_args}
+            BUILD_COMMAND ""
+            INSTALL_COMMAND ${CMAKE_COMMAND} --install <BINARY_DIR>
+            LOG_CONFIGURE TRUE
+            LOG_INSTALL TRUE
+            LOG_OUTPUT_ON_FAILURE TRUE
+        )
+    endif()
 
     # nlohmann_json: header-only JSON library, not in Homebrew
     set(NLOHMANN_INSTALL_DIR "${BLACK_ROOT_DIR}/deps/nlohmann")
-    ExternalProject_Add(nlohmann_json_project
-        GIT_REPOSITORY "https://github.com/nlohmann/json.git"
-        GIT_TAG "v3.12.0"
-        GIT_SHALLOW TRUE
-        PREFIX "${BLACK_ROOT_DIR}/deps/nlohmann-src"
-        INSTALL_DIR "${NLOHMANN_INSTALL_DIR}"
-        CMAKE_ARGS
-            -DCMAKE_BUILD_TYPE=Release
-            -DCMAKE_INSTALL_PREFIX=<INSTALL_DIR>
-            -DJSON_BuildTests=OFF
-            -DJSON_Install=ON
-        BUILD_COMMAND ""
-        INSTALL_COMMAND ${CMAKE_COMMAND} --install <BINARY_DIR>
-        LOG_CONFIGURE TRUE
-        LOG_INSTALL TRUE
-        LOG_OUTPUT_ON_FAILURE TRUE
-    )
+    set(NLOHMANN_PREFIX "${BLACK_ROOT_DIR}/deps/nlohmann-src")
+    if(EXISTS "${NLOHMANN_PREFIX}/src/nlohmann_json_project-stamp/nlohmann_json_project-done")
+        add_custom_target(nlohmann_json_project)
+    else()
+        ExternalProject_Add(nlohmann_json_project
+            GIT_REPOSITORY "https://github.com/nlohmann/json.git"
+            GIT_TAG "v3.12.0"
+            GIT_SHALLOW TRUE
+            PREFIX "${NLOHMANN_PREFIX}"
+            INSTALL_DIR "${NLOHMANN_INSTALL_DIR}"
+            CMAKE_ARGS
+                -DCMAKE_BUILD_TYPE=Release
+                -DCMAKE_INSTALL_PREFIX=<INSTALL_DIR>
+                -DJSON_BuildTests=OFF
+                -DJSON_Install=ON
+                ${_black_launcher_args}
+            BUILD_COMMAND ""
+            INSTALL_COMMAND ${CMAKE_COMMAND} --install <BINARY_DIR>
+            LOG_CONFIGURE TRUE
+            LOG_INSTALL TRUE
+            LOG_OUTPUT_ON_FAILURE TRUE
+        )
+    endif()
 
     set(BLACK_INSTALL_DIR "${BLACK_ROOT_DIR}/install")
-    ExternalProject_Add(black_project
-        URL "https://github.com/black-sat/black/archive/refs/tags/v${BLACK_VERSION}.tar.gz"
-        TLS_VERIFY ON
-        DOWNLOAD_EXTRACT_TIMESTAMP ON
-        PREFIX "${BLACK_ROOT_DIR}/src"
-        INSTALL_DIR "${BLACK_INSTALL_DIR}"
-        LIST_SEPARATOR |
-        CMAKE_ARGS
-            -DCMAKE_BUILD_TYPE=Release
-            -DCMAKE_INSTALL_PREFIX=<INSTALL_DIR>
-            -DCMAKE_PREFIX_PATH=${TSL_INSTALL_DIR}|${NLOHMANN_INSTALL_DIR}|${HOMEBREW_PREFIX}
-            -DENABLE_TESTS=OFF
-            -DENABLE_FORMULAS_TESTS=OFF
-            -DGIT_UPDATE_SUBMODULES=OFF
-            -DCMAKE_MACOSX_RPATH=ON
-            -DCMAKE_CXX_FLAGS=-Wno-nrvo
-        BUILD_COMMAND
-            ${CMAKE_MAKE_PROGRAM} -j ${CMAKE_BUILD_PARALLEL_LEVEL} frontend
-        INSTALL_COMMAND
-            ${CMAKE_COMMAND} --install <BINARY_DIR>
-        DEPENDS
-            tsl_hopscotch_project
-            nlohmann_json_project
-        LOG_CONFIGURE TRUE
-        LOG_BUILD TRUE
-        LOG_INSTALL TRUE
-        LOG_OUTPUT_ON_FAILURE TRUE
-    )
+    set(BLACK_PREFIX "${BLACK_ROOT_DIR}/src")
+    if(EXISTS "${BLACK_PREFIX}/src/black_project-stamp/black_project-done")
+        add_custom_target(black_project)
+    else()
+        ExternalProject_Add(black_project
+            URL "https://github.com/black-sat/black/archive/refs/tags/v${BLACK_VERSION}.tar.gz"
+            TLS_VERIFY ON
+            DOWNLOAD_EXTRACT_TIMESTAMP ON
+            PREFIX "${BLACK_PREFIX}"
+            INSTALL_DIR "${BLACK_INSTALL_DIR}"
+            LIST_SEPARATOR |
+            CMAKE_ARGS
+                -DCMAKE_BUILD_TYPE=Release
+                -DCMAKE_INSTALL_PREFIX=<INSTALL_DIR>
+                -DCMAKE_PREFIX_PATH=${TSL_INSTALL_DIR}|${NLOHMANN_INSTALL_DIR}|${HOMEBREW_PREFIX}
+                -DENABLE_TESTS=OFF
+                -DENABLE_FORMULAS_TESTS=OFF
+                -DGIT_UPDATE_SUBMODULES=OFF
+                -DCMAKE_MACOSX_RPATH=ON
+                -DCMAKE_CXX_FLAGS=-Wno-nrvo
+                ${_black_launcher_args}
+            BUILD_COMMAND
+                ${CMAKE_MAKE_PROGRAM} -j ${CMAKE_BUILD_PARALLEL_LEVEL} frontend
+            INSTALL_COMMAND
+                ${CMAKE_COMMAND} --install <BINARY_DIR>
+            DEPENDS
+                tsl_hopscotch_project
+                nlohmann_json_project
+            LOG_CONFIGURE TRUE
+            LOG_BUILD TRUE
+            LOG_INSTALL TRUE
+            LOG_OUTPUT_ON_FAILURE TRUE
+        )
+    endif()
 
     set(BLACK_EXECUTABLE "${BLACK_INSTALL_DIR}/bin/black"
         CACHE FILEPATH "Path to black executable" FORCE)

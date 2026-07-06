@@ -1,5 +1,6 @@
 add_executable(counter_tests
     runner/black_tests.cpp
+    runner/formaliser_tests.cpp
     runner/ganak_tests.cpp
     runner/ltlfilt_tests.cpp
     runner/spot_tests.cpp
@@ -34,6 +35,7 @@ endif()
 
 add_test(NAME counter_tests.transfer_matrix COMMAND counter_tests transfer_matrix)
 add_test(NAME counter_tests.black_runner COMMAND counter_tests black_runner)
+add_test(NAME counter_tests.formaliser_runner COMMAND counter_tests formaliser_runner)
 add_test(NAME counter_tests.ganak_runner COMMAND counter_tests ganak_runner)
 add_test(NAME counter_tests.ltlfilt_runner COMMAND counter_tests ltlfilt_runner)
 add_test(NAME counter_tests.spot_runner COMMAND counter_tests spot_runner)

@@ -58,6 +58,7 @@ add_library(counter_fitness STATIC)
 target_sources(counter_fitness PRIVATE
     src/fitness/function.cpp
     src/runner/black.cpp
+    src/runner/formaliser.cpp
     src/runner/ganak.cpp
     src/runner/ltlfilt.cpp
     src/runner/spot.cpp
@@ -94,6 +95,15 @@ target_compile_definitions(counter_fitness
 if(DEFINED COUNTER_DEFAULT_FITNESS_WEIGHT)
     target_compile_definitions(counter_fitness PUBLIC
         COUNTER_DEFAULT_FITNESS_WEIGHT=${COUNTER_DEFAULT_FITNESS_WEIGHT})
+endif()
+
+# No default: fretCLI.main.js currently lives at a temporary, machine-local
+# path, so unlike GANAK_EXECUTABLE_PATH/BLACK_EXECUTABLE/SPOT_BIN_DIR (which
+# CMake fetches/builds itself) this must be supplied explicitly, e.g.
+# `cmake -DFORMALISER_SCRIPT_PATH=/path/to/fretCLI.main.js`.
+if(DEFINED FORMALISER_SCRIPT_PATH)
+    target_compile_definitions(counter_fitness PRIVATE
+        FORMALISER_SCRIPT_PATH="${FORMALISER_SCRIPT_PATH}")
 endif()
 
 add_executable(counter src/main.cpp src/crash/crash_handler.cpp)

@@ -21,7 +21,7 @@ cmake --build build
 cmake --build build-release
 ```
 
-Non-Nix: requires CMake ≥ 3.25, a C++17 compiler, and `libunwind`; everything else is fetched by CMake.
+Non-Nix: requires CMake ≥ 3.25, a C++17 compiler, `libunwind`, and Node.js (runs the vendored FRET formaliser CLI, not fetched by CMake); everything else is fetched by CMake.
 
 ## Tests
 
@@ -120,6 +120,7 @@ One file: prints assumptions and guarantees with their LTL formulae. Multiple fi
 - `ltl2tgba`, `ltlsynt` — from SPOT, built from source via `cmake/spot.cmake`; located via the `SPOT_BIN_DIR` compile macro.
 - `black` — LTL satisfiability checker (`black-sat`); found on `PATH` or downloaded/built via `cmake/black.cmake`; path passed as `BLACK_EXECUTABLE_PATH`. **Always run with a timeout**: `black -t <seconds> ...`.
 - `ganak` — model counter; downloaded as a release binary via `cmake/ganak.cmake`; path passed as `GANAK_EXECUTABLE_PATH`.
+- `node` — runs the vendored FRET formaliser CLI (`vendor/fretCLI.main.js formalize --logic ft-inf --batch`, see `runner/formaliser.hpp`); looked up on `PATH` at run time, not built or fetched by CMake, so it must be installed separately (`nodejs` in `flake.nix`).
 
 ## Project layout
 

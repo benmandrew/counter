@@ -44,6 +44,11 @@
             # SMT backend for building black-sat from source (cmake/black.cmake's
             # fallback path on non-Ubuntu-24.04 hosts, where the prebuilt deb doesn't apply).
             z3
+
+            # Runtime dependency of the vendored FRET formaliser CLI
+            # (vendor/fretCLI.main.js, see runner/formaliser.hpp): `node` is
+            # looked up on PATH at run time, not fetched by CMake.
+            nodejs
           ];
 
           # Point curl/git at the nix CA bundle — required on NixOS, harmless on Ubuntu

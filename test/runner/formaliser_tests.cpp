@@ -12,32 +12,25 @@
 
 namespace {
 
-// A persistent shell loop standing in for the real `fretCLI.main.js
-// formalize --logic ft-inf --batch` process: reads one line, echoes back a
-// deterministic transform of it, repeats. Good enough to exercise the
-// request/response framing, caching, and concurrency behaviour without
-// depending on node or the real (machine-local, temporary-path) tool.
-std::vector<std::string> echo_transform_command() {
-    return {"/bin/sh", "-c",
-            R"(while IFS= read -r line; do printf 'F(%s)\n' "$line"; done)"};
-}
-
 void test_basic_request_response() {
-    RequirementFormaliser formaliser(echo_transform_command());
-    const std::string result = formaliser.formalise("p -> q");
-    expect(result == "F(p -> q)",
+    RequirementFormaliser formaliser(formaliser_command());
+    const std::string result =
+        formaliser.formalise("component shall satisfy trigger");
+    expect(result == "(F trigger)",
            "formaliser: expected transformed response for a single request");
 }
 
 void test_cache_hit_avoids_second_round_trip() {
-    RequirementFormaliser formaliser(echo_transform_command());
+    RequirementFormaliser formaliser(formaliser_command());
     const std::size_t misses_before = RequirementFormaliser::n_cache_misses;
     const std::size_t hits_before = RequirementFormaliser::n_cache_hits;
 
-    const std::string first = formaliser.formalise("G(a -> F b)");
-    const std::string second = formaliser.formalise("G(a -> F b)");
+    const std::string first =
+        formaliser.formalise("component shall satisfy cache_test_trigger");
+    const std::string second =
+        formaliser.formalise("component shall satisfy cache_test_trigger");
 
-    expect(first == "F(G(a -> F b))" && second == first,
+    expect(first == "(F cache_test_trigger)" && second == first,
            "formaliser: repeated calls should return the same result");
     expect(RequirementFormaliser::n_cache_misses == misses_before + 1,
            "formaliser: only the first call should miss the cache");
@@ -46,7 +39,7 @@ void test_cache_hit_avoids_second_round_trip() {
 }
 
 void test_concurrent_calls_get_matching_responses() {
-    RequirementFormaliser formaliser(echo_transform_command());
+    RequirementFormaliser formaliser(formaliser_command());
     constexpr int n_threads = 8;
     constexpr int n_calls_per_thread = 20;
 
@@ -58,10 +51,12 @@ void test_concurrent_calls_get_matching_responses() {
     for (int thread_idx = 0; thread_idx < n_threads; ++thread_idx) {
         workers.emplace_back([&, thread_idx] {
             for (int call_idx = 0; call_idx < n_calls_per_thread; ++call_idx) {
+                const std::string trigger_name = "trigger_" +
+                                                 std::to_string(thread_idx) +
+                                                 "_" + std::to_string(call_idx);
                 const std::string requirement_text =
-                    "req-" + std::to_string(thread_idx) + "-" +
-                    std::to_string(call_idx);
-                const std::string expected = "F(" + requirement_text + ")";
+                    "component shall satisfy " + trigger_name;
+                const std::string expected = "(F " + trigger_name + ")";
                 const std::string actual =
                     formaliser.formalise(requirement_text);
                 if (actual != expected) {

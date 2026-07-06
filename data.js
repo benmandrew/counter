@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1783346503228,
+  "lastUpdate": 1783346621903,
   "repoUrl": "https://github.com/benmandrew/counter",
   "entries": {
     "counter benchmarks": [
@@ -432,6 +432,78 @@ window.BENCHMARK_DATA = {
             "value": 3751.9125979699556,
             "unit": "ns/iter",
             "extra": "iterations: 186792\ncpu: 3750.591770525507 ns\nthreads: 1"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "benmandrew@gmail.com",
+            "name": "benmandrew",
+            "username": "benmandrew"
+          },
+          "committer": {
+            "email": "benmandrew@gmail.com",
+            "name": "benmandrew",
+            "username": "benmandrew"
+          },
+          "distinct": true,
+          "id": "a57c90fc050a4a85cf2f76822e225942569395ed",
+          "message": "fix: stop CI cache hits from being defeated by ExternalProject rebuilds\n\nExternalProject_Add regenerates its per-step driver scripts on every\nconfigure. When a restored CI cache already contains the fully-built\nSPOT/black-sat third_party trees, those regenerated scripts get a newer\nmtime than the cached \"-done\" stamps, so Make reruns the whole\nconfigure/build/install anyway. Diagnosed via gh run logs: SPOT's ~9-13\nminute from-source rebuild was repeating on every one of the 5 CI matrix\nlegs regardless of cache hits, wasting ~45-65 CI-minutes per run.\n\nSkip re-declaring the ExternalProject_Add entirely (replacing it with a\nno-op custom target) whenever a prior run's \"-done\" stamp is already\npresent, for spot_project and black.cmake's three from-source sub-builds\n(tsl-hopscotch-map, nlohmann_json, black itself).\n\nSeparately, sccache was already wired up via CMAKE_C/CXX_COMPILER_LAUNCHER\nfor the main project, but never reached these ExternalProject sub-builds:\nSPOT's autotools ./configure picks its own CXX with no override, and the\nblack.cmake CMAKE_ARGS never passed the launcher through. Both now thread\nCMAKE_CXX_COMPILER_LAUNCHER in explicitly, so a genuine cache miss at\nleast compiles fast on a subsequent run.",
+          "timestamp": "2026-07-06T14:50:01+01:00",
+          "tree_id": "50d1b79eca2cedd33f9b6b79e958c503388b9d95",
+          "url": "https://github.com/benmandrew/counter/commit/a57c90fc050a4a85cf2f76822e225942569395ed"
+        },
+        "date": 1783346621006,
+        "tool": "googlecpp",
+        "benches": [
+          {
+            "name": "Syntactic similarity - small formulas (3 variables)",
+            "value": 526.9278018505942,
+            "unit": "ns/iter",
+            "extra": "iterations: 1329300\ncpu: 526.8849040848567 ns\nthreads: 1"
+          },
+          {
+            "name": "Syntactic similarity - large formulas (11 variables, O(n*m) shared_subformulae)",
+            "value": 2192.7569700224003,
+            "unit": "ns/iter",
+            "extra": "iterations: 318471\ncpu: 2192.5653136392325 ns\nthreads: 1"
+          },
+          {
+            "name": "Spec implication check - warm black cache",
+            "value": 860.7856988033025,
+            "unit": "ns/iter",
+            "extra": "iterations: 793528\ncpu: 860.7171139518705 ns\nthreads: 1"
+          },
+          {
+            "name": "Trace model counting - matrix exponentiation/steps:5",
+            "value": 129.22128696150554,
+            "unit": "ns/iter",
+            "extra": "iterations: 5415127\ncpu: 129.21247701115786 ns\nthreads: 1"
+          },
+          {
+            "name": "Trace model counting - matrix exponentiation/steps:10",
+            "value": 146.56330831251387,
+            "unit": "ns/iter",
+            "extra": "iterations: 4773757\ncpu: 146.55154943999028 ns\nthreads: 1"
+          },
+          {
+            "name": "Trace model counting - matrix exponentiation/steps:20",
+            "value": 165.314684405103,
+            "unit": "ns/iter",
+            "extra": "iterations: 4259226\ncpu: 165.30165926860894 ns\nthreads: 1"
+          },
+          {
+            "name": "Trace model counting - matrix exponentiation/steps:50",
+            "value": 199.27061864896578,
+            "unit": "ns/iter",
+            "extra": "iterations: 3519702\ncpu: 199.2546226924892 ns\nthreads: 1"
+          },
+          {
+            "name": "Mutate specification - 3-guarantee takeoff spec",
+            "value": 3789.6457190715796,
+            "unit": "ns/iter",
+            "extra": "iterations: 185065\ncpu: 3789.1533353146187 ns\nthreads: 1"
           }
         ]
       }

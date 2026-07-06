@@ -32,6 +32,13 @@
             cppcheck
             cpplint
 
+            # fuzz/ltl_equivalence_fuzzer (COUNTER_FUZZ): -fsanitize=fuzzer
+            # (libFuzzer) is a clang/compiler-rt feature with no GCC
+            # equivalent, so the fuzz target is built with its own clang++
+            # invocation (see fuzz/CMakeLists.txt) rather than the project's
+            # normal GCC-based build.
+            clang
+
             # Docs targets (doxygen + sphinx)
             doxygen
             graphviz

@@ -10,6 +10,9 @@ set(COUNTER_FORMAT_GLOBS
     ${CMAKE_CURRENT_SOURCE_DIR}/bench/*.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/bench/*.hpp
     ${CMAKE_CURRENT_SOURCE_DIR}/bench/*.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/*.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/*.hpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/*.h
     ${CMAKE_CURRENT_SOURCE_DIR}/include/*.hpp
     ${CMAKE_CURRENT_SOURCE_DIR}/include/*.h
 )

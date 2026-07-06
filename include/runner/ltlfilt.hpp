@@ -20,3 +20,12 @@ std::string ltlfilt_path();
 /// Returns `formula` unchanged if the binary is inaccessible or exits
 /// non-zero.
 std::string normalize_ltl(const std::string& formula);
+
+/// Returns true if `lhs` and `rhs` are logically equivalent LTL formulae,
+/// checked via `ltlfilt --equivalent-to`. This is a best-effort
+/// cross-validation helper (e.g. for differential-testing the hand-rolled
+/// LTL translator against another source of truth), not a correctness
+/// boundary: if the binary is inaccessible or the check is otherwise
+/// inconclusive (any exit status other than ltlfilt's own match/no-match
+/// codes 0/1), it returns true rather than reporting a false mismatch.
+bool ltl_equivalent(const std::string& lhs, const std::string& rhs);

@@ -146,6 +146,13 @@ if(COUNTER_BENCH)
     add_subdirectory(bench)
 endif()
 
+option(COUNTER_FUZZ
+    "Build the LTL-equivalence libFuzzer target (requires a clang++ with libFuzzer support)"
+    OFF)
+if(COUNTER_FUZZ)
+    add_subdirectory(fuzz)
+endif()
+
 install(PROGRAMS "${GANAK_EXECUTABLE}" DESTINATION bin RENAME ganak)
 
 include(cmake/docs.cmake)

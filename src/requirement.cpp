@@ -1,6 +1,7 @@
 #include "requirement.hpp"
 
 #include <algorithm>
+#include <cassert>
 #include <cctype>
 #include <iostream>
 #include <set>
@@ -212,9 +213,27 @@ std::string to_string(const Timing& timing) {
         timing);
 }
 
+std::string to_string(ConditionType condition_type) {
+    switch (condition_type) {
+        case ConditionType::Trigger:
+            return "upon";
+        case ConditionType::Continual:
+            return "whenever";
+    }
+    assert(false);
+    __builtin_unreachable();
+}
+
+std::string Requirement::condition_to_string() const {
+    if (m_condition == Formula::true_formula) {
+        return "";
+    }
+    return ::to_string(m_condition_type) + " " + m_condition.to_string();
+}
+
 std::string Requirement::to_string() const {
-    return "If " + m_condition.to_string() + ", " + ::to_string(m_timing) +
-           " " + m_response.to_string();
+    return condition_to_string() + " C shall " + ::to_string(m_timing) +
+           " satisfy " + m_response.to_string();
 }
 
 std::string Specification::to_string() const {

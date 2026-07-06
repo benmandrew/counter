@@ -37,6 +37,12 @@ class Formula {
     /// "true" (implemented as a single variable named "⊤").
     Formula();
 
+    /// Static instance of the logical constant "true" for convenience.
+    static Formula true_formula;
+
+    /// Static instance of the logical constant "false" for convenience.
+    static Formula false_formula;
+
     /// Constructs a Formula by parsing a string representation.
     /// Supports operators: ! or ~ (negation), & (and), | (or), -> (implies),
     /// <-> (iff). Variables are alphanumeric identifiers (including _).

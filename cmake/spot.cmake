@@ -21,6 +21,10 @@ ExternalProject_Add(spot_project
         ${CMAKE_MAKE_PROGRAM} -j ${CMAKE_BUILD_PARALLEL_LEVEL}
     INSTALL_COMMAND
         ${CMAKE_MAKE_PROGRAM} install
+    LOG_CONFIGURE TRUE
+    LOG_BUILD TRUE
+    LOG_INSTALL TRUE
+    LOG_OUTPUT_ON_FAILURE TRUE
 )
 
 set(SPOT_BIN_DIR "${SPOT_BIN_DIR}" CACHE PATH "Path to Spot bin directory")

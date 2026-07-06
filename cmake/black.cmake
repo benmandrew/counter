@@ -127,6 +127,9 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
                 -DCMAKE_INSTALL_PREFIX=<INSTALL_DIR>
             BUILD_COMMAND ""
             INSTALL_COMMAND ${CMAKE_COMMAND} --install <BINARY_DIR>
+            LOG_CONFIGURE TRUE
+            LOG_INSTALL TRUE
+            LOG_OUTPUT_ON_FAILURE TRUE
         )
 
         # nlohmann_json: header-only JSON library
@@ -144,6 +147,9 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
                 -DJSON_Install=ON
             BUILD_COMMAND ""
             INSTALL_COMMAND ${CMAKE_COMMAND} --install <BINARY_DIR>
+            LOG_CONFIGURE TRUE
+            LOG_INSTALL TRUE
+            LOG_OUTPUT_ON_FAILURE TRUE
         )
 
         set(BLACK_INSTALL_DIR "${BLACK_ROOT_DIR}/install")
@@ -173,6 +179,10 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
             DEPENDS
                 tsl_hopscotch_project
                 nlohmann_json_project
+            LOG_CONFIGURE TRUE
+            LOG_BUILD TRUE
+            LOG_INSTALL TRUE
+            LOG_OUTPUT_ON_FAILURE TRUE
         )
 
         file(WRITE "${BLACK_WRAPPER}"
@@ -214,6 +224,9 @@ elseif(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
             -DCMAKE_INSTALL_PREFIX=<INSTALL_DIR>
         BUILD_COMMAND ""
         INSTALL_COMMAND ${CMAKE_COMMAND} --install <BINARY_DIR>
+        LOG_CONFIGURE TRUE
+        LOG_INSTALL TRUE
+        LOG_OUTPUT_ON_FAILURE TRUE
     )
 
     # nlohmann_json: header-only JSON library, not in Homebrew
@@ -231,6 +244,9 @@ elseif(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
             -DJSON_Install=ON
         BUILD_COMMAND ""
         INSTALL_COMMAND ${CMAKE_COMMAND} --install <BINARY_DIR>
+        LOG_CONFIGURE TRUE
+        LOG_INSTALL TRUE
+        LOG_OUTPUT_ON_FAILURE TRUE
     )
 
     set(BLACK_INSTALL_DIR "${BLACK_ROOT_DIR}/install")
@@ -257,6 +273,10 @@ elseif(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
         DEPENDS
             tsl_hopscotch_project
             nlohmann_json_project
+        LOG_CONFIGURE TRUE
+        LOG_BUILD TRUE
+        LOG_INSTALL TRUE
+        LOG_OUTPUT_ON_FAILURE TRUE
     )
 
     set(BLACK_EXECUTABLE "${BLACK_INSTALL_DIR}/bin/black"

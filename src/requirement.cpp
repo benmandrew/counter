@@ -46,8 +46,9 @@ std::string expand_for(const std::string& response, std::size_t ticks) {
 
 // Expands G[0..n](!R) & F[n+1..n+1] R as !R & X(!R & X(... & X R))
 // (n+1 nestings of !R followed by R). Implements FRET "after n":
-// (for n ¬R) ∧ (within (n+1) R) = ¬R at t=0..n, R at t=n+1.
-// Caller handles n=0 (treated as "immediately").
+// (for n ¬R) ∧ (within (n+1) R) = ¬R at t=0..n, R at t=n+1. For n=0 this is
+// !R & X(R): R must not hold at the condition tick, but must hold at the
+// next one.
 std::string expand_after(const std::string& response, std::size_t ticks) {
     std::string not_response = "!";
     not_response += response;
@@ -225,7 +226,15 @@ std::string to_string(ConditionType condition_type) {
 }
 
 std::string Requirement::condition_to_string() const {
-    if (m_condition == Formula::true_formula) {
+    // requirement_to_ltl only drops the G(...) wrapper for a true condition
+    // when m_condition_type is Trigger (a trigger on an always-true
+    // condition reduces to a bare initial obligation); for Continual it
+    // always emits G(condition -> body), so the FRETish must keep an
+    // explicit condition clause here too — omitting it makes the formaliser
+    // CLI treat the requirement as unscoped and drop the G, silently
+    // changing "always" into "only at the initial timepoint".
+    if (m_condition == Formula::true_formula &&
+        m_condition_type == ConditionType::Trigger) {
         return "";
     }
     return ::to_string(m_condition_type) + " " + m_condition.to_string();
@@ -282,9 +291,6 @@ std::string requirement_to_ltl(const Requirement& requirement) {
             } else if constexpr (std::is_same_v<T, timing::ForTicks>) {
                 return "(" + expand_for(response_str, variant.m_ticks) + ")";
             } else if constexpr (std::is_same_v<T, timing::AfterTicks>) {
-                if (variant.m_ticks == 0) {
-                    return response_str;
-                }
                 return "(" + expand_after(response_str, variant.m_ticks) + ")";
             } else {
                 return "F" + response_str;

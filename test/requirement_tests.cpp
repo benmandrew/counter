@@ -1,10 +1,27 @@
 #include <string>
+#include <vector>
 
 #include "requirement.hpp"
+#include "runner/formaliser.hpp"
 #include "test_suite.hpp"
 #include "test_support.hpp"
 
 namespace {
+
+// A malformed requirement makes the CLI's parser write its "Line N: ..."
+// message to stderr (not stdout) and still emit an empty line on stdout for
+// that request, so PersistentProcess::request never throws on bad input —
+// the one-line-in/one-line-out pairing holds, but a rejected line comes back
+// as "". Real formalised output is never empty, so that's how a rejection
+// is distinguished from a successfully formalised requirement.
+void expect_valid_fretish(RequirementFormaliser& formaliser,
+                          const Requirement& requirement) {
+    const std::string fretish = requirement.to_string();
+    const std::string result = formaliser.formalise(fretish);
+    expect(
+        !result.empty(),
+        "Requirement::to_string: formaliser CLI rejected \"" + fretish + "\"");
+}
 
 std::string ltl_continual(const Formula& condition, const Formula& response,
                           const Timing& timing) {
@@ -87,8 +104,10 @@ void test_for_ticks_two() {
 void test_after_ticks_zero() {
     const std::string result =
         ltl_continual(Formula("t"), Formula("r"), timing::after_ticks(0));
-    expect(result == "G((t) -> (r))",
-           "requirement_to_ltl: AfterTicks(0) should produce G(T -> R)");
+    expect(result == "G((t) -> (!(r) & X((r))))",
+           "requirement_to_ltl: AfterTicks(0) should produce G(T -> (!R & "
+           "X(R))), i.e. R must not hold at the condition tick but must hold "
+           "at the next one");
 }
 
 void test_after_ticks_one() {
@@ -196,6 +215,46 @@ void test_specification_has_false_condition_false_for_normal_spec() {
            "condition");
 }
 
+// --- Requirement::to_string against the real FRET formaliser CLI ---
+
+void test_to_string_is_valid_fretish_for_all_timings_and_condition_types() {
+    RequirementFormaliser formaliser(formaliser_command());
+    const std::vector<Timing> timings = {
+        timing::immediately(),   timing::next_timepoint(),
+        timing::within_ticks(3), timing::for_ticks(2),
+        timing::after_ticks(1),  timing::eventually(),
+    };
+    for (const Timing& tim : timings) {
+        expect_valid_fretish(formaliser,
+                             Requirement(Formula("cond"), Formula("resp"), tim,
+                                         ConditionType::Continual));
+        expect_valid_fretish(formaliser,
+                             Requirement(Formula("cond"), Formula("resp"), tim,
+                                         ConditionType::Trigger));
+    }
+}
+
+void test_to_string_is_valid_fretish_for_true_condition() {
+    RequirementFormaliser formaliser(formaliser_command());
+    // A literal "true" condition collapses condition_to_string() to "", so
+    // this exercises the branch that omits the condition clause entirely.
+    expect_valid_fretish(
+        formaliser,
+        Requirement(Formula::true_formula, Formula("resp"),
+                    timing::immediately(), ConditionType::Continual));
+    expect_valid_fretish(
+        formaliser, Requirement(Formula::true_formula, Formula("resp"),
+                                timing::eventually(), ConditionType::Trigger));
+}
+
+void test_to_string_is_valid_fretish_for_compound_formulae() {
+    RequirementFormaliser formaliser(formaliser_command());
+    expect_valid_fretish(
+        formaliser,
+        Requirement(Formula("a & b"), Formula("c | !d"),
+                    timing::within_ticks(2), ConditionType::Continual));
+}
+
 }  // namespace
 
 void run_requirement_tests() {
@@ -220,4 +279,7 @@ void run_requirement_tests() {
     test_specification_has_false_condition_detects_assumption();
     test_specification_has_false_condition_detects_guarantee();
     test_specification_has_false_condition_false_for_normal_spec();
+    test_to_string_is_valid_fretish_for_all_timings_and_condition_types();
+    test_to_string_is_valid_fretish_for_true_condition();
+    test_to_string_is_valid_fretish_for_compound_formulae();
 }

@@ -22,7 +22,7 @@ echo "use flake" > .envrc && direnv allow
 
 ### Without Nix
 
-Requires CMake ≥ 3.25, a C++17 compiler, and `libunwind`. All other dependencies are fetched automatically by CMake.
+Requires CMake ≥ 3.25, a C++17 compiler, `libunwind`, and [Node.js](https://nodejs.org) (runs the vendored FRET formaliser CLI). All other dependencies are fetched automatically by CMake.
 
 ```sh
 cmake --workflow --preset debug      # configure + build + test
@@ -99,6 +99,8 @@ When using the Nix dev shell (`nix develop`), all build-time dependencies are pr
 | [Black](https://www.black-sat.org) | Pre-built `.deb` (Ubuntu 24.04 x86\_64) or built from source — [`cmake/black.cmake`](cmake/black.cmake) |
 | Eigen, nlohmann\_json, tomlplusplus, cpptrace | FetchContent (header-only) — [`cmake/dependencies.cmake`](cmake/dependencies.cmake) |
 
-Without Nix, you need CMake ≥ 3.25, a C++17 compiler (gcc ≥ 7 or clang ≥ 5), and `libunwind` installed system-wide.
+Without Nix, you need CMake ≥ 3.25, a C++17 compiler (gcc ≥ 7 or clang ≥ 5), `libunwind`, and [Node.js](https://nodejs.org) installed system-wide.
+
+> **Note on Node.js:** the FRET requirement-formaliser CLI is vendored as a plain script ([`vendor/fretCLI.main.js`](vendor/fretCLI.main.js), see [`vendor/README.md`](vendor/README.md)) and run with `node` looked up on `PATH` at run time (`runner/formaliser.hpp`) — it is not built or fetched by CMake, so `node` must be installed separately.
 
 > **Note on `libfmt`:** `black` requires `libfmt.so.9` at runtime, whether it's a system binary found on `PATH` or the prebuilt `.deb` that `cmake/black.cmake` downloads as a fallback — the `.deb` does not bundle it. The Nix dev shell provides this via the `fmt_9` package; outside Nix, install `libfmt-dev` (or equivalent) system-wide.

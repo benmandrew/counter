@@ -13,6 +13,13 @@ set(COUNTER_LINT_GLOBS
     ${CMAKE_CURRENT_SOURCE_DIR}/bench/*.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/bench/*.hpp
     ${CMAKE_CURRENT_SOURCE_DIR}/bench/*.h
+    # fuzz/ is compiled via a raw clang++ add_custom_command (see
+    # fuzz/CMakeLists.txt), not a normal CMake target, so it has no
+    # compile_commands.json entry: only cpplint/cppcheck (compile-database
+    # independent) run on it, not clang-tidy below.
+    ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/*.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/*.hpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/fuzz/*.h
     ${CMAKE_CURRENT_SOURCE_DIR}/include/*.hpp
     ${CMAKE_CURRENT_SOURCE_DIR}/include/*.h
 )

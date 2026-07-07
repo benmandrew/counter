@@ -134,3 +134,22 @@ std::string normalize_ltl(const std::string& formula) {
     cache.emplace(formula, normalized);
     return normalized;
 }
+
+bool ltl_equivalent(const std::string& lhs, const std::string& rhs) {
+    const std::string binary = ltlfilt_path();
+    if (access(binary.c_str(), F_OK) != 0) {
+        return true;
+    }
+    const ProcessResult result =
+        execute_and_capture({binary, "--equivalent-to=" + rhs, "-f", lhs});
+    // ltlfilt's filter convention: exit 0 means the input formula (lhs)
+    // matched (i.e. is equivalent to rhs); exit 1 means it didn't. Any other
+    // status (parse error, crash) is inconclusive, not a mismatch.
+    if (result.m_exit_code == 0) {
+        return true;
+    }
+    if (result.m_exit_code == 1) {
+        return false;
+    }
+    return true;
+}

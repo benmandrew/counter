@@ -9,6 +9,9 @@
 
 Formula::Formula() : m_impl(std::make_unique<Impl>("true")) {}
 
+Formula Formula::true_formula = Formula("true");
+Formula Formula::false_formula = Formula("false");
+
 Formula::Formula(const std::string& formula)
     : m_impl(std::make_unique<Impl>(formula)) {}
 

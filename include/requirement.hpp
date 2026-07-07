@@ -96,9 +96,13 @@ struct Requirement {
         Formula condition, Formula response, const Timing& timing,
         ConditionType condition_type = ConditionType::Continual);
 
-    /// Returns a one-line human-readable string of the form
-    /// "If <condition>, <timing> <response>".
+    /// Returns a one-line FRETish string of the form
+    /// "[upon|whenever <condition>] C shall <timing> satisfy <response>",
+    /// parseable by the FRET formaliser CLI (see runner/formaliser.hpp).
     [[nodiscard]] std::string to_string() const;
+
+   private:
+    [[nodiscard]] std::string condition_to_string() const;
 };
 
 struct Specification {
@@ -116,8 +120,8 @@ struct Specification {
     friend bool operator<(const Specification& lhs, const Specification& rhs);
     friend bool operator==(const Specification& lhs, const Specification& rhs);
 
-    /// Returns one line per requirement (assumptions then guarantees),
-    /// each in the form "If <condition>, <timing> <response>", joined by
+    /// Returns one FRETish line per requirement (assumptions then
+    /// guarantees), each as produced by Requirement::to_string, joined by
     /// newlines.
     [[nodiscard]] std::string to_string() const;
 };

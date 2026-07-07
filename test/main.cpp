@@ -21,6 +21,10 @@ void run_suite(std::string_view suite_name,
         run_black_runner_tests(timeout);
         return;
     }
+    if (suite_name == "formaliser_runner") {
+        run_formaliser_runner_tests();
+        return;
+    }
     if (suite_name == "ganak_runner") {
         run_ganak_runner_tests();
         return;
@@ -115,6 +119,7 @@ int main(int argc, const char* const argv[]) {
         if (argc == 1) {
             run_transfer_matrix_tests();
             run_black_runner_tests(cfg.black_timeout);
+            run_formaliser_runner_tests();
             run_ganak_runner_tests();
             run_ltlfilt_runner_tests();
             run_spot_runner_tests();

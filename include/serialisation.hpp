@@ -76,6 +76,11 @@ inline void to_json(nlohmann::json& jobj, const Requirement& req) {
                                    : "continual"},
             {"response", req.m_response.to_string()},
             {"timing", req.m_timing}};
+    // Emitted only when locked; absence round-trips to the default
+    // (weakenable).
+    if (!req.m_weakenable) {
+        jobj["weakenable"] = false;
+    }
 }
 
 // --- Specification ---
@@ -99,7 +104,8 @@ inline Requirement requirement_from_json(const nlohmann::json& jobj) {
                                     : ConditionType::Continual;
     return Requirement(Formula(jobj.at("condition").get<std::string>()),
                        Formula(jobj.at("response").get<std::string>()),
-                       jobj.at("timing").get<Timing>(), ctype);
+                       jobj.at("timing").get<Timing>(), ctype,
+                       jobj.value("weakenable", true));
 }
 
 /// Per-component breakdown entry stored alongside a scored specification.
@@ -231,6 +237,9 @@ inline std::optional<std::string> validate_requirement_json(
             !timing.at("ticks").is_number_unsigned()) {
             return path + ".timing.ticks: must be a non-negative integer";
         }
+    }
+    if (req.contains("weakenable") && !req.at("weakenable").is_boolean()) {
+        return path + ".weakenable: must be a boolean";
     }
     return std::nullopt;
 }

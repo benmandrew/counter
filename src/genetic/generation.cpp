@@ -84,11 +84,17 @@ std::vector<Specification> filter_population(
 Specification simplify_offspring(Specification offspring) {
     Specification pre_simplify = offspring;
     for (auto& req : offspring.m_assumptions) {
+        if (!req.m_weakenable) {
+            continue;
+        }
         req.m_condition.simplify();
         req.m_response.simplify();
         req.m_ltl = requirement_to_ltl(req);
     }
     for (auto& req : offspring.m_guarantees) {
+        if (!req.m_weakenable) {
+            continue;
+        }
         req.m_condition.simplify();
         req.m_response.simplify();
         req.m_ltl = requirement_to_ltl(req);

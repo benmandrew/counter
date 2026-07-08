@@ -52,7 +52,11 @@
           "description": "Propositional formula that must hold when the condition activates.",
           "type": "string"
         },
-        "timing": { "$ref": "#/$defs/Timing" }
+        "timing": { "$ref": "#/$defs/Timing" },
+        "weakenable": {
+          "description": "When false, the genetic algorithm never mutates this requirement or uses it as a crossover source. Defaults to true when absent.",
+          "type": "boolean"
+        }
       }
     },
     "Timing": {

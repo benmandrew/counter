@@ -221,8 +221,15 @@ std::vector<Requirement> crossover_req_lists(
     std::vector<Requirement> offspring;
     offspring.reserve(first.size());
     for (std::size_t i = 0; i < first.size(); ++i) {
-        offspring.push_back(
-            crossover_requirements(first[i], second[i], random_source));
+        // A non-weakenable requirement is never changed and never acts as a
+        // crossover source; keep the first parent's version verbatim. Flags are
+        // position-aligned between parents, so guarding on first[i] suffices.
+        if (!first[i].m_weakenable) {
+            offspring.push_back(first[i]);
+        } else {
+            offspring.push_back(
+                crossover_requirements(first[i], second[i], random_source));
+        }
     }
     return offspring;
 }

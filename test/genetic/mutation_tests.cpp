@@ -1,6 +1,8 @@
 #include <utility>
+#include <variant>
 #include <vector>
 
+#include "config.hpp"
 #include "genetic/mutation.hpp"
 #include "prop_formula.hpp"
 #include "requirement.hpp"
@@ -130,6 +132,47 @@ void test_timing_mutation_after_ticks_becomes_within_ticks() {
            "mutation: after 3 ticks should weaken to within 4 ticks");
 }
 
+void test_mutation_all_locked_is_noop() {
+    const Specification spec(
+        {},
+        {Requirement(Formula("a"), Formula("b"), timing::immediately(),
+                     ConditionType::Continual, false)},
+        {"a"}, {"b"});
+    const Config cfg;
+    const Specification result =
+        mutate_specification(spec, make_source({}, 0), cfg);
+    expect(result == spec,
+           "mutation: a spec whose only requirement is non-weakenable is "
+           "returned unchanged");
+}
+
+void test_mutation_skips_non_weakenable_requirement() {
+    // guarantees[0] is locked, guarantees[1] is weakenable. Only index 1 is
+    // eligible, so the forced timing mutation must land on the weakenable
+    // requirement and leave the locked one untouched.
+    const Requirement locked(Formula("a"), Formula("b"), timing::immediately(),
+                             ConditionType::Continual, false);
+    const Requirement weak(Formula("c"), Formula("d"), timing::immediately(),
+                           ConditionType::Continual, true);
+    const Specification spec({}, {locked, weak}, {"a", "c"}, {"b", "d"});
+    Config cfg;
+    cfg.p_response = 0.0;
+    cfg.p_trigger = 0.0;
+    cfg.p_timing = 1.0;
+    const Specification result =
+        mutate_specification(spec, make_source({}, 0), cfg);
+    expect(result.m_guarantees.size() == 2,
+           "mutation: guarantee count should be preserved");
+    expect(std::holds_alternative<timing::Immediately>(
+               result.m_guarantees[0].m_timing) &&
+               !result.m_guarantees[0].m_weakenable,
+           "mutation: the non-weakenable requirement must be left untouched");
+    const auto* within =
+        std::get_if<timing::WithinTicks>(&result.m_guarantees[1].m_timing);
+    expect(within != nullptr && within->m_ticks == 1,
+           "mutation: the weakenable requirement must be the one mutated");
+}
+
 }  // namespace
 
 void run_mutation_tests() {
@@ -144,4 +187,6 @@ void run_mutation_tests() {
     test_timing_mutation_within_ticks_step_down();
     test_timing_mutation_within_ticks_double();
     test_timing_mutation_after_ticks_becomes_within_ticks();
+    test_mutation_all_locked_is_noop();
+    test_mutation_skips_non_weakenable_requirement();
 }

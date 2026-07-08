@@ -92,13 +92,17 @@ struct Requirement {
     /// m_condition_type), derived automatically by the constructor via
     /// requirement_to_ltl.
     std::string m_ltl;
+    /// When false, the genetic algorithm never mutates this requirement, uses
+    /// it as a crossover source, or simplifies it. Defaults to true.
+    bool m_weakenable = true;
 
     friend bool operator<(const Requirement& lhs, const Requirement& rhs);
     friend bool operator==(const Requirement& lhs, const Requirement& rhs);
 
     explicit Requirement(
         Formula condition, Formula response, const Timing& timing,
-        ConditionType condition_type = ConditionType::Continual);
+        ConditionType condition_type = ConditionType::Continual,
+        bool weakenable = true);
 
     /// Returns a one-line FRETish string of the form
     /// "[upon|whenever <condition>] C shall <timing> satisfy <response>",
@@ -206,6 +210,7 @@ struct hash<Requirement> {
         seed = combine(seed, std::hash<bool>{}(req.m_condition_type ==
                                                ConditionType::Trigger));
         seed = combine(seed, std::hash<std::string>{}(req.m_ltl));
+        seed = combine(seed, std::hash<bool>{}(req.m_weakenable));
         return seed;
     }
 };

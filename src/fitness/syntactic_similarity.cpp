@@ -15,21 +15,21 @@ namespace {
 // Geometric ratio r and small fixed weight w for the timing measure.
 // μ(ForTicks{N}) = μ(WithinTicks{N}) = μ(AfterTicks{N}) = r^N
 // μ(Immediately) = μ(NextTimepoint) = μ(Eventually) = μ(Always) = w
-constexpr double kTimingGeoRatio = 0.5;
-constexpr double kTimingDiscreteWeight = 0.01;
+constexpr double k_timing_geo_ratio = 0.5;
+constexpr double k_timing_discrete_weight = 0.01;
 
 // Σ_{k=1}^{n} r^k
 double geo_sum_up_to(int n_terms) {
     if (n_terms <= 0) {
         return 0.0;
     }
-    return kTimingGeoRatio * (1.0 - std::pow(kTimingGeoRatio, n_terms)) /
-           (1.0 - kTimingGeoRatio);
+    return k_timing_geo_ratio * (1.0 - std::pow(k_timing_geo_ratio, n_terms)) /
+           (1.0 - k_timing_geo_ratio);
 }
 
 // Σ_{k=min_exp}^{∞} r^k = r^min_exp / (1 - r)
 double geo_sum_from(int min_exp) {
-    return std::pow(kTimingGeoRatio, min_exp) / (1.0 - kTimingGeoRatio);
+    return std::pow(k_timing_geo_ratio, min_exp) / (1.0 - k_timing_geo_ratio);
 }
 
 // Largest k such that ForTicks{k} ∈ ↓tim. Returns 0 if none.
@@ -90,7 +90,7 @@ bool is_always(const Timing& tim) {
 // {WithinTicks{k≥1}} ∪ {ForTicks{k≥1}}. The two geometric tails are each
 // Σ_{k=1}^∞ r^k = geo_sum_from(1).
 double mu_downset_always() {
-    return (4 * kTimingDiscreteWeight) + (2 * geo_sum_from(1));
+    return (4 * k_timing_discrete_weight) + (2 * geo_sum_from(1));
 }
 
 // μ(↓tim) — measure of the downward closure of tim in the timing partial order.
@@ -98,13 +98,13 @@ double mu_downset(const Timing& tim) {
     if (is_always(tim)) {
         return mu_downset_always();
     }
-    double result = kTimingDiscreteWeight;  // Eventually ∈ ↓tim always
+    double result = k_timing_discrete_weight;  // Eventually ∈ ↓tim always
     result += geo_sum_up_to(max_for_index(tim));
     if (has_immediately(tim)) {
-        result += kTimingDiscreteWeight;
+        result += k_timing_discrete_weight;
     }
     if (has_next_timepoint(tim)) {
-        result += kTimingDiscreteWeight;
+        result += k_timing_discrete_weight;
     }
     const int min_w = min_within_index(tim);
     if (min_w > 0) {
@@ -112,7 +112,7 @@ double mu_downset(const Timing& tim) {
     }
     const int aft = after_ticks_self(tim);
     if (aft >= 0) {
-        result += std::pow(kTimingGeoRatio, aft);
+        result += std::pow(k_timing_geo_ratio, aft);
     }
     return result;
 }
@@ -130,17 +130,17 @@ double mu_intersection(const Timing& tim1, const Timing& tim2) {
         double result = mu_downset(other);
         const int aft = after_ticks_self(other);
         if (aft >= 0) {
-            result -= std::pow(kTimingGeoRatio, aft);
+            result -= std::pow(k_timing_geo_ratio, aft);
         }
         return result;
     }
-    double result = kTimingDiscreteWeight;  // Eventually always in both
+    double result = k_timing_discrete_weight;  // Eventually always in both
     result += geo_sum_up_to(std::min(max_for_index(tim1), max_for_index(tim2)));
     if (has_immediately(tim1) && has_immediately(tim2)) {
-        result += kTimingDiscreteWeight;
+        result += k_timing_discrete_weight;
     }
     if (has_next_timepoint(tim1) && has_next_timepoint(tim2)) {
-        result += kTimingDiscreteWeight;
+        result += k_timing_discrete_weight;
     }
     const int min_w1 = min_within_index(tim1);
     const int min_w2 = min_within_index(tim2);
@@ -152,7 +152,7 @@ double mu_intersection(const Timing& tim1, const Timing& tim2) {
     const int aft1 = after_ticks_self(tim1);
     const int aft2 = after_ticks_self(tim2);
     if (aft1 >= 0 && aft1 == aft2) {
-        result += std::pow(kTimingGeoRatio, aft1);
+        result += std::pow(k_timing_geo_ratio, aft1);
     }
     return result;
 }

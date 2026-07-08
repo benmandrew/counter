@@ -37,9 +37,9 @@ class RandomSource {
 
     /// Returns a pseudo-random double uniformly in [0, 1).
     [[nodiscard]] double next_real() const {
-        constexpr std::size_t kResolution = 1000000;
-        return static_cast<double>(next_index(kResolution)) /
-               static_cast<double>(kResolution);
+        constexpr std::size_t k_resolution = 1000000;
+        return static_cast<double>(next_index(k_resolution)) /
+               static_cast<double>(k_resolution);
     }
 
     explicit operator bool() const { return static_cast<bool>(m_fn); }

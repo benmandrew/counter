@@ -90,12 +90,14 @@ bool operator==(const Timing& lhs, const Timing& rhs) {
 }
 
 Requirement::Requirement(Formula condition, Formula response,
-                         const Timing& timing, ConditionType condition_type)
+                         const Timing& timing, ConditionType condition_type,
+                         bool weakenable)
     : m_condition(std::move(condition)),
       m_response(std::move(response)),
       m_timing(timing),
       m_condition_type(condition_type),
-      m_ltl(requirement_to_ltl(*this)) {}
+      m_ltl(requirement_to_ltl(*this)),
+      m_weakenable(weakenable) {}
 
 bool operator<(const Requirement& lhs, const Requirement& rhs) {
     if (lhs.m_timing < rhs.m_timing || rhs.m_timing < lhs.m_timing) {
@@ -116,7 +118,10 @@ bool operator<(const Requirement& lhs, const Requirement& rhs) {
     if (lhs.m_condition_type != rhs.m_condition_type) {
         return lhs.m_condition_type < rhs.m_condition_type;
     }
-    return lhs.m_ltl < rhs.m_ltl;
+    if (lhs.m_ltl != rhs.m_ltl) {
+        return lhs.m_ltl < rhs.m_ltl;
+    }
+    return !lhs.m_weakenable && rhs.m_weakenable;
 }
 
 bool operator==(const Requirement& lhs, const Requirement& rhs) {
@@ -124,7 +129,7 @@ bool operator==(const Requirement& lhs, const Requirement& rhs) {
            lhs.m_condition == rhs.m_condition &&
            lhs.m_response == rhs.m_response &&
            lhs.m_condition_type == rhs.m_condition_type &&
-           lhs.m_ltl == rhs.m_ltl;
+           lhs.m_ltl == rhs.m_ltl && lhs.m_weakenable == rhs.m_weakenable;
 }
 
 Specification::Specification(std::vector<Requirement> assumptions,

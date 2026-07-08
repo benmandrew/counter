@@ -121,6 +121,42 @@ void test_requirement_json_keys_trigger() {
            "to_json(Requirement): condition-type should be trigger");
 }
 
+void test_requirement_weakenable_omitted_when_true() {
+    const Requirement req(Formula("a"), Formula("b"), timing::immediately());
+    nlohmann::json jobj;
+    to_json(jobj, req);
+    expect(!jobj.contains("weakenable"),
+           "to_json(Requirement): weakenable key should be omitted for the "
+           "default (weakenable) requirement");
+}
+
+void test_requirement_non_weakenable_round_trip() {
+    const Requirement req(Formula("a"), Formula("b"), timing::immediately(),
+                          ConditionType::Continual, false);
+    nlohmann::json jobj;
+    to_json(jobj, req);
+    expect(jobj.contains("weakenable") && jobj.at("weakenable") == false,
+           "to_json(Requirement): a locked requirement should emit "
+           "weakenable=false");
+    const Requirement req2 = serialisation::requirement_from_json(jobj);
+    expect(!req2.m_weakenable,
+           "requirement_from_json: locked status should round-trip");
+    expect(req == req2,
+           "requirement_from_json: locked round-trip should preserve all "
+           "fields");
+}
+
+void test_requirement_weakenable_defaults_true_when_absent() {
+    const nlohmann::json jobj = {{"condition", "a"},
+                                 {"response", "b"},
+                                 {"condition-type", "continual"},
+                                 {"timing", {{"type", "Immediately"}}}};
+    const Requirement req = serialisation::requirement_from_json(jobj);
+    expect(req.m_weakenable,
+           "requirement_from_json: absent weakenable key should default to "
+           "true");
+}
+
 void test_specification_round_trip() {
     const Specification spec(
         {Requirement(Formula("a"), Formula("b"), timing::immediately(),
@@ -223,6 +259,9 @@ void run_serialisation_tests() {
     test_requirement_round_trip();
     test_requirement_json_keys();
     test_requirement_json_keys_trigger();
+    test_requirement_weakenable_omitted_when_true();
+    test_requirement_non_weakenable_round_trip();
+    test_requirement_weakenable_defaults_true_when_absent();
     test_specification_round_trip();
     test_specification_json_structure();
     test_scored_specification_without_fitness();

@@ -1,0 +1,53 @@
+# Internal / implementation reference: full Doxygen HTML over include/ + src/,
+# including private members, file-local (static) symbols, and anonymous
+# namespaces. This is intentionally separate from the curated public API site
+# (Doxyfile.in -> XML -> Breathe -> Sphinx); readers digging into the
+# implementation get source browsing and call graphs here instead.
+PROJECT_NAME    = "@PROJECT_NAME@ internals"
+PROJECT_NUMBER  = "@PROJECT_VERSION@"
+
+INPUT           = @CMAKE_SOURCE_DIR@/include @CMAKE_SOURCE_DIR@/src
+RECURSIVE       = YES
+FILE_PATTERNS   = *.hpp *.h *.cpp
+
+OUTPUT_DIRECTORY = @DOXYGEN_INTERNAL_OUTPUT_DIR@
+GENERATE_HTML   = YES
+HTML_OUTPUT     = .
+GENERATE_XML    = NO
+
+# Expose everything, not just the public surface.
+EXTRACT_ALL           = YES
+EXTRACT_PRIVATE       = YES
+EXTRACT_PRIV_VIRTUAL  = YES
+EXTRACT_STATIC        = YES
+EXTRACT_LOCAL_CLASSES = YES
+EXTRACT_LOCAL_METHODS = YES
+EXTRACT_ANON_NSPACES  = YES
+
+# Let readers read the actual implementation and follow the call structure.
+SOURCE_BROWSER         = YES
+INLINE_SOURCES         = YES
+STRIP_CODE_COMMENTS    = NO
+REFERENCED_BY_RELATION = YES
+REFERENCES_RELATION    = YES
+VERBATIM_HEADERS       = YES
+
+# Graphs are only emitted when graphviz `dot` is available (set by CMake).
+# Per-function CALL_GRAPH/CALLER_GRAPH render one dot graph per function, so the
+# first (cold) build takes minutes. This is tolerable because the internal docs
+# are built into a persistent directory (see cmake/docs.cmake): Doxygen writes a
+# .md5 sidecar per graph and skips re-rendering unchanged ones, so warm rebuilds
+# are seconds. A clean build dir (e.g. CI) pays the full cost.
+HAVE_DOT            = @DOXYGEN_HAVE_DOT@
+CALL_GRAPH          = YES
+CALLER_GRAPH        = YES
+COLLABORATION_GRAPH = YES
+CLASS_GRAPH         = YES
+INCLUDE_GRAPH       = YES
+INCLUDED_BY_GRAPH   = YES
+DOT_IMAGE_FORMAT    = svg
+
+QUIET         = YES
+# Unlike the public build, do not fail on warnings: EXTRACT_ALL over the whole
+# implementation surfaces many benign diagnostics that must not break `docs`.
+WARN_AS_ERROR = NO

@@ -214,20 +214,47 @@ Requirement mutate_requirement(const Requirement& requirement,
     return mutated;
 }
 
+namespace {
+
+// Global indices (assumptions first, then guarantees) of requirements that may
+// be mutated. Non-weakenable requirements are excluded.
+std::vector<std::size_t> collect_weakenable_indices(
+    const Specification& specification) {
+    const std::size_t n_assumptions = specification.m_assumptions.size();
+    std::vector<std::size_t> indices;
+    for (std::size_t i = 0; i < n_assumptions; ++i) {
+        if (specification.m_assumptions[i].m_weakenable) {
+            indices.push_back(i);
+        }
+    }
+    for (std::size_t i = 0; i < specification.m_guarantees.size(); ++i) {
+        if (specification.m_guarantees[i].m_weakenable) {
+            indices.push_back(n_assumptions + i);
+        }
+    }
+    return indices;
+}
+
+}  // namespace
+
 Specification mutate_specification(const Specification& specification,
                                    const RandomSource& random_source,
                                    const Config& cfg) {
     assert(random_source);
     const std::size_t n_assumptions = specification.m_assumptions.size();
-    const std::size_t n_guarantees = specification.m_guarantees.size();
-    assert(n_assumptions + n_guarantees > 0);
+    assert(n_assumptions + specification.m_guarantees.size() > 0);
     std::vector<std::string> atoms;
     atoms.insert(atoms.end(), specification.m_in_atoms.begin(),
                  specification.m_in_atoms.end());
     atoms.insert(atoms.end(), specification.m_out_atoms.begin(),
                  specification.m_out_atoms.end());
+    const std::vector<std::size_t> weakenable_indices =
+        collect_weakenable_indices(specification);
+    if (weakenable_indices.empty()) {
+        return specification;
+    }
     const std::size_t idx =
-        random_source.next_index(n_assumptions + n_guarantees);
+        weakenable_indices[random_source.next_index(weakenable_indices.size())];
     std::vector<Requirement> assumptions = specification.m_assumptions;
     std::vector<Requirement> guarantees = specification.m_guarantees;
     if (idx < n_assumptions) {

@@ -64,10 +64,39 @@ void test_formula_crossover_can_combine_atoms() {
            "crossover: condition crossover should be able to combine atoms");
 }
 
+void test_crossover_keeps_non_weakenable_from_first_parent() {
+    // guarantees[0] is locked in both parents, guarantees[1] is weakenable.
+    // The locked position must be copied verbatim from the first parent (never
+    // acting as, or receiving from, a crossover source), while the weakenable
+    // position still crosses over with the same active source.
+    const Requirement first_locked(Formula("a"), Formula("x"),
+                                   timing::immediately(),
+                                   ConditionType::Continual, false);
+    const Requirement first_weak(Formula("P"), Formula("Q"),
+                                 timing::immediately());
+    const Requirement second_locked(Formula("b"), Formula("y"),
+                                    timing::immediately(),
+                                    ConditionType::Continual, false);
+    const Requirement second_weak(Formula("R"), Formula("S"),
+                                  timing::immediately());
+    const Specification first_parent({}, {first_locked, first_weak}, {}, {});
+    const Specification second_parent({}, {second_locked, second_weak}, {}, {});
+    const Specification offspring = crossover_specifications(
+        first_parent, second_parent, make_source({3, 1, 1, 0}, 0));
+    expect(offspring.m_guarantees.size() == 2,
+           "crossover: guarantee count should be preserved");
+    expect(offspring.m_guarantees[0] == first_locked,
+           "crossover: a non-weakenable requirement must be taken verbatim "
+           "from the first parent");
+    expect(offspring.m_guarantees[1].m_condition.to_string() == "(P) & (R)",
+           "crossover: the weakenable requirement should still cross over");
+}
+
 }  // namespace
 
 void run_crossover_tests() {
     test_crossover_prefers_first_parent_with_false_source();
     test_timing_crossover_can_swap_parameters();
     test_formula_crossover_can_combine_atoms();
+    test_crossover_keeps_non_weakenable_from_first_parent();
 }

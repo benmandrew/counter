@@ -1,0 +1,19 @@
+{
+  "assumptions": [],
+  "guarantees": [
+    {
+      "condition": "state_nominal & limits",
+      "condition-type": "trigger",
+      "response": "STATE_FAULT",
+      "timing": { "type": "Always" }
+    },
+    {
+      "condition": "state_nominal & !request",
+      "condition-type": "trigger",
+      "response": "!STATE_FAULT",
+      "timing": { "type": "Always" }
+    }
+  ],
+  "in_atoms": ["state_nominal", "limits", "request"],
+  "out_atoms": ["STATE_FAULT"]
+}

@@ -1,0 +1,19 @@
+{
+  "assumptions": [],
+  "guarantees": [
+    {
+      "condition": "maneuver_state & standby & good",
+      "condition-type": "trigger",
+      "response": "STANDBY_STATE",
+      "timing": { "type": "ForTicks", "ticks": 5 }
+    },
+    {
+      "condition": "maneuver_state & supported & good & !standby",
+      "condition-type": "trigger",
+      "response": "!STANDBY_STATE",
+      "timing": { "type": "WithinTicks", "ticks": 5 }
+    }
+  ],
+  "in_atoms": ["maneuver_state", "standby", "supported", "good"],
+  "out_atoms": ["STANDBY_STATE"]
+}

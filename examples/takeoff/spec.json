@@ -1,12 +1,11 @@
 {
-  "$schema": "../schemas/specification.schema.json",
   "assumptions": [],
   "guarantees": [
     {
       "condition": "true",
       "condition-type": "trigger",
       "response": "takeoff_roll",
-      "timing": { "type": "ForTicks", "ticks": 3 }
+      "timing": { "type": "ForTicks", "ticks": 5 }
     },
     {
       "condition": "true",

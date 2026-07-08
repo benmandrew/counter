@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1783526997678,
+  "lastUpdate": 1783529421980,
   "repoUrl": "https://github.com/benmandrew/counter",
   "entries": {
     "counter benchmarks": [
@@ -1152,6 +1152,78 @@ window.BENCHMARK_DATA = {
             "value": 3694.990210637182,
             "unit": "ns/iter",
             "extra": "iterations: 189900\ncpu: 3694.795876777252 ns\nthreads: 1"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "benmandrew@gmail.com",
+            "name": "benmandrew",
+            "username": "benmandrew"
+          },
+          "committer": {
+            "email": "benmandrew@gmail.com",
+            "name": "benmandrew",
+            "username": "benmandrew"
+          },
+          "distinct": true,
+          "id": "f4968abccf2e9ff99a91108d81bf07e9d20fe0b8",
+          "message": "feat: keep output atoms out of triggers and never weaken Always\n\nMutation was the source of two degenerate repairs on the fsm example:\nit could inject output atoms into a trigger condition (letting the\nsynthesiser vacuously discharge a guarantee via its own outputs) and it\nweakened Always timing to ForTicks(10).\n\n- mutate_requirement draws trigger atoms from an input-only pool\n  (mutate_specification passes in_atoms, falling back to the full pool\n  only when there are no inputs, since random_atom needs a non-empty\n  pool). Crossover already crosses condition-with-condition only, so the\n  output-free invariant is preserved through evolution.\n- mutate_timing leaves Always unchanged instead of weakening it.\n- Extract creates_duplicate helper (also keeps mutate_specification\n  under the clang-tidy cognitive-complexity threshold).\n- Tests: assert Always is unchanged; add a 200-seed test that trigger\n  mutation never introduces an output atom.",
+          "timestamp": "2026-07-08T17:35:01+01:00",
+          "tree_id": "acf82b400ffcf83cd61fa1f158189a57e43995a5",
+          "url": "https://github.com/benmandrew/counter/commit/f4968abccf2e9ff99a91108d81bf07e9d20fe0b8"
+        },
+        "date": 1783529421029,
+        "tool": "googlecpp",
+        "benches": [
+          {
+            "name": "Syntactic similarity - small formulas (3 variables)",
+            "value": 576.1204516833895,
+            "unit": "ns/iter",
+            "extra": "iterations: 1198273\ncpu: 576.0381298752454 ns\nthreads: 1"
+          },
+          {
+            "name": "Syntactic similarity - large formulas (11 variables, O(n*m) shared_subformulae)",
+            "value": 2320.694750964847,
+            "unit": "ns/iter",
+            "extra": "iterations: 301865\ncpu: 2320.5314163616194 ns\nthreads: 1"
+          },
+          {
+            "name": "Spec implication check - warm black cache",
+            "value": 831.5682402475699,
+            "unit": "ns/iter",
+            "extra": "iterations: 824616\ncpu: 831.2936481950387 ns\nthreads: 1"
+          },
+          {
+            "name": "Trace model counting - matrix exponentiation/steps:5",
+            "value": 161.922500989216,
+            "unit": "ns/iter",
+            "extra": "iterations: 4339307\ncpu: 161.82271224414416 ns\nthreads: 1"
+          },
+          {
+            "name": "Trace model counting - matrix exponentiation/steps:10",
+            "value": 183.56678184016155,
+            "unit": "ns/iter",
+            "extra": "iterations: 3805563\ncpu: 183.51619615809793 ns\nthreads: 1"
+          },
+          {
+            "name": "Trace model counting - matrix exponentiation/steps:20",
+            "value": 206.29176029850973,
+            "unit": "ns/iter",
+            "extra": "iterations: 3363350\ncpu: 206.27722508808176 ns\nthreads: 1"
+          },
+          {
+            "name": "Trace model counting - matrix exponentiation/steps:50",
+            "value": 250.56526577445507,
+            "unit": "ns/iter",
+            "extra": "iterations: 2791126\ncpu: 250.5565714338944 ns\nthreads: 1"
+          },
+          {
+            "name": "Mutate specification - 3-guarantee takeoff spec",
+            "value": 3806.8748220832404,
+            "unit": "ns/iter",
+            "extra": "iterations: 185480\ncpu: 3805.6712421824495 ns\nthreads: 1"
           }
         ]
       }

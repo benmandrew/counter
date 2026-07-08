@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1783518540238,
+  "lastUpdate": 1783518855727,
   "repoUrl": "https://github.com/benmandrew/counter",
   "entries": {
     "counter benchmarks": [
@@ -864,6 +864,78 @@ window.BENCHMARK_DATA = {
             "value": 3906.8959984725275,
             "unit": "ns/iter",
             "extra": "iterations: 183305\ncpu: 3906.6732495021997 ns\nthreads: 1"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "benmandrew@gmail.com",
+            "name": "Ben Andrew",
+            "username": "benmandrew"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "9dd9688353ef6334a204f0015f1fe63f11a40bf5",
+          "message": "Merge pull request #8 from benmandrew/feature/cpu-attribution-report\n\nfeat: add per-process CPU attribution report for CLI tools",
+          "timestamp": "2026-07-08T14:41:58+01:00",
+          "tree_id": "f083c0a67e9c0582cac0eedf2155a5e9eb2ee6c2",
+          "url": "https://github.com/benmandrew/counter/commit/9dd9688353ef6334a204f0015f1fe63f11a40bf5"
+        },
+        "date": 1783518855358,
+        "tool": "googlecpp",
+        "benches": [
+          {
+            "name": "Syntactic similarity - small formulas (3 variables)",
+            "value": 551.4048123036825,
+            "unit": "ns/iter",
+            "extra": "iterations: 1275065\ncpu: 551.3526808437217 ns\nthreads: 1"
+          },
+          {
+            "name": "Syntactic similarity - large formulas (11 variables, O(n*m) shared_subformulae)",
+            "value": 2287.2677838194195,
+            "unit": "ns/iter",
+            "extra": "iterations: 303450\ncpu: 2287.0078464326903 ns\nthreads: 1"
+          },
+          {
+            "name": "Spec implication check - warm black cache",
+            "value": 918.800107544407,
+            "unit": "ns/iter",
+            "extra": "iterations: 835004\ncpu: 918.7574814012867 ns\nthreads: 1"
+          },
+          {
+            "name": "Trace model counting - matrix exponentiation/steps:5",
+            "value": 170.07295882514796,
+            "unit": "ns/iter",
+            "extra": "iterations: 4111223\ncpu: 170.04436733302967 ns\nthreads: 1"
+          },
+          {
+            "name": "Trace model counting - matrix exponentiation/steps:10",
+            "value": 194.79767967985703,
+            "unit": "ns/iter",
+            "extra": "iterations: 3601141\ncpu: 194.76571481094467 ns\nthreads: 1"
+          },
+          {
+            "name": "Trace model counting - matrix exponentiation/steps:20",
+            "value": 217.4056093951964,
+            "unit": "ns/iter",
+            "extra": "iterations: 3220882\ncpu: 217.3713352429553 ns\nthreads: 1"
+          },
+          {
+            "name": "Trace model counting - matrix exponentiation/steps:50",
+            "value": 266.7527599715508,
+            "unit": "ns/iter",
+            "extra": "iterations: 2624393\ncpu: 266.6961419269139 ns\nthreads: 1"
+          },
+          {
+            "name": "Mutate specification - 3-guarantee takeoff spec",
+            "value": 3805.9712948932465,
+            "unit": "ns/iter",
+            "extra": "iterations: 180177\ncpu: 3805.5274091587735 ns\nthreads: 1"
           }
         ]
       }

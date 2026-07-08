@@ -33,6 +33,19 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-check-deps-
 
+      # Persist Doxygen's per-graph .md5/.svg cache for the internal docs so the
+      # expensive call-graph render is reused across runs. A fresh key each run
+      # (immutable caches can't be overwritten) with a rolling restore-keys
+      # prefix means every run restores the previous run's graphs; Doxygen then
+      # re-renders only the graphs whose content changed.
+      - name: Cache internal docs graph cache
+        uses: actions/cache@v5
+        with:
+          path: build/docs/internal
+          key: ${{ runner.os }}-docs-internal-${{ github.sha }}
+          restore-keys: |
+            ${{ runner.os }}-docs-internal-
+
       - name: Configure project
         run: nix develop --command cmake --preset debug
         env:

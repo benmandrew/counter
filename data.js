@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1783422516432,
+  "lastUpdate": 1783515582885,
   "repoUrl": "https://github.com/benmandrew/counter",
   "entries": {
     "counter benchmarks": [
@@ -576,6 +576,78 @@ window.BENCHMARK_DATA = {
             "value": 3783.088246564643,
             "unit": "ns/iter",
             "extra": "iterations: 187894\ncpu: 3782.755053381162 ns\nthreads: 1"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "benmandrew@gmail.com",
+            "name": "benmandrew",
+            "username": "benmandrew"
+          },
+          "committer": {
+            "email": "benmandrew@gmail.com",
+            "name": "benmandrew",
+            "username": "benmandrew"
+          },
+          "distinct": true,
+          "id": "cad434aed8e5b9f81e6688d8378c6a40fd4934b5",
+          "message": "feat: add Always timing to the Timing algebraic data type\n\nAdds the Always modality (response must hold at every timepoint from the\ncondition onward, i.e. G R) as a seventh Timing variant, completing all\ndispatch sites:\n\n- requirement_to_ltl emits body G R; to_string emits \"always\" (both were\n  previously swallowed by the Eventually catch-all).\n- serialisation to_json/from_json/validator handle the \"Always\" type.\n- syntactic_similarity models Always as the top of the timing order:\n  its downset is every timing except the AfterTicks family.\n- Halstead counting, mutation (placeholder ForTicks weakening), CLI help,\n  and docs updated; fuzzer now differentially tests Always against the\n  real FRET CLI.\n\nVerified: 22/22 tests pass, lint/format clean, and the LTL translation\nmatches FRET's own \"always\" formalisation (checked via the equivalence\nfuzzer with ltlfilt).",
+          "timestamp": "2026-07-08T13:45:54+01:00",
+          "tree_id": "f3ed5bf6e3c8c27bae692f3639a4b2f600fa2b03",
+          "url": "https://github.com/benmandrew/counter/commit/cad434aed8e5b9f81e6688d8378c6a40fd4934b5"
+        },
+        "date": 1783515581951,
+        "tool": "googlecpp",
+        "benches": [
+          {
+            "name": "Syntactic similarity - small formulas (3 variables)",
+            "value": 539.5216483036788,
+            "unit": "ns/iter",
+            "extra": "iterations: 1307793\ncpu: 539.4695467860739 ns\nthreads: 1"
+          },
+          {
+            "name": "Syntactic similarity - large formulas (11 variables, O(n*m) shared_subformulae)",
+            "value": 2230.203534918055,
+            "unit": "ns/iter",
+            "extra": "iterations: 308522\ncpu: 2229.9246374650756 ns\nthreads: 1"
+          },
+          {
+            "name": "Spec implication check - warm black cache",
+            "value": 862.0965634353333,
+            "unit": "ns/iter",
+            "extra": "iterations: 810897\ncpu: 862.0341547693478 ns\nthreads: 1"
+          },
+          {
+            "name": "Trace model counting - matrix exponentiation/steps:5",
+            "value": 161.6528680716383,
+            "unit": "ns/iter",
+            "extra": "iterations: 4325537\ncpu: 161.6452054392322 ns\nthreads: 1"
+          },
+          {
+            "name": "Trace model counting - matrix exponentiation/steps:10",
+            "value": 183.88615583765815,
+            "unit": "ns/iter",
+            "extra": "iterations: 3777585\ncpu: 183.86197504490312 ns\nthreads: 1"
+          },
+          {
+            "name": "Trace model counting - matrix exponentiation/steps:20",
+            "value": 206.86451404970205,
+            "unit": "ns/iter",
+            "extra": "iterations: 3385089\ncpu: 206.8465216128734 ns\nthreads: 1"
+          },
+          {
+            "name": "Trace model counting - matrix exponentiation/steps:50",
+            "value": 251.91482575501166,
+            "unit": "ns/iter",
+            "extra": "iterations: 2779420\ncpu: 251.89874830000502 ns\nthreads: 1"
+          },
+          {
+            "name": "Mutate specification - 3-guarantee takeoff spec",
+            "value": 3764.6780692730254,
+            "unit": "ns/iter",
+            "extra": "iterations: 186624\ncpu: 3764.2696009087776 ns\nthreads: 1"
           }
         ]
       }

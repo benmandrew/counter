@@ -1,5 +1,6 @@
 #include "runner/spot.hpp"
 
+#include <sys/resource.h>
 #include <sys/types.h>
 #include <sys/wait.h>
 #include <unistd.h>
@@ -26,7 +27,16 @@ namespace {
 struct ProcessResult {
     int m_exit_code = 0;
     std::string m_output;
+    double m_cpu_s = 0.0;
 };
+
+double rusage_cpu_seconds(const struct rusage& usage) {
+    const double user_s = static_cast<double>(usage.ru_utime.tv_sec) +
+                          (static_cast<double>(usage.ru_utime.tv_usec) / 1e6);
+    const double sys_s = static_cast<double>(usage.ru_stime.tv_sec) +
+                         (static_cast<double>(usage.ru_stime.tv_usec) / 1e6);
+    return user_s + sys_s;
+}
 
 void spawn_child_and_exec(char* const* argv, const char* executable,
                           int write_fd) {
@@ -62,10 +72,13 @@ std::string read_from_fd(int read_fd) {
     return output;
 }
 
-int wait_for_child(pid_t child_pid) {
+int wait_for_child(pid_t child_pid, double& cpu_s_out) {
     int wait_status = 0;
-    [[maybe_unused]] const pid_t waited = waitpid(child_pid, &wait_status, 0);
+    struct rusage child_usage{};
+    [[maybe_unused]] const pid_t waited =
+        wait4(child_pid, &wait_status, 0, &child_usage);
     assert(waited >= 0);
+    cpu_s_out = rusage_cpu_seconds(child_usage);
     if (WIFEXITED(wait_status)) {
         return WEXITSTATUS(wait_status);
     }
@@ -102,8 +115,9 @@ ProcessResult execute_and_capture(const std::vector<std::string>& arguments) {
     close(pipe_fds[1]);
     std::string output = read_from_fd(pipe_fds[0]);
     close(pipe_fds[0]);
-    int exit_code = wait_for_child(child_pid);
-    return {exit_code, output};
+    double cpu_s = 0.0;
+    int exit_code = wait_for_child(child_pid, cpu_s);
+    return {exit_code, output, cpu_s};
 }
 
 std::string join_comma(const std::vector<std::string>& items) {
@@ -207,6 +221,7 @@ std::string run_ltl2tgba_for_counting(const std::string& formula) {
     }
     std::scoped_lock lock(cache_mutex);
     Ltl2tgbaStats::total_time_s += elapsed;
+    Ltl2tgbaStats::total_cpu_s += result.m_cpu_s;
     cache.emplace(normalised, result.m_output);
     return result.m_output;
 }
@@ -245,6 +260,7 @@ bool RealizabilityChecker::check_realizability(
     const bool realizable = parse_realizability_output(result);
     std::scoped_lock lock(m_cache_mutex);
     total_time_s += elapsed;
+    total_cpu_s += result.m_cpu_s;
     m_cache.emplace(cache_key, realizable);
     return realizable;
 }

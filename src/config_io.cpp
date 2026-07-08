@@ -154,6 +154,9 @@ void apply_runtime(const toml::table& tbl, Config& cfg) {
         }
         cfg.parallel = static_cast<std::size_t>(*val);
     }
+    if (auto val = tbl["report_cpu_timing"].value<bool>()) {
+        cfg.report_cpu_timing = *val;
+    }
 }
 
 Config apply_toml(const toml::table& tbl) {

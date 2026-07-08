@@ -1,5 +1,6 @@
 #include "runner/ganak.hpp"
 
+#include <sys/resource.h>
 #include <sys/types.h>
 #include <sys/wait.h>
 #include <unistd.h>
@@ -28,7 +29,16 @@ namespace {
 struct ProcessResult {
     int m_exit_code = 0;
     std::string m_output;
+    double m_cpu_s = 0.0;
 };
+
+double rusage_cpu_seconds(const struct rusage& usage) {
+    const double user_s = static_cast<double>(usage.ru_utime.tv_sec) +
+                          (static_cast<double>(usage.ru_utime.tv_usec) / 1e6);
+    const double sys_s = static_cast<double>(usage.ru_stime.tv_sec) +
+                         (static_cast<double>(usage.ru_stime.tv_usec) / 1e6);
+    return user_s + sys_s;
+}
 
 std::string temp_directory() {
     try {
@@ -110,7 +120,9 @@ ProcessResult execute_and_capture(const std::vector<std::string>& arguments) {
     }
     close(pipe_fds[0]);
     int wait_status = 0;
-    [[maybe_unused]] const pid_t waited = waitpid(child_pid, &wait_status, 0);
+    struct rusage child_usage{};
+    [[maybe_unused]] const pid_t waited =
+        wait4(child_pid, &wait_status, 0, &child_usage);
     assert(waited >= 0);
     int exit_code = -1;
     if (WIFEXITED(wait_status)) {
@@ -118,7 +130,7 @@ ProcessResult execute_and_capture(const std::vector<std::string>& arguments) {
     } else if (WIFSIGNALED(wait_status)) {
         exit_code = 128 + WTERMSIG(wait_status);
     }
-    return {exit_code, output};
+    return {exit_code, output, rusage_cpu_seconds(child_usage)};
 }
 
 Count parse_ganak_exact_count(const std::string& output) {
@@ -158,7 +170,8 @@ std::string ganak_executable_path() {
 #endif
 }
 
-Count run_ganak_on_dimacs(const std::string& dimacs_path, unsigned seed) {
+Count run_ganak_on_dimacs(const std::string& dimacs_path, unsigned seed,
+                          double* cpu_s_out) {
     assert(access(dimacs_path.c_str(), F_OK) == 0);
     const std::string ganak_path = ganak_executable_path();
     assert(access(ganak_path.c_str(), F_OK) == 0);
@@ -169,6 +182,9 @@ Count run_ganak_on_dimacs(const std::string& dimacs_path, unsigned seed) {
         dimacs_path,
     };
     const ProcessResult result = execute_and_capture(command);
+    if (cpu_s_out != nullptr) {
+        *cpu_s_out = result.m_cpu_s;
+    }
     if (result.m_exit_code != 0) {
         throw std::runtime_error("ganak exited with code " +
                                  std::to_string(result.m_exit_code));
@@ -194,13 +210,15 @@ Count run_ganak_on_formula(const std::string& formula, unsigned seed) {
     const std::string formula_dimacs_path =
         write_temporary_dimacs(parsed.to_dimacs());
     const auto start = std::chrono::steady_clock::now();
-    const Count count = run_ganak_on_dimacs(formula_dimacs_path, seed);
+    double cpu_s = 0.0;
+    const Count count = run_ganak_on_dimacs(formula_dimacs_path, seed, &cpu_s);
     const double elapsed =
         std::chrono::duration<double>(std::chrono::steady_clock::now() - start)
             .count();
     std::remove(formula_dimacs_path.c_str());
     std::scoped_lock lock(cache_mutex);
     GanakStats::total_time_s += elapsed;
+    GanakStats::total_cpu_s += cpu_s;
     cache.emplace(key, count);
     return count;
 }

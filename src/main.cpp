@@ -1,3 +1,5 @@
+#include <sys/resource.h>
+
 #include <algorithm>
 #include <chrono>
 #include <cstdlib>
@@ -123,6 +125,52 @@ void print_timing_report() {
               << AggregateWeightedFitnessFunction::n_cache_hits << " hits / "
               << AggregateWeightedFitnessFunction::n_cache_misses
               << " misses\n";
+}
+
+// Reports where CPU actually went: this process's own code (all threads) vs.
+// the external CLI tools (separate child processes). getrusage gives the
+// authoritative self/children split; the per-tool rows are attributed from
+// each wrapper's wait4() and should sum to roughly the children total (the
+// remainder is uninstrumented children, e.g. ltlfilt's equivalence check).
+void print_cpu_report(double wall_s) {
+    auto secs = [](const timeval& tval) {
+        return static_cast<double>(tval.tv_sec) +
+               (static_cast<double>(tval.tv_usec) / 1e6);
+    };
+    struct rusage self_ru{};
+    struct rusage child_ru{};
+    getrusage(RUSAGE_SELF, &self_ru);
+    getrusage(RUSAGE_CHILDREN, &child_ru);
+    const double self_cpu = secs(self_ru.ru_utime) + secs(self_ru.ru_stime);
+    const double child_cpu = secs(child_ru.ru_utime) + secs(child_ru.ru_stime);
+    const double total_cpu = self_cpu + child_cpu;
+
+    auto pct = [total_cpu](double part) {
+        return total_cpu > 0.0 ? 100.0 * part / total_cpu : 0.0;
+    };
+    auto line = [&pct](const char* name, double cpu_s) {
+        std::cout << std::left << std::setw(20) << name << std::right
+                  << std::fixed << std::setprecision(3) << std::setw(9) << cpu_s
+                  << "s cpu  " << std::setprecision(1) << std::setw(5)
+                  << pct(cpu_s) << "%\n";
+    };
+
+    std::cout << "\nCPU attribution (wall " << std::fixed
+              << std::setprecision(3) << wall_s << "s, total cpu " << total_cpu
+              << "s):\n";
+    line("your code", self_cpu);
+    line("CLI tools (total)", child_cpu);
+    std::cout << "  per tool:\n";
+    line("  ltl2tgba", Ltl2tgbaStats::total_cpu_s);
+    line("  ltlfilt", LtlfiltStats::total_cpu_s);
+    line("  ltlsynt", RealizabilityChecker::total_cpu_s);
+    line("  black", SatisfiabilityChecker::total_cpu_s);
+    line("  ganak", GanakStats::total_cpu_s);
+    const double attributed =
+        Ltl2tgbaStats::total_cpu_s + LtlfiltStats::total_cpu_s +
+        RealizabilityChecker::total_cpu_s + SatisfiabilityChecker::total_cpu_s +
+        GanakStats::total_cpu_s;
+    line("  unattributed", child_cpu - attributed);
 }
 
 std::vector<ScoredSpecification> original_population(
@@ -417,6 +465,7 @@ int main(int argc, const char* const argv[]) {
     const std::size_t seed = *maybe_seed;
     std::cout << "Seed: " << seed << "\n";
     register_crash_metadata(format_crash_metadata(seed, *input_path, cfg));
+    const auto wall_start = std::chrono::steady_clock::now();
     try {
         auto [population_result, filter_stats] =
             run_evolution(cfg, std::move(population), fitness_function,
@@ -436,6 +485,13 @@ int main(int argc, const char* const argv[]) {
         std::cout << ", written to " << *output_dir << "/\n";
         print_filter_report(filter_stats);
         print_timing_report();
+        if (cfg.report_cpu_timing) {
+            const double wall_s =
+                std::chrono::duration<double>(std::chrono::steady_clock::now() -
+                                              wall_start)
+                    .count();
+            print_cpu_report(wall_s);
+        }
     } catch (const std::exception& exc) {
         std::cerr << "fatal: " << exc.what() << "\n";
         return 1;

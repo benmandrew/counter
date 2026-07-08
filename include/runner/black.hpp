@@ -21,6 +21,9 @@ class SatisfiabilityChecker {
     inline static std::atomic<std::size_t> n_cache_hits{0};
     inline static std::size_t n_timeouts = 0;
     inline static double total_time_s = 0.0;
+    // Child-process CPU time (user+sys), from wait4(); unlike total_time_s
+    // (wall) it excludes time the parent spends blocked waiting on the child.
+    inline static double total_cpu_s = 0.0;
 
     /// Returns true (SAT), false (UNSAT), or nullopt (timed out / unknown).
     std::optional<bool> check_satisfiability(const std::string& ltl_formula);

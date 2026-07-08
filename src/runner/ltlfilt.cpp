@@ -1,5 +1,6 @@
 #include "runner/ltlfilt.hpp"
 
+#include <sys/resource.h>
 #include <sys/types.h>
 #include <sys/wait.h>
 #include <unistd.h>
@@ -21,7 +22,16 @@ namespace {
 struct ProcessResult {
     int m_exit_code = 0;
     std::string m_output;
+    double m_cpu_s = 0.0;
 };
+
+double rusage_cpu_seconds(const struct rusage& usage) {
+    const double user_s = static_cast<double>(usage.ru_utime.tv_sec) +
+                          (static_cast<double>(usage.ru_utime.tv_usec) / 1e6);
+    const double sys_s = static_cast<double>(usage.ru_stime.tv_sec) +
+                         (static_cast<double>(usage.ru_stime.tv_usec) / 1e6);
+    return user_s + sys_s;
+}
 
 ProcessResult execute_and_capture(const std::vector<std::string>& arguments) {
     assert(!arguments.empty());
@@ -76,7 +86,9 @@ ProcessResult execute_and_capture(const std::vector<std::string>& arguments) {
     }
     close(pipe_fds[0]);
     int wait_status = 0;
-    [[maybe_unused]] const pid_t waited = waitpid(child_pid, &wait_status, 0);
+    struct rusage child_usage{};
+    [[maybe_unused]] const pid_t waited =
+        wait4(child_pid, &wait_status, 0, &child_usage);
     assert(waited >= 0);
     int exit_code = -1;
     if (WIFEXITED(wait_status)) {
@@ -84,7 +96,7 @@ ProcessResult execute_and_capture(const std::vector<std::string>& arguments) {
     } else if (WIFSIGNALED(wait_status)) {
         exit_code = 128 + WTERMSIG(wait_status);
     }
-    return {exit_code, output};
+    return {exit_code, output, rusage_cpu_seconds(child_usage)};
 }
 
 }  // namespace
@@ -131,6 +143,7 @@ std::string normalize_ltl(const std::string& formula) {
     }
     std::scoped_lock lock(cache_mutex);
     LtlfiltStats::total_time_s += elapsed;
+    LtlfiltStats::total_cpu_s += result.m_cpu_s;
     cache.emplace(formula, normalized);
     return normalized;
 }

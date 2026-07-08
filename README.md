@@ -82,7 +82,11 @@ generations     = 20   # double the default evolution rounds
 population_size = 500
 
 [runtime]
-parallel = 16          # override thread pool size
+parallel = 16              # override thread pool size
+report_cpu_timing = true   # print a CPU-attribution report at the end:
+                           # your code vs. the external CLI tools (black,
+                           # ltlsynt, ganak, ...), measured per-process via
+                           # getrusage/wait4. Defaults to false.
 ```
 
 A fully-annotated template with every key and its default is provided in

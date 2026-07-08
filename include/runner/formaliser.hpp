@@ -67,6 +67,11 @@ class RequirementFormaliser {
     inline static std::size_t n_cache_hits = 0;
     inline static std::size_t n_cache_misses = 0;
     inline static double total_time_s = 0.0;
+    // Total user+sys CPU of the persistent node child, sampled once via wait4
+    // when the process is reaped at teardown (per-request attribution isn't
+    // possible for a long-lived child). Unlike the other tools this is a
+    // whole-run aggregate, not a per-call sum.
+    inline static double total_cpu_s = 0.0;
 
     explicit RequirementFormaliser(std::vector<std::string> command);
 

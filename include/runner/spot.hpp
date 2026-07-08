@@ -29,6 +29,9 @@ struct Ltl2tgbaStats {
     inline static std::size_t n_cache_hits = 0;
     inline static std::size_t n_cache_misses = 0;
     inline static double total_time_s = 0.0;
+    // Child-process CPU time (user+sys), from wait4(); unlike total_time_s
+    // (wall) it excludes time the parent spends blocked waiting on the child.
+    inline static double total_cpu_s = 0.0;
 };
 
 class RealizabilityChecker {
@@ -36,6 +39,7 @@ class RealizabilityChecker {
     inline static std::size_t n_cache_misses = 0;
     inline static std::size_t n_cache_hits = 0;
     inline static double total_time_s = 0.0;
+    inline static double total_cpu_s = 0.0;
 
     /// Checks whether the specification is realizable using ltlsynt. Results
     /// are memoised by the full specification formula, so repeated calls with

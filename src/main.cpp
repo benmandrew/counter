@@ -449,7 +449,7 @@ int main(int argc, const char* const argv[]) {
         return 1;
     }
     std::cout << "Original specification:\n"
-              << original_spec.to_string() << "\n";
+              << strip_atom_prefix(original_spec).to_string() << "\n";
     AggregateWeightedFitnessFunction fitness_function =
         get_fitness_function(original_spec, cfg);
     const std::vector<FilterFunction> filter_functions =

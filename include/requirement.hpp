@@ -9,6 +9,7 @@
 #include <functional>
 #include <optional>
 #include <string>
+#include <string_view>
 #include <type_traits>
 #include <variant>
 #include <vector>
@@ -173,6 +174,31 @@ std::string to_string(const Timing& timing);
 /// G((!C & X(C)) -> X(body)) & (C -> body).
 /// The result is suitable for passing directly to ltl2tgba or ltlsynt.
 std::string requirement_to_ltl(const Requirement& requirement);
+
+/// Internal lowercase tag prepended to every atomic-proposition name at load
+/// time. A lowercase-first identifier is always lexed as a single atomic
+/// proposition by both SPOT and black, so no atom name can be mistaken for a
+/// temporal operator (G F X U R W M). The tag is internal-only and stripped
+/// from every user-facing output.
+inline constexpr std::string_view k_atom_prefix = "iap_";
+
+/// Returns a copy of @p req with k_atom_prefix prepended to every atom leaf of
+/// its condition and response formulae (m_ltl is re-derived by the
+/// constructor).
+Requirement add_atom_prefix(const Requirement& req);
+
+/// Inverse of add_atom_prefix: removes a leading k_atom_prefix from every atom
+/// leaf if present. Defensive at name granularity so directly-constructed
+/// requirements (e.g. in tests) are unharmed.
+Requirement strip_atom_prefix(const Requirement& req);
+
+/// Applies add_atom_prefix to every requirement and prepends k_atom_prefix to
+/// every entry of m_in_atoms/m_out_atoms.
+Specification add_atom_prefix(const Specification& spec);
+
+/// Inverse of the Specification add_atom_prefix: strips every requirement and
+/// removes a leading k_atom_prefix from each atom-vector entry if present.
+Specification strip_atom_prefix(const Specification& spec);
 
 /// \cond
 namespace std {  // NOLINT(build/namespaces)

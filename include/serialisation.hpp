@@ -70,15 +70,18 @@ inline void from_json(const nlohmann::json& jobj, Timing& tim) {
 // --- Requirement ---
 
 inline void to_json(nlohmann::json& jobj, const Requirement& req) {
-    jobj = {{"condition", req.m_condition.to_string()},
-            {"condition-type", req.m_condition_type == ConditionType::Trigger
-                                   ? "trigger"
-                                   : "continual"},
-            {"response", req.m_response.to_string()},
-            {"timing", req.m_timing}};
+    // Atom names carry the internal k_atom_prefix in memory; strip it so the
+    // serialised form shows the user's original names.
+    const Requirement stripped = strip_atom_prefix(req);
+    jobj = {{"condition", stripped.m_condition.to_string()},
+            {"condition-type",
+             stripped.m_condition_type == ConditionType::Trigger ? "trigger"
+                                                                 : "continual"},
+            {"response", stripped.m_response.to_string()},
+            {"timing", stripped.m_timing}};
     // Emitted only when locked; absence round-trips to the default
     // (weakenable).
-    if (!req.m_weakenable) {
+    if (!stripped.m_weakenable) {
         jobj["weakenable"] = false;
     }
 }
@@ -86,10 +89,13 @@ inline void to_json(nlohmann::json& jobj, const Requirement& req) {
 // --- Specification ---
 
 inline void to_json(nlohmann::json& jobj, const Specification& spc) {
+    // Requirements are stripped by to_json(Requirement) as they serialise; the
+    // atom vectors have no such hook, so strip them here (once, on this node).
+    const Specification stripped = strip_atom_prefix(spc);
     jobj = {{"assumptions", spc.m_assumptions},
             {"guarantees", spc.m_guarantees},
-            {"in_atoms", spc.m_in_atoms},
-            {"out_atoms", spc.m_out_atoms}};
+            {"in_atoms", stripped.m_in_atoms},
+            {"out_atoms", stripped.m_out_atoms}};
 }
 
 namespace serialisation {
@@ -363,7 +369,9 @@ inline serialisation::ScoredSpecification load_scored_specification(
                                  *err);
     }
     try {
-        return json_in.get<serialisation::ScoredSpecification>();
+        auto scored = json_in.get<serialisation::ScoredSpecification>();
+        scored.spec = add_atom_prefix(scored.spec);
+        return scored;
     } catch (const nlohmann::json::exception& exc) {
         throw std::runtime_error("invalid specification in " + path + ": " +
                                  exc.what());
@@ -390,7 +398,7 @@ inline Specification load_specification(const std::string& path) {
                                  *err);
     }
     try {
-        return json_in.get<Specification>();
+        return add_atom_prefix(json_in.get<Specification>());
     } catch (const nlohmann::json::exception& exc) {
         throw std::runtime_error("invalid specification in " + path + ": " +
                                  exc.what());

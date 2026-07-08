@@ -1,3 +1,9 @@
+#include <unistd.h>
+
+#include <cstdio>
+#include <fstream>
+#include <string>
+
 #include <nlohmann/json.hpp>
 
 #include "requirement.hpp"
@@ -6,6 +12,64 @@
 #include "test_support.hpp"
 
 namespace {
+
+std::string write_temp_spec(const std::string& contents) {
+    std::string path = "/tmp/counter-spec-XXXXXX";
+    const int file_descriptor = mkstemp(path.data());
+    expect(file_descriptor >= 0,
+           "atom-prefix: failed to create temp spec file");
+    close(file_descriptor);
+    std::ofstream out(path);
+    expect(out.good(), "atom-prefix: failed to open temp spec file");
+    out << contents;
+    return path;
+}
+
+// out_atom "GF" is the formerly-dangerous case (lexed as G F operators);
+// "STATE_FAULT" is a benign uppercase name that used to only warn.
+const char* const k_atom_spec_json = R"JSON({
+  "assumptions": [],
+  "guarantees": [
+    {"condition": "c", "response": "GF", "condition-type": "continual",
+     "timing": {"type": "Immediately"}},
+    {"condition": "c", "response": "STATE_FAULT", "condition-type": "continual",
+     "timing": {"type": "Immediately"}}
+  ],
+  "in_atoms": ["c"],
+  "out_atoms": ["GF", "STATE_FAULT"]
+})JSON";
+
+void test_load_serialise_preserves_original_atom_names() {
+    const std::string path = write_temp_spec(k_atom_spec_json);
+    const Specification spec = load_specification(path);
+    std::remove(path.c_str());
+    nlohmann::json jobj;
+    to_json(jobj, spec);
+    expect(jobj.dump().find("iap_") == std::string::npos,
+           "atom-prefix: serialised spec must not leak the internal prefix");
+    expect(jobj.at("out_atoms").at(0) == "GF" &&
+               jobj.at("out_atoms").at(1) == "STATE_FAULT",
+           "atom-prefix: out_atoms should round-trip to original names");
+    expect(jobj.at("guarantees").at(0).at("response") == "GF",
+           "atom-prefix: response 'GF' should round-trip to original name");
+}
+
+void test_load_tags_atoms_internally() {
+    const std::string path = write_temp_spec(k_atom_spec_json);
+    const Specification spec = load_specification(path);
+    std::remove(path.c_str());
+    expect(spec.m_in_atoms.size() == 1 && spec.m_in_atoms[0] == "iap_c",
+           "atom-prefix: in-memory in_atom should carry the internal prefix");
+    expect(spec.m_out_atoms.size() == 2 && spec.m_out_atoms[0] == "iap_GF" &&
+               spec.m_out_atoms[1] == "iap_STATE_FAULT",
+           "atom-prefix: in-memory out_atoms should carry the internal prefix");
+    expect(spec.m_guarantees.size() == 2,
+           "atom-prefix: expected two guarantees after load");
+    expect(spec.m_guarantees[0].m_response.to_string() == "iap_GF",
+           "atom-prefix: in-memory response formula should carry the prefix");
+    expect(spec.m_guarantees[0].m_ltl.find("iap_GF") != std::string::npos,
+           "atom-prefix: derived LTL should contain the prefixed atom");
+}
 
 void test_timing_immediately() {
     const Timing tim = timing::immediately();
@@ -266,4 +330,6 @@ void run_serialisation_tests() {
     test_specification_json_structure();
     test_scored_specification_without_fitness();
     test_scored_specification_with_fitness();
+    test_load_serialise_preserves_original_atom_names();
+    test_load_tags_atoms_internally();
 }

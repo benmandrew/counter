@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1783524151853,
+  "lastUpdate": 1783526660226,
   "repoUrl": "https://github.com/benmandrew/counter",
   "entries": {
     "counter benchmarks": [
@@ -1008,6 +1008,78 @@ window.BENCHMARK_DATA = {
             "value": 3889.1462876269666,
             "unit": "ns/iter",
             "extra": "iterations: 179858\ncpu: 3888.830766493566 ns\nthreads: 1"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "benmandrew@gmail.com",
+            "name": "benmandrew",
+            "username": "benmandrew"
+          },
+          "committer": {
+            "email": "benmandrew@gmail.com",
+            "name": "benmandrew",
+            "username": "benmandrew"
+          },
+          "distinct": true,
+          "id": "94522258a7e020f770b0247d621f02c9706e7952",
+          "message": "feat: compare takes an --ideals directory instead of repeated --ideal\n\nReplace the repeatable --ideal <file> flag with a single --ideals <dir>\nthat loads every .json in the directory as an ideal specification, sorted\nby filename. Update the built-in usage text, README, and CLAUDE.md CLI\nreference to match, and repoint analyse.sh at the new examples layout and\ndirectory-based flag.",
+          "timestamp": "2026-07-08T16:53:21+01:00",
+          "tree_id": "21415dbbc9fb9dfc0b276eaf9f034ffddb567bfb",
+          "url": "https://github.com/benmandrew/counter/commit/94522258a7e020f770b0247d621f02c9706e7952"
+        },
+        "date": 1783526659349,
+        "tool": "googlecpp",
+        "benches": [
+          {
+            "name": "Syntactic similarity - small formulas (3 variables)",
+            "value": 524.0558204433725,
+            "unit": "ns/iter",
+            "extra": "iterations: 1348789\ncpu: 524.0129130649791 ns\nthreads: 1"
+          },
+          {
+            "name": "Syntactic similarity - large formulas (11 variables, O(n*m) shared_subformulae)",
+            "value": 2047.921167130654,
+            "unit": "ns/iter",
+            "extra": "iterations: 339465\ncpu: 2047.818900328458 ns\nthreads: 1"
+          },
+          {
+            "name": "Spec implication check - warm black cache",
+            "value": 802.1189220848656,
+            "unit": "ns/iter",
+            "extra": "iterations: 865634\ncpu: 802.0851976701468 ns\nthreads: 1"
+          },
+          {
+            "name": "Trace model counting - matrix exponentiation/steps:5",
+            "value": 140.42229361207802,
+            "unit": "ns/iter",
+            "extra": "iterations: 4972384\ncpu: 140.4229198710317 ns\nthreads: 1"
+          },
+          {
+            "name": "Trace model counting - matrix exponentiation/steps:10",
+            "value": 160.0113735441577,
+            "unit": "ns/iter",
+            "extra": "iterations: 4381308\ncpu: 160.00485129098448 ns\nthreads: 1"
+          },
+          {
+            "name": "Trace model counting - matrix exponentiation/steps:20",
+            "value": 180.23486735619923,
+            "unit": "ns/iter",
+            "extra": "iterations: 3855853\ncpu: 180.23223603181967 ns\nthreads: 1"
+          },
+          {
+            "name": "Trace model counting - matrix exponentiation/steps:50",
+            "value": 225.39771425590982,
+            "unit": "ns/iter",
+            "extra": "iterations: 3067710\ncpu: 225.3925948019858 ns\nthreads: 1"
+          },
+          {
+            "name": "Mutate specification - 3-guarantee takeoff spec",
+            "value": 3714.0782826185978,
+            "unit": "ns/iter",
+            "extra": "iterations: 192712\ncpu: 3713.754265432354 ns\nthreads: 1"
           }
         ]
       }

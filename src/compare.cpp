@@ -22,19 +22,18 @@ namespace {
 
 struct Args {
     std::string repairs_dir;
-    std::vector<std::string> ideal_paths;
+    std::string ideals_dir;
 };
 
 void print_usage(const char* prog) {
-    std::cerr << "Usage: " << prog
-              << " --repairs <dir> --ideal <file>"
-                 " [--ideal <file>...]\n"
-              << "\n"
-              << "Compares each repair JSON in <dir> against each ideal\n"
-              << "repair and reports whether the found repair is equivalent\n"
-              << "to, strictly stronger than, strictly weaker than, or\n"
-              << "incomparable with the ideal, under the assume-guarantee\n"
-              << "implication order.\n";
+    std::cerr
+        << "Usage: " << prog << " --repairs <dir> --ideals <dir>\n"
+        << "\n"
+        << "Compares each repair JSON in the repairs directory against\n"
+        << "every ideal JSON in the ideals directory and reports whether\n"
+        << "the found repair is equivalent to, strictly stronger than,\n"
+        << "strictly weaker than, or incomparable with the ideal, under\n"
+        << "the assume-guarantee implication order.\n";
 }
 
 std::optional<Args> parse_args(int argc, const char* const* argv) {
@@ -50,14 +49,15 @@ std::optional<Args> parse_args(int argc, const char* const* argv) {
         } else if (arg == "--repairs" && i + 1 < argc &&
                    argv[i + 1] != nullptr) {
             args.repairs_dir = argv[++i];
-        } else if (arg == "--ideal" && i + 1 < argc && argv[i + 1] != nullptr) {
-            args.ideal_paths.emplace_back(argv[++i]);
+        } else if (arg == "--ideals" && i + 1 < argc &&
+                   argv[i + 1] != nullptr) {
+            args.ideals_dir = argv[++i];
         } else {
             std::cerr << "Unknown argument: " << arg << "\n";
             return std::nullopt;
         }
     }
-    if (args.repairs_dir.empty() || args.ideal_paths.empty()) {
+    if (args.repairs_dir.empty() || args.ideals_dir.empty()) {
         return std::nullopt;
     }
     return args;
@@ -83,6 +83,22 @@ load_repairs(const std::string& dir) {
                   return lfit > rfit;
               });
     return repairs;
+}
+
+std::vector<std::pair<std::string, Specification>> load_ideals(
+    const std::string& dir) {
+    std::vector<std::pair<std::string, Specification>> ideals;
+    for (const auto& entry : std::filesystem::directory_iterator(dir)) {
+        if (entry.path().extension() != ".json") {
+            continue;
+        }
+        ideals.emplace_back(entry.path().filename().string(),
+                            load_specification(entry.path().string()));
+    }
+    std::sort(
+        ideals.begin(), ideals.end(),
+        [](const auto& lhs, const auto& rhs) { return lhs.first < rhs.first; });
+    return ideals;
 }
 
 // Priority: equivalent > stronger > weaker > incomparable > timeout
@@ -141,16 +157,15 @@ int main(int argc, const char* const argv[]) {
     }
 
     std::vector<std::pair<std::string, Specification>> ideals;
-    ideals.reserve(args.ideal_paths.size());
-    for (const std::string& path : args.ideal_paths) {
-        try {
-            ideals.emplace_back(std::filesystem::path(path).filename().string(),
-                                load_specification(path));
-        } catch (const std::exception& exc) {
-            std::cerr << "Error loading ideal " << path << ": " << exc.what()
-                      << "\n";
-            return 1;
-        }
+    try {
+        ideals = load_ideals(args.ideals_dir);
+    } catch (const std::exception& exc) {
+        std::cerr << "Error loading ideals: " << exc.what() << "\n";
+        return 1;
+    }
+    if (ideals.empty()) {
+        std::cerr << "No .json files found in: " << args.ideals_dir << "\n";
+        return 1;
     }
 
     SatisfiabilityChecker& checker = global_sat_checker();

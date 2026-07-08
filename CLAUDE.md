@@ -118,7 +118,7 @@ One file: prints `REALIZABLE` or `UNREALIZABLE`. Multiple files: prints `<path>:
 | Flag | Description |
 |---|---|
 | `--repairs <dir>` | Directory of repair JSON files (required) |
-| `--ideal <file>` | Ideal repair to compare against (repeatable, required) |
+| `--ideals <dir>` | Directory of ideal repair JSON files to compare against (required) |
 | `-h`, `--help` | Show help |
 
 **`ltl`** — print LTL formulae for specification requirements

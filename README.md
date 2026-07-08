@@ -33,7 +33,7 @@ cmake --build build                  # incremental build only
 
 ```
 counter --input <spec.json> --output-dir <dir> [--config <file.toml>] [--seed <n>]
-compare --repairs <dir> --ideal <file> [--ideal <file>...]
+compare --repairs <dir> --ideals <dir>
 realize <spec.json> [<spec.json> ...]
 ltl <spec.json> [<spec.json> ...]
 ```

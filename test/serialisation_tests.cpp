@@ -73,6 +73,16 @@ void test_timing_eventually() {
            "from_json(Timing): Eventually round-trip should match");
 }
 
+void test_timing_always() {
+    const Timing tim = timing::always();
+    nlohmann::json jobj;
+    timing::to_json(jobj, tim);
+    expect(jobj.at("type") == "Always",
+           "to_json(Timing): Always should serialise with type key");
+    expect(jobj.get<Timing>() == tim,
+           "from_json(Timing): Always round-trip should match");
+}
+
 void test_requirement_round_trip() {
     const Requirement req(Formula("(P) & (Q)"), Formula("R"),
                           timing::within_ticks(3), ConditionType::Trigger);
@@ -209,6 +219,7 @@ void run_serialisation_tests() {
     test_timing_for_ticks();
     test_timing_after_ticks();
     test_timing_eventually();
+    test_timing_always();
     test_requirement_round_trip();
     test_requirement_json_keys();
     test_requirement_json_keys_trigger();

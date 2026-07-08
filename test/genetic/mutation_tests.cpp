@@ -90,6 +90,14 @@ void test_timing_mutation_eventually_is_unchanged() {
            "mutation: eventually has no weakening and should be unchanged");
 }
 
+void test_timing_mutation_always_becomes_for_ticks() {
+    const Timing mutated = mutate_timing(timing::always(), make_source({}, 0U));
+    const auto* for_ticks = std::get_if<timing::ForTicks>(&mutated);
+    expect(for_ticks != nullptr, "mutation: always should weaken to for-ticks");
+    expect(for_ticks->m_ticks == 10,
+           "mutation: always should weaken to for 10 ticks");
+}
+
 void test_timing_mutation_within_ticks_step_down() {
     // next_index(3) = 0 → step down: within_ticks(3 + 1 = 4)
     const Timing mutated =
@@ -132,6 +140,7 @@ void run_mutation_tests() {
     test_timing_mutation_non_parameterized_becomes_within_one_tick();
     test_timing_mutation_immediately_becomes_within_one_tick();
     test_timing_mutation_eventually_is_unchanged();
+    test_timing_mutation_always_becomes_for_ticks();
     test_timing_mutation_within_ticks_step_down();
     test_timing_mutation_within_ticks_double();
     test_timing_mutation_after_ticks_becomes_within_ticks();

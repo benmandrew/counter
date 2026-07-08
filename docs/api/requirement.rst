@@ -4,9 +4,10 @@ requirement.hpp
 Defines the core domain types used throughout the tool:
 
 ``Timing``
-  A ``std::variant`` over six timing modalities (``Immediately``,
+  A ``std::variant`` over seven timing modalities (``Immediately``,
   ``NextTimepoint``, ``WithinTicks``, ``ForTicks``, ``AfterTicks``,
-  ``Eventually``) that encode FRETISH temporal operators as algebraic types.
+  ``Eventually``, ``Always``) that encode FRETISH temporal operators
+  as algebraic types.
 
 ``ConditionType``
   Controls whether a requirement's condition is evaluated as a rising-edge

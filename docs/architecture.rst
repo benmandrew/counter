@@ -49,7 +49,7 @@ Key types
 
 ``Timing``
   ``std::variant<Immediately, NextTimepoint, WithinTicks, ForTicks,
-  AfterTicks, Eventually>``.  Encodes FRETISH temporal operators.  Defined in
+  AfterTicks, Eventually, Always>``.  Encodes FRETISH temporal operators.  Defined in
   ``requirement.hpp``; constructors live in the ``timing::`` namespace so
   ADL finds them for variant visitors.
 

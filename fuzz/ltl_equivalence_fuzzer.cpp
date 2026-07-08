@@ -86,7 +86,7 @@ std::string generate_formula(ByteConsumer& bytes, int depth) {
 constexpr std::size_t kMaxTicks = 5;
 
 Timing generate_timing(ByteConsumer& bytes) {
-    switch (bytes.next(6)) {
+    switch (bytes.next(7)) {
         case 0:
             return timing::immediately();
         case 1:
@@ -97,8 +97,10 @@ Timing generate_timing(ByteConsumer& bytes) {
             return timing::for_ticks(bytes.next(kMaxTicks + 1));
         case 4:
             return timing::after_ticks(bytes.next(kMaxTicks + 1));
-        default:
+        case 5:
             return timing::eventually();
+        default:
+            return timing::always();
     }
 }
 

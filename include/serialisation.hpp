@@ -37,6 +37,8 @@ inline void to_json(nlohmann::json& jobj, const Timing& tim) {
                 jobj = {{"type", "AfterTicks"}, {"ticks", val.m_ticks}};
             } else if constexpr (std::is_same_v<T, Eventually>) {
                 jobj = {{"type", "Eventually"}};
+            } else if constexpr (std::is_same_v<T, Always>) {
+                jobj = {{"type", "Always"}};
             }
         },
         tim);
@@ -56,6 +58,8 @@ inline void from_json(const nlohmann::json& jobj, Timing& tim) {
         tim = after_ticks(jobj.at("ticks").get<std::size_t>());
     } else if (type == "Eventually") {
         tim = eventually();
+    } else if (type == "Always") {
+        tim = always();
     } else {
         throw std::invalid_argument("unknown timing type: " + type);
     }
@@ -218,7 +222,7 @@ inline std::optional<std::string> validate_requirement_json(
     const std::string ttype = timing.at("type").get<std::string>();
     if (ttype != "Immediately" && ttype != "NextTimepoint" &&
         ttype != "WithinTicks" && ttype != "ForTicks" &&
-        ttype != "AfterTicks" && ttype != "Eventually") {
+        ttype != "AfterTicks" && ttype != "Eventually" && ttype != "Always") {
         return path + ".timing.type: unknown value '" + ttype + "'";
     }
     if (ttype == "WithinTicks" || ttype == "ForTicks" ||

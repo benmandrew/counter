@@ -207,8 +207,10 @@ std::string to_string(const Timing& timing) {
                 return "for " + std::to_string(value.m_ticks) + " ticks";
             } else if constexpr (std::is_same_v<T, timing::AfterTicks>) {
                 return "after " + std::to_string(value.m_ticks) + " ticks";
-            } else {
+            } else if constexpr (std::is_same_v<T, timing::Eventually>) {
                 return "eventually";
+            } else {
+                return "always";
             }
         },
         timing);
@@ -292,8 +294,10 @@ std::string requirement_to_ltl(const Requirement& requirement) {
                 return "(" + expand_for(response_str, variant.m_ticks) + ")";
             } else if constexpr (std::is_same_v<T, timing::AfterTicks>) {
                 return "(" + expand_after(response_str, variant.m_ticks) + ")";
-            } else {
+            } else if constexpr (std::is_same_v<T, timing::Eventually>) {
                 return "F" + response_str;
+            } else {
+                return "G" + response_str;
             }
         },
         requirement.m_timing);

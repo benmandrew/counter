@@ -170,6 +170,29 @@ void test_timing_immediately_vs_next_timepoint() {
            "timing component");
 }
 
+void test_timing_identical_always() {
+    const Requirement req{Formula("p"), Formula("p"), timing::always()};
+    const double result = syntactic_similarity(req, req, Config{});
+    expect(std::fabs(result - 1.0) < 1e-12,
+           "timing-sim: identical always requirements should score 1.0");
+}
+
+// Always is the top of the order; Eventually is the bottom, so they are
+// maximally dissimilar: synSim_timing = μ(↓Eventually) / μ(↓Always) = 0.01
+// / 2.04.
+//   μ(↓Always) = 4*0.01 + 2*(0.5/0.5) = 0.04 + 2.0 = 2.04
+void test_timing_always_vs_eventually() {
+    const Requirement req_strong{Formula("p"), Formula("p"), timing::always()};
+    const Requirement req_weak{Formula("p"), Formula("p"),
+                               timing::eventually()};
+    const double timing_sim = 0.01 / 2.04;
+    const double expected = (1.0 + 1.0 + timing_sim) / 3.0;
+    const double result = syntactic_similarity(req_strong, req_weak, Config{});
+    expect(std::fabs(result - expected) < 1e-9,
+           "timing-sim: always vs eventually should give tiny timing "
+           "component");
+}
+
 }  // namespace
 
 void run_syntactic_similarity_tests() {
@@ -184,4 +207,6 @@ void run_syntactic_similarity_tests() {
     test_timing_comparable_for_ticks();
     test_timing_for_ticks_vs_eventually();
     test_timing_immediately_vs_next_timepoint();
+    test_timing_identical_always();
+    test_timing_always_vs_eventually();
 }

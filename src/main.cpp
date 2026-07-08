@@ -351,7 +351,7 @@ void print_help(const char* prog) {
         << "    \"out_atoms\": [\"x\", \"y\"]\n"
         << "  }\n"
         << "\n"
-        << "Timing types: Immediately, NextTimepoint, Eventually,\n"
+        << "Timing types: Immediately, NextTimepoint, Eventually, Always,\n"
         << "              WithinTicks {\"ticks\": n}, ForTicks {\"ticks\": "
            "n},\n"
         << "              AfterTicks  {\"ticks\": n}\n";

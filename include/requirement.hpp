@@ -46,9 +46,12 @@ struct AfterTicks {
 /// Response must hold at some timepoint at or after the condition.
 struct Eventually {};
 
+/// Response must hold at all timepoints from the condition onward.
+struct Always {};
+
 /// Algebraic data type for requirement timing.
 using Timing = std::variant<Immediately, NextTimepoint, WithinTicks, ForTicks,
-                            AfterTicks, Eventually>;
+                            AfterTicks, Eventually, Always>;
 
 inline Timing immediately() { return Immediately{}; }
 inline Timing next_timepoint() { return NextTimepoint{}; }
@@ -56,6 +59,7 @@ inline Timing within_ticks(std::size_t ticks) { return WithinTicks{ticks}; }
 inline Timing for_ticks(std::size_t ticks) { return ForTicks{ticks}; }
 inline Timing after_ticks(std::size_t ticks) { return AfterTicks{ticks}; }
 inline Timing eventually() { return Eventually{}; }
+inline Timing always() { return Always{}; }
 
 }  // namespace timing
 

@@ -69,7 +69,8 @@
             "WithinTicks",
             "ForTicks",
             "AfterTicks",
-            "Eventually"
+            "Eventually",
+            "Always"
           ]
         },
         "ticks": {

@@ -105,6 +105,9 @@ RawCounts count_timing(const Timing& timing) {
             } else if constexpr (std::is_same_v<T, timing::Eventually>) {
                 counts.operators.insert("eventually");
                 ++counts.n1;
+            } else if constexpr (std::is_same_v<T, timing::Always>) {
+                counts.operators.insert("always");
+                ++counts.n1;
             } else {
                 if constexpr (std::is_same_v<T, timing::WithinTicks>) {
                     counts.operators.insert("within");

@@ -58,6 +58,13 @@ void test_eventually() {
            "requirement_to_ltl: Eventually should produce G(T -> F R)");
 }
 
+void test_always() {
+    const std::string result =
+        ltl_continual(Formula("t"), Formula("r"), timing::always());
+    expect(result == "G((t) -> G(r))",
+           "requirement_to_ltl: Always should produce G(T -> G R)");
+}
+
 void test_within_ticks_zero() {
     const std::string result =
         ltl_continual(Formula("t"), Formula("r"), timing::within_ticks(0));
@@ -153,6 +160,14 @@ void test_trigger_eventually() {
            "G((!C & XC) -> X(F(R))) & (C -> F(R))");
 }
 
+void test_trigger_always() {
+    const std::string result =
+        ltl_trigger(Formula("c"), Formula("r"), timing::always());
+    expect(result == "G((!(c) & X(c)) -> X(G(r))) & ((c) -> G(r))",
+           "requirement_to_ltl trigger: Always should produce "
+           "G((!C & XC) -> X(G(R))) & (C -> G(R))");
+}
+
 void test_trigger_for_ticks_one() {
     const std::string result =
         ltl_trigger(Formula("c"), Formula("r"), timing::for_ticks(1));
@@ -223,6 +238,7 @@ void test_to_string_is_valid_fretish_for_all_timings_and_condition_types() {
         timing::immediately(),   timing::next_timepoint(),
         timing::within_ticks(3), timing::for_ticks(2),
         timing::after_ticks(1),  timing::eventually(),
+        timing::always(),
     };
     for (const Timing& tim : timings) {
         expect_valid_fretish(formaliser,
@@ -261,6 +277,7 @@ void run_requirement_tests() {
     test_immediately();
     test_next_timepoint();
     test_eventually();
+    test_always();
     test_within_ticks_zero();
     test_within_ticks_one();
     test_within_ticks_two();
@@ -273,6 +290,7 @@ void run_requirement_tests() {
     test_trigger_immediately();
     test_trigger_next_timepoint();
     test_trigger_eventually();
+    test_trigger_always();
     test_trigger_for_ticks_one();
     test_trigger_within_ticks_one();
     test_trigger_after_ticks_one();

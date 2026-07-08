@@ -14,7 +14,7 @@ namespace {
 
 // Geometric ratio r and small fixed weight w for the timing measure.
 // μ(ForTicks{N}) = μ(WithinTicks{N}) = μ(AfterTicks{N}) = r^N
-// μ(Immediately) = μ(NextTimepoint) = μ(Eventually) = w
+// μ(Immediately) = μ(NextTimepoint) = μ(Eventually) = μ(Always) = w
 constexpr double kTimingGeoRatio = 0.5;
 constexpr double kTimingDiscreteWeight = 0.01;
 
@@ -79,8 +79,25 @@ int after_ticks_self(const Timing& tim) {
     return -1;
 }
 
+bool is_always(const Timing& tim) {
+    return std::holds_alternative<timing::Always>(tim);
+}
+
+// μ(↓Always) — Always is the top of the order: it implies (i.e. its downset
+// contains) every timing except the AfterTicks family, which requires the
+// response to be *false* at the initial ticks and so is incompatible with
+// "always". ↓Always = {Always, Eventually, Immediately, NextTimepoint} ∪
+// {WithinTicks{k≥1}} ∪ {ForTicks{k≥1}}. The two geometric tails are each
+// Σ_{k=1}^∞ r^k = geo_sum_from(1).
+double mu_downset_always() {
+    return (4 * kTimingDiscreteWeight) + (2 * geo_sum_from(1));
+}
+
 // μ(↓tim) — measure of the downward closure of tim in the timing partial order.
 double mu_downset(const Timing& tim) {
+    if (is_always(tim)) {
+        return mu_downset_always();
+    }
     double result = kTimingDiscreteWeight;  // Eventually ∈ ↓tim always
     result += geo_sum_up_to(max_for_index(tim));
     if (has_immediately(tim)) {
@@ -102,6 +119,21 @@ double mu_downset(const Timing& tim) {
 
 // μ(↓tim1 ∩ ↓tim2) — element e is in intersection iff e ≤ tim1 and e ≤ tim2.
 double mu_intersection(const Timing& tim1, const Timing& tim2) {
+    if (is_always(tim1) && is_always(tim2)) {
+        return mu_downset_always();
+    }
+    if (is_always(tim1) || is_always(tim2)) {
+        // ↓Always is everything but the AfterTicks family, so ↓Always ∩ ↓other
+        // is ↓other with its AfterTicks self-element (the only AfterTicks that
+        // can appear in a downset) removed.
+        const Timing& other = is_always(tim1) ? tim2 : tim1;
+        double result = mu_downset(other);
+        const int aft = after_ticks_self(other);
+        if (aft >= 0) {
+            result -= std::pow(kTimingGeoRatio, aft);
+        }
+        return result;
+    }
     double result = kTimingDiscreteWeight;  // Eventually always in both
     result += geo_sum_up_to(std::min(max_for_index(tim1), max_for_index(tim2)));
     if (has_immediately(tim1) && has_immediately(tim2)) {

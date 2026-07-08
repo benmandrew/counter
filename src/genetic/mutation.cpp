@@ -141,6 +141,32 @@ Formula mutate_formula(const Formula& formula,
     return mutated;
 }
 
+Timing mutate_for_timing(const timing::ForTicks& for_ticks,
+                         const RandomSource& random_source) {
+    if (for_ticks.m_ticks == 1) {
+        return random_source.next_bool() ? timing::next_timepoint()
+                                         : timing::immediately();
+    }
+    return random_source.next_bool() ? timing::for_ticks(for_ticks.m_ticks - 1)
+                                     : timing::for_ticks(for_ticks.m_ticks / 2);
+}
+
+Timing mutate_within_timing(const timing::WithinTicks& within_ticks,
+                            const RandomSource& random_source) {
+    std::size_t index = random_source.next_index(3);
+    switch (index) {
+        case 0:
+            return timing::within_ticks(within_ticks.m_ticks + 1);
+        case 1:
+            return timing::within_ticks(within_ticks.m_ticks * 2);
+        case 2:
+            return timing::eventually();
+        default:
+            assert(false);
+            __builtin_unreachable();
+    }
+}
+
 Timing mutate_timing(const Timing& timing, const RandomSource& random_source) {
     assert(random_source);
     const auto mutation_function = [&](const auto& value) -> Timing {
@@ -148,31 +174,21 @@ Timing mutate_timing(const Timing& timing, const RandomSource& random_source) {
         if constexpr (std::is_same_v<T, timing::Immediately> ||
                       std::is_same_v<T, timing::NextTimepoint>) {
             return timing::within_ticks(1);
-        } else if constexpr (std::is_same_v<T, timing::Eventually>) {
-            return timing::eventually();
+        } else if constexpr (std::is_same_v<T, timing::Always>) {
+            // TODO(benmandrew): Find a better way to mutate Always timing. For
+            // now, we just return a ForTicks with a large number of ticks.
+            return timing::for_ticks(10);
+        } else if constexpr (std::is_same_v<T, timing::ForTicks>) {
+            return mutate_for_timing(value, random_source);
         } else if constexpr (std::is_same_v<T, timing::AfterTicks>) {
             return timing::within_ticks(value.m_ticks + 1);
-        } else if constexpr (std::is_same_v<T, timing::ForTicks>) {
-            if (value.m_ticks == 1) {
-                return random_source.next_bool() ? timing::next_timepoint()
-                                                 : timing::immediately();
-            }
-            return random_source.next_bool()
-                       ? timing::for_ticks(value.m_ticks - 1)
-                       : timing::for_ticks(value.m_ticks / 2);
+        } else if constexpr (std::is_same_v<T, timing::WithinTicks>) {
+            return mutate_within_timing(value, random_source);
+        } else if constexpr (std::is_same_v<T, timing::Eventually>) {
+            return timing::eventually();
         } else {
-            std::size_t index = random_source.next_index(3);
-            switch (index) {
-                case 0:
-                    return timing::within_ticks(value.m_ticks + 1);
-                case 1:
-                    return timing::within_ticks(value.m_ticks * 2);
-                case 2:
-                    return timing::eventually();
-                default:
-                    assert(false);
-                    __builtin_unreachable();
-            }
+            assert(false);
+            __builtin_unreachable();
         }
     };
     return std::visit(mutation_function, timing);

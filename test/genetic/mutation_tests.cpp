@@ -1,3 +1,4 @@
+#include <string>
 #include <utility>
 #include <variant>
 #include <vector>
@@ -92,12 +93,10 @@ void test_timing_mutation_eventually_is_unchanged() {
            "mutation: eventually has no weakening and should be unchanged");
 }
 
-void test_timing_mutation_always_becomes_for_ticks() {
+void test_timing_mutation_always_is_unchanged() {
     const Timing mutated = mutate_timing(timing::always(), make_source({}, 0U));
-    const auto* for_ticks = std::get_if<timing::ForTicks>(&mutated);
-    expect(for_ticks != nullptr, "mutation: always should weaken to for-ticks");
-    expect(for_ticks->m_ticks == 10,
-           "mutation: always should weaken to for 10 ticks");
+    expect(std::holds_alternative<timing::Always>(mutated),
+           "mutation: always must not be weakened and should be unchanged");
 }
 
 void test_timing_mutation_within_ticks_step_down() {
@@ -173,6 +172,30 @@ void test_mutation_skips_non_weakenable_requirement() {
            "mutation: the weakenable requirement must be the one mutated");
 }
 
+void test_condition_mutation_never_introduces_output_atom() {
+    // Inputs and outputs are disjoint and distinctly named. With p_trigger = 1
+    // every mutation rewrites the trigger; across many seeds this exercises
+    // both atom renaming and new-atom introduction, none of which may pull an
+    // output atom ("B"/"D") into the condition.
+    const Requirement guar(Formula("a & c"), Formula("B"), timing::always(),
+                           ConditionType::Trigger, true);
+    const Specification spec({}, {guar}, {"a", "c"}, {"B", "D"});
+    Config cfg;
+    cfg.p_response = 0.0;
+    cfg.p_trigger = 1.0;
+    cfg.p_timing = 0.0;
+    for (std::size_t seed = 0; seed < 200; ++seed) {
+        const Specification result =
+            mutate_specification(spec, make_random_source_from_seed(seed), cfg);
+        const std::string condition =
+            result.m_guarantees[0].m_condition.to_string();
+        expect(condition.find('B') == std::string::npos &&
+                   condition.find('D') == std::string::npos,
+               "mutation: trigger mutation must never introduce an output atom "
+               "into a condition");
+    }
+}
+
 }  // namespace
 
 void run_mutation_tests() {
@@ -183,10 +206,11 @@ void run_mutation_tests() {
     test_timing_mutation_non_parameterized_becomes_within_one_tick();
     test_timing_mutation_immediately_becomes_within_one_tick();
     test_timing_mutation_eventually_is_unchanged();
-    test_timing_mutation_always_becomes_for_ticks();
+    test_timing_mutation_always_is_unchanged();
     test_timing_mutation_within_ticks_step_down();
     test_timing_mutation_within_ticks_double();
     test_timing_mutation_after_ticks_becomes_within_ticks();
     test_mutation_all_locked_is_noop();
     test_mutation_skips_non_weakenable_requirement();
+    test_condition_mutation_never_introduces_output_atom();
 }

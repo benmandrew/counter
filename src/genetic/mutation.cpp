@@ -175,9 +175,8 @@ Timing mutate_timing(const Timing& timing, const RandomSource& random_source) {
                       std::is_same_v<T, timing::NextTimepoint>) {
             return timing::within_ticks(1);
         } else if constexpr (std::is_same_v<T, timing::Always>) {
-            // TODO(benmandrew): Find a better way to mutate Always timing. For
-            // now, we just return a ForTicks with a large number of ticks.
-            return timing::for_ticks(10);
+            // Always must not be weakened.
+            return timing::always();
         } else if constexpr (std::is_same_v<T, timing::ForTicks>) {
             return mutate_for_timing(value, random_source);
         } else if constexpr (std::is_same_v<T, timing::AfterTicks>) {
@@ -196,6 +195,7 @@ Timing mutate_timing(const Timing& timing, const RandomSource& random_source) {
 
 Requirement mutate_requirement(const Requirement& requirement,
                                const std::vector<std::string>& atoms,
+                               const std::vector<std::string>& condition_atoms,
                                const RandomSource& random_source,
                                const Config& cfg) {
     Requirement mutated = requirement;
@@ -204,8 +204,8 @@ Requirement mutate_requirement(const Requirement& requirement,
             mutate_formula(requirement.m_response, atoms, random_source);
     }
     if (random_source.next_real() < cfg.p_trigger) {
-        mutated.m_condition =
-            mutate_formula(requirement.m_condition, atoms, random_source);
+        mutated.m_condition = mutate_formula(requirement.m_condition,
+                                             condition_atoms, random_source);
     }
     if (random_source.next_real() < cfg.p_timing) {
         mutated.m_timing = mutate_timing(requirement.m_timing, random_source);
@@ -235,6 +235,23 @@ std::vector<std::size_t> collect_weakenable_indices(
     return indices;
 }
 
+// True if the requirement at @p idx is equal to any other requirement in the
+// list, using the same ordering-based equality as the rest of the algorithm.
+bool creates_duplicate(const std::vector<Requirement>& requirements,
+                       std::size_t idx) {
+    for (std::size_t i = 0; i < requirements.size(); ++i) {
+        if (i == idx) {
+            continue;
+        }
+        const bool equal = !(requirements[i] < requirements[idx]) &&
+                           !(requirements[idx] < requirements[i]);
+        if (equal) {
+            return true;
+        }
+    }
+    return false;
+}
+
 }  // namespace
 
 Specification mutate_specification(const Specification& specification,
@@ -248,6 +265,14 @@ Specification mutate_specification(const Specification& specification,
                  specification.m_in_atoms.end());
     atoms.insert(atoms.end(), specification.m_out_atoms.begin(),
                  specification.m_out_atoms.end());
+    // Triggers are evaluated at the current timepoint, where the current state
+    // is available through input atoms; output atoms denote the next state, so
+    // letting one into a trigger produces a self-referential guard the
+    // synthesiser can vacuously discharge. Draw trigger atoms from inputs only.
+    // Fall back to the full pool when there are no inputs, since mutation
+    // cannot then draw an atom for a trigger at all.
+    const std::vector<std::string>& condition_atoms =
+        specification.m_in_atoms.empty() ? atoms : specification.m_in_atoms;
     const std::vector<std::size_t> weakenable_indices =
         collect_weakenable_indices(specification);
     if (weakenable_indices.empty()) {
@@ -258,29 +283,17 @@ Specification mutate_specification(const Specification& specification,
     std::vector<Requirement> assumptions = specification.m_assumptions;
     std::vector<Requirement> guarantees = specification.m_guarantees;
     if (idx < n_assumptions) {
-        assumptions[idx] =
-            mutate_requirement(assumptions[idx], atoms, random_source, cfg);
-        for (std::size_t i = 0; i < assumptions.size(); ++i) {
-            if (i != idx) {
-                const bool equal = !(assumptions[i] < assumptions[idx]) &&
-                                   !(assumptions[idx] < assumptions[i]);
-                if (equal) {
-                    return specification;
-                }
-            }
+        assumptions[idx] = mutate_requirement(
+            assumptions[idx], atoms, condition_atoms, random_source, cfg);
+        if (creates_duplicate(assumptions, idx)) {
+            return specification;
         }
     } else {
         const std::size_t g_idx = idx - n_assumptions;
-        guarantees[g_idx] =
-            mutate_requirement(guarantees[g_idx], atoms, random_source, cfg);
-        for (std::size_t i = 0; i < guarantees.size(); ++i) {
-            if (i != g_idx) {
-                const bool equal = !(guarantees[i] < guarantees[g_idx]) &&
-                                   !(guarantees[g_idx] < guarantees[i]);
-                if (equal) {
-                    return specification;
-                }
-            }
+        guarantees[g_idx] = mutate_requirement(
+            guarantees[g_idx], atoms, condition_atoms, random_source, cfg);
+        if (creates_duplicate(guarantees, g_idx)) {
+            return specification;
         }
     }
     return Specification(std::move(assumptions), std::move(guarantees),

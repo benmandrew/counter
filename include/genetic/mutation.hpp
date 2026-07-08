@@ -32,15 +32,19 @@ Formula mutate_formula(const Formula& formula,
 Timing mutate_timing(const Timing& timing, const RandomSource& random_source);
 
 /// Mutates a requirement. Each of trigger, response, and timing is mutated
-/// independently with probabilities from @p cfg.
+/// independently with probabilities from @p cfg. Response atoms are drawn from
+/// @p atoms; trigger (condition) atoms are drawn only from @p condition_atoms,
+/// so that output atoms never leak into a trigger.
 ///
-/// @param requirement   The requirement to mutate
-/// @param atoms         Pool of atom names to draw replacements from
-/// @param random_source Random source for branch and selector choices
-/// @param cfg           Configuration providing mutation probabilities
-/// @return              A mutated requirement
+/// @param requirement     The requirement to mutate
+/// @param atoms           Pool of atom names for response mutation
+/// @param condition_atoms Pool of atom names for trigger mutation (inputs only)
+/// @param random_source   Random source for branch and selector choices
+/// @param cfg             Configuration providing mutation probabilities
+/// @return                A mutated requirement
 Requirement mutate_requirement(const Requirement& requirement,
                                const std::vector<std::string>& atoms,
+                               const std::vector<std::string>& condition_atoms,
                                const RandomSource& random_source,
                                const Config& cfg);
 

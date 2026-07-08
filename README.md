@@ -14,10 +14,10 @@ cmake --workflow --preset debug      # configure + build + test
 cmake --build build                  # incremental build only
 ```
 
-To enter the dev shell automatically on `cd`, install [direnv](https://direnv.net) and add a `.envrc`:
+A `.envrc` (`use flake`) is committed, so to enter the dev shell automatically on `cd`, just install [direnv](https://direnv.net) and allow it:
 
 ```sh
-echo "use flake" > .envrc && direnv allow
+direnv allow
 ```
 
 ### Without Nix
@@ -90,7 +90,7 @@ report_cpu_timing = true   # print a CPU-attribution report at the end:
 ```
 
 A fully-annotated template with every key and its default is provided in
-[`counter.toml.example`](counter.toml.example).
+[`example-config.toml`](example-config.toml).
 
 ## Dependencies
 

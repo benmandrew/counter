@@ -97,6 +97,7 @@ Each input spawns an `ltlfilt` subprocess (the formaliser CLI's own process is p
 |---|---|
 | `--input <spec.json>` | Input specification (required) |
 | `--output-dir <dir>` | Directory for `repair_N.json` outputs (required, must exist) |
+| `--config <file.toml>` | TOML file overriding algorithm parameters (optional; see `example-config.toml`) |
 | `--seed <n>` | RNG seed for reproducible runs |
 | `-h`, `--help` | Show help |
 

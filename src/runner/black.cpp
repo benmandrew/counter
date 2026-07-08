@@ -1,6 +1,7 @@
 #include "runner/black.hpp"
 
 #include <poll.h>
+#include <sys/resource.h>
 #include <sys/types.h>
 #include <sys/wait.h>
 #include <unistd.h>
@@ -29,7 +30,16 @@ struct ProcessResult {
     int m_exit_code = 0;
     std::string m_output;
     bool m_timed_out = false;
+    double m_cpu_s = 0.0;
 };
+
+double rusage_cpu_seconds(const struct rusage& usage) {
+    const double user_s = static_cast<double>(usage.ru_utime.tv_sec) +
+                          (static_cast<double>(usage.ru_utime.tv_usec) / 1e6);
+    const double sys_s = static_cast<double>(usage.ru_stime.tv_sec) +
+                         (static_cast<double>(usage.ru_stime.tv_usec) / 1e6);
+    return user_s + sys_s;
+}
 
 // Reads from fd until EOF or deadline, killing child_pid on timeout.
 // Returns {output, timed_out}.
@@ -121,7 +131,9 @@ ProcessResult execute_and_capture(const std::vector<std::string>& arguments,
         read_with_timeout(pipe_fds[0], child_pid, deadline);
     close(pipe_fds[0]);
     int wait_status = 0;
-    [[maybe_unused]] const pid_t waited = waitpid(child_pid, &wait_status, 0);
+    struct rusage child_usage{};
+    [[maybe_unused]] const pid_t waited =
+        wait4(child_pid, &wait_status, 0, &child_usage);
     assert(waited >= 0);
     int exit_code = -1;
     if (WIFEXITED(wait_status)) {
@@ -129,7 +141,8 @@ ProcessResult execute_and_capture(const std::vector<std::string>& arguments,
     } else if (WIFSIGNALED(wait_status)) {
         exit_code = 128 + WTERMSIG(wait_status);
     }
-    return {exit_code, std::move(output), timed_out};
+    return {exit_code, std::move(output), timed_out,
+            rusage_cpu_seconds(child_usage)};
 }
 
 }  // namespace
@@ -178,6 +191,7 @@ std::optional<bool> SatisfiabilityChecker::check_satisfiability(
             .count();
     std::scoped_lock lock(m_cache_mutex);
     total_time_s += elapsed;
+    total_cpu_s += result.m_cpu_s;
     if (result.m_timed_out) {
         n_timeouts++;
         m_cache.emplace(normalised, std::nullopt);

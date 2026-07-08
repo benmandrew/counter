@@ -1,5 +1,6 @@
 #include "runner/formaliser.hpp"
 
+#include <sys/resource.h>
 #include <sys/wait.h>
 #include <unistd.h>
 
@@ -48,8 +49,17 @@ PersistentProcess::~PersistentProcess() {
     // well-behaved --batch CLI treats as "no more requests" and exits on.
     close(m_write_fd);
     int wait_status = 0;
-    [[maybe_unused]] const pid_t waited = waitpid(m_pid, &wait_status, 0);
+    struct rusage child_usage{};
+    [[maybe_unused]] const pid_t waited =
+        wait4(m_pid, &wait_status, 0, &child_usage);
     assert(waited >= 0);
+    // Sampled once here rather than per request: the child is long-lived, so
+    // this is its whole-run user+sys CPU across every formalise() call.
+    RequirementFormaliser::total_cpu_s +=
+        static_cast<double>(child_usage.ru_utime.tv_sec) +
+        (static_cast<double>(child_usage.ru_utime.tv_usec) / 1e6) +
+        static_cast<double>(child_usage.ru_stime.tv_sec) +
+        (static_cast<double>(child_usage.ru_stime.tv_usec) / 1e6);
     close(m_read_fd);
 }
 

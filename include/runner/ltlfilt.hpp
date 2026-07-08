@@ -10,6 +10,9 @@ struct LtlfiltStats {
     inline static std::size_t n_cache_hits = 0;
     inline static std::size_t n_cache_misses = 0;
     inline static double total_time_s = 0.0;
+    // Child-process CPU time (user+sys), from wait4(); unlike total_time_s
+    // (wall) it excludes time the parent spends blocked waiting on the child.
+    inline static double total_cpu_s = 0.0;
 };
 
 /// Returns the full filesystem path to the ltlfilt binary.

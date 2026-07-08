@@ -18,6 +18,10 @@ struct Config {
     bool run_weakening_filter = true;
     bool run_implication_filter = true;
     std::chrono::milliseconds black_timeout{1000};
+    // When true, print the CPU-attribution report (your code vs. the external
+    // CLI tools, via getrusage + per-tool wait4). Opt-in: off leaves output
+    // identical to before.
+    bool report_cpu_timing = false;
     double selection_rate = 0.5;
     double crossover_rate = 0.1;
     double mutation_rate = 1.0;

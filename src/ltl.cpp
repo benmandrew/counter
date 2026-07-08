@@ -23,8 +23,11 @@ bool has_flag(int argc, const char* const* argv, const char* flag) {
     return false;
 }
 
-void print_spec_ltl(const std::string& path, const Specification& spec,
+void print_spec_ltl(const std::string& path, const Specification& prefixed_spec,
                     bool show_path) {
+    // Internal atom names carry k_atom_prefix; strip once so both the FRETish
+    // line (to_string) and the LTL line (m_ltl) show the original names.
+    const Specification spec = strip_atom_prefix(prefixed_spec);
     if (show_path) {
         std::cout << path << ":\n";
     }

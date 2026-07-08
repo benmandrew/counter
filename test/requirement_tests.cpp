@@ -271,6 +271,65 @@ void test_to_string_is_valid_fretish_for_compound_formulae() {
                     timing::within_ticks(2), ConditionType::Continual));
 }
 
+void test_add_atom_prefix_tags_atoms() {
+    const Requirement req(Formula("c"), Formula("GF"), timing::immediately(),
+                          ConditionType::Continual);
+    const Requirement prefixed = add_atom_prefix(req);
+    expect(prefixed.m_condition.to_string() == "iap_c",
+           "add_atom_prefix: condition atom should be tagged");
+    expect(prefixed.m_response.to_string() == "iap_GF",
+           "add_atom_prefix: response atom should be tagged");
+    expect(prefixed.m_ltl.find("iap_GF") != std::string::npos,
+           "add_atom_prefix: derived LTL should contain the tagged atom");
+}
+
+void test_add_atom_prefix_preserves_constants() {
+    const Requirement req(Formula("true"), Formula("r"), timing::immediately(),
+                          ConditionType::Trigger);
+    const Requirement prefixed = add_atom_prefix(req);
+    expect(prefixed.m_condition == Formula::true_formula,
+           "add_atom_prefix: the 'true' constant must not be tagged");
+    expect(prefixed.m_response.to_string() == "iap_r",
+           "add_atom_prefix: ordinary response atom should be tagged");
+}
+
+void test_strip_atom_prefix_is_inverse() {
+    const Requirement req(Formula("a & GF"), Formula("Uu | b"),
+                          timing::within_ticks(2), ConditionType::Continual);
+    const Requirement round = strip_atom_prefix(add_atom_prefix(req));
+    expect(round == req,
+           "strip_atom_prefix: should invert add_atom_prefix exactly");
+}
+
+void test_strip_atom_prefix_defensive_on_untagged() {
+    const Requirement req(Formula("a"), Formula("b"), timing::immediately());
+    const Requirement stripped = strip_atom_prefix(req);
+    expect(stripped == req,
+           "strip_atom_prefix: untagged requirement should be unchanged");
+}
+
+void test_add_atom_prefix_ltl_regression_gf() {
+    // 'GF' previously lexed as two temporal operators by SPOT, diverging from
+    // black and crashing realize. After tagging, the LTL carries 'iap_GF' and
+    // no bare 'GF' operator token remains.
+    const Requirement req(Formula("c"), Formula("GF"), timing::eventually(),
+                          ConditionType::Continual);
+    const std::string ltl = add_atom_prefix(req).m_ltl;
+    expect(ltl.find("iap_GF") != std::string::npos,
+           "regression: tagged LTL should contain iap_GF");
+    auto has_bare_gf = [](const std::string& str) {
+        for (std::size_t pos = str.find("GF"); pos != std::string::npos;
+             pos = str.find("GF", pos + 1)) {
+            if (pos < 4 || str.compare(pos - 4, 4, "iap_") != 0) {
+                return true;
+            }
+        }
+        return false;
+    };
+    expect(!has_bare_gf(ltl),
+           "regression: LTL should contain no bare 'GF' operator token");
+}
+
 }  // namespace
 
 void run_requirement_tests() {
@@ -300,4 +359,9 @@ void run_requirement_tests() {
     test_to_string_is_valid_fretish_for_all_timings_and_condition_types();
     test_to_string_is_valid_fretish_for_true_condition();
     test_to_string_is_valid_fretish_for_compound_formulae();
+    test_add_atom_prefix_tags_atoms();
+    test_add_atom_prefix_preserves_constants();
+    test_strip_atom_prefix_is_inverse();
+    test_strip_atom_prefix_defensive_on_untagged();
+    test_add_atom_prefix_ltl_regression_gf();
 }

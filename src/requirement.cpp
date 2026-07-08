@@ -2,8 +2,8 @@
 
 #include <algorithm>
 #include <cassert>
-#include <cctype>
-#include <iostream>
+#include <functional>
+#include <optional>
 #include <set>
 #include <string>
 #include <type_traits>
@@ -13,9 +13,51 @@
 
 namespace {
 
-bool atom_contains_uppercase(const std::string& atom) {
-    return std::any_of(atom.begin(), atom.end(),
-                       [](unsigned char chr) { return std::isupper(chr); });
+// "true"/"false" are logical constants, not user atoms: they are special-cased
+// throughout (requirement_to_ltl, condition_to_string,
+// specification_has_false_condition, Formula::simplify) and are boolean
+// constants to SPOT/black. Prefixing them would turn a constant into a free
+// atom and break that handling, so they are never tagged.
+bool is_constant_atom(const std::string& name) {
+    return name == "true" || name == "false";
+}
+
+std::string prefix_atom_name(const std::string& name) {
+    if (is_constant_atom(name)) {
+        return name;
+    }
+    return std::string(k_atom_prefix) + name;
+}
+
+std::string unprefix_atom_name(const std::string& name) {
+    const std::string prefix(k_atom_prefix);
+    if (name.compare(0, prefix.size(), prefix) == 0) {
+        return name.substr(prefix.size());
+    }
+    return name;
+}
+
+Formula rewrite_atom_names(
+    const Formula& formula,
+    const std::function<std::string(const std::string&)>& transform) {
+    return formula.rewrite_post_order(
+        [&transform](const Formula& node) -> std::optional<Formula> {
+            if (const std::optional<std::string> name = node.atom_name()) {
+                return Formula::make_atom(transform(*name));
+            }
+            return std::nullopt;
+        });
+}
+
+std::vector<std::string> transform_atom_vector(
+    const std::vector<std::string>& atoms,
+    const std::function<std::string(const std::string&)>& transform) {
+    std::vector<std::string> result;
+    result.reserve(atoms.size());
+    for (const std::string& atom : atoms) {
+        result.push_back(transform(atom));
+    }
+    return result;
 }
 
 // Expands F[0..n] R as R | X(R | X(... | X R)) (n nestings of X).
@@ -151,18 +193,48 @@ Specification::Specification(std::vector<Requirement> assumptions,
     };
     m_assumptions = deduplicate(std::move(assumptions));
     m_guarantees = deduplicate(std::move(guarantees));
-    for (const std::string& atom : m_in_atoms) {
-        if (atom_contains_uppercase(atom)) {
-            std::cerr << "Warning: input atom '" << atom
-                      << "' contains uppercase letters\n";
+}
+
+Requirement add_atom_prefix(const Requirement& req) {
+    return Requirement(rewrite_atom_names(req.m_condition, prefix_atom_name),
+                       rewrite_atom_names(req.m_response, prefix_atom_name),
+                       req.m_timing, req.m_condition_type, req.m_weakenable);
+}
+
+Requirement strip_atom_prefix(const Requirement& req) {
+    return Requirement(rewrite_atom_names(req.m_condition, unprefix_atom_name),
+                       rewrite_atom_names(req.m_response, unprefix_atom_name),
+                       req.m_timing, req.m_condition_type, req.m_weakenable);
+}
+
+Specification add_atom_prefix(const Specification& spec) {
+    auto map_prefix = [](const std::vector<Requirement>& reqs) {
+        std::vector<Requirement> result;
+        result.reserve(reqs.size());
+        for (const Requirement& req : reqs) {
+            result.push_back(add_atom_prefix(req));
         }
-    }
-    for (const std::string& atom : m_out_atoms) {
-        if (atom_contains_uppercase(atom)) {
-            std::cerr << "Warning: output atom '" << atom
-                      << "' contains uppercase letters\n";
+        return result;
+    };
+    return Specification(
+        map_prefix(spec.m_assumptions), map_prefix(spec.m_guarantees),
+        transform_atom_vector(spec.m_in_atoms, prefix_atom_name),
+        transform_atom_vector(spec.m_out_atoms, prefix_atom_name));
+}
+
+Specification strip_atom_prefix(const Specification& spec) {
+    auto map_strip = [](const std::vector<Requirement>& reqs) {
+        std::vector<Requirement> result;
+        result.reserve(reqs.size());
+        for (const Requirement& req : reqs) {
+            result.push_back(strip_atom_prefix(req));
         }
-    }
+        return result;
+    };
+    return Specification(
+        map_strip(spec.m_assumptions), map_strip(spec.m_guarantees),
+        transform_atom_vector(spec.m_in_atoms, unprefix_atom_name),
+        transform_atom_vector(spec.m_out_atoms, unprefix_atom_name));
 }
 
 bool operator<(const Specification& lhs, const Specification& rhs) {

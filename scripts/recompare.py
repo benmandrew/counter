@@ -29,8 +29,7 @@ from run_experiments import (  # noqa: E402
     COMPARE_BIN,
     COMPARE_TIMEOUT_S,
     CSV_FIELDS,
-    RESULTS_CSV,
-    RESULTS_DIR,
+    EXPERIMENTS_DIR,
     SPECS,
     parse_compare_output,
 )
@@ -63,18 +62,25 @@ def main() -> None:
     parser = argparse.ArgumentParser(
         description=__doc__,
         formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser.add_argument("--base", type=Path, default=EXPERIMENTS_DIR,
+                        help="directory holding results.csv and results/ "
+                             "(default: the repo's experiments/); point at a "
+                             "per-machine copy, e.g. results-av2")
     parser.add_argument("--all", action="store_true",
                         help="recompute every row with repairs, not just "
                              "best_relation=unknown")
     parser.add_argument("--dry-run", action="store_true")
     args = parser.parse_args()
 
+    results_csv = args.base / "results.csv"
+    results_dir = args.base / "results"
+
     if not COMPARE_BIN.exists():
         sys.exit(f"compare binary not found: {COMPARE_BIN}")
-    if not RESULTS_CSV.exists():
-        sys.exit(f"No results at {RESULTS_CSV}")
+    if not results_csv.exists():
+        sys.exit(f"No results at {results_csv}")
 
-    with open(RESULTS_CSV, newline="") as f:
+    with open(results_csv, newline="") as f:
         rows = list(csv.DictReader(f))
 
     targets = []
@@ -103,7 +109,7 @@ def main() -> None:
             continue
         run_id = (f"sweep_{row['sweep']}_{row['level_name']}_{spec}"
                   f"_seed{int(row['seed']):02d}")
-        output_dir = RESULTS_DIR / run_id
+        output_dir = results_dir / run_id
         if not list(output_dir.glob("repair_*.json")):
             print(f"  [{n}/{len(targets)}] {run_id}: no repair files, skipping")
             missing += 1
@@ -121,10 +127,10 @@ def main() -> None:
         row["n_implies"] = n_implies
         updated += 1
         print(f"        -> {best_rel}  (implies_ideal={implies_ideal})")
-        write_csv_atomic(RESULTS_CSV, rows)  # persist after each row
+        write_csv_atomic(results_csv, rows)  # persist after each row
 
     print(f"\nDone. {updated} updated, {failed} failed, {missing} missing "
-          f"repairs.\nResults: {RESULTS_CSV}")
+          f"repairs.\nResults: {results_csv}")
 
 
 if __name__ == "__main__":

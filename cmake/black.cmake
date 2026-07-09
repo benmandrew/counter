@@ -201,6 +201,7 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
                     -DENABLE_TESTS=OFF
                     -DENABLE_FORMULAS_TESTS=OFF
                     -DGIT_UPDATE_SUBMODULES=OFF
+                    "-DCMAKE_CXX_FLAGS=-Wno-nrvo -Wno-used-but-marked-unused"
                     ${_black_solver_flag}
                     ${_black_launcher_args}
                 BUILD_COMMAND

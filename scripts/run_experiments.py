@@ -122,6 +122,23 @@ def parse_repair_files(output_dir: Path) -> tuple[int, float]:
     return len(files), best if best != float("-inf") else float("nan")
 
 
+def tail_line(log_path: Path) -> str:
+    """Return the last non-blank line of a log, for console error context.
+
+    counter draws progress with carriage returns, so a raw line may pack many
+    updates; keep only the final segment after the last '\\r'.
+    """
+    try:
+        text = log_path.read_text(errors="replace")
+    except OSError:
+        return ""
+    for raw in reversed(text.splitlines()):
+        line = raw.split("\r")[-1].strip()
+        if line:
+            return line
+    return ""
+
+
 def parse_compare_output(stdout: str) -> tuple[str, int, int]:
     """Return (best_relation, implies_ideal, n_implies) from compare stdout.
 
@@ -189,21 +206,25 @@ def run_one(config_path: Path, spec_name: str, seed: int) -> dict | None:
         "--seed", str(seed),
     ]
 
+    log_path = output_dir / "run.log"
+
     t_start = time.monotonic()
     timed_out = False
-    try:
-        subprocess.run(
-            cmd, check=True, timeout=timeout,
-            stdout=subprocess.DEVNULL, stderr=subprocess.PIPE,
-        )
-    except subprocess.TimeoutExpired:
-        timed_out = True
-        print(f"    TIMEOUT after {timeout}s")
-    except subprocess.CalledProcessError as e:
-        stderr = e.stderr.decode(errors="replace").strip() if e.stderr else ""
-        print(f"    ERROR: counter exited {e.returncode}"
-              + (f": {stderr}" if stderr else ""))
-        return None
+    with open(log_path, "wb") as log_file:
+        try:
+            subprocess.run(
+                cmd, check=True, timeout=timeout,
+                stdout=log_file, stderr=subprocess.STDOUT,
+            )
+        except subprocess.TimeoutExpired:
+            timed_out = True
+            print(f"    TIMEOUT after {timeout}s  (see {log_path})")
+        except subprocess.CalledProcessError as e:
+            log_file.flush()
+            ctx = tail_line(log_path)
+            print(f"    ERROR: counter exited {e.returncode}  (see {log_path})"
+                  + (f"\n           {ctx}" if ctx else ""))
+            return None
     wall = round(time.monotonic() - t_start, 2)
 
     n_repairs, best_fitness = parse_repair_files(output_dir)

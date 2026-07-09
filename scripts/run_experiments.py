@@ -43,6 +43,10 @@ SPECS: dict[str, dict[str, Path]] = {
         "input": EXAMPLES_DIR / "fsm-timing" / "spec.json",
         "ideals_dir": EXAMPLES_DIR / "fsm-timing" / "fixes",
     },
+    "fsm-combined": {
+        "input": EXAMPLES_DIR / "fsm-combined" / "spec.json",
+        "ideals_dir": EXAMPLES_DIR / "fsm-combined" / "fixes",
+    },
 }
 
 N_SEEDS = 30

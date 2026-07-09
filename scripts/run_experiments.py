@@ -62,6 +62,12 @@ SKIP_COMBOS: set[tuple[str, str, str]] = {
     ("A", "gen40", "fsm-combined"),
 }
 
+# compare runs n_repairs * n_ideals * 2 implication checks, each with compare's
+# own 20s black budget. fsm-timing (bounded-interval operators) is slow: a 29-
+# repair run measured ~141s, and repair counts grow with generations/population.
+# Keep this well above that, in line with the generous counter_timeout budgets.
+COMPARE_TIMEOUT_S = 600
+
 CSV_FIELDS = [
     "sweep", "level_name", "level_value", "spec", "seed",
     "found_repair", "n_repairs", "best_fitness",
@@ -258,7 +264,7 @@ def run_one(config_path: Path, spec_name: str, seed: int) -> dict | None:
         result = subprocess.run(
             [str(COMPARE_BIN), "--repairs", str(output_dir),
              "--ideals", str(spec["ideals_dir"])],
-            check=True, timeout=120, capture_output=True, text=True,
+            check=True, timeout=COMPARE_TIMEOUT_S, capture_output=True, text=True,
         )
         best_rel, implies_ideal, n_implies = parse_compare_output(result.stdout)
     except (subprocess.TimeoutExpired, subprocess.CalledProcessError) as e:

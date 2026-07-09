@@ -17,6 +17,13 @@ struct Config {
     std::size_t default_model_counting_bound = 20;
     bool run_weakening_filter = true;
     bool run_implication_filter = true;
+    // Per-generation filters run only every Nth generation (1 = every
+    // generation). The final generation always runs every filter, so the
+    // resulting population is never left un-deduplicated/un-weakened.
+    std::size_t dedup_filter_interval = 1;
+    std::size_t false_condition_filter_interval = 1;
+    std::size_t weakening_filter_interval = 1;
+    std::size_t bloat_filter_interval = 1;
     std::chrono::milliseconds black_timeout{1000};
     // When true, print the CPU-attribution report (your code vs. the external
     // CLI tools, via getrusage + per-tool wait4). Opt-in: off leaves output

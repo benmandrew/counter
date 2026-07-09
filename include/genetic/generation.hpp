@@ -57,11 +57,17 @@ class FilterFunction {
     std::size_t n_in() const { return m_n_in; }
     std::size_t n_out() const { return m_n_out; }
 
+    /// How often, in generations, this filter runs during evolution
+    /// (1 = every generation). Applied by the evolution loop, not here.
+    std::size_t interval() const { return m_interval; }
+    void set_interval(std::size_t generations) { m_interval = generations; }
+
    private:
     std::string m_name;
     Fn m_fn;
     mutable std::size_t m_n_in{0};
     mutable std::size_t m_n_out{0};
+    std::size_t m_interval{1};
 };
 
 /// Callback invoked after each individual is produced during a generation.
@@ -109,11 +115,13 @@ std::vector<Specification> filter_population(
     const std::vector<Specification>& population,
     const std::vector<FilterFunction>& filter_functions);
 
-/// Returns the standard set of filter functions used during evolution,
-/// including a weakening filter that keeps only specifications implied by
-/// @p original.
+/// Returns the standard set of filter functions used during evolution:
+/// deduplication, a bloat cap, a false-condition filter, and (if enabled) a
+/// weakening filter that keeps only specifications implied by @p original.
+/// Each filter's per-generation interval is set from @p cfg; the evolution
+/// loop decides which filters run in a given generation.
 ///
-/// @param cfg       Algorithm configuration (run_weakening_filter flag)
+/// @param cfg       Algorithm configuration (filter flags and intervals)
 /// @param original  The reference specification for the weakening filter;
 ///                  captured by value inside the filter
 /// @param checker   Satisfiability checker; captured by reference, must
@@ -133,6 +141,18 @@ std::vector<FilterFunction> get_filter_functions(
 std::vector<FilterFunction> get_final_filter_functions(
     const Config& cfg, SatisfiabilityChecker& checker,
     const GenerationProgressCallback& on_impl_progress = nullptr);
+
+/// Selects the filters that should run in a given generation. A filter runs
+/// when its interval() divides @p generation (1-indexed), or unconditionally
+/// on the final generation so the returned population is never left unfiltered.
+///
+/// @param filters            All per-generation filters
+/// @param generation         1-indexed generation number
+/// @param is_last_generation Whether this is the final generation
+/// @return                   The subset of @p filters to apply, in order
+std::vector<FilterFunction> filters_for_generation(
+    const std::vector<FilterFunction>& filters, std::size_t generation,
+    bool is_last_generation);
 
 /// Scores each specification in @p specs and returns them sorted by fitness
 /// descending.

@@ -172,20 +172,43 @@ std::vector<ScoredSpecification> evolve_generation(
 std::vector<FilterFunction> get_filter_functions(
     const Config& cfg, Specification original, SatisfiabilityChecker& checker) {
     std::vector<FilterFunction> filters;
-    filters.push_back(make_bloat_cap_filter(original));
+    FilterFunction dedup = make_dedup_filter();
+    dedup.set_interval(cfg.dedup_filter_interval);
+    filters.push_back(std::move(dedup));
+    FilterFunction bloat = make_bloat_cap_filter(original);
+    bloat.set_interval(cfg.bloat_filter_interval);
+    filters.push_back(std::move(bloat));
     // A false condition is vacuously satisfied by every trace, so it
     // imposes no constraint; forbid it from surviving as a breeding
     // candidate rather than letting the fitness function alone
     // discourage it.
-    filters.push_back(
+    FilterFunction false_condition =
         make_predicate_filter("false-condition", [](const Specification& spec) {
             return !specification_has_false_condition(spec);
-        }));
+        });
+    false_condition.set_interval(cfg.false_condition_filter_interval);
+    filters.push_back(std::move(false_condition));
     if (cfg.run_weakening_filter) {
         // NOLINTNEXTLINE(clang-analyzer-cplusplus.NewDeleteLeaks)
-        filters.push_back(make_weakening_filter(std::move(original), checker));
+        FilterFunction weakening =
+            make_weakening_filter(std::move(original), checker);
+        weakening.set_interval(cfg.weakening_filter_interval);
+        filters.push_back(std::move(weakening));
     }
     return filters;
+}
+
+std::vector<FilterFunction> filters_for_generation(
+    const std::vector<FilterFunction>& filters, std::size_t generation,
+    bool is_last_generation) {
+    std::vector<FilterFunction> active;
+    active.reserve(filters.size());
+    for (const FilterFunction& filter : filters) {
+        if (is_last_generation || generation % filter.interval() == 0) {
+            active.push_back(filter);
+        }
+    }
+    return active;
 }
 
 std::vector<FilterFunction> get_final_filter_functions(

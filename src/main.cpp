@@ -268,9 +268,16 @@ run_evolution(const Config& cfg, std::vector<ScoredSpecification> population,
             status.render();
         };
 
+        // Each per-generation filter runs only every interval()-th generation;
+        // the final generation always runs every filter, so the returned
+        // population is never left unfiltered.
+        const std::vector<FilterFunction> active_filters =
+            filters_for_generation(filter_functions, gen_idx + 1,
+                                   gen_idx + 1 == cfg.generations);
+
         population =
             evolve_generation(cfg, population, selection_size, fitness_function,
-                              filter_functions, random_source, on_progress);
+                              active_filters, random_source, on_progress);
 
         const double elapsed = std::chrono::duration<double>(
                                    std::chrono::steady_clock::now() - start)

@@ -40,6 +40,12 @@ default_bound = 10
 run_weakening   = false
 run_implication = false
 
+[filters.intervals]
+dedup           = 1
+false_condition = 2
+weakening       = 3
+bloat           = 4
+
 [runtime]
 black_timeout_ms = 500
 parallel         = 4
@@ -79,6 +85,15 @@ parallel         = 4
            "config_io: filters run_weakening should be false");
     expect(!cfg.run_implication_filter,
            "config_io: filters run_implication should be false");
+    expect(cfg.dedup_filter_interval == 1,
+           "config_io: filters.intervals.dedup should be parsed from TOML");
+    expect(cfg.false_condition_filter_interval == 2,
+           "config_io: filters.intervals.false_condition should be parsed from "
+           "TOML");
+    expect(cfg.weakening_filter_interval == 3,
+           "config_io: filters.intervals.weakening should be parsed from TOML");
+    expect(cfg.bloat_filter_interval == 4,
+           "config_io: filters.intervals.bloat should be parsed from TOML");
     expect(cfg.black_timeout == std::chrono::milliseconds{500},
            "config_io: runtime black_timeout_ms should be parsed from TOML");
     expect(cfg.parallel == 4,
@@ -136,6 +151,19 @@ void test_config_io_out_of_range_probability_throws() {
     expect(threw, "config_io: out-of-range probability should throw");
 }
 
+void test_config_io_invalid_filter_interval_throws() {
+    bool threw = false;
+    try {
+        config_from_toml_string("[filters.intervals]\nweakening = 0\n");
+    } catch (const std::exception& exc) {
+        threw = true;
+        const std::string msg(exc.what());
+        expect(msg.find("filters.intervals.weakening") != std::string::npos,
+               "config_io: invalid interval error should name the field");
+    }
+    expect(threw, "config_io: non-positive filter interval should throw");
+}
+
 void test_config_io_empty_string_gives_defaults() {
     const Config cfg = config_from_toml_string("");
     const Config defaults;
@@ -153,5 +181,6 @@ void run_config_io_tests() {
     test_config_io_missing_file_throws();
     test_config_io_invalid_toml_throws();
     test_config_io_out_of_range_probability_throws();
+    test_config_io_invalid_filter_interval_throws();
     test_config_io_empty_string_gives_defaults();
 }

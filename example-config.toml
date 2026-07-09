@@ -32,6 +32,14 @@ default_bound = 20  # trace-length bound k for bounded model counting
 run_weakening   = true  # enable per-generation weakening filter
 run_implication = true  # enable final implication maximality filter
 
+# How often each per-generation filter runs, in generations (1 = every
+# generation). The final generation always runs every filter.
+[filters.intervals]
+dedup           = 1
+false_condition = 1
+weakening       = 3
+bloat           = 1
+
 [runtime]
 black_timeout_ms = 1000  # timeout per black SAT query in milliseconds
 # parallel         = 8     # thread pool size (omit to use hardware concurrency)

@@ -55,7 +55,18 @@
       "additionalProperties": false,
       "properties": {
         "run_weakening":   { "type": "boolean", "description": "Enable per-generation weakening filter." },
-        "run_implication": { "type": "boolean", "description": "Enable final implication maximality filter." }
+        "run_implication": { "type": "boolean", "description": "Enable final implication maximality filter." },
+        "intervals": {
+          "type": "object",
+          "additionalProperties": false,
+          "description": "How often each per-generation filter runs, in generations (1 = every generation). The final generation always runs every filter.",
+          "properties": {
+            "dedup":           { "type": "integer", "minimum": 1, "description": "Deduplication filter interval." },
+            "false_condition": { "type": "integer", "minimum": 1, "description": "False-condition filter interval." },
+            "weakening":       { "type": "integer", "minimum": 1, "description": "Weakening filter interval (only when run_weakening)." },
+            "bloat":           { "type": "integer", "minimum": 1, "description": "Bloat-cap filter interval." }
+          }
+        }
       }
     },
     "runtime": {

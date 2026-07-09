@@ -138,6 +138,22 @@ void apply_filters(const toml::table& tbl, Config& cfg) {
     if (auto val = tbl["run_implication"].value<bool>()) {
         cfg.run_implication_filter = *val;
     }
+    if (const auto* intervals = tbl["intervals"].as_table()) {
+        const auto parse_interval = [&](const char* key, const char* name,
+                                        std::size_t& field) {
+            if (auto val = (*intervals)[key].value<int64_t>()) {
+                field = static_cast<std::size_t>(require_positive(*val, name));
+            }
+        };
+        parse_interval("dedup", "filters.intervals.dedup",
+                       cfg.dedup_filter_interval);
+        parse_interval("false_condition", "filters.intervals.false_condition",
+                       cfg.false_condition_filter_interval);
+        parse_interval("weakening", "filters.intervals.weakening",
+                       cfg.weakening_filter_interval);
+        parse_interval("bloat", "filters.intervals.bloat",
+                       cfg.bloat_filter_interval);
+    }
 }
 
 void apply_runtime(const toml::table& tbl, Config& cfg) {

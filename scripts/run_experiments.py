@@ -29,19 +29,19 @@ RESULTS_CSV = EXPERIMENTS_DIR / "results.csv"
 COUNTER_BIN = REPO_ROOT / "build-release" / "counter"
 COMPARE_BIN = REPO_ROOT / "build-release" / "compare"
 
-SPECS: dict[str, dict] = {
+EXAMPLES_DIR = REPO_ROOT / "examples"
+SPECS: dict[str, dict[str, Path]] = {
     "takeoff": {
-        "input": REPO_ROOT / "examples" / "takeoff.json",
-        "ideals": [
-            REPO_ROOT / "examples" / "takeoff-fixed-1.json",
-            REPO_ROOT / "examples" / "takeoff-fixed-2.json",
-        ],
+        "input": EXAMPLES_DIR / "takeoff" / "spec.json",
+        "ideals_dir": EXAMPLES_DIR / "takeoff" / "fixes",
     },
-    "arbiter": {
-        "input": REPO_ROOT / "examples" / "arbiter.json",
-        "ideals": [
-            REPO_ROOT / "examples" / "arbiter-fixed.json",
-        ],
+    "fsm": {
+        "input": EXAMPLES_DIR / "fsm" / "spec.json",
+        "ideals_dir": EXAMPLES_DIR / "fsm" / "fixes",
+    },
+    "fsm-timing": {
+        "input": EXAMPLES_DIR / "fsm-timing" / "spec.json",
+        "ideals_dir": EXAMPLES_DIR / "fsm-timing" / "fixes",
     },
 }
 
@@ -219,13 +219,10 @@ def run_one(config_path: Path, spec_name: str, seed: int) -> dict | None:
     if n_repairs == 0 or timed_out:
         return {**base, "best_relation": "none", "implies_ideal": 0, "n_implies": 0}
 
-    ideal_args: list[str] = []
-    for ideal in spec["ideals"]:
-        ideal_args += ["--ideal", str(ideal)]
-
     try:
         result = subprocess.run(
-            [str(COMPARE_BIN), "--repairs", str(output_dir), *ideal_args],
+            [str(COMPARE_BIN), "--repairs", str(output_dir),
+             "--ideals", str(spec["ideals_dir"])],
             check=True, timeout=120, capture_output=True, text=True,
         )
         best_rel, implies_ideal, n_implies = parse_compare_output(result.stdout)

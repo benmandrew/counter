@@ -395,7 +395,7 @@ void print_help(const char* prog) {
         << "                       a random seed is chosen and printed.\n"
         << "  -h, --help           Show this help message and exit.\n"
         << "\n"
-        << "Input format (examples/takeoff.json):\n"
+        << "Input format (examples/takeoff/spec.json):\n"
         << "  {\n"
         << "    \"assumptions\": [],\n"
         << "    \"guarantees\":  [ { \"trigger\": \"<formula>\",\n"

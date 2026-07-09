@@ -8,8 +8,8 @@ rm -f results/*
 
 NPROC=$(nproc)
 
-INPUT=examples/fsm/spec.json
-IDEALS_DIR=examples/fsm/fixes
+INPUT=examples/fsm-timing/spec.json
+IDEALS_DIR=examples/fsm-timing/fixes
 
 cmake --build --parallel "$NPROC" --preset release
 

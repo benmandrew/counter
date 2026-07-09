@@ -2,18 +2,25 @@
   "assumptions": [],
   "guarantees": [
     {
-      "condition": "maneuver_state & standby & good",
+      "condition": "state_maneuver & standby & good",
       "condition-type": "trigger",
-      "response": "STANDBY_STATE",
+      "response": "STATE_STANDBY",
       "timing": { "type": "ForTicks", "ticks": 5 }
     },
     {
-      "condition": "maneuver_state & supported & good & !standby",
+      "condition": "state_maneuver & supported & good & !standby",
       "condition-type": "trigger",
-      "response": "!STANDBY_STATE",
+      "response": "STATE_TRANSITION",
       "timing": { "type": "WithinTicks", "ticks": 5 }
+    },
+    {
+      "condition": "true",
+      "condition-type": "continual",
+      "response": "!(STATE_STANDBY & STATE_TRANSITION)",
+      "timing": { "type": "Always" },
+      "weakenable": false
     }
   ],
-  "in_atoms": ["maneuver_state", "standby", "supported", "good"],
-  "out_atoms": ["STANDBY_STATE"]
+  "in_atoms": ["state_maneuver", "standby", "supported", "good"],
+  "out_atoms": ["STATE_STANDBY", "STATE_TRANSITION"]
 }

@@ -3,16 +3,16 @@
 # All sections and keys are optional; absent keys use the built-in defaults.
 
 [genetic]
-generations     = 5     # number of evolution rounds
-population_size = 100   # candidates per generation
+generations     = 10    # number of evolution rounds
+population_size = 1000  # candidates per generation
 selection_rate  = 0.5   # fraction of population selected as parents each generation
 crossover_rate  = 0.1   # probability of crossover between parents
-mutation_rate   = 1.0   # probability of mutating an offspring
+mutation_rate   = 0.8   # probability of mutating an offspring
 
 [fitness]
 weight_syntactic = 0.33  # syntactic similarity component weight
 weight_semantic  = 0.33  # semantic similarity (model counting) component weight
-weight_halstead  = 0.1  # Halstead complexity penalty weight
+weight_halstead  = 0.1   # Halstead complexity penalty weight
 weight_status    = 0.33  # realizability status weight
 
 [syntactic]
@@ -22,11 +22,11 @@ weight_timing   = 1.0   # contribution of timing constraint similarity
 
 [mutation]
 p_trigger  = 0.5    # per-requirement probability of mutating the trigger
-p_response = 0.5    # per-requirement probability of mutating the response
-p_timing   = 0.15   # per-requirement probability of mutating the timing
+p_response = 0.1    # per-requirement probability of mutating the response
+p_timing   = 0.1    # per-requirement probability of mutating the timing
 
 [model_counting]
-default_bound = 20  # trace-length bound k for bounded model counting
+default_bound = 10  # trace-length bound k for bounded model counting
 
 [filters]
 run_weakening   = true  # enable per-generation weakening filter

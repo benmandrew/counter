@@ -10,10 +10,17 @@
     {
       "condition": "state_nominal & !request",
       "condition-type": "trigger",
-      "response": "!STATE_FAULT",
+      "response": "STATE_TRANSITION",
       "timing": { "type": "Always" }
+    },
+    {
+      "condition": "true",
+      "condition-type": "continual",
+      "response": "!(STATE_FAULT & STATE_TRANSITION)",
+      "timing": { "type": "Always" },
+      "weakenable": false
     }
   ],
   "in_atoms": ["state_nominal", "limits", "request"],
-  "out_atoms": ["STATE_FAULT"]
+  "out_atoms": ["STATE_FAULT", "STATE_TRANSITION"]
 }

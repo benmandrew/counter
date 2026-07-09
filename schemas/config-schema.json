@@ -73,8 +73,9 @@
       "type": "object",
       "additionalProperties": false,
       "properties": {
-        "black_timeout_ms": { "type": "integer", "minimum": 0, "description": "Timeout per black SAT query in milliseconds." },
-        "parallel":         { "type": "integer", "minimum": 1, "description": "Thread pool size. Omit to use hardware concurrency." }
+        "black_timeout_ms":  { "type": "integer", "minimum": 0, "description": "Timeout per black SAT query in milliseconds." },
+        "parallel":          { "type": "integer", "minimum": 1, "description": "Thread pool size. Omit to use hardware concurrency." },
+        "report_cpu_timing": { "type": "boolean", "description": "Print the CPU-attribution report (your code vs. external CLI tools)." }
       }
     }
   }

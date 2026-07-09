@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1783604054086,
+  "lastUpdate": 1783604264184,
   "repoUrl": "https://github.com/benmandrew/counter",
   "entries": {
     "counter benchmarks": [
@@ -1440,6 +1440,78 @@ window.BENCHMARK_DATA = {
             "value": 2922.857245823748,
             "unit": "ns/iter",
             "extra": "iterations: 235860\ncpu: 2922.4602179258895 ns\nthreads: 1"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "benmandrew@gmail.com",
+            "name": "benmandrew",
+            "username": "benmandrew"
+          },
+          "committer": {
+            "email": "benmandrew@gmail.com",
+            "name": "benmandrew",
+            "username": "benmandrew"
+          },
+          "distinct": true,
+          "id": "cacd979ed8ac20ac52581b3616b75728d37cced1",
+          "message": "feat: write per-run counter logs in run_experiments\n\nRedirect each counter invocation's stdout+stderr to run.log in its\noutput dir instead of discarding stdout and piping stderr. Failed or\nzero-repair runs previously left no trace explaining why; now every run\nis self-documenting. On non-zero exit the console shows the last log\nline via a new tail_line() helper (stripping carriage-return progress\nspam) and points at the full log.",
+          "timestamp": "2026-07-09T14:28:25+01:00",
+          "tree_id": "7077377a28beba3293105db39eb5b34083e22672",
+          "url": "https://github.com/benmandrew/counter/commit/cacd979ed8ac20ac52581b3616b75728d37cced1"
+        },
+        "date": 1783604263789,
+        "tool": "googlecpp",
+        "benches": [
+          {
+            "name": "Syntactic similarity - small formulas (3 variables)",
+            "value": 551.8866421558932,
+            "unit": "ns/iter",
+            "extra": "iterations: 1283246\ncpu: 551.8629039170977 ns\nthreads: 1"
+          },
+          {
+            "name": "Syntactic similarity - large formulas (11 variables, O(n*m) shared_subformulae)",
+            "value": 2262.1882728295686,
+            "unit": "ns/iter",
+            "extra": "iterations: 309981\ncpu: 2261.9533132675874 ns\nthreads: 1"
+          },
+          {
+            "name": "Spec implication check - warm black cache",
+            "value": 875.8329670794733,
+            "unit": "ns/iter",
+            "extra": "iterations: 803632\ncpu: 875.8289515599176 ns\nthreads: 1"
+          },
+          {
+            "name": "Trace model counting - matrix exponentiation/steps:5",
+            "value": 163.6911305611386,
+            "unit": "ns/iter",
+            "extra": "iterations: 4280485\ncpu: 163.67855838765934 ns\nthreads: 1"
+          },
+          {
+            "name": "Trace model counting - matrix exponentiation/steps:10",
+            "value": 186.17211179174848,
+            "unit": "ns/iter",
+            "extra": "iterations: 3753694\ncpu: 186.16347603187694 ns\nthreads: 1"
+          },
+          {
+            "name": "Trace model counting - matrix exponentiation/steps:20",
+            "value": 209.04725477503635,
+            "unit": "ns/iter",
+            "extra": "iterations: 3332277\ncpu: 209.02474854281337 ns\nthreads: 1"
+          },
+          {
+            "name": "Trace model counting - matrix exponentiation/steps:50",
+            "value": 254.4303903380854,
+            "unit": "ns/iter",
+            "extra": "iterations: 2751256\ncpu: 254.4178044500402 ns\nthreads: 1"
+          },
+          {
+            "name": "Mutate specification - 3-guarantee takeoff spec",
+            "value": 3815.6185712418683,
+            "unit": "ns/iter",
+            "extra": "iterations: 183628\ncpu: 3815.238149955342 ns\nthreads: 1"
           }
         ]
       }

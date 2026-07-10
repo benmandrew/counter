@@ -39,6 +39,28 @@ bool operator<(const Formula& lhs, const Formula& rhs) {
     return *lhs.m_impl < *rhs.m_impl;
 }
 
+bool Formula::is_propositional() const {
+    for (const prop_formula_internal::Node& node : m_impl->m_nodes) {
+        switch (node.m_type) {
+            case prop_formula_internal::NodeType::Variable:
+            case prop_formula_internal::NodeType::Not:
+            case prop_formula_internal::NodeType::And:
+            case prop_formula_internal::NodeType::Or:
+            case prop_formula_internal::NodeType::Implies:
+            case prop_formula_internal::NodeType::Iff:
+                break;
+            case prop_formula_internal::NodeType::Next:
+            case prop_formula_internal::NodeType::Eventually:
+            case prop_formula_internal::NodeType::Globally:
+            case prop_formula_internal::NodeType::Until:
+            case prop_formula_internal::NodeType::Release:
+            case prop_formula_internal::NodeType::WeakUntil:
+                return false;
+        }
+    }
+    return true;
+}
+
 std::size_t Formula::hash() const noexcept {
     using prop_formula_internal::Node;
     auto combine = [](std::size_t seed, std::size_t val) noexcept {

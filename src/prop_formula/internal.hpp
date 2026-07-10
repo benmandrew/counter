@@ -3,6 +3,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "prop_formula.hpp"
@@ -16,7 +17,29 @@ enum class NodeType : std::uint8_t {
     Or,
     Implies,
     Iff,
+    // Temporal operators. Appended so the ordinals of the propositional types
+    // are unchanged (formula hashes and orderings depend on them).
+    Next,
+    Eventually,
+    Globally,
+    Until,
+    Release,
+    WeakUntil,
 };
+
+/// True for the unary node types (one child in m_left).
+inline bool is_unary_node(NodeType type) {
+    return type == NodeType::Not || type == NodeType::Next ||
+           type == NodeType::Eventually || type == NodeType::Globally;
+}
+
+/// True for the binary node types (children in m_left and m_right).
+inline bool is_binary_node(NodeType type) {
+    return type == NodeType::And || type == NodeType::Or ||
+           type == NodeType::Implies || type == NodeType::Iff ||
+           type == NodeType::Until || type == NodeType::Release ||
+           type == NodeType::WeakUntil;
+}
 
 struct Node {
     NodeType m_type = NodeType::Variable;
@@ -46,7 +69,19 @@ struct DimacsCnf {
 std::vector<Node> parse_formula(const std::string& formula);
 DimacsCnf encode_dimacs(const std::vector<Node>& nodes);
 Formula::Kind node_type_to_kind(NodeType type);
+NodeType kind_to_node_type(Formula::Kind kind);
 std::string node_to_string(const std::vector<Node>& nodes, std::size_t index);
+
+/// Builds a new arena wrapping @p child under a unary node of @p type.
+std::vector<Node> build_unary_arena(NodeType type,
+                                    const std::vector<Node>& child);
+/// Builds a new arena joining @p left and @p right under a binary @p type node.
+std::vector<Node> build_binary_arena(NodeType type,
+                                     const std::vector<Node>& left,
+                                     const std::vector<Node>& right);
+/// Copies the subtree rooted at @p root_index into a standalone arena.
+std::vector<Node> extract_subtree(const std::vector<Node>& nodes,
+                                  std::size_t root_index);
 
 }  // namespace prop_formula_internal
 
@@ -54,6 +89,12 @@ struct Formula::Impl {
     std::vector<prop_formula_internal::Node> m_nodes;
 
     explicit Impl(const std::string& formula);
+
+    /// Constructs directly from an already-built node arena (root last). Used
+    /// by the temporal construction/extraction path, which assembles arenas by
+    /// hand rather than by parsing a string.
+    explicit Impl(std::vector<prop_formula_internal::Node> nodes)
+        : m_nodes(std::move(nodes)) {}
 
     bool operator<(const Impl& rhs) const;
 };

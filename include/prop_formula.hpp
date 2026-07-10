@@ -12,6 +12,10 @@
 #include <utility>
 #include <vector>
 
+namespace prop_formula_internal {
+struct Node;
+}  // namespace prop_formula_internal
+
 /// A propositional formula represented as a parse tree. Supports standard
 /// boolean operators (¬, ∧, ∨, →, ↔) and variable atoms. Formulae can be
 /// converted to DIMACS CNF format for SAT/model counting, and their syntactic
@@ -28,6 +32,18 @@ class Formula {
         Or,
         Implies,
         Iff,
+        // Temporal operators (LTL). Only produced by the temporal
+        // construction path (make_unary/make_binary with a temporal Kind) and
+        // the TLSF front end; the propositional parser never emits them, so
+        // FRETISH formulae stay propositional. New values are appended so the
+        // NodeType/Kind ordinals of the propositional kinds — and therefore
+        // every existing formula hash and ordering — are unchanged.
+        Next,        // X phi
+        Eventually,  // F phi
+        Globally,    // G phi
+        Until,       // phi U psi
+        Release,     // phi R psi
+        WeakUntil,   // phi W psi
     };
 
     using RewriteCallback =
@@ -62,7 +78,8 @@ class Formula {
     static Formula make_atom(const std::string& atom);
 
     /// Creates a unary formula.
-    /// @param kind  Unary operator kind (currently only Kind::Not)
+    /// @param kind  Unary operator kind: Kind::Not, or a temporal unary kind
+    ///              (Kind::Next, Kind::Eventually, Kind::Globally)
     /// @param child Operand formula
     /// @return      A formula of the form op(child)
     static Formula make_unary(Kind kind, const Formula& child);
@@ -138,11 +155,22 @@ class Formula {
     /// @return A string representation of the formula
     [[nodiscard]] std::string to_string() const;
 
+    /// Returns true if this formula contains no temporal operators, i.e. it is
+    /// a purely propositional formula. Used to enforce that FRETISH conditions
+    /// and responses never carry temporal structure, and as a precondition
+    /// guard on propositional-only operations (to_dimacs, Tseitin CNF).
+    [[nodiscard]] bool is_propositional() const;
+
     [[nodiscard]] std::size_t hash() const noexcept;
 
    private:
     struct Impl;
     std::unique_ptr<Impl> m_impl;
+
+    /// Wraps an already-built node arena (root last) in a Formula. Used by the
+    /// temporal construction/extraction path in transform.cpp.
+    static Formula from_node_arena(
+        std::vector<prop_formula_internal::Node> nodes);
 
     friend bool operator<(const Formula& lhs, const Formula& rhs);
 };

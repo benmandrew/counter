@@ -352,6 +352,12 @@ bool specification_has_false_condition(const Specification& specification) {
 }
 
 std::string requirement_to_ltl(const Requirement& requirement) {
+    // FRETISH conditions and responses are propositional; the temporal
+    // structure comes entirely from the timing wrapper built below. Temporal
+    // operators in a condition/response would be double-wrapped and produce
+    // malformed LTL, so guard the invariant here.
+    assert(requirement.m_condition.is_propositional());
+    assert(requirement.m_response.is_propositional());
     const std::string condition_str =
         "(" + requirement.m_condition.to_string() + ")";
     std::string response_str = "(" + requirement.m_response.to_string() + ")";

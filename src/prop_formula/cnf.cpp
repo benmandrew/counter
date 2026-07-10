@@ -87,6 +87,17 @@ class TseitinEncoder {
                 add_clause({literal, -left, -right});
                 break;
             }
+            case prop_formula_internal::NodeType::Next:
+            case prop_formula_internal::NodeType::Eventually:
+            case prop_formula_internal::NodeType::Globally:
+            case prop_formula_internal::NodeType::Until:
+            case prop_formula_internal::NodeType::Release:
+            case prop_formula_internal::NodeType::WeakUntil:
+                // Tseitin CNF is defined only for propositional formulae.
+                // Temporal operators must never reach here; callers guard with
+                // Formula::is_propositional().
+                assert(false);
+                __builtin_unreachable();
         }
         m_node_literal_cache[index] = literal;
         return literal;

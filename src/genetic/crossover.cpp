@@ -60,6 +60,15 @@ Formula select_subformula(const Formula& formula,
             }
             return select_subformula(children.second, random_source);
         }
+        // FRETISH formulae are propositional; temporal operators never occur
+        // here. Treat any such subtree as an opaque leaf.
+        case Formula::Kind::Next:
+        case Formula::Kind::Eventually:
+        case Formula::Kind::Globally:
+        case Formula::Kind::Until:
+        case Formula::Kind::Release:
+        case Formula::Kind::WeakUntil:
+            return formula;
     }
     assert(false);
     __builtin_unreachable();

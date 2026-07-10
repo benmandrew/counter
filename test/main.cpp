@@ -61,6 +61,10 @@ void run_suite(std::string_view suite_name,
         run_prop_formula_rewrite_tests();
         return;
     }
+    if (suite_name == "prop_formula_temporal") {
+        run_prop_formula_temporal_tests();
+        return;
+    }
     if (suite_name == "prop_formula_similarity") {
         run_prop_formula_similarity_tests();
         return;
@@ -130,6 +134,7 @@ int main(int argc, const char* const argv[]) {
             run_prop_formula_cnf_tests();
             run_prop_formula_rewrite_tests();
             run_prop_formula_similarity_tests();
+            run_prop_formula_temporal_tests();
             run_halstead_tests();
             run_semantic_similarity_tests();
             run_syntactic_similarity_tests();

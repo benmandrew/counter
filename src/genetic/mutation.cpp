@@ -133,6 +133,15 @@ Formula mutate_formula(const Formula& formula,
                 }
                 return mutate_binary_subtree(*children_opt, random_source);
             }
+            // FRETISH formulae are propositional; temporal operators never
+            // occur here. Leave any such subtree unmutated.
+            case Formula::Kind::Next:
+            case Formula::Kind::Eventually:
+            case Formula::Kind::Globally:
+            case Formula::Kind::Until:
+            case Formula::Kind::Release:
+            case Formula::Kind::WeakUntil:
+                return std::nullopt;
         }
         return std::nullopt;
     };

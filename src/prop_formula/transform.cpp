@@ -1,5 +1,6 @@
 #include <cassert>
 #include <functional>
+#include <memory>
 #include <optional>
 #include <string>
 #include <utility>
@@ -23,9 +24,117 @@ Formula::Kind node_type_to_kind(NodeType type) {
             return Formula::Kind::Implies;
         case NodeType::Iff:
             return Formula::Kind::Iff;
+        case NodeType::Next:
+            return Formula::Kind::Next;
+        case NodeType::Eventually:
+            return Formula::Kind::Eventually;
+        case NodeType::Globally:
+            return Formula::Kind::Globally;
+        case NodeType::Until:
+            return Formula::Kind::Until;
+        case NodeType::Release:
+            return Formula::Kind::Release;
+        case NodeType::WeakUntil:
+            return Formula::Kind::WeakUntil;
     }
     assert(false);
     __builtin_unreachable();
+}
+
+NodeType kind_to_node_type(Formula::Kind kind) {
+    switch (kind) {
+        case Formula::Kind::Atom:
+            return NodeType::Variable;
+        case Formula::Kind::Not:
+            return NodeType::Not;
+        case Formula::Kind::And:
+            return NodeType::And;
+        case Formula::Kind::Or:
+            return NodeType::Or;
+        case Formula::Kind::Implies:
+            return NodeType::Implies;
+        case Formula::Kind::Iff:
+            return NodeType::Iff;
+        case Formula::Kind::Next:
+            return NodeType::Next;
+        case Formula::Kind::Eventually:
+            return NodeType::Eventually;
+        case Formula::Kind::Globally:
+            return NodeType::Globally;
+        case Formula::Kind::Until:
+            return NodeType::Until;
+        case Formula::Kind::Release:
+            return NodeType::Release;
+        case Formula::Kind::WeakUntil:
+            return NodeType::WeakUntil;
+    }
+    assert(false);
+    __builtin_unreachable();
+}
+
+// Appends a unary node of @p type over @p child's arena, producing a new arena
+// with the root last. Child indices in the source arena are unchanged (the
+// child keeps positions [0, child.size)); the new root points at the old root.
+std::vector<Node> build_unary_arena(NodeType type,
+                                    const std::vector<Node>& child) {
+    assert(!child.empty());
+    std::vector<Node> nodes = child;
+    const std::size_t child_root = nodes.size() - 1;
+    nodes.push_back(Node{type, "", child_root, 0});
+    return nodes;
+}
+
+// Concatenates @p left and @p right arenas and appends a binary node of
+// @p type. The right arena's internal child indices are shifted by the left
+// arena's size; leaf (Variable) indices stay 0, matching how the parser lays
+// out `(left) op (right)`.
+std::vector<Node> build_binary_arena(NodeType type,
+                                     const std::vector<Node>& left,
+                                     const std::vector<Node>& right) {
+    assert(!left.empty() && !right.empty());
+    std::vector<Node> nodes = left;
+    const std::size_t offset = nodes.size();
+    const std::size_t left_root = offset - 1;
+    for (Node node : right) {
+        if (is_unary_node(node.m_type)) {
+            node.m_left += offset;
+        } else if (is_binary_node(node.m_type)) {
+            node.m_left += offset;
+            node.m_right += offset;
+        }
+        nodes.push_back(node);
+    }
+    const std::size_t right_root = nodes.size() - 1;
+    nodes.push_back(Node{type, "", left_root, right_root});
+    return nodes;
+}
+
+// Extracts the subtree rooted at @p root_index from @p nodes into a standalone
+// arena (root last, post-order), remapping child indices. This reproduces the
+// exact layout the parser would produce for the subtree's string form, so an
+// extracted propositional subtree is byte-for-byte equal to the reparsed one.
+std::vector<Node> extract_subtree(const std::vector<Node>& nodes,
+                                  std::size_t root_index) {
+    std::vector<Node> result;
+    std::function<std::size_t(std::size_t)> visit =
+        [&](std::size_t old_index) -> std::size_t {
+        Node copy = nodes[old_index];
+        if (is_unary_node(copy.m_type)) {
+            copy.m_left = visit(nodes[old_index].m_left);
+        } else if (is_binary_node(copy.m_type)) {
+            const std::size_t new_left = visit(nodes[old_index].m_left);
+            const std::size_t new_right = visit(nodes[old_index].m_right);
+            copy.m_left = new_left;
+            copy.m_right = new_right;
+        } else {
+            copy.m_left = 0;
+            copy.m_right = 0;
+        }
+        result.push_back(copy);
+        return result.size() - 1;
+    };
+    visit(root_index);
+    return result;
 }
 
 std::string node_to_string(const std::vector<Node>& nodes, std::size_t index) {
@@ -59,6 +168,27 @@ std::string node_to_string(const std::vector<Node>& nodes, std::size_t index) {
                 const std::string right = to_string_recursive(node.m_right);
                 return "(" + left + ") <-> (" + right + ")";
             }
+            case NodeType::Next:
+                return "X(" + to_string_recursive(node.m_left) + ")";
+            case NodeType::Eventually:
+                return "F(" + to_string_recursive(node.m_left) + ")";
+            case NodeType::Globally:
+                return "G(" + to_string_recursive(node.m_left) + ")";
+            case NodeType::Until: {
+                const std::string left = to_string_recursive(node.m_left);
+                const std::string right = to_string_recursive(node.m_right);
+                return "(" + left + ") U (" + right + ")";
+            }
+            case NodeType::Release: {
+                const std::string left = to_string_recursive(node.m_left);
+                const std::string right = to_string_recursive(node.m_right);
+                return "(" + left + ") R (" + right + ")";
+            }
+            case NodeType::WeakUntil: {
+                const std::string left = to_string_recursive(node.m_left);
+                const std::string right = to_string_recursive(node.m_right);
+                return "(" + left + ") W (" + right + ")";
+            }
         }
         assert(false);
         __builtin_unreachable();
@@ -71,28 +201,45 @@ std::string node_to_string(const std::vector<Node>& nodes, std::size_t index) {
 
 Formula Formula::make_atom(const std::string& atom) { return Formula(atom); }
 
-Formula Formula::make_unary([[maybe_unused]] Kind kind, const Formula& child) {
-    assert(kind == Kind::Not);
-    return Formula("!(" + child.to_string() + ")");
+Formula Formula::from_node_arena(
+    std::vector<prop_formula_internal::Node> nodes) {
+    Formula result;
+    result.m_impl = std::make_unique<Impl>(std::move(nodes));
+    return result;
+}
+
+Formula Formula::make_unary(Kind kind, const Formula& child) {
+    // Construction is done directly on the node arena rather than by building a
+    // string and reparsing it. For propositional operators this yields an arena
+    // byte-identical to the parser's (verified against the propositional test
+    // suite); for temporal operators — and for any propositional operator whose
+    // operand is itself temporal (e.g. !(X p)) — it is the only correct path,
+    // since the propositional parser cannot read temporal syntax back.
+    assert(kind == Kind::Not || kind == Kind::Next ||
+           kind == Kind::Eventually || kind == Kind::Globally);
+    return Formula::from_node_arena(prop_formula_internal::build_unary_arena(
+        prop_formula_internal::kind_to_node_type(kind), child.m_impl->m_nodes));
 }
 
 Formula Formula::make_binary(Kind kind, const Formula& left,
                              const Formula& right) {
     switch (kind) {
         case Kind::And:
-            return Formula("(" + left.to_string() + ") & (" +
-                           right.to_string() + ")");
         case Kind::Or:
-            return Formula("(" + left.to_string() + ") | (" +
-                           right.to_string() + ")");
         case Kind::Implies:
-            return Formula("(" + left.to_string() + ") -> (" +
-                           right.to_string() + ")");
         case Kind::Iff:
-            return Formula("(" + left.to_string() + ") <-> (" +
-                           right.to_string() + ")");
+        case Kind::Until:
+        case Kind::Release:
+        case Kind::WeakUntil:
+            return Formula::from_node_arena(
+                prop_formula_internal::build_binary_arena(
+                    prop_formula_internal::kind_to_node_type(kind),
+                    left.m_impl->m_nodes, right.m_impl->m_nodes));
         case Kind::Atom:
         case Kind::Not:
+        case Kind::Next:
+        case Kind::Eventually:
+        case Kind::Globally:
             assert(false);
             __builtin_unreachable();
     }
@@ -228,6 +375,15 @@ void Formula::simplify() {
                 return simplify_iff(lhs, rhs);
             case Kind::Atom:
             case Kind::Not:
+            // Temporal operators are left untouched by propositional
+            // simplification; their subtrees are still simplified by the
+            // post-order walk.
+            case Kind::Next:
+            case Kind::Eventually:
+            case Kind::Globally:
+            case Kind::Until:
+            case Kind::Release:
+            case Kind::WeakUntil:
                 break;
         }
         return std::nullopt;
@@ -250,30 +406,29 @@ std::optional<std::string> Formula::atom_name() const {
 }
 
 std::optional<Formula> Formula::unary_child() const {
+    // Extraction is done on the node arena (not by reparsing a string), so it
+    // works uniformly for propositional and temporal roots — including a
+    // propositional operator whose child is temporal, e.g. the child of the
+    // Not in !(X p). For a propositional subtree this yields an arena
+    // byte-identical to the parser's.
     const prop_formula_internal::Node& root = m_impl->m_nodes.back();
-    if (root.m_type != prop_formula_internal::NodeType::Not) {
+    if (!prop_formula_internal::is_unary_node(root.m_type)) {
         return std::nullopt;
     }
-    return Formula(
-        prop_formula_internal::node_to_string(m_impl->m_nodes, root.m_left));
+    return from_node_arena(
+        prop_formula_internal::extract_subtree(m_impl->m_nodes, root.m_left));
 }
 
 std::optional<std::pair<Formula, Formula>> Formula::binary_children() const {
     const prop_formula_internal::Node& root = m_impl->m_nodes.back();
-    switch (root.m_type) {
-        case prop_formula_internal::NodeType::And:
-        case prop_formula_internal::NodeType::Or:
-        case prop_formula_internal::NodeType::Implies:
-        case prop_formula_internal::NodeType::Iff:
-            return std::make_pair(Formula(prop_formula_internal::node_to_string(
-                                      m_impl->m_nodes, root.m_left)),
-                                  Formula(prop_formula_internal::node_to_string(
-                                      m_impl->m_nodes, root.m_right)));
-        case prop_formula_internal::NodeType::Variable:
-        case prop_formula_internal::NodeType::Not:
-            return std::nullopt;
+    if (!prop_formula_internal::is_binary_node(root.m_type)) {
+        return std::nullopt;
     }
-    __builtin_unreachable();
+    return std::make_pair(
+        from_node_arena(prop_formula_internal::extract_subtree(m_impl->m_nodes,
+                                                               root.m_left)),
+        from_node_arena(prop_formula_internal::extract_subtree(m_impl->m_nodes,
+                                                               root.m_right)));
 }
 
 Formula Formula::rewrite_post_order(
@@ -321,6 +476,25 @@ Formula Formula::rewrite_post_order(
                 const Formula right = rewrite_subtree(node.m_right);
                 rewritten_subtree =
                     Formula::make_binary(Kind::Iff, left, right);
+                break;
+            }
+            case prop_formula_internal::NodeType::Next:
+            case prop_formula_internal::NodeType::Eventually:
+            case prop_formula_internal::NodeType::Globally: {
+                const Formula child = rewrite_subtree(node.m_left);
+                rewritten_subtree = Formula::make_unary(
+                    prop_formula_internal::node_type_to_kind(node.m_type),
+                    child);
+                break;
+            }
+            case prop_formula_internal::NodeType::Until:
+            case prop_formula_internal::NodeType::Release:
+            case prop_formula_internal::NodeType::WeakUntil: {
+                const Formula left = rewrite_subtree(node.m_left);
+                const Formula right = rewrite_subtree(node.m_right);
+                rewritten_subtree = Formula::make_binary(
+                    prop_formula_internal::node_type_to_kind(node.m_type), left,
+                    right);
                 break;
             }
         }

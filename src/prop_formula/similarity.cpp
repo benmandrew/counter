@@ -57,12 +57,18 @@ std::unordered_map<std::size_t, std::size_t> collect_subformula_ids(
                 key.m_variable = node.m_variable;
                 break;
             case prop_formula_internal::NodeType::Not:
+            case prop_formula_internal::NodeType::Next:
+            case prop_formula_internal::NodeType::Eventually:
+            case prop_formula_internal::NodeType::Globally:
                 key.m_left = ids[node.m_left];
                 break;
             case prop_formula_internal::NodeType::And:
             case prop_formula_internal::NodeType::Or:
             case prop_formula_internal::NodeType::Implies:
             case prop_formula_internal::NodeType::Iff:
+            case prop_formula_internal::NodeType::Until:
+            case prop_formula_internal::NodeType::Release:
+            case prop_formula_internal::NodeType::WeakUntil:
                 key.m_left = ids[node.m_left];
                 key.m_right = ids[node.m_right];
                 break;

@@ -20,8 +20,15 @@ add_executable(counter_tests
     prop_formula/cnf_tests.cpp
     prop_formula/rewrite_tests.cpp
     prop_formula/similarity_tests.cpp
+    prop_formula/temporal_tests.cpp
     serialisation_tests.cpp
     config_io_tests.cpp
+    tlsf/parser_tests.cpp
+    tlsf/writer_tests.cpp
+    tlsf/filter_tests.cpp
+    tlsf/fitness_tests.cpp
+    tlsf/genetic_tests.cpp
+    tlsf/pipeline_tests.cpp
 )
 
 target_include_directories(counter_tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
@@ -46,6 +53,7 @@ add_test(NAME counter_tests.prop_formula_ast COMMAND counter_tests prop_formula_
 add_test(NAME counter_tests.prop_formula_cnf COMMAND counter_tests prop_formula_cnf)
 add_test(NAME counter_tests.prop_formula_rewrite COMMAND counter_tests prop_formula_rewrite)
 add_test(NAME counter_tests.prop_formula_similarity COMMAND counter_tests prop_formula_similarity)
+add_test(NAME counter_tests.prop_formula_temporal COMMAND counter_tests prop_formula_temporal)
 add_test(NAME counter_tests.halstead COMMAND counter_tests halstead)
 add_test(NAME counter_tests.semantic_similarity COMMAND counter_tests semantic_similarity)
 add_test(NAME counter_tests.syntactic_similarity COMMAND counter_tests syntactic_similarity)
@@ -55,6 +63,12 @@ add_test(NAME counter_tests.implication_filter COMMAND counter_tests implication
 add_test(NAME counter_tests.requirement COMMAND counter_tests requirement)
 add_test(NAME counter_tests.serialisation COMMAND counter_tests serialisation)
 add_test(NAME counter_tests.config_io COMMAND counter_tests config_io)
+add_test(NAME counter_tests.tlsf_parser COMMAND counter_tests tlsf_parser)
+add_test(NAME counter_tests.tlsf_writer COMMAND counter_tests tlsf_writer)
+add_test(NAME counter_tests.tlsf_filter COMMAND counter_tests tlsf_filter)
+add_test(NAME counter_tests.tlsf_fitness COMMAND counter_tests tlsf_fitness)
+add_test(NAME counter_tests.tlsf_genetic COMMAND counter_tests tlsf_genetic)
+add_test(NAME counter_tests.tlsf_pipeline COMMAND counter_tests tlsf_pipeline)
 
 add_custom_target(tests
     COMMAND ${CMAKE_CTEST_COMMAND} --output-on-failure

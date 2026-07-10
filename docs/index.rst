@@ -61,7 +61,9 @@ functions, and anonymous namespaces, with source browsing and call graphs.
    api/genetic/crossover
    api/genetic/generation
    api/genetic/mutation
+   api/genetic/operators
    api/genetic/random_source
+   api/genetic/scored
 
 .. toctree::
    :maxdepth: 1
@@ -72,3 +74,17 @@ functions, and anonymous namespaces, with source browsing and call graphs.
    api/runner/ganak
    api/runner/ltlfilt
    api/runner/spot
+
+.. toctree::
+   :maxdepth: 1
+   :caption: TLSF
+
+   api/tlsf/specification
+   api/tlsf/parser
+   api/tlsf/writer
+   api/tlsf/fitness
+   api/tlsf/mutation
+   api/tlsf/crossover
+   api/tlsf/operators
+   api/tlsf/filter
+   api/tlsf/pipeline

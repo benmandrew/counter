@@ -11,6 +11,36 @@
 
 namespace {
 
+// Handles the TLSF-mode suites. Split out of run_suite so the latter stays
+// under the clang-tidy cognitive-complexity threshold.
+bool run_tlsf_suite(std::string_view suite_name) {
+    if (suite_name == "tlsf_parser") {
+        run_tlsf_parser_tests();
+        return true;
+    }
+    if (suite_name == "tlsf_writer") {
+        run_tlsf_writer_tests();
+        return true;
+    }
+    if (suite_name == "tlsf_fitness") {
+        run_tlsf_fitness_tests();
+        return true;
+    }
+    if (suite_name == "tlsf_genetic") {
+        run_tlsf_genetic_tests();
+        return true;
+    }
+    if (suite_name == "tlsf_pipeline") {
+        run_tlsf_pipeline_tests();
+        return true;
+    }
+    if (suite_name == "tlsf_filter") {
+        run_tlsf_filter_tests();
+        return true;
+    }
+    return false;
+}
+
 void run_suite(std::string_view suite_name,
                const std::chrono::milliseconds& timeout) {
     if (suite_name == "transfer_matrix") {
@@ -61,6 +91,10 @@ void run_suite(std::string_view suite_name,
         run_prop_formula_rewrite_tests();
         return;
     }
+    if (suite_name == "prop_formula_temporal") {
+        run_prop_formula_temporal_tests();
+        return;
+    }
     if (suite_name == "prop_formula_similarity") {
         run_prop_formula_similarity_tests();
         return;
@@ -101,6 +135,9 @@ void run_suite(std::string_view suite_name,
         run_config_io_tests();
         return;
     }
+    if (run_tlsf_suite(suite_name)) {
+        return;
+    }
     throw std::invalid_argument("Unknown test suite: " +
                                 std::string(suite_name));
 }
@@ -130,6 +167,7 @@ int main(int argc, const char* const argv[]) {
             run_prop_formula_cnf_tests();
             run_prop_formula_rewrite_tests();
             run_prop_formula_similarity_tests();
+            run_prop_formula_temporal_tests();
             run_halstead_tests();
             run_semantic_similarity_tests();
             run_syntactic_similarity_tests();
@@ -139,6 +177,12 @@ int main(int argc, const char* const argv[]) {
             run_requirement_tests();
             run_serialisation_tests();
             run_config_io_tests();
+            run_tlsf_parser_tests();
+            run_tlsf_writer_tests();
+            run_tlsf_filter_tests();
+            run_tlsf_fitness_tests();
+            run_tlsf_genetic_tests();
+            run_tlsf_pipeline_tests();
             return 0;
         }
         if (argc != 2) {

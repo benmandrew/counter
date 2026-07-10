@@ -40,7 +40,23 @@
       "properties": {
         "p_trigger":  { "type": "number", "minimum": 0, "maximum": 1, "description": "Per-requirement probability of mutating the trigger." },
         "p_response": { "type": "number", "minimum": 0, "maximum": 1, "description": "Per-requirement probability of mutating the response." },
-        "p_timing":   { "type": "number", "minimum": 0, "maximum": 1, "description": "Per-requirement probability of mutating the timing." }
+        "p_timing":   { "type": "number", "minimum": 0, "maximum": 1, "description": "Per-requirement probability of mutating the timing." },
+        "p_add_assumption": { "type": "number", "minimum": 0, "maximum": 1, "description": "Both modes: probability a mutation appends a new environment assumption (fairness over an input) instead of rewriting an existing requirement/formula." }
+      }
+    },
+    "tlsf": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "TLSF-mode settings (a .tlsf input or --format tlsf).",
+      "properties": {
+        "mutation": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "p_assumption": { "type": "number", "minimum": 0, "maximum": 1, "description": "Probability of mutating an assumption-side section (INITIALLY/REQUIRE/ASSUME)." },
+            "p_guarantee":  { "type": "number", "minimum": 0, "maximum": 1, "description": "Probability of mutating a guarantee-side section (PRESET/ASSERT/GUARANTEE)." }
+          }
+        }
       }
     },
     "model_counting": {

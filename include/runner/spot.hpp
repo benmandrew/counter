@@ -7,6 +7,7 @@
 #include <mutex>
 #include <string>
 #include <unordered_map>
+#include <vector>
 
 #include "requirement.hpp"
 
@@ -45,6 +46,13 @@ class RealizabilityChecker {
     /// are memoised by the full specification formula, so repeated calls with
     /// identical inputs incur no additional tool invocations.
     bool check_realizability(const Specification& specification);
+
+    /// Realizability of a raw LTL formula with the given input/output atom
+    /// partition (mode-agnostic core shared by the FRETISH and TLSF front
+    /// ends). Memoised by (normalised formula, inputs, outputs).
+    bool check_realizability_ltl(const std::string& ltl_formula,
+                                 const std::vector<std::string>& inputs,
+                                 const std::vector<std::string>& outputs);
 
    private:
     mutable std::mutex m_cache_mutex;

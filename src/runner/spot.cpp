@@ -230,10 +230,16 @@ bool RealizabilityChecker::check_realizability(
     const Specification& specification) {
     std::string conj_ltl;
     build_specification_formula(specification, conj_ltl);
-    conj_ltl = normalize_ltl(conj_ltl);
-    const std::string cache_key = conj_ltl + "|" +
-                                  join_comma(specification.m_in_atoms) + "|" +
-                                  join_comma(specification.m_out_atoms);
+    return check_realizability_ltl(conj_ltl, specification.m_in_atoms,
+                                   specification.m_out_atoms);
+}
+
+bool RealizabilityChecker::check_realizability_ltl(
+    const std::string& ltl_formula, const std::vector<std::string>& inputs,
+    const std::vector<std::string>& outputs) {
+    const std::string conj_ltl = normalize_ltl(ltl_formula);
+    const std::string cache_key =
+        conj_ltl + "|" + join_comma(inputs) + "|" + join_comma(outputs);
     {
         std::scoped_lock lock(m_cache_mutex);
         const auto found = m_cache.find(cache_key);
@@ -247,10 +253,10 @@ bool RealizabilityChecker::check_realizability(
     assert(access(ltlsynt.c_str(), F_OK) == 0);
     std::vector<std::string> command = {ltlsynt, "--realizability", "-f",
                                         conj_ltl};
-    if (!specification.m_in_atoms.empty()) {
-        command.push_back("--ins=" + join_comma(specification.m_in_atoms));
-    } else if (!specification.m_out_atoms.empty()) {
-        command.push_back("--outs=" + join_comma(specification.m_out_atoms));
+    if (!inputs.empty()) {
+        command.push_back("--ins=" + join_comma(inputs));
+    } else if (!outputs.empty()) {
+        command.push_back("--outs=" + join_comma(outputs));
     }
     const auto start = std::chrono::steady_clock::now();
     const ProcessResult result = execute_and_capture(command);

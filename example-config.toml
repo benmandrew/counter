@@ -24,6 +24,19 @@ weight_timing   = 1.0   # contribution of timing constraint similarity
 p_trigger  = 0.5    # per-requirement probability of mutating the trigger
 p_response = 0.1    # per-requirement probability of mutating the response
 p_timing   = 0.1    # per-requirement probability of mutating the timing
+# Shared by both modes: probability that a mutation instead appends a new
+# environment assumption (a fairness assumption over an input) rather than
+# rewriting an existing requirement/formula. Enables repairs that require
+# strengthening the environment (e.g. adding request fairness to an
+# unrealizable GR(1) spec).
+p_add_assumption = 0.05
+
+[tlsf.mutation]
+# Applies only in TLSF mode (a .tlsf input or --format tlsf). Probability of
+# mutating an assumption-side section (INITIALLY/REQUIRE/ASSUME) versus a
+# guarantee-side section (PRESET/ASSERT/GUARANTEE).
+p_assumption = 0.3
+p_guarantee  = 0.7
 
 [model_counting]
 default_bound = 10  # trace-length bound k for bounded model counting

@@ -133,6 +133,15 @@ Formula mutate_formula(const Formula& formula,
                 }
                 return mutate_binary_subtree(*children_opt, random_source);
             }
+            // FRETISH formulae are propositional; temporal operators never
+            // occur here. Leave any such subtree unmutated.
+            case Formula::Kind::Next:
+            case Formula::Kind::Eventually:
+            case Formula::Kind::Globally:
+            case Formula::Kind::Until:
+            case Formula::Kind::Release:
+            case Formula::Kind::WeakUntil:
+                return std::nullopt;
         }
         return std::nullopt;
     };
@@ -252,6 +261,27 @@ bool creates_duplicate(const std::vector<Requirement>& requirements,
     return false;
 }
 
+// Builds a new environment assumption over the specification's input atoms:
+// `whenever true C shall eventually satisfy <input>` — i.e. G F <input>, a
+// fairness assumption (the input is negated on a coin flip). Appending it
+// strengthens the environment, which is how the algorithm repairs
+// unrealizability that the rewrite-only operators cannot reach.
+Specification add_assumption(const Specification& specification,
+                             const RandomSource& random_source) {
+    const std::string& atom = specification.m_in_atoms[random_source.next_index(
+        specification.m_in_atoms.size())];
+    Formula response = Formula::make_atom(atom);
+    if (random_source.next_bool()) {
+        response = Formula::make_unary(Formula::Kind::Not, response);
+    }
+    std::vector<Requirement> assumptions = specification.m_assumptions;
+    assumptions.emplace_back(Formula("true"), std::move(response),
+                             timing::eventually(), ConditionType::Continual,
+                             /*weakenable=*/true);
+    return Specification(std::move(assumptions), specification.m_guarantees,
+                         specification.m_in_atoms, specification.m_out_atoms);
+}
+
 }  // namespace
 
 Specification mutate_specification(const Specification& specification,
@@ -260,6 +290,13 @@ Specification mutate_specification(const Specification& specification,
     assert(random_source);
     const std::size_t n_assumptions = specification.m_assumptions.size();
     assert(n_assumptions + specification.m_guarantees.size() > 0);
+    // Low-probability structural action: add a new environment assumption. The
+    // Specification constructor deduplicates, so re-adding an existing
+    // assumption is a harmless no-op.
+    if (!specification.m_in_atoms.empty() &&
+        random_source.next_real() < cfg.p_add_assumption) {
+        return add_assumption(specification, random_source);
+    }
     std::vector<std::string> atoms;
     atoms.insert(atoms.end(), specification.m_in_atoms.begin(),
                  specification.m_in_atoms.end());

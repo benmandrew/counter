@@ -5,6 +5,8 @@
 ///        crossover, mutation, and the FilterFunction / ScoredSpecification
 ///        types.
 
+#include <algorithm>
+#include <cassert>
 #include <cstddef>
 #include <functional>
 #include <string>
@@ -12,13 +14,17 @@
 #include <utility>
 #include <vector>
 
+#include "bounded_async.hpp"
 #include "config.hpp"
 #include "fitness/function.hpp"
 #include "genetic/crossover.hpp"
 #include "genetic/mutation.hpp"
+#include "genetic/operators.hpp"
 #include "genetic/random_source.hpp"
+#include "genetic/scored.hpp"
 #include "requirement.hpp"
 #include "runner/black.hpp"
+#include "thread_pool.hpp"
 
 /// A filter function transforms a population into a surviving subset.
 /// Receives the entire population, enabling both per-element predicates and
@@ -27,12 +33,12 @@
 ///
 /// Tracks the input and output population sizes of the most recent invocation
 /// via n_in() and n_out(), for per-generation diagnostic output.
-class FilterFunction {
+template <typename Spec>
+class FilterFunctionT {
    public:
-    using Fn = std::function<std::vector<Specification>(
-        const std::vector<Specification>&)>;
+    using Fn = std::function<std::vector<Spec>(const std::vector<Spec>&)>;
 
-    FilterFunction(std::string name, Fn func)
+    FilterFunctionT(std::string name, Fn func)
         : m_name(std::move(name)), m_fn(std::move(func)) {}
 
     /// Implicit construction from any compatible callable (for tests and
@@ -40,14 +46,13 @@ class FilterFunction {
     template <
         typename Callable,
         std::enable_if_t<
-            !std::is_same_v<std::decay_t<Callable>, FilterFunction>, int> = 0>
-    FilterFunction(  // NOLINT(google-explicit-constructor,runtime/explicit)
+            !std::is_same_v<std::decay_t<Callable>, FilterFunctionT>, int> = 0>
+    FilterFunctionT(  // NOLINT(google-explicit-constructor,runtime/explicit)
         Callable&& func)
-        : FilterFunction("", Fn(std::forward<Callable>(func))) {}
+        : FilterFunctionT("", Fn(std::forward<Callable>(func))) {}
 
-    std::vector<Specification> operator()(
-        const std::vector<Specification>& pop) const {
-        std::vector<Specification> survivors = m_fn(pop);
+    std::vector<Spec> operator()(const std::vector<Spec>& pop) const {
+        std::vector<Spec> survivors = m_fn(pop);
         m_n_in = pop.size();
         m_n_out = survivors.size();
         return survivors;
@@ -70,16 +75,16 @@ class FilterFunction {
     std::size_t m_interval{1};
 };
 
+/// The FRETISH filter function type.
+using FilterFunction = FilterFunctionT<Specification>;
+
 /// Callback invoked after each individual is produced during a generation.
 /// @p done is the count produced so far; @p total is the generation size.
 using GenerationProgressCallback =
     std::function<void(std::size_t done, std::size_t total)>;
 
 /// A specification paired with its aggregated fitness score.
-struct ScoredSpecification {
-    Specification specification;
-    double fitness = 0.0;
-};
+using ScoredSpecification = Scored<Specification>;
 
 /// Wraps a per-element predicate as a population-level FilterFunction.
 ///
@@ -100,10 +105,43 @@ FilterFunction make_predicate_filter(
 /// @return                  Population paired with aggregated fitness scores
 /// @throws std::invalid_argument if fitness_function is empty or total weight
 ///                               is not positive
-std::vector<ScoredSpecification> score_population(
+template <typename Spec, typename Fitness>
+std::vector<Scored<Spec>> score_population(
+    const Config& cfg, const std::vector<Spec>& population,
+    const Fitness& fitness_function,
+    const GenerationProgressCallback& on_progress = nullptr) {
+    assert(!fitness_function.empty());
+    const std::size_t max_in_flight = cfg.parallel > 0 ? cfg.parallel * 4 : 1;
+    std::vector<Scored<Spec>> scored(population.size());
+    std::size_t done = 0;
+    run_bounded_async(
+        population.size(), max_in_flight,
+        [&fitness_function, &population](std::size_t idx) {
+            return global_thread_pool().submit(
+                [&fitness_function, &spec = population[idx]] {
+                    return fitness_function(spec);
+                });
+        },
+        [&scored, &population, &on_progress, &done, total = population.size()](
+            std::size_t idx, double fitness) {
+            scored[idx] = {population[idx], fitness};
+            if (on_progress) {
+                on_progress(++done, total);
+            }
+        });
+    return scored;
+}
+
+/// FRETISH overload of score_population. Provided so callers can pass a
+/// braced-init-list population (from which the Spec template parameter cannot
+/// be deduced); forwards to the generic template.
+inline std::vector<ScoredSpecification> score_population(
     const Config& cfg, const std::vector<Specification>& population,
     const AggregateWeightedFitnessFunction& fitness_function,
-    const GenerationProgressCallback& on_progress = nullptr);
+    const GenerationProgressCallback& on_progress = nullptr) {
+    return score_population<Specification, AggregateWeightedFitnessFunction>(
+        cfg, population, fitness_function, on_progress);
+}
 
 /// Applies filter functions sequentially; each filter receives the survivors
 /// from the previous one.
@@ -111,9 +149,16 @@ std::vector<ScoredSpecification> score_population(
 /// @param population       The population to filter
 /// @param filter_functions Filters applied in order; empty list keeps all
 /// @return                 Surviving specifications
-std::vector<Specification> filter_population(
-    const std::vector<Specification>& population,
-    const std::vector<FilterFunction>& filter_functions);
+template <typename Spec>
+std::vector<Spec> filter_population(
+    const std::vector<Spec>& population,
+    const std::vector<FilterFunctionT<Spec>>& filter_functions) {
+    std::vector<Spec> current = population;
+    for (const FilterFunctionT<Spec>& filter_fn : filter_functions) {
+        current = filter_fn(current);
+    }
+    return current;
+}
 
 /// Returns the standard set of filter functions used during evolution:
 /// deduplication, a bloat cap, a false-condition filter, and (if enabled) a
@@ -159,6 +204,98 @@ std::vector<FilterFunction> filters_for_generation(
 std::vector<ScoredSpecification> score_and_sort_specifications(
     const std::vector<Specification>& specs,
     const AggregateWeightedFitnessFunction& fitness_function);
+
+namespace generation_detail {
+
+constexpr std::size_t k_rate_granularity = 1'000'000;
+
+inline bool probability_check(double rate, const RandomSource& random_source) {
+    if (rate <= 0.0) {
+        return false;
+    }
+    if (rate >= 1.0) {
+        return true;
+    }
+    return random_source.next_index(k_rate_granularity) <
+           static_cast<std::size_t>(rate *
+                                    static_cast<double>(k_rate_granularity));
+}
+
+}  // namespace generation_detail
+
+/// Generic one-generation evolution loop, templated on the specification
+/// element type @p Spec and any callable fitness type @p Fitness. The three
+/// genetic operators (crossover, mutation, simplification) are injected via
+/// @p ops rather than hardcoded, so different Spec types supply their own.
+///
+/// See evolve_generation() for the algorithm; the behaviour is identical.
+template <typename Spec, typename Fitness>
+std::vector<Scored<Spec>> evolve_generation_generic(
+    const Config& cfg, const std::vector<Scored<Spec>>& population,
+    std::size_t target_size, const Fitness& fitness_functions,
+    const std::vector<FilterFunctionT<Spec>>& filter_functions,
+    const GeneticOperators<Spec>& ops, const RandomSource& random_source,
+    const GenerationProgressCallback& on_progress = nullptr) {
+    assert(random_source);
+    assert(!fitness_functions.empty());
+    assert(cfg.crossover_rate >= 0.0 && cfg.crossover_rate <= 1.0);
+    assert(cfg.mutation_rate >= 0.0 && cfg.mutation_rate <= 1.0);
+    assert(!population.empty());
+
+    // Select parents from the whole population, unfiltered: the filter only
+    // screens the offspring produced below, after crossover and mutation.
+    std::vector<Scored<Spec>> sorted_pop = population;
+    std::sort(sorted_pop.begin(), sorted_pop.end(),
+              [](const Scored<Spec>& lhs, const Scored<Spec>& rhs) {
+                  return lhs.fitness > rhs.fitness;
+              });
+    const std::size_t top_n = std::min(target_size, sorted_pop.size());
+    std::vector<Spec> next_generation;
+    next_generation.reserve(top_n);
+    for (std::size_t i = 0; i < top_n; ++i) {
+        Spec offspring = sorted_pop[i].specification;
+        if (generation_detail::probability_check(cfg.crossover_rate,
+                                                 random_source)) {
+            const std::size_t partner = random_source.next_index(top_n);
+            offspring = ops.crossover(
+                offspring, sorted_pop[partner].specification, random_source);
+        }
+        if (generation_detail::probability_check(cfg.mutation_rate,
+                                                 random_source)) {
+            offspring = ops.mutate(offspring, random_source, cfg);
+        }
+        next_generation.push_back(ops.simplify
+                                      ? ops.simplify(std::move(offspring))
+                                      : std::move(offspring));
+    }
+
+    std::vector<Spec> filtered_offspring =
+        filter_population(next_generation, filter_functions);
+    if (filtered_offspring.empty()) {
+        filtered_offspring = std::move(next_generation);
+    }
+    assert(!filtered_offspring.empty());
+    const std::size_t filtered_count = filtered_offspring.size();
+    filtered_offspring.reserve(target_size);
+    while (filtered_offspring.size() < target_size) {
+        filtered_offspring.push_back(
+            filtered_offspring[filtered_offspring.size() % filtered_count]);
+    }
+
+    std::vector<Scored<Spec>> scored = score_population(
+        cfg, filtered_offspring, fitness_functions, on_progress);
+    std::sort(scored.begin(), scored.end(),
+              [](const Scored<Spec>& lhs, const Scored<Spec>& rhs) {
+                  return lhs.fitness > rhs.fitness;
+              });
+
+    return scored;
+}
+
+/// Returns the bundle of FRETISH genetic operators wiring
+/// crossover_specifications, mutate_specification, and simplify_offspring for
+/// use with evolve_generation_generic.
+const GeneticOperators<Specification>& fretish_operators();
 
 /// Evolves a population for one generation using truncation selection:
 ///   1. Sort the population by fitness (descending) and take the top

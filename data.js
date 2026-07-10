@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1783604264184,
+  "lastUpdate": 1783689494042,
   "repoUrl": "https://github.com/benmandrew/counter",
   "entries": {
     "counter benchmarks": [
@@ -1512,6 +1512,78 @@ window.BENCHMARK_DATA = {
             "value": 3815.6185712418683,
             "unit": "ns/iter",
             "extra": "iterations: 183628\ncpu: 3815.238149955342 ns\nthreads: 1"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "benmandrew@gmail.com",
+            "name": "benmandrew",
+            "username": "benmandrew"
+          },
+          "committer": {
+            "email": "benmandrew@gmail.com",
+            "name": "benmandrew",
+            "username": "benmandrew"
+          },
+          "distinct": true,
+          "id": "d7cb33f871489a27874d43151eb718c9cc115582",
+          "message": "feat: skip gen40 x {fsm-timing,fsm-combined} in run_experiments sweep\n\nThese cells time out (3600s cap) on almost every seed — per-generation\ncost grows superlinearly with generation count for these two\nstructurally complex specs, likely from the bloat filter's fixed 2.0\nmax_ratio letting formula complexity ratchet up each generation.\nExcluding them reclaims ~20 CPU-hours of pure timeouts per full sweep\nrun.",
+          "timestamp": "2026-07-10T14:09:04+01:00",
+          "tree_id": "e8c7f7e37f3656517ccbf88f152d4cafaad865a8",
+          "url": "https://github.com/benmandrew/counter/commit/d7cb33f871489a27874d43151eb718c9cc115582"
+        },
+        "date": 1783689493731,
+        "tool": "googlecpp",
+        "benches": [
+          {
+            "name": "Syntactic similarity - small formulas (3 variables)",
+            "value": 542.4318245862895,
+            "unit": "ns/iter",
+            "extra": "iterations: 1291712\ncpu: 542.3844850864589 ns\nthreads: 1"
+          },
+          {
+            "name": "Syntactic similarity - large formulas (11 variables, O(n*m) shared_subformulae)",
+            "value": 2254.319629587253,
+            "unit": "ns/iter",
+            "extra": "iterations: 306145\ncpu: 2254.139574384687 ns\nthreads: 1"
+          },
+          {
+            "name": "Spec implication check - warm black cache",
+            "value": 852.1474821031819,
+            "unit": "ns/iter",
+            "extra": "iterations: 810200\ncpu: 852.1337509256975 ns\nthreads: 1"
+          },
+          {
+            "name": "Trace model counting - matrix exponentiation/steps:5",
+            "value": 163.02677788497448,
+            "unit": "ns/iter",
+            "extra": "iterations: 4278792\ncpu: 163.0204569420528 ns\nthreads: 1"
+          },
+          {
+            "name": "Trace model counting - matrix exponentiation/steps:10",
+            "value": 186.0858887968136,
+            "unit": "ns/iter",
+            "extra": "iterations: 3766277\ncpu: 186.07941662283474 ns\nthreads: 1"
+          },
+          {
+            "name": "Trace model counting - matrix exponentiation/steps:20",
+            "value": 209.01329533299963,
+            "unit": "ns/iter",
+            "extra": "iterations: 3345234\ncpu: 209.00163845040433 ns\nthreads: 1"
+          },
+          {
+            "name": "Trace model counting - matrix exponentiation/steps:50",
+            "value": 255.73531556468092,
+            "unit": "ns/iter",
+            "extra": "iterations: 2755077\ncpu: 255.72958577927227 ns\nthreads: 1"
+          },
+          {
+            "name": "Mutate specification - 3-guarantee takeoff spec",
+            "value": 3752.936519242895,
+            "unit": "ns/iter",
+            "extra": "iterations: 186718\ncpu: 3752.727337482191 ns\nthreads: 1"
           }
         ]
       }

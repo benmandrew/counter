@@ -25,24 +25,29 @@ inline constexpr double k_default_fitness_weight =
     COUNTER_DEFAULT_FITNESS_WEIGHT;
 #endif
 
-/// A fitness function scores a specification, returning a value in [0, 1].
-using FitnessFunction = std::function<double(const Specification&)>;
+/// A fitness function scores a specification element, returning a value in
+/// [0, 1].
+template <typename Spec>
+using FitnessFunctionT = std::function<double(const Spec&)>;
 
 /// A fitness function paired with a weight for weighted-average aggregation.
 /// The default weight is given by k_default_fitness_weight.
-struct WeightedFitnessFunction {
-    FitnessFunction function;
+template <typename Spec>
+struct WeightedFitnessFunctionT {
+    FitnessFunctionT<Spec> function;
     double weight = k_default_fitness_weight;
     std::string name;
 };
 
-/// Aggregates multiple WeightedFitnessFunction instances into a single function
-/// that computes a weighted average of their scores. Results are memoised so
-/// each unique specification is scored at most once per instance.
-class AggregateWeightedFitnessFunction {
+/// Aggregates multiple WeightedFitnessFunctionT instances into a single
+/// function that computes a weighted average of their scores. Results are
+/// memoised so each unique specification element is scored at most once per
+/// instance.
+template <typename Spec>
+class AggregateWeightedFitnessFunctionT {
    private:
-    std::vector<WeightedFitnessFunction> m_fitness_functions;
-    mutable std::unordered_map<Specification, double> m_cache;
+    std::vector<WeightedFitnessFunctionT<Spec>> m_fitness_functions;
+    mutable std::unordered_map<Spec, double> m_cache;
     mutable std::unique_ptr<std::mutex> m_cache_mutex =
         std::make_unique<std::mutex>();
     const double m_total_weight;
@@ -51,8 +56,8 @@ class AggregateWeightedFitnessFunction {
     inline static std::size_t n_cache_hits = 0;
     inline static std::size_t n_cache_misses = 0;
 
-    explicit AggregateWeightedFitnessFunction(
-        std::vector<WeightedFitnessFunction> fitness_functions)
+    explicit AggregateWeightedFitnessFunctionT(
+        std::vector<WeightedFitnessFunctionT<Spec>> fitness_functions)
         : m_fitness_functions(std::move(fitness_functions)),
           m_total_weight([&]() {
               double total = 0.0;
@@ -62,13 +67,13 @@ class AggregateWeightedFitnessFunction {
               return total;
           }()) {}
 
-    /// Computes the weighted average fitness score for a given specification,
-    /// returning a cached value if the specification has been scored before.
+    /// Computes the weighted average fitness score for a given specification
+    /// element, returning a cached value if it has been scored before.
     ///
-    /// @param spec The specification to score.
+    /// @param spec The specification element to score.
     /// @return The weighted average fitness score, or 0.0 if total weight is
     /// not positive.
-    double operator()(const Specification& spec) const {
+    double operator()(const Spec& spec) const {
         {
             std::scoped_lock lock(*m_cache_mutex);
             const auto cache_iter = m_cache.find(spec);
@@ -97,6 +102,12 @@ class AggregateWeightedFitnessFunction {
     [[nodiscard]] auto begin() const { return m_fitness_functions.begin(); }
     [[nodiscard]] auto end() const { return m_fitness_functions.end(); }
 };
+
+/// The FRETISH fitness function type aliases.
+using FitnessFunction = FitnessFunctionT<Specification>;
+using WeightedFitnessFunction = WeightedFitnessFunctionT<Specification>;
+using AggregateWeightedFitnessFunction =
+    AggregateWeightedFitnessFunctionT<Specification>;
 
 /// Builds the standard set of weighted fitness functions from @p cfg weights.
 /// Functions with a zero weight are omitted. The caller owns the returned

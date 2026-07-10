@@ -1,34 +1,11 @@
 #include "genetic/generation.hpp"
 
-#include <algorithm>
-#include <cassert>
-#include <numeric>
 #include <string>
 #include <utility>
 #include <vector>
 
-#include "bounded_async.hpp"
 #include "filter/bloat.hpp"
 #include "filter/implication.hpp"
-#include "thread_pool.hpp"
-
-namespace {
-
-constexpr std::size_t k_rate_granularity = 1'000'000;
-
-bool probability_check(double rate, const RandomSource& random_source) {
-    if (rate <= 0.0) {
-        return false;
-    }
-    if (rate >= 1.0) {
-        return true;
-    }
-    return random_source.next_index(k_rate_granularity) <
-           static_cast<std::size_t>(rate *
-                                    static_cast<double>(k_rate_granularity));
-}
-
-}  // namespace
 
 FilterFunction make_predicate_filter(
     std::string name, std::function<bool(const Specification&)> predicate) {
@@ -43,42 +20,6 @@ FilterFunction make_predicate_filter(
                 }
                 return survivors;
             }};
-}
-
-std::vector<ScoredSpecification> score_population(
-    const Config& cfg, const std::vector<Specification>& population,
-    const AggregateWeightedFitnessFunction& fitness_function,
-    const GenerationProgressCallback& on_progress) {
-    assert(!fitness_function.empty());
-    const std::size_t max_in_flight = cfg.parallel > 0 ? cfg.parallel * 4 : 1;
-    std::vector<ScoredSpecification> scored(population.size());
-    std::size_t done = 0;
-    run_bounded_async(
-        population.size(), max_in_flight,
-        [&fitness_function, &population](std::size_t idx) {
-            return global_thread_pool().submit(
-                [&fitness_function, &spec = population[idx]] {
-                    return fitness_function(spec);
-                });
-        },
-        [&scored, &population, &on_progress, &done, total = population.size()](
-            std::size_t idx, double fitness) {
-            scored[idx] = {population[idx], fitness};
-            if (on_progress) {
-                on_progress(++done, total);
-            }
-        });
-    return scored;
-}
-
-std::vector<Specification> filter_population(
-    const std::vector<Specification>& population,
-    const std::vector<FilterFunction>& filter_functions) {
-    std::vector<Specification> current = population;
-    for (const FilterFunction& filter_fn : filter_functions) {
-        current = filter_fn(current);
-    }
-    return current;
 }
 
 Specification simplify_offspring(Specification offspring) {
@@ -108,6 +49,20 @@ Specification simplify_offspring(Specification offspring) {
     return rededuped;
 }
 
+const GeneticOperators<Specification>& fretish_operators() {
+    static const GeneticOperators<Specification> ops{
+        [](const Specification& first, const Specification& second,
+           const RandomSource& random_source) {
+            return crossover_specifications(first, second, random_source);
+        },
+        [](const Specification& spec, const RandomSource& random_source,
+           const Config& cfg) {
+            return mutate_specification(spec, random_source, cfg);
+        },
+        [](Specification spec) { return simplify_offspring(std::move(spec)); }};
+    return ops;
+}
+
 std::vector<ScoredSpecification> evolve_generation(
     const Config& cfg, const std::vector<ScoredSpecification>& population,
     std::size_t target_size,
@@ -115,58 +70,9 @@ std::vector<ScoredSpecification> evolve_generation(
     const std::vector<FilterFunction>& filter_functions,
     const RandomSource& random_source,
     const GenerationProgressCallback& on_progress) {
-    assert(random_source);
-    assert(!fitness_functions.empty());
-    assert(cfg.crossover_rate >= 0.0 && cfg.crossover_rate <= 1.0);
-    assert(cfg.mutation_rate >= 0.0 && cfg.mutation_rate <= 1.0);
-    assert(!population.empty());
-
-    // Select parents from the whole population, unfiltered: the filter only
-    // screens the offspring produced below, after crossover and mutation.
-    std::vector<ScoredSpecification> sorted_pop = population;
-    std::sort(
-        sorted_pop.begin(), sorted_pop.end(),
-        [](const ScoredSpecification& lhs, const ScoredSpecification& rhs) {
-            return lhs.fitness > rhs.fitness;
-        });
-    const std::size_t top_n = std::min(target_size, sorted_pop.size());
-    std::vector<Specification> next_generation;
-    next_generation.reserve(top_n);
-    for (std::size_t i = 0; i < top_n; ++i) {
-        Specification offspring = sorted_pop[i].specification;
-        if (probability_check(cfg.crossover_rate, random_source)) {
-            const std::size_t partner = random_source.next_index(top_n);
-            offspring = crossover_specifications(
-                offspring, sorted_pop[partner].specification, random_source);
-        }
-        if (probability_check(cfg.mutation_rate, random_source)) {
-            offspring = mutate_specification(offspring, random_source, cfg);
-        }
-        next_generation.push_back(simplify_offspring(std::move(offspring)));
-    }
-
-    std::vector<Specification> filtered_offspring =
-        filter_population(next_generation, filter_functions);
-    if (filtered_offspring.empty()) {
-        filtered_offspring = std::move(next_generation);
-    }
-    assert(!filtered_offspring.empty());
-    const std::size_t filtered_count = filtered_offspring.size();
-    filtered_offspring.reserve(target_size);
-    while (filtered_offspring.size() < target_size) {
-        filtered_offspring.push_back(
-            filtered_offspring[filtered_offspring.size() % filtered_count]);
-    }
-
-    std::vector<ScoredSpecification> scored = score_population(
-        cfg, filtered_offspring, fitness_functions, on_progress);
-    std::sort(
-        scored.begin(), scored.end(),
-        [](const ScoredSpecification& lhs, const ScoredSpecification& rhs) {
-            return lhs.fitness > rhs.fitness;
-        });
-
-    return scored;
+    return evolve_generation_generic<Specification>(
+        cfg, population, target_size, fitness_functions, filter_functions,
+        fretish_operators(), random_source, on_progress);
 }
 
 std::vector<FilterFunction> get_filter_functions(

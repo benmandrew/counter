@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1783703012657,
+  "lastUpdate": 1783703064400,
   "repoUrl": "https://github.com/benmandrew/counter",
   "entries": {
     "counter benchmarks": [
@@ -1800,6 +1800,78 @@ window.BENCHMARK_DATA = {
             "value": 2668.9744429056873,
             "unit": "ns/iter",
             "extra": "iterations: 262119\ncpu: 2668.6625120651324 ns\nthreads: 1"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "benmandrew@gmail.com",
+            "name": "benmandrew",
+            "username": "benmandrew"
+          },
+          "committer": {
+            "email": "benmandrew@gmail.com",
+            "name": "benmandrew",
+            "username": "benmandrew"
+          },
+          "distinct": true,
+          "id": "e62afaf98efbbf003ddb68c66fc3f21be0327df2",
+          "message": "docs: document the TLSF workflow in the README\n\nThe README described only the FRETISH flow. Cover TLSF as a first-class\ninput: --format/extension selection, the six evolved sections, the\nrepair_N.tlsf + repair_N.fitness.json outputs, and a runnable\nexamples/arbiter-gr1 walkthrough.",
+          "timestamp": "2026-07-10T17:54:00+01:00",
+          "tree_id": "761f93171815cccb08be85ee128c937a4d56e229",
+          "url": "https://github.com/benmandrew/counter/commit/e62afaf98efbbf003ddb68c66fc3f21be0327df2"
+        },
+        "date": 1783703063974,
+        "tool": "googlecpp",
+        "benches": [
+          {
+            "name": "Syntactic similarity - small formulas (3 variables)",
+            "value": 551.5411354974854,
+            "unit": "ns/iter",
+            "extra": "iterations: 1279175\ncpu: 551.5072581937578 ns\nthreads: 1"
+          },
+          {
+            "name": "Syntactic similarity - large formulas (11 variables, O(n*m) shared_subformulae)",
+            "value": 2232.1409082876007,
+            "unit": "ns/iter",
+            "extra": "iterations: 299883\ncpu: 2231.9256276614547 ns\nthreads: 1"
+          },
+          {
+            "name": "Spec implication check - warm black cache",
+            "value": 873.0757053504177,
+            "unit": "ns/iter",
+            "extra": "iterations: 810590\ncpu: 872.9608359343194 ns\nthreads: 1"
+          },
+          {
+            "name": "Trace model counting - matrix exponentiation/steps:5",
+            "value": 160.87075326285031,
+            "unit": "ns/iter",
+            "extra": "iterations: 4324055\ncpu: 160.84899498271878 ns\nthreads: 1"
+          },
+          {
+            "name": "Trace model counting - matrix exponentiation/steps:10",
+            "value": 184.78169094438775,
+            "unit": "ns/iter",
+            "extra": "iterations: 3812343\ncpu: 184.7605601069998 ns\nthreads: 1"
+          },
+          {
+            "name": "Trace model counting - matrix exponentiation/steps:20",
+            "value": 205.8352944920178,
+            "unit": "ns/iter",
+            "extra": "iterations: 3393912\ncpu: 205.82440911844495 ns\nthreads: 1"
+          },
+          {
+            "name": "Trace model counting - matrix exponentiation/steps:50",
+            "value": 250.27498007458135,
+            "unit": "ns/iter",
+            "extra": "iterations: 2796679\ncpu: 250.25268005373496 ns\nthreads: 1"
+          },
+          {
+            "name": "Mutate specification - 3-guarantee takeoff spec",
+            "value": 3382.211756175359,
+            "unit": "ns/iter",
+            "extra": "iterations: 206870\ncpu: 3382.02083917436 ns\nthreads: 1"
           }
         ]
       }

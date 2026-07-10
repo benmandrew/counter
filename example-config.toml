@@ -25,6 +25,13 @@ p_trigger  = 0.5    # per-requirement probability of mutating the trigger
 p_response = 0.1    # per-requirement probability of mutating the response
 p_timing   = 0.1    # per-requirement probability of mutating the timing
 
+[tlsf.mutation]
+# Applies only in TLSF mode (a .tlsf input or --format tlsf). Probability of
+# mutating an assumption-side section (INITIALLY/REQUIRE/ASSUME) versus a
+# guarantee-side section (PRESET/ASSERT/GUARANTEE).
+p_assumption = 0.3
+p_guarantee  = 0.7
+
 [model_counting]
 default_bound = 10  # trace-length bound k for bounded model counting
 

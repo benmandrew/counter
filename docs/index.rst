@@ -87,3 +87,4 @@ functions, and anonymous namespaces, with source browsing and call graphs.
    api/tlsf/crossover
    api/tlsf/operators
    api/tlsf/filter
+   api/tlsf/pipeline

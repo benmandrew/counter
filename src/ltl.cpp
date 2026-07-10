@@ -1,17 +1,59 @@
+#include <filesystem>
+#include <fstream>
 #include <iostream>
+#include <sstream>
 #include <string>
 #include <vector>
 
+#include "prop_formula.hpp"
 #include "requirement.hpp"
 #include "serialisation.hpp"
+#include "tlsf/parser.hpp"
+#include "tlsf/specification.hpp"
 
 namespace {
 
 void print_usage(const char* prog) {
-    std::cerr << "Usage: " << prog << " <spec.json> [<spec.json> ...]\n"
+    std::cerr << "Usage: " << prog << " <spec.json|spec.tlsf> [...]\n"
               << "\n"
               << "Prints the LTL formulae for each requirement in a "
-                 "specification.\n";
+                 "specification.\n"
+              << "FRETISH JSON prints each requirement's LTL; a basic-TLSF\n"
+              << "(.tlsf) input prints each non-empty section's formulae and\n"
+              << "the combined lowering.\n";
+}
+
+void print_tlsf_ltl(const std::string& path, bool show_path) {
+    std::ifstream file(path);
+    if (!file) {
+        throw std::runtime_error("cannot read file");
+    }
+    std::ostringstream contents;
+    contents << file.rdbuf();
+    const tlsf::Specification spec = tlsf::parse(contents.str());
+    if (show_path) {
+        std::cout << path << ":\n";
+    }
+    const auto print_section = [](const char* name,
+                                  const std::vector<Formula>& formulae) {
+        if (formulae.empty()) {
+            return;
+        }
+        std::cout << "  " << name << ":\n";
+        for (const Formula& formula : formulae) {
+            std::cout << "    " << formula.to_string() << "\n";
+        }
+    };
+    print_section("INITIALLY", spec.m_initially);
+    print_section("PRESET", spec.m_preset);
+    print_section("REQUIRE", spec.m_require);
+    print_section("ASSUME", spec.m_assume);
+    print_section("ASSERT", spec.m_assert);
+    print_section("GUARANTEE", spec.m_guarantee);
+    std::cout << "  combined LTL: " << spec.to_ltl() << "\n";
+    if (show_path) {
+        std::cout << "\n";
+    }
 }
 
 bool has_flag(int argc, const char* const* argv, const char* flag) {
@@ -71,14 +113,16 @@ int main(int argc, const char* const argv[]) {
     const bool multi = paths.size() > 1;
 
     for (const std::string& path : paths) {
-        Specification spec;
         try {
-            spec = load_specification(path);
+            if (std::filesystem::path(path).extension() == ".tlsf") {
+                print_tlsf_ltl(path, multi);
+            } else {
+                print_spec_ltl(path, load_specification(path), multi);
+            }
         } catch (const std::exception& exc) {
             std::cerr << path << ": " << exc.what() << "\n";
             return 1;
         }
-        print_spec_ltl(path, spec, multi);
     }
     return 0;
 }

@@ -76,10 +76,9 @@ Formula mutate_propositional_parts(const Formula& formula,
 tlsf::Specification tlsf_mutate(const tlsf::Specification& spec,
                                 const RandomSource& random_source,
                                 const Config& cfg) {
-    (void)cfg;
     tlsf::Specification mutated = spec;
 
-    bool assumption_side = random_source.next_real() < k_p_assumption;
+    bool assumption_side = random_source.next_real() < cfg.tlsf_p_assumption;
     std::vector<Section*> sections = side_sections(mutated, assumption_side);
     if (side_formula_count(sections) == 0) {
         // Fall back to the other side when the chosen one is empty.

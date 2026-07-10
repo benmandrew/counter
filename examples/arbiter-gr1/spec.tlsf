@@ -1,0 +1,24 @@
+INFO {
+  TITLE:       "GR(1) arbiter";
+  DESCRIPTION: "Two-client mutual-exclusion arbiter, unrealizable without request fairness";
+  SEMANTICS:   Mealy;
+  TARGET:      Mealy;
+}
+
+MAIN {
+  INPUTS {
+    r0;
+    r1;
+  }
+  OUTPUTS {
+    g0;
+    g1;
+  }
+  GUARANTEE {
+    G (g0 -> r0);
+    G (g1 -> r1);
+    G !(g0 & g1);
+    G F g0;
+    G F g1;
+  }
+}

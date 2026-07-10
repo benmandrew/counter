@@ -43,6 +43,21 @@
         "p_timing":   { "type": "number", "minimum": 0, "maximum": 1, "description": "Per-requirement probability of mutating the timing." }
       }
     },
+    "tlsf": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "TLSF-mode settings (a .tlsf input or --format tlsf).",
+      "properties": {
+        "mutation": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "p_assumption": { "type": "number", "minimum": 0, "maximum": 1, "description": "Probability of mutating an assumption-side section (INITIALLY/REQUIRE/ASSUME)." },
+            "p_guarantee":  { "type": "number", "minimum": 0, "maximum": 1, "description": "Probability of mutating a guarantee-side section (PRESET/ASSERT/GUARANTEE)." }
+          }
+        }
+      }
+    },
     "model_counting": {
       "type": "object",
       "additionalProperties": false,

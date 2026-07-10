@@ -30,6 +30,7 @@
 #include "runner/spot.hpp"
 #include "serialisation.hpp"
 #include "status_line.hpp"
+#include "tlsf/pipeline.hpp"
 
 std::optional<std::string> parse_string_arg(int argc, const char* const* argv,
                                             const char* flag) {
@@ -391,6 +392,10 @@ void print_help(const char* prog) {
            "exist).\n"
         << "  --config <file>      Path to a TOML configuration file.\n"
         << "                       Absent keys use built-in defaults.\n"
+        << "  --format <fmt>       Input format: fretish or tlsf. If omitted,\n"
+        << "                       inferred from the --input extension (a\n"
+        << "                       .tlsf file is auto-detected as TLSF, any\n"
+        << "                       other extension as FRETISH).\n"
         << "  --seed <n>           RNG seed for reproducible runs. If omitted\n"
         << "                       a random seed is chosen and printed.\n"
         << "  -h, --help           Show this help message and exit.\n"
@@ -447,6 +452,17 @@ int main(int argc, const char* const argv[]) {
     if (!std::filesystem::is_directory(*output_dir)) {
         std::cerr << "Output directory does not exist: " << *output_dir << "\n";
         return 1;
+    }
+    const std::optional<std::string> format_arg =
+        parse_string_arg(argc, argv, "--format");
+    const bool is_tlsf =
+        format_arg.has_value()
+            ? *format_arg == "tlsf"
+            : std::filesystem::path(*input_path).extension() == ".tlsf";
+    if (is_tlsf) {
+        RandomSource tlsf_random_source = init_random_source(argc, argv);
+        return tlsf::run_repair(*input_path, *output_dir, cfg,
+                                tlsf_random_source);
     }
     Specification original_spec;
     try {

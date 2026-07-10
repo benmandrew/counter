@@ -9,15 +9,11 @@
 #include "genetic/random_source.hpp"
 #include "tlsf/specification.hpp"
 
-/// Probability of choosing an assumption-side section (INITIALLY, REQUIRE,
-/// ASSUME) to mutate; the complementary probability selects a guarantee-side
-/// section (PRESET, ASSERT, GUARANTEE).
-inline constexpr double k_p_assumption = 0.3;
-inline constexpr double k_p_guarantee = 0.7;
-
 /// Mutates @p spec by rewriting exactly one section formula. A side is chosen
-/// with probability k_p_assumption / k_p_guarantee (falling back to the other
-/// side when the chosen one holds no formulae), then one formula is drawn
+/// with probability `cfg.tlsf_p_assumption` (assumption side: INITIALLY,
+/// REQUIRE, ASSUME) versus `cfg.tlsf_p_guarantee` (guarantee side: PRESET,
+/// ASSERT, GUARANTEE), falling back to the other side when the chosen one holds
+/// no formulae, then one formula is drawn
 /// uniformly across that side's non-empty sections. Only the formula's
 /// propositional subtrees are rewritten (via mutate_formula), so its temporal
 /// operator skeleton is preserved. Assumption-side mutations draw atoms from

@@ -37,7 +37,7 @@ void require_nonnegative(double value, const char* name) {
 
 const std::set<std::string> k_known_sections = {
     "genetic",        "fitness", "syntactic", "mutation",
-    "model_counting", "filters", "runtime"};
+    "model_counting", "filters", "runtime",   "tlsf"};
 
 void warn_unknown_keys(const toml::table& tbl) {
     for (const auto& [key, node] : tbl) {
@@ -124,6 +124,19 @@ void apply_mutation(const toml::table& tbl, Config& cfg) {
     }
 }
 
+void apply_tlsf(const toml::table& tbl, Config& cfg) {
+    if (const auto* mutation = tbl["mutation"].as_table()) {
+        if (auto val = (*mutation)["p_assumption"].value<double>()) {
+            require_probability(*val, "tlsf.mutation.p_assumption");
+            cfg.tlsf_p_assumption = *val;
+        }
+        if (auto val = (*mutation)["p_guarantee"].value<double>()) {
+            require_probability(*val, "tlsf.mutation.p_guarantee");
+            cfg.tlsf_p_guarantee = *val;
+        }
+    }
+}
+
 void apply_model_counting(const toml::table& tbl, Config& cfg) {
     if (auto val = tbl["default_bound"].value<int64_t>()) {
         cfg.default_model_counting_bound = static_cast<std::size_t>(
@@ -198,6 +211,9 @@ Config apply_toml(const toml::table& tbl) {
     }
     if (const auto* sec = tbl["runtime"].as_table()) {
         apply_runtime(*sec, cfg);
+    }
+    if (const auto* sec = tbl["tlsf"].as_table()) {
+        apply_tlsf(*sec, cfg);
     }
     return cfg;
 }

@@ -139,6 +139,20 @@ int main(int argc, const char* const argv[]) {
         return 1;
     }
     const Args& args = *maybe_args;
+    const auto has_tlsf_file = [](const std::string& dir) {
+        std::error_code err_code;
+        const std::filesystem::directory_iterator iter(dir, err_code);
+        return std::any_of(std::filesystem::begin(iter),
+                           std::filesystem::end(iter), [](const auto& entry) {
+                               return entry.path().extension() == ".tlsf";
+                           });
+    };
+    if (std::filesystem::path(args.repairs_dir).extension() == ".tlsf" ||
+        std::filesystem::path(args.ideals_dir).extension() == ".tlsf" ||
+        has_tlsf_file(args.repairs_dir) || has_tlsf_file(args.ideals_dir)) {
+        std::cerr << "compare does not yet support TLSF specifications\n";
+        return 1;
+    }
     Config cfg;
     cfg.black_timeout = std::chrono::milliseconds{20'000};
     global_sat_checker().set_timeout(cfg.black_timeout);

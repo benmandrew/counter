@@ -35,5 +35,10 @@ struct Config {
     double p_trigger = 0.5;
     double p_response = 0.5;
     double p_timing = 0.15;
+    // TLSF-mode mutation: probability of selecting an assumption-side section
+    // (INITIALLY/REQUIRE/ASSUME) versus a guarantee-side section
+    // (PRESET/ASSERT/GUARANTEE) when mutating a tlsf::Specification.
+    double tlsf_p_assumption = 0.3;
+    double tlsf_p_guarantee = 0.7;
     std::size_t parallel = std::thread::hardware_concurrency();
 };

@@ -1,6 +1,8 @@
 # Counter
 
-Repairing unrealisable FRETish specifications using a genetic algorithm.
+Repairing unrealisable reactive specifications using a genetic algorithm. Inputs
+are either *FRETISH* requirements (as JSON) or basic *TLSF* — the Temporal Logic
+Synthesis Format used by the reactive-synthesis community.
 
 ## Build
 
@@ -32,18 +34,23 @@ cmake --build build                  # incremental build only
 ## Usage
 
 ```
-counter --input <spec.json> --output-dir <dir> [--config <file.toml>] [--seed <n>]
+counter --input <spec.json|spec.tlsf> --output-dir <dir> [--config <file.toml>] [--format <fretish|tlsf>] [--seed <n>]
 compare --repairs <dir> --ideals <dir>
-realize <spec.json> [<spec.json> ...]
-ltl <spec.json> [<spec.json> ...]
+realize <spec.json|spec.tlsf> [...]
+ltl <spec.json|spec.tlsf> [...]
 ```
 
-Run any binary with `--help` for full option descriptions.
+All four binaries accept both input formats. The format is inferred from the
+file extension — a `.tlsf` file is read as TLSF, anything else as FRETISH — or
+forced with `counter --format`. Run any binary with `--help` for full option
+descriptions.
 
 ## How it works
 
-Counter repairs an unrealisable FRETISH specification by running a genetic
-algorithm over the space of FRETISH requirements:
+Counter repairs an unrealisable specification by running a genetic algorithm
+over the space of candidate specifications. The description below is in terms of
+FRETISH requirements; TLSF inputs run through the same four stages, with the
+differences noted under [TLSF specifications](#tlsf-specifications):
 
 1. **Seed** a population of `population_size` (default 200) specifications from
    the input, each mutated slightly from the original.
@@ -60,7 +67,8 @@ algorithm over the space of FRETISH requirements:
    crossover → mutation → per-generation filters (false-trigger removal,
    deduplication, optional weakening).
 4. **Collect** realisable survivors, apply the implication filter to keep only
-   maximal repairs, and write each to `<output-dir>/repair_N.json`.
+   maximal repairs, and write each to `<output-dir>/` — as `repair_N.json` for
+   FRETISH, or `repair_N.tlsf` for TLSF.
 
 Model counting uses [Ganak](https://github.com/meelgroup/ganak) on the
 transition matrices of SPOT-generated automata. Satisfiability and
@@ -69,6 +77,34 @@ realizability queries use [black](https://www.black-sat.org) and
 
 See [`docs/architecture.rst`](docs/architecture.rst) for a full description of
 the key types and module layout.
+
+### TLSF specifications
+
+Alongside FRETISH, counter repairs basic-TLSF specifications directly. A `.tlsf`
+input is auto-detected (or forced with `--format tlsf`), and the same genetic
+machinery evolves its six sections — `INITIALLY`, `PRESET`, `REQUIRE`, `ASSUME`,
+`ASSERT`, and `GUARANTEE` — rather than FRETISH requirements. Repairs are
+rendered back to TLSF as `repair_N.tlsf`, each paired with a
+`repair_N.fitness.json` score breakdown.
+
+```sh
+counter --input examples/arbiter-gr1/spec.tlsf --output-dir out
+```
+
+The bundled [`examples/arbiter-gr1`](examples/arbiter-gr1) is a two-client
+mutual-exclusion arbiter that is unrealisable without request fairness. The
+guarantees demand that each client is granted infinitely often (`G F g0`,
+`G F g1`) while never granted simultaneously, but nothing forces the environment
+to keep requesting — so the system cannot comply. Counter repairs it the way
+[`ideal.tlsf`](examples/arbiter-gr1/ideal.tlsf) does: by strengthening the
+environment with the fairness assumptions `G F r0` and `G F r1`. This
+environment-strengthening move is the same `--config`-tunable `p_add_assumption`
+mutation used in FRETISH mode.
+
+The fitness function mirrors the FRETISH one — semantic similarity (bounded
+model counting), realisability status, syntactic similarity, and a Halstead
+size penalty — scored over whole TLSF formulae. Because a repair is written as
+valid TLSF, it can be fed straight back into `realize`, `ltl`, or a synthesiser.
 
 ### Configuration file
 

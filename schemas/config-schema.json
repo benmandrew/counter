@@ -40,7 +40,8 @@
       "properties": {
         "p_trigger":  { "type": "number", "minimum": 0, "maximum": 1, "description": "Per-requirement probability of mutating the trigger." },
         "p_response": { "type": "number", "minimum": 0, "maximum": 1, "description": "Per-requirement probability of mutating the response." },
-        "p_timing":   { "type": "number", "minimum": 0, "maximum": 1, "description": "Per-requirement probability of mutating the timing." }
+        "p_timing":   { "type": "number", "minimum": 0, "maximum": 1, "description": "Per-requirement probability of mutating the timing." },
+        "p_add_assumption": { "type": "number", "minimum": 0, "maximum": 1, "description": "Both modes: probability a mutation appends a new environment assumption (fairness over an input) instead of rewriting an existing requirement/formula." }
       }
     },
     "tlsf": {

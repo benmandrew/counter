@@ -35,6 +35,13 @@ struct Config {
     double p_trigger = 0.5;
     double p_response = 0.5;
     double p_timing = 0.15;
+    // Low-probability structural mutation, shared by both modes: append a new
+    // environment assumption (over input atoms) rather than rewriting an
+    // existing requirement/formula. This is how the algorithm can repair
+    // unrealizability that requires strengthening the environment (e.g. adding
+    // a fairness assumption to an unrealizable GR(1) spec), which the
+    // rewrite-only operators cannot express.
+    double p_add_assumption = 0.05;
     // TLSF-mode mutation: probability of selecting an assumption-side section
     // (INITIALLY/REQUIRE/ASSUME) versus a guarantee-side section
     // (PRESET/ASSERT/GUARANTEE) when mutating a tlsf::Specification.

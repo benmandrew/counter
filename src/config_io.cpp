@@ -122,6 +122,10 @@ void apply_mutation(const toml::table& tbl, Config& cfg) {
         require_probability(*val, "mutation.p_timing");
         cfg.p_timing = *val;
     }
+    if (auto val = tbl["p_add_assumption"].value<double>()) {
+        require_probability(*val, "mutation.p_add_assumption");
+        cfg.p_add_assumption = *val;
+    }
 }
 
 void apply_tlsf(const toml::table& tbl, Config& cfg) {

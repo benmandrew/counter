@@ -71,11 +71,35 @@ Formula mutate_propositional_parts(const Formula& formula,
     }
 }
 
+// Appends a fairness assumption `G F <input>` (input negated on a coin flip)
+// to the ASSUME section. Strengthening the environment this way is how the
+// algorithm can repair unrealizability that the rewrite-only mutation cannot
+// reach (e.g. the missing request-fairness of an unrealizable GR(1) arbiter).
+tlsf::Specification tlsf_add_assumption(const tlsf::Specification& spec,
+                                        const RandomSource& random_source) {
+    const std::string& signal =
+        spec.m_inputs[random_source.next_index(spec.m_inputs.size())];
+    Formula atom = Formula::make_atom(signal);
+    if (random_source.next_bool()) {
+        atom = Formula::make_unary(Formula::Kind::Not, atom);
+    }
+    tlsf::Specification mutated = spec;
+    mutated.m_assume.push_back(Formula::make_unary(
+        Formula::Kind::Globally,
+        Formula::make_unary(Formula::Kind::Eventually, atom)));
+    return mutated;
+}
+
 }  // namespace
 
 tlsf::Specification tlsf_mutate(const tlsf::Specification& spec,
                                 const RandomSource& random_source,
                                 const Config& cfg) {
+    // Low-probability structural action: add a new environment assumption.
+    if (!spec.m_inputs.empty() &&
+        random_source.next_real() < cfg.p_add_assumption) {
+        return tlsf_add_assumption(spec, random_source);
+    }
     tlsf::Specification mutated = spec;
 
     bool assumption_side = random_source.next_real() < cfg.tlsf_p_assumption;

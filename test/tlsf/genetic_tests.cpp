@@ -103,6 +103,8 @@ void test_mutation_preserves_temporal_skeleton() {
 
 void test_mutation_assumption_atoms_from_inputs_only() {
     Config cfg;
+    cfg.p_add_assumption =
+        0.0;  // isolate the rewrite path (not add-assumption)
     tlsf::Specification spec;
     spec.m_inputs = {"a", "c"};
     spec.m_outputs = {"bout"};
@@ -117,6 +119,33 @@ void test_mutation_assumption_atoms_from_inputs_only() {
         const std::string text = mutated.m_assume.front().to_string();
         expect(text.find("bout") == std::string::npos,
                "mutation: the output atom never leaks into an assumption");
+    }
+}
+
+void test_add_assumption_appends_fairness() {
+    // With p_add_assumption forced to 1, mutation appends a fairness assumption
+    // `G F <input>` (input optionally negated) to the ASSUME section and leaves
+    // the rest of the specification untouched.
+    tlsf::Specification spec;
+    spec.m_inputs = {"req"};
+    spec.m_outputs = {"grant"};
+    spec.m_guarantee = {parse("INPUTS { req; } OUTPUTS { grant; } "
+                              "GUARANTEE { G (req -> F grant); }")
+                            .m_guarantee.front()};
+    Config cfg;
+    cfg.p_add_assumption = 1.0;
+    for (std::size_t seed = 0; seed < 20; ++seed) {
+        const RandomSource rng = make_random_source_from_seed(seed);
+        const tlsf::Specification mutated = tlsf_mutate(spec, rng, cfg);
+        expect(mutated.m_assume.size() == 1,
+               "add-assumption: exactly one assumption is appended");
+        expect(mutated.m_guarantee == spec.m_guarantee,
+               "add-assumption: guarantees are left untouched");
+        const std::string text = mutated.m_assume.front().to_string();
+        expect(text == "G(F(req))" || text == "G(F(!(req)))",
+               "add-assumption: appended a G F <input> fairness assumption");
+        expect(text.find("grant") == std::string::npos,
+               "add-assumption: an output signal never enters an assumption");
     }
 }
 
@@ -201,6 +230,7 @@ void test_end_to_end_evolution() {
 void run_tlsf_genetic_tests() {
     test_mutation_preserves_temporal_skeleton();
     test_mutation_assumption_atoms_from_inputs_only();
+    test_add_assumption_appends_fairness();
     test_crossover_positional_matching_shape();
     test_crossover_mismatched_shape_returns_first();
     test_end_to_end_evolution();

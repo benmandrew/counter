@@ -137,7 +137,8 @@ void test_mutation_all_locked_is_noop() {
         {Requirement(Formula("a"), Formula("b"), timing::immediately(),
                      ConditionType::Continual, false)},
         {"a"}, {"b"});
-    const Config cfg;
+    Config cfg;
+    cfg.p_add_assumption = 0.0;  // isolate the requirement-rewrite path
     const Specification result =
         mutate_specification(spec, make_source({}, 0), cfg);
     expect(result == spec,
@@ -155,6 +156,7 @@ void test_mutation_skips_non_weakenable_requirement() {
                            ConditionType::Continual, true);
     const Specification spec({}, {locked, weak}, {"a", "c"}, {"b", "d"});
     Config cfg;
+    cfg.p_add_assumption = 0.0;  // isolate the requirement-rewrite path
     cfg.p_response = 0.0;
     cfg.p_trigger = 0.0;
     cfg.p_timing = 1.0;
@@ -196,6 +198,47 @@ void test_condition_mutation_never_introduces_output_atom() {
     }
 }
 
+void test_add_assumption_appends_environment_assumption() {
+    // p_add_assumption forced to 1 with a zero-yielding source: the first
+    // action appends a fairness assumption `G F <first input>` (no negation,
+    // since next_bool() is false), leaving the guarantees untouched.
+    const Specification spec(
+        {},
+        {Requirement(Formula("a"), Formula("B"), timing::always(),
+                     ConditionType::Trigger, true)},
+        {"a", "c"}, {"B"});
+    Config cfg;
+    cfg.p_add_assumption = 1.0;
+    const Specification result =
+        mutate_specification(spec, make_source({}, 0), cfg);
+    expect(result.m_assumptions.size() == 1,
+           "add-assumption: a new environment assumption is appended");
+    expect(result.m_guarantees.size() == 1 &&
+               result.m_guarantees == spec.m_guarantees,
+           "add-assumption: guarantees are left untouched");
+    const Requirement& added = result.m_assumptions.front();
+    expect(added.m_weakenable,
+           "add-assumption: the added assumption is weakenable");
+    expect(std::holds_alternative<timing::Eventually>(added.m_timing),
+           "add-assumption: fairness assumption uses Eventually timing");
+    expect(added.m_response.to_string() == "a",
+           "add-assumption: response is drawn from the input atoms");
+    expect(added.m_ltl.find('B') == std::string::npos,
+           "add-assumption: an output atom never enters an added assumption");
+}
+
+void test_add_assumption_disabled_by_zero_probability() {
+    const Specification spec(
+        {}, {Requirement(Formula("a"), Formula("b"), timing::immediately())},
+        {"a"}, {"b"});
+    Config cfg;
+    cfg.p_add_assumption = 0.0;
+    const Specification result =
+        mutate_specification(spec, make_source({}, 0), cfg);
+    expect(result.m_assumptions.empty(),
+           "add-assumption: none added when p_add_assumption is zero");
+}
+
 }  // namespace
 
 void run_mutation_tests() {
@@ -213,4 +256,6 @@ void run_mutation_tests() {
     test_mutation_all_locked_is_noop();
     test_mutation_skips_non_weakenable_requirement();
     test_condition_mutation_never_introduces_output_atom();
+    test_add_assumption_appends_environment_assumption();
+    test_add_assumption_disabled_by_zero_probability();
 }

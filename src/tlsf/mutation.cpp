@@ -1,5 +1,6 @@
 #include "tlsf/mutation.hpp"
 
+#include <cassert>
 #include <cstddef>
 #include <string>
 #include <utility>
@@ -11,6 +12,180 @@
 namespace {
 
 using Section = std::vector<Formula>;
+
+// The four unary operators Brizzio's mutation may introduce, o1 ∈ {¬, X, F, G}.
+Formula::Kind pick_unary_kind(const RandomSource& random_source) {
+    switch (random_source.next_index(4)) {
+        case 0:
+            return Formula::Kind::Not;
+        case 1:
+            return Formula::Kind::Next;
+        case 2:
+            return Formula::Kind::Eventually;
+        case 3:
+            return Formula::Kind::Globally;
+        default:
+            assert(false);
+            __builtin_unreachable();
+    }
+}
+
+// Replacement binary operator for case (3), o2' ∈ {∨, ∧, U, R, W}. Implies/Iff
+// are deliberately excluded (as in Brizzio's fragment): a mutated binary node
+// re-emerges as one of these five, which is what lets the operator move a
+// formula between purely propositional and genuinely temporal shapes.
+Formula::Kind pick_binary_kind(const RandomSource& random_source) {
+    switch (random_source.next_index(5)) {
+        case 0:
+            return Formula::Kind::And;
+        case 1:
+            return Formula::Kind::Or;
+        case 2:
+            return Formula::Kind::Until;
+        case 3:
+            return Formula::Kind::Release;
+        case 4:
+            return Formula::Kind::WeakUntil;
+        default:
+            assert(false);
+            __builtin_unreachable();
+    }
+}
+
+// Connective used in case (2d), o2' ∈ {U, W, ∧, ∨}, to graft a fresh atom onto
+// the mutated child.
+Formula::Kind pick_connective_kind(const RandomSource& random_source) {
+    switch (random_source.next_index(4)) {
+        case 0:
+            return Formula::Kind::Until;
+        case 1:
+            return Formula::Kind::WeakUntil;
+        case 2:
+            return Formula::Kind::And;
+        case 3:
+            return Formula::Kind::Or;
+        default:
+            assert(false);
+            __builtin_unreachable();
+    }
+}
+
+// Case (1a)/(1b): a boolean constant is flipped; any other atom is replaced by
+// a pool atom, preferring a distinct one (Brizzio's q ≠ p) when the pool
+// allows.
+std::string flip_or_replace_atom(const std::string& atom,
+                                 const std::vector<std::string>& atoms,
+                                 const RandomSource& random_source) {
+    if (atom == "true") {
+        return "false";
+    }
+    if (atom == "false") {
+        return "true";
+    }
+    assert(!atoms.empty());
+    std::size_t index = random_source.next_index(atoms.size());
+    if (atoms[index] == atom && atoms.size() > 1) {
+        index = (index + 1) % atoms.size();
+    }
+    return atoms[index];
+}
+
+// A recursive re-implementation of the mutation operator from Brizzio et al.,
+// "Automated Repair of Unrealisable LTL Specifications Guided by Model
+// Counting". Unlike mutate_propositional_parts it may add, remove, or swap
+// temporal operators, so it changes a formula's temporal skeleton. At each node
+// one rewrite rule is drawn uniformly and applied, recursing into children; the
+// three top-level cases mirror the paper's (1) atom/constant, (2) unary
+// operator, (3) binary operator. @p atoms is the side-appropriate atom pool
+// (inputs only on the assumption side; inputs ∪ outputs on the guarantee side),
+// assumed non-empty.
+Formula mutate_temporal(const Formula& formula,
+                        const std::vector<std::string>& atoms,
+                        const RandomSource& random_source) {
+    switch (formula.kind()) {
+        case Formula::Kind::Atom: {
+            // Case (1): (a)/(b) replace the atom, or (c) wrap it in a unary op.
+            const auto name = formula.atom_name();
+            if (!name.has_value()) {
+                assert(false);
+                __builtin_unreachable();
+            }
+            if (random_source.next_index(3) == 0) {
+                return Formula::make_unary(pick_unary_kind(random_source),
+                                           formula);
+            }
+            return Formula::make_atom(
+                flip_or_replace_atom(*name, atoms, random_source));
+        }
+        case Formula::Kind::Not:
+        case Formula::Kind::Next:
+        case Formula::Kind::Eventually:
+        case Formula::Kind::Globally: {
+            // Case (2): φ = o1 φ1.
+            const auto child = formula.unary_child();
+            if (!child.has_value()) {
+                return formula;
+            }
+            Formula mutated_child =
+                mutate_temporal(*child, atoms, random_source);
+            switch (random_source.next_index(4)) {
+                case 0:  // (a) drop o1.
+                    return mutated_child;
+                case 1:  // (b) replace o1.
+                    return Formula::make_unary(pick_unary_kind(random_source),
+                                               mutated_child);
+                case 2:  // (c) prepend a unary op, keeping o1.
+                    return Formula::make_unary(
+                        pick_unary_kind(random_source),
+                        Formula::make_unary(formula.kind(), mutated_child));
+                case 3: {  // (d) p o2' (o1' mutate(φ1)).
+                    const Formula anchor = Formula::make_atom(
+                        atoms[random_source.next_index(atoms.size())]);
+                    const Formula inner = Formula::make_unary(
+                        pick_unary_kind(random_source), mutated_child);
+                    return Formula::make_binary(
+                        pick_connective_kind(random_source), anchor, inner);
+                }
+                default:
+                    assert(false);
+                    __builtin_unreachable();
+            }
+        }
+        default: {
+            // Case (3): φ = φ1 o2 φ2 (any binary node, temporal or boolean).
+            const auto children = formula.binary_children();
+            if (!children.has_value()) {
+                return formula;
+            }
+            switch (random_source.next_index(3)) {
+                case 0: {  // (a) collapse to one mutated child.
+                    const Formula& chosen = random_source.next_bool()
+                                                ? children->first
+                                                : children->second;
+                    return mutate_temporal(chosen, atoms, random_source);
+                }
+                case 1:  // (b) mutate both children under a new binary op.
+                    return Formula::make_binary(
+                        pick_binary_kind(random_source),
+                        mutate_temporal(children->first, atoms, random_source),
+                        mutate_temporal(children->second, atoms,
+                                        random_source));
+                case 2:  // (c) as (b), then wrap in a unary op.
+                    return Formula::make_unary(
+                        pick_unary_kind(random_source),
+                        Formula::make_binary(
+                            pick_binary_kind(random_source),
+                            mutate_temporal(children->first, atoms,
+                                            random_source),
+                            mutate_temporal(children->second, atoms,
+                                            random_source)));
+                default:
+                    assert(false);
+                    __builtin_unreachable();
+            }
+        }
+    }
+}
 
 // The three section vectors on one side of the specification, paired so a
 // chosen formula can be located and rewritten in place.
@@ -129,8 +304,13 @@ tlsf::Specification tlsf_mutate(const tlsf::Specification& spec,
     std::size_t choice = random_source.next_index(total);
     for (Section* section : sections) {
         if (choice < section->size()) {
-            (*section)[choice] = mutate_propositional_parts(
-                (*section)[choice], pool, random_source);
+            const bool temporal =
+                random_source.next_real() < cfg.tlsf_p_temporal;
+            (*section)[choice] =
+                temporal
+                    ? mutate_temporal((*section)[choice], pool, random_source)
+                    : mutate_propositional_parts((*section)[choice], pool,
+                                                 random_source);
             return mutated;
         }
         choice -= section->size();

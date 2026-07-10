@@ -138,6 +138,10 @@ void apply_tlsf(const toml::table& tbl, Config& cfg) {
             require_probability(*val, "tlsf.mutation.p_guarantee");
             cfg.tlsf_p_guarantee = *val;
         }
+        if (auto val = (*mutation)["p_temporal"].value<double>()) {
+            require_probability(*val, "tlsf.mutation.p_temporal");
+            cfg.tlsf_p_temporal = *val;
+        }
     }
 }
 

@@ -47,5 +47,11 @@ struct Config {
     // (PRESET/ASSERT/GUARANTEE) when mutating a tlsf::Specification.
     double tlsf_p_assumption = 0.3;
     double tlsf_p_guarantee = 0.7;
+    // TLSF-mode mutation: once a section formula has been chosen for rewriting,
+    // the probability of applying the temporal-structure mutation (which may
+    // insert, drop, or swap X/F/G/U/R/W operators, following Brizzio et al.)
+    // rather than the skeleton-preserving propositional rewrite. At 0 the
+    // temporal skeleton of existing formulae is never altered.
+    double tlsf_p_temporal = 0.2;
     std::size_t parallel = std::thread::hardware_concurrency();
 };

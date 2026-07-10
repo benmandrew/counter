@@ -78,6 +78,7 @@ std::multiset<int> temporal_kinds(const Formula& formula) {
 
 void test_mutation_preserves_temporal_skeleton() {
     Config cfg;
+    cfg.tlsf_p_temporal = 0.0;  // isolate the skeleton-preserving rewrite path
     const tlsf::Specification original = parse(
         "INPUTS { req; } OUTPUTS { grant; } GUARANTEE { G(req -> F "
         "grant); }");
@@ -119,6 +120,63 @@ void test_mutation_assumption_atoms_from_inputs_only() {
         const std::string text = mutated.m_assume.front().to_string();
         expect(text.find("bout") == std::string::npos,
                "mutation: the output atom never leaks into an assumption");
+    }
+}
+
+void test_temporal_mutation_changes_skeleton() {
+    // With tlsf_p_temporal forced to 1, the chosen formula is rewritten by the
+    // Brizzio-style operator, which is allowed to insert/drop/swap temporal
+    // operators. Over a range of seeds the temporal skeleton must actually
+    // change at least once, and every result must stay well-formed.
+    Config cfg;
+    cfg.tlsf_p_temporal = 1.0;
+    cfg.p_add_assumption = 0.0;  // isolate the rewrite path
+    const tlsf::Specification original = parse(
+        "INPUTS { req; } OUTPUTS { grant; } GUARANTEE { G(req -> F "
+        "grant); }");
+    const std::multiset<int> skeleton =
+        temporal_kinds(original.m_guarantee.front());
+
+    bool skeleton_changed = false;
+    for (std::size_t seed = 0; seed < 40; ++seed) {
+        const RandomSource rng = make_random_source_from_seed(seed);
+        const tlsf::Specification mutated = tlsf_mutate(original, rng, cfg);
+        expect(mutated.m_guarantee.size() == 1,
+               "temporal mutation: guarantee section shape is preserved");
+        const Formula& formula = mutated.m_guarantee.front();
+        expect(!formula.to_string().empty(),
+               "temporal mutation: mutated formula has a well-formed string "
+               "form");
+        if (temporal_kinds(formula) != skeleton) {
+            skeleton_changed = true;
+        }
+    }
+    expect(skeleton_changed,
+           "temporal mutation: the temporal skeleton is altered for at least "
+           "one seed");
+}
+
+void test_temporal_mutation_atoms_from_inputs_only() {
+    // The temporal operator threads the side-appropriate atom pool through its
+    // recursion, so an assumption-side rewrite must never draw an output atom.
+    Config cfg;
+    cfg.tlsf_p_temporal = 1.0;
+    cfg.p_add_assumption = 0.0;
+    tlsf::Specification spec;
+    spec.m_inputs = {"a", "c"};
+    spec.m_outputs = {"bout"};
+    spec.m_assume = {parse("INPUTS { a; c; } OUTPUTS { bout; } "
+                           "ASSUME { G(a -> X c); }")
+                         .m_assume.front()};
+    for (std::size_t seed = 0; seed < 40; ++seed) {
+        const RandomSource rng = make_random_source_from_seed(seed);
+        const tlsf::Specification mutated = tlsf_mutate(spec, rng, cfg);
+        expect(mutated.m_assume.size() == 1,
+               "temporal mutation: assumption section shape is preserved");
+        const std::string text = mutated.m_assume.front().to_string();
+        expect(text.find("bout") == std::string::npos,
+               "temporal mutation: the output atom never leaks into an "
+               "assumption");
     }
 }
 
@@ -230,6 +288,8 @@ void test_end_to_end_evolution() {
 void run_tlsf_genetic_tests() {
     test_mutation_preserves_temporal_skeleton();
     test_mutation_assumption_atoms_from_inputs_only();
+    test_temporal_mutation_changes_skeleton();
+    test_temporal_mutation_atoms_from_inputs_only();
     test_add_assumption_appends_fairness();
     test_crossover_positional_matching_shape();
     test_crossover_mismatched_shape_returns_first();

@@ -37,6 +37,10 @@ p_add_assumption = 0.05
 # guarantee-side section (PRESET/ASSERT/GUARANTEE).
 p_assumption = 0.3
 p_guarantee  = 0.7
+# Once a section formula is chosen, probability of applying the temporal-structure
+# mutation (may insert/drop/swap X/F/G/U/R/W operators) rather than the
+# skeleton-preserving propositional rewrite. At 0 temporal skeletons are fixed.
+p_temporal   = 0.2
 
 [model_counting]
 default_bound = 10  # trace-length bound k for bounded model counting

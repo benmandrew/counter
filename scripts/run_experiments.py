@@ -52,6 +52,16 @@ SPECS: dict[str, dict[str, Path]] = {
 N_SEEDS = 30
 ALL_SEEDS = list(range(N_SEEDS))
 
+# (sweep, level_name, spec) combos to skip outright. gen40 x {fsm-timing,
+# fsm-combined} was observed to time out (3600s cap) on nearly every seed —
+# per-generation cost grows superlinearly with generation count for these two
+# structurally complex specs (see bloat filter's fixed 2.0 max_ratio), so this
+# tier produces almost no usable data at ~1hr/seed. Drop it until that's fixed.
+SKIP_COMBOS: set[tuple[str, str, str]] = {
+    ("A", "gen40", "fsm-timing"),
+    ("A", "gen40", "fsm-combined"),
+}
+
 CSV_FIELDS = [
     "sweep", "level_name", "level_value", "spec", "seed",
     "found_repair", "n_repairs", "best_fitness",
@@ -300,22 +310,27 @@ def main() -> None:
 
     done = set() if args.no_resume else load_done_set(RESULTS_CSV)
 
-    # Count total work
-    total = len(all_configs) * len(args.specs) * len(args.seeds)
-    skipped = sum(
-        1 for cfg in all_configs
+    # Count total work (excluding combos in SKIP_COMBOS entirely)
+    combos = [
+        (cfg, spec, seed)
+        for cfg in all_configs
         for spec in args.specs
         for seed in args.seeds
+        if (extract_metadata(cfg)[0], extract_metadata(cfg)[1], spec) not in SKIP_COMBOS
+    ]
+    n_excluded = len(all_configs) * len(args.specs) * len(args.seeds) - len(combos)
+    total = len(combos)
+    skipped = sum(
+        1 for cfg, spec, seed in combos
         if (extract_metadata(cfg)[0], extract_metadata(cfg)[1], spec, seed) in done
     )
-    print(f"Runs: {total} total, {skipped} already done, {total - skipped} to execute")
+    print(f"Runs: {total} total, {skipped} already done, {total - skipped} to execute"
+          + (f", {n_excluded} excluded via SKIP_COMBOS" if n_excluded else ""))
     if args.dry_run:
-        for cfg in all_configs:
+        for cfg, spec, seed in combos:
             sweep, level_name, _ = extract_metadata(cfg)
-            for spec in args.specs:
-                for seed in args.seeds:
-                    tag = "(skip)" if (sweep, level_name, spec, seed) in done else ""
-                    print(f"  sweep_{sweep}_{level_name}  spec={spec}  seed={seed:02d}  {tag}")
+            tag = "(skip)" if (sweep, level_name, spec, seed) in done else ""
+            print(f"  sweep_{sweep}_{level_name}  spec={spec}  seed={seed:02d}  {tag}")
         return
 
     RESULTS_DIR.mkdir(parents=True, exist_ok=True)
@@ -325,28 +340,26 @@ def main() -> None:
     errors = 0
     t0 = time.monotonic()
 
-    for cfg in all_configs:
+    for cfg, spec_name, seed in combos:
         sweep, level_name = extract_metadata(cfg)[:2]
-        for spec_name in args.specs:
-            for seed in args.seeds:
-                if (sweep, level_name, spec_name, seed) in done:
-                    continue
-                completed += 1
-                remaining = total - skipped - completed + 1
-                elapsed = time.monotonic() - t0
-                eta = (elapsed / completed * remaining) if completed > 1 else 0
-                print(
-                    f"[{completed}/{total - skipped}]  "
-                    f"sweep={sweep}  level={level_name}  spec={spec_name}  seed={seed:02d}"
-                    f"  ETA {eta/60:.1f}min",
-                    flush=True,
-                )
-                row = run_one(cfg, spec_name, seed)
-                if row is None:
-                    errors += 1
-                    continue
-                append_row(RESULTS_CSV, row)
-                done.add((sweep, level_name, spec_name, seed))
+        if (sweep, level_name, spec_name, seed) in done:
+            continue
+        completed += 1
+        remaining = total - skipped - completed + 1
+        elapsed = time.monotonic() - t0
+        eta = (elapsed / completed * remaining) if completed > 1 else 0
+        print(
+            f"[{completed}/{total - skipped}]  "
+            f"sweep={sweep}  level={level_name}  spec={spec_name}  seed={seed:02d}"
+            f"  ETA {eta/60:.1f}min",
+            flush=True,
+        )
+        row = run_one(cfg, spec_name, seed)
+        if row is None:
+            errors += 1
+            continue
+        append_row(RESULTS_CSV, row)
+        done.add((sweep, level_name, spec_name, seed))
 
     elapsed_total = time.monotonic() - t0
     print(

@@ -62,6 +62,16 @@ struct Specification {
     /// standard for now — strict implication is a later refinement.
     [[nodiscard]] std::string to_ltl() const;
 
+    /// Lowers only the assumption side (INITIALLY, G(REQUIRE), ASSUME) to an
+    /// LTL string in SPOT syntax, using the same collection order as to_ltl().
+    /// When no assumption section contributes a term the result is `true`.
+    [[nodiscard]] std::string assumption_ltl() const;
+
+    /// Lowers only the guarantee side (PRESET, G(ASSERT), GUARANTEE) to an LTL
+    /// string in SPOT syntax, using the same collection order as to_ltl().
+    /// When no guarantee section contributes a term the result is `true`.
+    [[nodiscard]] std::string guarantee_ltl() const;
+
     friend bool operator==(const Specification& lhs, const Specification& rhs);
     friend bool operator<(const Specification& lhs, const Specification& rhs);
 };

@@ -25,6 +25,8 @@ add_executable(counter_tests
     config_io_tests.cpp
     tlsf/parser_tests.cpp
     tlsf/writer_tests.cpp
+    tlsf/fitness_tests.cpp
+    tlsf/genetic_tests.cpp
 )
 
 target_include_directories(counter_tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
@@ -61,6 +63,8 @@ add_test(NAME counter_tests.serialisation COMMAND counter_tests serialisation)
 add_test(NAME counter_tests.config_io COMMAND counter_tests config_io)
 add_test(NAME counter_tests.tlsf_parser COMMAND counter_tests tlsf_parser)
 add_test(NAME counter_tests.tlsf_writer COMMAND counter_tests tlsf_writer)
+add_test(NAME counter_tests.tlsf_fitness COMMAND counter_tests tlsf_fitness)
+add_test(NAME counter_tests.tlsf_genetic COMMAND counter_tests tlsf_genetic)
 
 add_custom_target(tests
     COMMAND ${CMAKE_CTEST_COMMAND} --output-on-failure

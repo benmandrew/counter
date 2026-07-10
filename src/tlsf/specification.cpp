@@ -62,6 +62,16 @@ std::string Specification::to_ltl() const {
         .to_string();
 }
 
+std::string Specification::assumption_ltl() const {
+    bool any_term = false;
+    return collect_side(m_initially, m_require, m_assume, any_term).to_string();
+}
+
+std::string Specification::guarantee_ltl() const {
+    bool any_term = false;
+    return collect_side(m_preset, m_assert, m_guarantee, any_term).to_string();
+}
+
 namespace {
 
 auto tie_sections(const Specification& spec) {

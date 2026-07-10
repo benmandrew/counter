@@ -40,6 +40,18 @@ const char* connective_string(Formula::Kind kind) {
             return "->";
         case Formula::Kind::Iff:
             return "<->";
+        case Formula::Kind::Next:
+            return "X";
+        case Formula::Kind::Eventually:
+            return "F";
+        case Formula::Kind::Globally:
+            return "G";
+        case Formula::Kind::Until:
+            return "U";
+        case Formula::Kind::Release:
+            return "R";
+        case Formula::Kind::WeakUntil:
+            return "W";
         case Formula::Kind::Atom:
         default:
             assert(false);
@@ -59,7 +71,10 @@ void traverse_formula(const Formula& formula, RawCounts& counts) {
             ++counts.n2;
             break;
         }
-        case Formula::Kind::Not: {
+        case Formula::Kind::Not:
+        case Formula::Kind::Next:
+        case Formula::Kind::Eventually:
+        case Formula::Kind::Globally: {
             counts.operators.insert(connective_string(formula.kind()));
             ++counts.n1;
             const auto child = formula.unary_child();

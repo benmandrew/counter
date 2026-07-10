@@ -27,3 +27,5 @@ void run_serialisation_tests();
 void run_config_io_tests();
 void run_tlsf_parser_tests();
 void run_tlsf_writer_tests();
+void run_tlsf_fitness_tests();
+void run_tlsf_genetic_tests();

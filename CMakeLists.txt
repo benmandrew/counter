@@ -78,6 +78,11 @@ target_sources(counter_fitness PRIVATE
     src/genetic/crossover.cpp
     src/genetic/generation.cpp
     src/genetic/mutation.cpp
+    src/tlsf/fitness.cpp
+    src/tlsf/mutation.cpp
+    src/tlsf/crossover.cpp
+    src/tlsf/operators.cpp
+    src/tlsf/filter.cpp
     src/config_io.cpp
 )
 target_include_directories(counter_fitness PUBLIC include)

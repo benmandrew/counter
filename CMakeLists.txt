@@ -48,6 +48,9 @@ target_sources(counter_core PRIVATE
     src/prop_formula/similarity.cpp
     src/prop_formula/transform.cpp
     src/requirement.cpp
+    src/tlsf/parser.cpp
+    src/tlsf/specification.cpp
+    src/tlsf/writer.cpp
 )
 target_include_directories(counter_core PUBLIC include)
 target_link_libraries(counter_core PUBLIC nlohmann_json::nlohmann_json)

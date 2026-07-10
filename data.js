@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1783689494042,
+  "lastUpdate": 1783700450850,
   "repoUrl": "https://github.com/benmandrew/counter",
   "entries": {
     "counter benchmarks": [
@@ -1584,6 +1584,78 @@ window.BENCHMARK_DATA = {
             "value": 3752.936519242895,
             "unit": "ns/iter",
             "extra": "iterations: 186718\ncpu: 3752.727337482191 ns\nthreads: 1"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "benmandrew@gmail.com",
+            "name": "benmandrew",
+            "username": "benmandrew"
+          },
+          "committer": {
+            "email": "benmandrew@gmail.com",
+            "name": "benmandrew",
+            "username": "benmandrew"
+          },
+          "distinct": true,
+          "id": "3f4992034beef088dc9dc817deb6fb6709453300",
+          "message": "feat: add --base flag to recompare for per-machine result dirs\n\nrecompare now targets any directory holding results.csv + results/\n(default: repo experiments/), so results rsynced from multiple machines\ninto separate dirs (results-av2, results-av3) can each be recompared\nbefore combining.",
+          "timestamp": "2026-07-10T17:03:10+01:00",
+          "tree_id": "abb49f86a8fbd031d597784fce9eec8a911cfeeb",
+          "url": "https://github.com/benmandrew/counter/commit/3f4992034beef088dc9dc817deb6fb6709453300"
+        },
+        "date": 1783700449905,
+        "tool": "googlecpp",
+        "benches": [
+          {
+            "name": "Syntactic similarity - small formulas (3 variables)",
+            "value": 432.3763930761519,
+            "unit": "ns/iter",
+            "extra": "iterations: 1624642\ncpu: 432.3339948123956 ns\nthreads: 1"
+          },
+          {
+            "name": "Syntactic similarity - large formulas (11 variables, O(n*m) shared_subformulae)",
+            "value": 1708.9984581332342,
+            "unit": "ns/iter",
+            "extra": "iterations: 412487\ncpu: 1708.7170650226549 ns\nthreads: 1"
+          },
+          {
+            "name": "Spec implication check - warm black cache",
+            "value": 665.1814896232505,
+            "unit": "ns/iter",
+            "extra": "iterations: 1033993\ncpu: 665.0877588146152 ns\nthreads: 1"
+          },
+          {
+            "name": "Trace model counting - matrix exponentiation/steps:5",
+            "value": 132.83787701119303,
+            "unit": "ns/iter",
+            "extra": "iterations: 5274545\ncpu: 132.82192359720128 ns\nthreads: 1"
+          },
+          {
+            "name": "Trace model counting - matrix exponentiation/steps:10",
+            "value": 153.9986520344802,
+            "unit": "ns/iter",
+            "extra": "iterations: 4647745\ncpu: 153.98293495017475 ns\nthreads: 1"
+          },
+          {
+            "name": "Trace model counting - matrix exponentiation/steps:20",
+            "value": 166.46894339323694,
+            "unit": "ns/iter",
+            "extra": "iterations: 4050523\ncpu: 166.43081992127918 ns\nthreads: 1"
+          },
+          {
+            "name": "Trace model counting - matrix exponentiation/steps:50",
+            "value": 206.11926571018634,
+            "unit": "ns/iter",
+            "extra": "iterations: 3405195\ncpu: 206.10173778594168 ns\nthreads: 1"
+          },
+          {
+            "name": "Mutate specification - 3-guarantee takeoff spec",
+            "value": 2914.5416514401277,
+            "unit": "ns/iter",
+            "extra": "iterations: 240808\ncpu: 2914.138305205808 ns\nthreads: 1"
           }
         ]
       }

@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1783702082447,
+  "lastUpdate": 1783703012657,
   "repoUrl": "https://github.com/benmandrew/counter",
   "entries": {
     "counter benchmarks": [
@@ -1728,6 +1728,78 @@ window.BENCHMARK_DATA = {
             "value": 3384.2313054041497,
             "unit": "ns/iter",
             "extra": "iterations: 207453\ncpu: 3383.723976033127 ns\nthreads: 1"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "benmandrew@gmail.com",
+            "name": "benmandrew",
+            "username": "benmandrew"
+          },
+          "committer": {
+            "email": "benmandrew@gmail.com",
+            "name": "benmandrew",
+            "username": "benmandrew"
+          },
+          "distinct": true,
+          "id": "82e64ac0482a18111b0f55facf94a495af8661bc",
+          "message": "feat: temporal-structure mutation for TLSF specifications\n\nTLSF mutation previously rewrote only propositional subtrees inside\nfixed temporal boundaries, so a formula's X/F/G/U/R/W skeleton could\nnever change. Add a recursive re-implementation of the mutation operator\nfrom Brizzio et al., \"Automated Repair of Unrealisable LTL\nSpecifications Guided by Model Counting\", which may insert, drop, or swap\ntemporal operators.\n\nOnce a section formula is chosen, cfg.tlsf_p_temporal (default 0.2)\nselects the temporal-structure rewrite over the skeleton-preserving one.\nAtom pools stay side-correct: assumption-side rewrites draw inputs only.",
+          "timestamp": "2026-07-10T17:48:57+01:00",
+          "tree_id": "3897f9ec46782825478e42cdafbc5d2a53ffd8c7",
+          "url": "https://github.com/benmandrew/counter/commit/82e64ac0482a18111b0f55facf94a495af8661bc"
+        },
+        "date": 1783703012130,
+        "tool": "googlecpp",
+        "benches": [
+          {
+            "name": "Syntactic similarity - small formulas (3 variables)",
+            "value": 428.77791481544386,
+            "unit": "ns/iter",
+            "extra": "iterations: 1580263\ncpu: 428.7415056860788 ns\nthreads: 1"
+          },
+          {
+            "name": "Syntactic similarity - large formulas (11 variables, O(n*m) shared_subformulae)",
+            "value": 1714.4815059509776,
+            "unit": "ns/iter",
+            "extra": "iterations: 408672\ncpu: 1714.3368496006578 ns\nthreads: 1"
+          },
+          {
+            "name": "Spec implication check - warm black cache",
+            "value": 655.4297778938852,
+            "unit": "ns/iter",
+            "extra": "iterations: 1064266\ncpu: 655.3474403955402 ns\nthreads: 1"
+          },
+          {
+            "name": "Trace model counting - matrix exponentiation/steps:5",
+            "value": 130.37451700466838,
+            "unit": "ns/iter",
+            "extra": "iterations: 5345031\ncpu: 130.3518168556927 ns\nthreads: 1"
+          },
+          {
+            "name": "Trace model counting - matrix exponentiation/steps:10",
+            "value": 149.59133852029376,
+            "unit": "ns/iter",
+            "extra": "iterations: 4733025\ncpu: 149.54202270218303 ns\nthreads: 1"
+          },
+          {
+            "name": "Trace model counting - matrix exponentiation/steps:20",
+            "value": 165.08450331772454,
+            "unit": "ns/iter",
+            "extra": "iterations: 4220213\ncpu: 165.03545911071302 ns\nthreads: 1"
+          },
+          {
+            "name": "Trace model counting - matrix exponentiation/steps:50",
+            "value": 205.07653047426027,
+            "unit": "ns/iter",
+            "extra": "iterations: 3512653\ncpu: 205.02105445656045 ns\nthreads: 1"
+          },
+          {
+            "name": "Mutate specification - 3-guarantee takeoff spec",
+            "value": 2668.9744429056873,
+            "unit": "ns/iter",
+            "extra": "iterations: 262119\ncpu: 2668.6625120651324 ns\nthreads: 1"
           }
         ]
       }

@@ -119,12 +119,14 @@ std::vector<Scored<Spec>> score_population(
         [&fitness_function, &population](std::size_t idx) {
             return global_thread_pool().submit(
                 [&fitness_function, &spec = population[idx]] {
-                    return fitness_function(spec);
+                    return fitness_function.objectives_and_fitness(spec);
                 });
         },
         [&scored, &population, &on_progress, &done, total = population.size()](
-            std::size_t idx, double fitness) {
-            scored[idx] = {population[idx], fitness};
+            std::size_t idx, std::pair<std::vector<double>, double> result) {
+            scored[idx].specification = population[idx];
+            scored[idx].objectives = std::move(result.first);
+            scored[idx].fitness = result.second;
             if (on_progress) {
                 on_progress(++done, total);
             }

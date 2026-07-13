@@ -54,7 +54,13 @@ std::vector<ScoredSpecification> score_and_sort_specifications(
     std::vector<ScoredSpecification> scored;
     scored.reserve(specs.size());
     for (const Specification& spec : specs) {
-        scored.push_back({spec, fitness_function(spec)});
+        auto [objectives, fitness] =
+            fitness_function.objectives_and_fitness(spec);
+        ScoredSpecification entry;
+        entry.specification = spec;
+        entry.fitness = fitness;
+        entry.objectives = std::move(objectives);
+        scored.push_back(std::move(entry));
     }
     std::sort(scored.begin(), scored.end(),
               [](const ScoredSpecification& first,

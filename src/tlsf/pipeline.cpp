@@ -55,8 +55,13 @@ std::vector<Scored<Specification>> realizable_survivors(
                             return kept.specification == scored.specification;
                         });
         if (!seen) {
-            survivors.push_back(
-                {scored.specification, fitness(scored.specification)});
+            auto [objectives, scalar] =
+                fitness.objectives_and_fitness(scored.specification);
+            Scored<Specification> survivor;
+            survivor.specification = scored.specification;
+            survivor.fitness = scalar;
+            survivor.objectives = std::move(objectives);
+            survivors.push_back(std::move(survivor));
         }
     }
     std::sort(

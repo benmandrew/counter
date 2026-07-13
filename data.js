@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1783961135919,
+  "lastUpdate": 1783962067195,
   "repoUrl": "https://github.com/benmandrew/counter",
   "entries": {
     "counter benchmarks": [
@@ -2376,6 +2376,78 @@ window.BENCHMARK_DATA = {
             "value": 3351.056967672641,
             "unit": "ns/iter",
             "extra": "iterations: 209575\ncpu: 3350.9554383872105 ns\nthreads: 1"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "benmandrew@gmail.com",
+            "name": "benmandrew",
+            "username": "benmandrew"
+          },
+          "committer": {
+            "email": "benmandrew@gmail.com",
+            "name": "benmandrew",
+            "username": "benmandrew"
+          },
+          "distinct": true,
+          "id": "869b0a7c4f89fc23fe085bf970c2504a82847ece",
+          "message": "docs: silence Breathe warnings in docs build\n\nTwo structural warnings surfaced on every docs build:\n\n- The genetic crossover/mutation/operators pages invoked `doxygenfile`\n  with bare basenames that also exist under `include/tlsf/`, so Breathe\n  reported \"multiple matches\". Qualify them with `genetic/`, matching how\n  the tlsf pages already disambiguate.\n\n- Every `include/tlsf/*.hpp` opens `namespace tlsf`, and Breathe re-emits\n  that namespace declaration on each per-file page; Sphinx's C++ domain\n  flags the repeats as cross-page duplicate declarations. Suppress the\n  `duplicate_declaration.cpp` subtype, which is an inherent artifact of\n  rendering one namespace across many `doxygenfile` pages.",
+          "timestamp": "2026-07-13T17:47:57+01:00",
+          "tree_id": "10ee82244987f689368f8854525bc8d8c9022c35",
+          "url": "https://github.com/benmandrew/counter/commit/869b0a7c4f89fc23fe085bf970c2504a82847ece"
+        },
+        "date": 1783962066852,
+        "tool": "googlecpp",
+        "benches": [
+          {
+            "name": "Syntactic similarity - small formulas (3 variables)",
+            "value": 653.2322384542422,
+            "unit": "ns/iter",
+            "extra": "iterations: 1054089\ncpu: 653.1819808384303 ns\nthreads: 1"
+          },
+          {
+            "name": "Syntactic similarity - large formulas (11 variables, O(n*m) shared_subformulae)",
+            "value": 2471.271633145609,
+            "unit": "ns/iter",
+            "extra": "iterations: 279675\ncpu: 2470.849886475373 ns\nthreads: 1"
+          },
+          {
+            "name": "Spec implication check - warm black cache",
+            "value": 864.2618473309966,
+            "unit": "ns/iter",
+            "extra": "iterations: 809254\ncpu: 864.1751650285323 ns\nthreads: 1"
+          },
+          {
+            "name": "Trace model counting - matrix exponentiation/steps:5",
+            "value": 196.42987803675737,
+            "unit": "ns/iter",
+            "extra": "iterations: 3551070\ncpu: 196.4131247764758 ns\nthreads: 1"
+          },
+          {
+            "name": "Trace model counting - matrix exponentiation/steps:10",
+            "value": 222.4304730024535,
+            "unit": "ns/iter",
+            "extra": "iterations: 3139730\ncpu: 222.41781681864353 ns\nthreads: 1"
+          },
+          {
+            "name": "Trace model counting - matrix exponentiation/steps:20",
+            "value": 246.39966246268833,
+            "unit": "ns/iter",
+            "extra": "iterations: 2844130\ncpu: 246.38012889706167 ns\nthreads: 1"
+          },
+          {
+            "name": "Trace model counting - matrix exponentiation/steps:50",
+            "value": 299.2482883933034,
+            "unit": "ns/iter",
+            "extra": "iterations: 2333480\ncpu: 299.23960608190345 ns\nthreads: 1"
+          },
+          {
+            "name": "Mutate specification - 3-guarantee takeoff spec",
+            "value": 3317.482083838596,
+            "unit": "ns/iter",
+            "extra": "iterations: 210285\ncpu: 3317.2958223363544 ns\nthreads: 1"
           }
         ]
       }

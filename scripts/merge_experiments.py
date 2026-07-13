@@ -101,13 +101,13 @@ def key_of(row: dict) -> tuple:
     return tuple(row.get(f, "") for f in KEY_FIELDS)
 
 
-def merge_csv(pulled: list[Path]) -> None:
-    """Merge pulled CSVs into RESULTS_CSV, one row per key. Local rows win.
+def merge_csv(pulled: list[Path], results_csv: Path) -> None:
+    """Merge pulled CSVs into results_csv, one row per key. Local rows win.
 
     Ordering is deterministic (sorted by key), so the file is byte-stable across
     repeated runs once every source has been merged in.
     """
-    header, local_rows = read_rows(RESULTS_CSV)
+    header, local_rows = read_rows(results_csv)
 
     merged: dict[tuple, dict] = {}
     # Local first so existing rows take precedence over remote copies of the
@@ -137,8 +137,8 @@ def merge_csv(pulled: list[Path]) -> None:
             seed_v = seed
         return (sweep, level_name, spec, seed_v)
 
-    RESULTS_CSV.parent.mkdir(parents=True, exist_ok=True)
-    with open(RESULTS_CSV, "w", newline="") as f:
+    results_csv.parent.mkdir(parents=True, exist_ok=True)
+    with open(results_csv, "w", newline="") as f:
         writer = csv.DictWriter(f, fieldnames=header)
         writer.writeheader()
         for k in sorted(merged, key=sort_key):
@@ -146,7 +146,7 @@ def merge_csv(pulled: list[Path]) -> None:
 
     print(
         f"\nMerged CSV: {len(merged)} rows total "
-        f"({len(local_rows)} local, {added} new from remotes) → {RESULTS_CSV}"
+        f"({len(local_rows)} local, {added} new from remotes) → {results_csv}"
     )
     seeds = sorted({int(r["seed"]) for r in merged.values() if r.get("seed", "").isdigit()})
     if seeds:
@@ -164,6 +164,9 @@ def main() -> None:
     )
     parser.add_argument("--dry-run", action="store_true",
                         help="Show the rsync commands without transferring or writing.")
+    parser.add_argument("--results", type=Path, default=RESULTS_CSV, metavar="PATH",
+                        help="Results CSV to merge into "
+                             "(default: experiments/results.csv)")
     args = parser.parse_args()
 
     names = args.sources or list(REMOTES)
@@ -181,7 +184,7 @@ def main() -> None:
         print("\nDry run — no files written. CSV merge skipped.")
         return
 
-    merge_csv(pulled)
+    merge_csv(pulled, args.results)
 
 
 if __name__ == "__main__":

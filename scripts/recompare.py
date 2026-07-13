@@ -28,7 +28,6 @@ sys.path.insert(0, str(Path(__file__).parent))
 from run_experiments import (  # noqa: E402
     COMPARE_BIN,
     COMPARE_TIMEOUT_S,
-    CSV_FIELDS,
     EXPERIMENTS_DIR,
     SPECS,
     parse_compare_output,
@@ -49,10 +48,10 @@ def recompare_dir(output_dir: Path, ideals_dir: Path):
     return parse_compare_output(result.stdout)
 
 
-def write_csv_atomic(path: Path, rows: list) -> None:
+def write_csv_atomic(path: Path, rows: list, fieldnames: list) -> None:
     tmp = path.with_name(path.name + ".tmp")
     with open(tmp, "w", newline="") as f:
-        writer = csv.DictWriter(f, fieldnames=CSV_FIELDS)
+        writer = csv.DictWriter(f, fieldnames=fieldnames)
         writer.writeheader()
         writer.writerows(rows)
     tmp.replace(path)
@@ -66,13 +65,16 @@ def main() -> None:
                         help="directory holding results.csv and results/ "
                              "(default: the repo's experiments/); point at a "
                              "per-machine copy, e.g. results-av2")
+    parser.add_argument("--results", type=Path, default=None, metavar="PATH",
+                        help="results CSV to rewrite (default: <base>/results.csv; "
+                             "use e.g. experiments/results-quick.csv)")
     parser.add_argument("--all", action="store_true",
                         help="recompute every row with repairs, not just "
                              "best_relation=unknown")
     parser.add_argument("--dry-run", action="store_true")
     args = parser.parse_args()
 
-    results_csv = args.base / "results.csv"
+    results_csv = args.results or args.base / "results.csv"
     results_dir = args.base / "results"
 
     if not COMPARE_BIN.exists():
@@ -81,7 +83,10 @@ def main() -> None:
         sys.exit(f"No results at {results_csv}")
 
     with open(results_csv, newline="") as f:
-        rows = list(csv.DictReader(f))
+        reader = csv.DictReader(f)
+        rows = list(reader)
+        # Preserve the file's own header — a legacy CSV may predate timed_out.
+        fieldnames = list(reader.fieldnames or [])
 
     targets = []
     for i, row in enumerate(rows):
@@ -127,7 +132,7 @@ def main() -> None:
         row["n_implies"] = n_implies
         updated += 1
         print(f"        -> {best_rel}  (implies_ideal={implies_ideal})")
-        write_csv_atomic(results_csv, rows)  # persist after each row
+        write_csv_atomic(results_csv, rows, fieldnames)  # persist after each row
 
     print(f"\nDone. {updated} updated, {failed} failed, {missing} missing "
           f"repairs.\nResults: {results_csv}")

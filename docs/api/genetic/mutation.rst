@@ -10,4 +10,4 @@ of these independently at the probabilities in ``Config``.
 ``mutate_specification`` selects one requirement at random and replaces it with
 a mutated version.
 
-.. doxygenfile:: mutation.hpp
+.. doxygenfile:: genetic/mutation.hpp

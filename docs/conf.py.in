@@ -7,3 +7,8 @@ breathe_projects = {"@PROJECT_NAME@": "@DOXYGEN_XML_DIR@"}
 breathe_default_project = "@PROJECT_NAME@"
 
 html_theme = "furo"
+
+# Multiple headers share `namespace tlsf`; Breathe re-emits the namespace
+# declaration on each per-file page, which Sphinx's C++ domain flags as a
+# cross-page duplicate. Harmless artifact of `doxygenfile`, so silence it.
+suppress_warnings = ["duplicate_declaration.cpp"]

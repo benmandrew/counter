@@ -8,4 +8,4 @@ condition, response, and timing from either parent with equal probability.
 pairs and verifies that both parents share the same atom universes (in/out atoms
 and requirement count), throwing ``std::invalid_argument`` otherwise.
 
-.. doxygenfile:: crossover.hpp
+.. doxygenfile:: genetic/crossover.hpp

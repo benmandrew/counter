@@ -15,6 +15,7 @@
           packages = with pkgs; [
             # Core build system
             cmake
+            ninja
             gnumake
             gcc
             pkg-config

@@ -29,6 +29,12 @@ else()
         set(_spot_cxx "${CMAKE_CXX_COMPILER_LAUNCHER} ${_spot_cxx}")
     endif()
 
+    # Spot is an autotools project: its build tree is a Makefile regardless of
+    # the generator this project uses, so it must be driven by make. Don't use
+    # CMAKE_MAKE_PROGRAM here — under the Ninja generator that resolves to
+    # ninja, which then fails to find a build.ninja in Spot's tree.
+    find_program(SPOT_MAKE_PROGRAM NAMES gmake make REQUIRED)
+
     ExternalProject_Add(spot_project
         URL "${SPOT_DOWNLOAD_URL}"
         TLS_VERIFY ON
@@ -42,9 +48,9 @@ else()
             --disable-doc
             CXX=${_spot_cxx}
         BUILD_COMMAND
-            ${CMAKE_MAKE_PROGRAM} -j ${CMAKE_BUILD_PARALLEL_LEVEL}
+            ${SPOT_MAKE_PROGRAM} -j ${CMAKE_BUILD_PARALLEL_LEVEL}
         INSTALL_COMMAND
-            ${CMAKE_MAKE_PROGRAM} install
+            ${SPOT_MAKE_PROGRAM} install
         LOG_CONFIGURE TRUE
         LOG_BUILD TRUE
         LOG_INSTALL TRUE

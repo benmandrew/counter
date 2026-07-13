@@ -21,7 +21,7 @@ cmake --build build
 cmake --build build-release
 ```
 
-Non-Nix: requires CMake ≥ 3.25, a C++17 compiler, `libunwind`, and Node.js (runs the vendored FRET formaliser CLI, not fetched by CMake); everything else is fetched by CMake.
+Non-Nix: requires CMake ≥ 3.25, Ninja (the presets' generator), a C++17 compiler, `libunwind`, and Node.js (runs the vendored FRET formaliser CLI, not fetched by CMake); everything else is fetched by CMake.
 
 ## Tests
 

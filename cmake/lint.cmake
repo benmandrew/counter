@@ -30,8 +30,28 @@ set(COUNTER_LINT_CPP_GLOBS
     ${CMAKE_CURRENT_SOURCE_DIR}/bench/*.cpp
 )
 
-file(GLOB_RECURSE COUNTER_LINT_FILES CONFIGURE_DEPENDS ${COUNTER_LINT_GLOBS})
-file(GLOB_RECURSE COUNTER_LINT_CPP_FILES CONFIGURE_DEPENDS ${COUNTER_LINT_CPP_GLOBS})
+# Optional allow-list restricting linting to an explicit set of files, passed
+# as an absolute-path list. CI sets this on pull requests to lint only the
+# files a branch changed (the full sweep runs on pushes to main); local runs
+# and main-branch CI leave it empty and lint everything. A header-only change
+# yields an empty CPP subset, which the clang-tidy target below treats as a
+# no-op rather than letting run-clang-tidy fall back to linting the whole
+# compile database.
+set(COUNTER_LINT_FILES_OVERRIDE "" CACHE STRING
+    "Absolute paths of files to lint; empty means lint all sources")
+
+if(COUNTER_LINT_FILES_OVERRIDE)
+    set(COUNTER_LINT_FILES ${COUNTER_LINT_FILES_OVERRIDE})
+    set(COUNTER_LINT_CPP_FILES "")
+    foreach(lint_file IN LISTS COUNTER_LINT_FILES_OVERRIDE)
+        if(lint_file MATCHES "^${CMAKE_CURRENT_SOURCE_DIR}/(src|test|bench)/.*\\.cpp$")
+            list(APPEND COUNTER_LINT_CPP_FILES ${lint_file})
+        endif()
+    endforeach()
+else()
+    file(GLOB_RECURSE COUNTER_LINT_FILES CONFIGURE_DEPENDS ${COUNTER_LINT_GLOBS})
+    file(GLOB_RECURSE COUNTER_LINT_CPP_FILES CONFIGURE_DEPENDS ${COUNTER_LINT_CPP_GLOBS})
+endif()
 
 # --- cpplint ---
 
@@ -54,7 +74,25 @@ endif()
 
 # --- clang-tidy ---
 
-if(RUN_CLANG_TIDY_EXE)
+# run-clang-tidy's positional args are source-file filter regexes matched
+# against the compile database. With a changed-file allow-list, each .cpp path
+# doubles as a regex matching exactly itself; otherwise use the tree-wide
+# pattern.
+if(COUNTER_LINT_FILES_OVERRIDE)
+    set(COUNTER_CLANG_TIDY_FILTER ${COUNTER_LINT_CPP_FILES})
+else()
+    set(COUNTER_CLANG_TIDY_FILTER "^${CMAKE_CURRENT_SOURCE_DIR}/(src|test|bench)/.*\\.cpp$")
+endif()
+
+if(COUNTER_LINT_FILES_OVERRIDE AND NOT COUNTER_LINT_CPP_FILES)
+    # Restricted to changed files, none of which are .cpp translation units:
+    # skip rather than let run-clang-tidy fall back to the whole database.
+    add_custom_target(lint-clang-tidy
+        COMMAND ${CMAKE_COMMAND} -E echo "clang-tidy: no changed .cpp files, skipping"
+        COMMENT "clang-tidy: nothing to do"
+        VERBATIM
+    )
+elseif(RUN_CLANG_TIDY_EXE)
     # run-clang-tidy wrapper scripts default -clang-tidy-binary to a
     # version-suffixed name (e.g. clang-tidy-14) baked into the script
     # itself, which silently diverges from whichever "clang-tidy" resolves
@@ -66,7 +104,7 @@ if(RUN_CLANG_TIDY_EXE)
             -DRUN_CLANG_TIDY_EXE=${RUN_CLANG_TIDY_EXE}
             -DCLANG_TIDY_EXE=${CLANG_TIDY_EXE}
             -DBUILD_DIR=${CMAKE_BINARY_DIR}
-            "-DFILES_PATTERN=^${CMAKE_CURRENT_SOURCE_DIR}/(src|test|bench)/.*\\.cpp$"
+            "-DFILES_PATTERN=${COUNTER_CLANG_TIDY_FILTER}"
             -P ${CMAKE_CURRENT_SOURCE_DIR}/cmake/run_clang_tidy.cmake
         COMMENT "Running clang-tidy on C++ sources"
         VERBATIM

@@ -24,7 +24,7 @@ direnv allow
 
 ### Without Nix
 
-Requires CMake ≥ 3.25, a C++17 compiler, `libunwind`, and [Node.js](https://nodejs.org) (runs the vendored FRET formaliser CLI). All other dependencies are fetched automatically by CMake.
+Requires CMake ≥ 3.25, [Ninja](https://ninja-build.org) (the presets' generator), a C++17 compiler, `libunwind`, and [Node.js](https://nodejs.org) (runs the vendored FRET formaliser CLI). All other dependencies are fetched automatically by CMake.
 
 ```sh
 cmake --workflow --preset debug      # configure + build + test

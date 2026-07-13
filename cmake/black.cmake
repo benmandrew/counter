@@ -205,7 +205,7 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
                     ${_black_solver_flag}
                     ${_black_launcher_args}
                 BUILD_COMMAND
-                    ${CMAKE_MAKE_PROGRAM} -j ${CMAKE_BUILD_PARALLEL_LEVEL} frontend
+                    ${CMAKE_COMMAND} --build <BINARY_DIR> --target frontend --parallel
                 INSTALL_COMMAND
                     ${CMAKE_COMMAND} --install <BINARY_DIR>
                 DEPENDS
@@ -327,7 +327,7 @@ elseif(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
                 -DCMAKE_CXX_FLAGS=-Wno-nrvo
                 ${_black_launcher_args}
             BUILD_COMMAND
-                ${CMAKE_MAKE_PROGRAM} -j ${CMAKE_BUILD_PARALLEL_LEVEL} frontend
+                ${CMAKE_COMMAND} --build <BINARY_DIR> --target frontend --parallel
             INSTALL_COMMAND
                 ${CMAKE_COMMAND} --install <BINARY_DIR>
             DEPENDS

@@ -16,6 +16,11 @@ jobs:
     steps:
       - name: Check out repository
         uses: actions/checkout@v7
+        with:
+          # Full history so pull-request runs can diff against the base commit
+          # to lint only the files the branch changed (see "Determine changed
+          # files" below).
+          fetch-depth: 0
 
       - name: Install Nix
         uses: cachix/install-nix-action@v31
@@ -29,9 +34,12 @@ jobs:
         uses: actions/cache@v5
         with:
           path: build/_deps
-          key: ${{ runner.os }}-check-deps-${{ hashFiles('cmake/dependencies.cmake') }}
+          # The generator is part of the key: FetchContent subbuild caches bake
+          # in the generator, so a Makefiles-era cache can't be restored into a
+          # Ninja configure ("generator does not match").
+          key: ${{ runner.os }}-check-deps-ninja-${{ hashFiles('cmake/dependencies.cmake') }}
           restore-keys: |
-            ${{ runner.os }}-check-deps-
+            ${{ runner.os }}-check-deps-ninja-
 
       # Persist Doxygen's per-graph .md5/.svg cache for the internal docs so the
       # expensive call-graph render is reused across runs. A fresh key each run
@@ -46,24 +54,70 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-docs-internal-
 
-      - name: Configure project
-        run: nix develop --command cmake --preset debug
+      # On pull requests, lint only the C/C++ files the branch touched; a
+      # full-tree clang-tidy sweep is the single slowest step in CI. Pushes to
+      # main leave the allow-list empty and lint everything.
+      - name: Determine changed files
+        id: changed
+        if: github.event_name == 'pull_request'
+        run: |
+          base="${{ github.event.pull_request.base.sha }}"
+          files=$(git diff --name-only --diff-filter=ACMR "$base" HEAD -- \
+                    '*.cpp' '*.hpp' '*.h' \
+                  | sed "s|^|$GITHUB_WORKSPACE/|" | tr '\n' ' ')
+          echo "files=$files" >> "$GITHUB_OUTPUT"
+          if [ -z "${files// /}" ]; then
+            echo "No C/C++ files changed; clang-tidy/cpplint/cppcheck will be skipped."
+          else
+            echo "Linting changed files:"
+            printf '  %s\n' $files
+          fi
+
+      # A single dev shell for configure + format + lint + docs, so the Nix
+      # flake is evaluated and the shell instantiated once rather than once per
+      # step. GitHub log groups keep the per-phase output readable.
+      - name: Configure, lint, format-check, build docs
         env:
           CMAKE_C_COMPILER_LAUNCHER: sccache
           CMAKE_CXX_COMPILER_LAUNCHER: sccache
+          IS_PR: ${{ github.event_name == 'pull_request' }}
+          CHANGED_FILES: ${{ steps.changed.outputs.files }}
+        run: |
+          nix develop --command bash -euo pipefail -c '
+            args=(--preset debug)
+            run_lint=true
+            if [ "$IS_PR" = "true" ]; then
+              if [ -n "${CHANGED_FILES// /}" ]; then
+                list=$(echo "$CHANGED_FILES" | xargs | tr " " ";")
+                args+=("-DCOUNTER_LINT_FILES_OVERRIDE=$list")
+              else
+                run_lint=false
+              fi
+            fi
 
-      - name: Check formatting
-        run: nix develop --command cmake --build --preset debug --target format-ci
+            echo "::group::Configure"
+            cmake "${args[@]}"
+            echo "::endgroup::"
 
-      - name: Check linting
-        run: nix develop --command cmake --build --preset debug --target lint
+            echo "::group::Check formatting"
+            cmake --build --preset debug --target format-ci
+            echo "::endgroup::"
 
-      - name: Build docs
-        run: nix develop --command cmake --build --preset debug --target docs
+            if [ "$run_lint" = "true" ]; then
+              echo "::group::Check linting"
+              cmake --build --preset debug --target lint
+              echo "::endgroup::"
+            else
+              echo "No C/C++ files changed; skipping lint."
+            fi
+
+            echo "::group::Build docs"
+            cmake --build --preset debug --target docs
+            echo "::endgroup::"
+          '
 
   build-and-test:
     runs-on: ubuntu-latest
-    needs: check
 
     strategy:
       matrix:
@@ -97,21 +151,30 @@ jobs:
           path: |
             ${{ matrix.build_dir }}/third_party
             ${{ matrix.build_dir }}/_deps
-          key: ${{ runner.os }}-${{ matrix.preset }}-${{ matrix.compiler || 'clang' }}-third-party-${{ hashFiles('cmake/spot.cmake', 'cmake/ganak.cmake', 'cmake/black.cmake', 'cmake/dependencies.cmake') }}
+          key: ${{ runner.os }}-${{ matrix.preset }}-${{ matrix.compiler || 'clang' }}-third-party-ninja-${{ hashFiles('cmake/spot.cmake', 'cmake/ganak.cmake', 'cmake/black.cmake', 'cmake/dependencies.cmake') }}
           restore-keys: |
-            ${{ runner.os }}-${{ matrix.preset }}-${{ matrix.compiler || 'clang' }}-third-party-
+            ${{ runner.os }}-${{ matrix.preset }}-${{ matrix.compiler || 'clang' }}-third-party-ninja-
 
-      - name: Configure project
-        run: nix develop --command cmake --preset ${{ matrix.preset }} ${{ matrix.cmake_args }}
+      # Configure + build + test share one dev shell to amortise Nix flake
+      # evaluation across the three phases.
+      - name: Configure, build, test
         env:
           CMAKE_C_COMPILER_LAUNCHER: sccache
           CMAKE_CXX_COMPILER_LAUNCHER: sccache
+        run: |
+          nix develop --command bash -euo pipefail -c '
+            echo "::group::Configure"
+            cmake --preset ${{ matrix.preset }} ${{ matrix.cmake_args }}
+            echo "::endgroup::"
 
-      - name: Build project
-        run: nix develop --command cmake --build --preset ${{ matrix.preset }}
+            echo "::group::Build"
+            cmake --build --preset ${{ matrix.preset }}
+            echo "::endgroup::"
 
-      - name: Run tests
-        run: nix develop --command ctest --preset ${{ matrix.preset }}
+            echo "::group::Test"
+            ctest --preset ${{ matrix.preset }}
+            echo "::endgroup::"
+          '
 
   benchmark:
     runs-on: ubuntu-latest
@@ -137,17 +200,24 @@ jobs:
           path: |
             build-bench/third_party
             build-bench/_deps
-          key: ${{ runner.os }}-bench-${{ hashFiles('cmake/spot.cmake', 'cmake/ganak.cmake', 'cmake/black.cmake', 'bench/CMakeLists.txt', 'cmake/dependencies.cmake') }}
+          key: ${{ runner.os }}-bench-ninja-${{ hashFiles('cmake/spot.cmake', 'cmake/ganak.cmake', 'cmake/black.cmake', 'bench/CMakeLists.txt', 'cmake/dependencies.cmake') }}
           restore-keys: |
-            ${{ runner.os }}-bench-
+            ${{ runner.os }}-bench-ninja-
 
       - name: Configure and build
-        run: |
-          nix develop --command cmake --preset bench
-          nix develop --command cmake --build --preset bench --target counter_bench
         env:
           CMAKE_C_COMPILER_LAUNCHER: sccache
           CMAKE_CXX_COMPILER_LAUNCHER: sccache
+        run: |
+          nix develop --command bash -euo pipefail -c '
+            echo "::group::Configure"
+            cmake --preset bench
+            echo "::endgroup::"
+
+            echo "::group::Build"
+            cmake --build --preset bench --target counter_bench
+            echo "::endgroup::"
+          '
 
       - name: Check regression assertions
         run: ./build-bench/bench/counter_bench --check-assertions

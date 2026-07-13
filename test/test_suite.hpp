@@ -10,6 +10,7 @@ void run_ltlfilt_runner_tests();
 void run_spot_runner_tests();
 void run_crossover_tests();
 void run_generation_tests();
+void run_nsga2_tests();
 void run_mutation_tests();
 void run_prop_formula_ast_tests();
 void run_prop_formula_cnf_tests();

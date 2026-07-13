@@ -84,7 +84,7 @@ Each input spawns an `ltlfilt` subprocess (the formaliser CLI's own process is p
 1. Load `Specification` from `--input` JSON.
 2. Build `AggregateWeightedFitnessFunction` (syntactic + semantic + Halstead + status) and per-generation `FilterFunction` list from the original spec.
 3. Seed an RNG (from `--seed` or `std::random_device`); register crash metadata.
-4. Run `Config::generations` rounds of `evolve_generation`: crossover + mutation, score offspring in a thread pool, apply filters (false-trigger, dedup, optional weakening).
+4. Run `Config::generations` rounds of `evolve_generation`: crossover + mutation, score offspring in a thread pool, apply filters (false-trigger, dedup, optional weakening). Selection follows `Config::selection_scheme`: `WeightedAverage` (default) ranks by the aggregate scalar; `Nsga2` ranks by non-dominated sorting + crowding distance over the individual objectives (`include/genetic/nsga2.hpp`) with (μ+λ) survivor pooling. The scored population always carries both the per-objective vector and the weighted scalar (`Scored<Spec>`).
 5. Collect the realizable survivors from the final population (re-checked with `black` + `ltlsynt`).
 6. Apply final filters: dedup, then optional implication filter to keep only maximal specs.
 7. Score, sort, and write each maximal spec to `<output-dir>/repair_N.json`.

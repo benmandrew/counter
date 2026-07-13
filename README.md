@@ -63,9 +63,10 @@ differences noted under [TLSF specifications](#tlsf-specifications):
      (weight 0.2).
    - *Halstead complexity penalty* — penalises candidates larger than the
      original (weight 0.1).
-3. **Evolve** for `generations` (default 10) rounds: truncation selection →
-   crossover → mutation → per-generation filters (false-trigger removal,
-   deduplication, optional weakening).
+3. **Evolve** for `generations` (default 10) rounds: selection (see
+   [Selection scheme](#selection-scheme)) → crossover → mutation →
+   per-generation filters (false-trigger removal, deduplication, optional
+   weakening).
 4. **Collect** realisable survivors, apply the implication filter to keep only
    maximal repairs, and write each to `<output-dir>/` — as `repair_N.json` for
    FRETISH, or `repair_N.tlsf` for TLSF.
@@ -77,6 +78,30 @@ realizability queries use [black](https://www.black-sat.org) and
 
 See [`docs/architecture.rst`](docs/architecture.rst) for a full description of
 the key types and module layout.
+
+### Selection scheme
+
+The four fitness components can be combined in two ways, chosen with
+`genetic.selection_scheme`:
+
+- **`weighted`** (default) collapses the components into the single
+  weighted-average score shown above and drives both parent and survivor
+  selection by that scalar (truncation selection with elitism). This finds the
+  one repair that best fits the configured weight trade-off.
+- **`nsga2`** treats the components as separate objectives and ranks candidates
+  by [NSGA-II](https://doi.org/10.1109/4235.996017): Pareto non-domination
+  first, then crowding distance to spread the population along the front. It
+  searches for the whole Pareto front of repairs — those not beaten on every
+  objective at once — rather than one weighted compromise, which is useful when
+  the right balance between, say, semantic similarity and size is not known in
+  advance. Under `nsga2` the `[fitness]` weights only decide which components
+  are active (weight > 0); they no longer bias selection. Survivor selection
+  pools each generation's parents with their offspring and keeps the best
+  (a (μ+λ) scheme), which is already elitist, so `elitism_rate = 0` is the
+  natural companion setting.
+
+Both schemes still emit the weighted-average scalar in each repair's fitness
+record, so outputs remain comparable across runs.
 
 ### TLSF specifications
 

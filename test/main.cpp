@@ -75,6 +75,10 @@ void run_suite(std::string_view suite_name,
         run_generation_tests();
         return;
     }
+    if (suite_name == "nsga2") {
+        run_nsga2_tests();
+        return;
+    }
     if (suite_name == "mutation") {
         run_mutation_tests();
         return;
@@ -162,6 +166,7 @@ int main(int argc, const char* const argv[]) {
             run_spot_runner_tests();
             run_crossover_tests();
             run_generation_tests();
+            run_nsga2_tests();
             run_mutation_tests();
             run_prop_formula_ast_tests();
             run_prop_formula_cnf_tests();

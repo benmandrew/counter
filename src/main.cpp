@@ -180,8 +180,14 @@ std::vector<ScoredSpecification> original_population(
     std::size_t population_size) {
     std::vector<ScoredSpecification> population;
     population.reserve(population_size);
+    auto [objectives, fitness] =
+        fitness_function.objectives_and_fitness(original_spec);
     for (std::size_t i = 0; i < population_size; ++i) {
-        population.push_back({original_spec, fitness_function(original_spec)});
+        ScoredSpecification scored;
+        scored.specification = original_spec;
+        scored.fitness = fitness;
+        scored.objectives = objectives;
+        population.push_back(std::move(scored));
     }
     return population;
 }
@@ -505,7 +511,7 @@ int main(int argc, const char* const argv[]) {
         const std::vector<Specification> maximal =
             filter_maximal_specifications(cfg, realizable_vec);
         const std::vector<ScoredSpecification> scored_maximal =
-            score_and_sort_specifications(maximal, fitness_function);
+            score_and_sort_specifications(cfg, maximal, fitness_function);
         write_specifications(scored_maximal, fitness_function, *output_dir);
         std::cout << "Realizable specifications: " << realizable_vec.size();
         if (cfg.run_implication_filter) {

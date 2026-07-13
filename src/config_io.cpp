@@ -77,6 +77,17 @@ void apply_genetic(const toml::table& tbl, Config& cfg) {
         require_probability(*val, "genetic.mutation_rate");
         cfg.mutation_rate = *val;
     }
+    if (auto val = tbl["selection_scheme"].value<std::string>()) {
+        if (*val == "weighted") {
+            cfg.selection_scheme = SelectionScheme::WeightedAverage;
+        } else if (*val == "nsga2") {
+            cfg.selection_scheme = SelectionScheme::Nsga2;
+        } else {
+            throw std::runtime_error(
+                "config: genetic.selection_scheme must be \"weighted\" or "
+                "\"nsga2\"");
+        }
+    }
     // Elites are a subset of the selected parents, so elitism must be strictly
     // smaller than selection. Checked against the final values (either may come
     // from the TOML or fall back to its default).

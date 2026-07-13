@@ -97,7 +97,8 @@ class Formula {
 
     /// Simplifies this formula in-place using boolean identities:
     /// idempotence (A∧A→A, A∨A→A), tautology (A→A→true, A↔A→true),
-    /// excluded middle (A∨¬A→true), identity/absorption with true, and ¬¬A→A.
+    /// excluded middle (A∨¬A→true), contradiction (A∧¬A→false, A↔¬A→false),
+    /// identity/absorption with the true and false constants, and ¬¬A→A.
     void simplify();
 
     /// Returns the kind of this formula's root node.

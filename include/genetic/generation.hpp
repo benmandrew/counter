@@ -9,6 +9,7 @@
 #include <cassert>
 #include <cstddef>
 #include <functional>
+#include <iterator>
 #include <string>
 #include <type_traits>
 #include <utility>
@@ -19,6 +20,7 @@
 #include "fitness/function.hpp"
 #include "genetic/crossover.hpp"
 #include "genetic/mutation.hpp"
+#include "genetic/nsga2.hpp"
 #include "genetic/operators.hpp"
 #include "genetic/random_source.hpp"
 #include "genetic/scored.hpp"
@@ -201,10 +203,11 @@ std::vector<FilterFunction> filters_for_generation(
     const std::vector<FilterFunction>& filters, std::size_t generation,
     bool is_last_generation);
 
-/// Scores each specification in @p specs and returns them sorted by fitness
-/// descending.
+/// Scores each specification in @p specs and returns them ordered best-first
+/// according to @p cfg's selection scheme: descending weighted fitness for
+/// WeightedAverage, or the NSGA-II crowded-comparison order for Nsga2.
 std::vector<ScoredSpecification> score_and_sort_specifications(
-    const std::vector<Specification>& specs,
+    const Config& cfg, const std::vector<Specification>& specs,
     const AggregateWeightedFitnessFunction& fitness_function);
 
 namespace generation_detail {
@@ -224,6 +227,24 @@ inline bool probability_check(double rate, const RandomSource& random_source) {
 }
 
 }  // namespace generation_detail
+
+/// Orders a scored population best-first according to @p cfg's selection
+/// scheme: descending weighted fitness for WeightedAverage, or the NSGA-II
+/// crowded-comparison order (front rank ascending, crowding descending) for
+/// Nsga2. The sort is stable in both cases so a fixed RNG seed is
+/// reproducible.
+template <typename Spec>
+void order_population(const Config& cfg,
+                      std::vector<Scored<Spec>>& population) {
+    if (cfg.selection_scheme == SelectionScheme::Nsga2) {
+        nsga2_sort(population);
+        return;
+    }
+    std::stable_sort(population.begin(), population.end(),
+                     [](const Scored<Spec>& lhs, const Scored<Spec>& rhs) {
+                         return lhs.fitness > rhs.fitness;
+                     });
+}
 
 /// Generic one-generation evolution loop, templated on the specification
 /// element type @p Spec and any callable fitness type @p Fitness. The three
@@ -248,10 +269,7 @@ std::vector<Scored<Spec>> evolve_generation_generic(
     // Select parents from the whole population, unfiltered: the filter only
     // screens the offspring produced below, after crossover and mutation.
     std::vector<Scored<Spec>> sorted_pop = population;
-    std::sort(sorted_pop.begin(), sorted_pop.end(),
-              [](const Scored<Spec>& lhs, const Scored<Spec>& rhs) {
-                  return lhs.fitness > rhs.fitness;
-              });
+    order_population(cfg, sorted_pop);
     const std::size_t top_n = std::min(target_size, sorted_pop.size());
     // The best elite_n of the selected parents carry over verbatim (see below);
     // the remaining slots are bred from the top offspring_n parents.
@@ -296,11 +314,25 @@ std::vector<Scored<Spec>> evolve_generation_generic(
 
     std::vector<Scored<Spec>> scored =
         score_population(cfg, survivors, fitness_functions, on_progress);
-    std::sort(scored.begin(), scored.end(),
-              [](const Scored<Spec>& lhs, const Scored<Spec>& rhs) {
-                  return lhs.fitness > rhs.fitness;
-              });
 
+    if (cfg.selection_scheme == SelectionScheme::Nsga2) {
+        // (mu + lambda) survivor selection: pool the incoming parents with the
+        // freshly scored offspring, rank the union by the crowded-comparison
+        // order, and keep the best target_size. This is NSGA-II's elitism, so
+        // no non-dominated candidate is ever lost; padding duplicates carry
+        // zero crowding distance and are shed first. Parents keep their cached
+        // objective vectors, so pooling adds no re-scoring.
+        std::vector<Scored<Spec>> pool = population;
+        pool.insert(pool.end(), std::make_move_iterator(scored.begin()),
+                    std::make_move_iterator(scored.end()));
+        nsga2_sort(pool);
+        if (pool.size() > target_size) {
+            pool.resize(target_size);
+        }
+        return pool;
+    }
+
+    order_population(cfg, scored);
     return scored;
 }
 

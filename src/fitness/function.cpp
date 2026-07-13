@@ -1,6 +1,5 @@
 #include "fitness/function.hpp"
 
-#include <algorithm>
 #include <utility>
 #include <vector>
 
@@ -49,7 +48,7 @@ AggregateWeightedFitnessFunction get_fitness_function(
 }
 
 std::vector<ScoredSpecification> score_and_sort_specifications(
-    const std::vector<Specification>& specs,
+    const Config& cfg, const std::vector<Specification>& specs,
     const AggregateWeightedFitnessFunction& fitness_function) {
     std::vector<ScoredSpecification> scored;
     scored.reserve(specs.size());
@@ -62,10 +61,6 @@ std::vector<ScoredSpecification> score_and_sort_specifications(
         entry.objectives = std::move(objectives);
         scored.push_back(std::move(entry));
     }
-    std::sort(scored.begin(), scored.end(),
-              [](const ScoredSpecification& first,
-                 const ScoredSpecification& second) {
-                  return first.fitness > second.fitness;
-              });
+    order_population(cfg, scored);
     return scored;
 }

@@ -186,6 +186,33 @@ void test_config_io_elitism_not_less_than_selection_throws() {
            "config_io: elitism_rate not less than selection_rate should throw");
 }
 
+void test_config_io_selection_scheme_defaults_to_weighted() {
+    const Config cfg = config_from_toml_string("");
+    expect(cfg.selection_scheme == SelectionScheme::WeightedAverage,
+           "config_io: selection_scheme should default to WeightedAverage");
+}
+
+void test_config_io_selection_scheme_nsga2_parsed() {
+    const Config cfg =
+        config_from_toml_string("[genetic]\nselection_scheme = \"nsga2\"\n");
+    expect(cfg.selection_scheme == SelectionScheme::Nsga2,
+           "config_io: selection_scheme = \"nsga2\" should be parsed");
+}
+
+void test_config_io_selection_scheme_invalid_throws() {
+    bool threw = false;
+    try {
+        config_from_toml_string("[genetic]\nselection_scheme = \"pareto\"\n");
+    } catch (const std::exception& exc) {
+        threw = true;
+        const std::string msg(exc.what());
+        expect(msg.find("selection_scheme") != std::string::npos,
+               "config_io: invalid selection_scheme error should name the "
+               "field");
+    }
+    expect(threw, "config_io: an unknown selection_scheme should throw");
+}
+
 void test_config_io_empty_string_gives_defaults() {
     const Config cfg = config_from_toml_string("");
     const Config defaults;
@@ -206,5 +233,8 @@ void run_config_io_tests() {
     test_config_io_invalid_filter_interval_throws();
     test_config_io_elitism_rate_parsed();
     test_config_io_elitism_not_less_than_selection_throws();
+    test_config_io_selection_scheme_defaults_to_weighted();
+    test_config_io_selection_scheme_nsga2_parsed();
+    test_config_io_selection_scheme_invalid_throws();
     test_config_io_empty_string_gives_defaults();
 }

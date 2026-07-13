@@ -64,11 +64,7 @@ std::vector<Scored<Specification>> realizable_survivors(
             survivors.push_back(std::move(survivor));
         }
     }
-    std::sort(
-        survivors.begin(), survivors.end(),
-        [](const Scored<Specification>& lhs, const Scored<Specification>& rhs) {
-            return lhs.fitness > rhs.fitness;
-        });
+    order_population(cfg, survivors);
     return survivors;
 }
 

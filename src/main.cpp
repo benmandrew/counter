@@ -511,7 +511,7 @@ int main(int argc, const char* const argv[]) {
         const std::vector<Specification> maximal =
             filter_maximal_specifications(cfg, realizable_vec);
         const std::vector<ScoredSpecification> scored_maximal =
-            score_and_sort_specifications(maximal, fitness_function);
+            score_and_sort_specifications(cfg, maximal, fitness_function);
         write_specifications(scored_maximal, fitness_function, *output_dir);
         std::cout << "Realizable specifications: " << realizable_vec.size();
         if (cfg.run_implication_filter) {

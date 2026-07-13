@@ -289,6 +289,105 @@ void test_evolve_generation_elitism_preserves_best_through_filter() {
            "not survive");
 }
 
+// --- evolve_generation under the NSGA-II scheme ---
+
+// Two objectives over the specs "p"/"r"/"t": objective A ranks p > r > t and
+// objective B ranks t > r > p, so "p" Pareto-dominates both "r" and "t" while
+// "r" and "t" trade off (mutually non-dominating).
+AggregateWeightedFitnessFunction two_objective_fns() {
+    return AggregateWeightedFitnessFunction({{[](const Specification& spec) {
+                                                  const std::string cond =
+                                                      first_condition(spec);
+                                                  if (cond == "p") {
+                                                      return 1.0;
+                                                  }
+                                                  if (cond == "r") {
+                                                      return 0.6;
+                                                  }
+                                                  return 0.2;
+                                              },
+                                              1.0, "a"},
+                                             {[](const Specification& spec) {
+                                                  const std::string cond =
+                                                      first_condition(spec);
+                                                  if (cond == "p") {
+                                                      return 1.0;
+                                                  }
+                                                  if (cond == "r") {
+                                                      return 0.4;
+                                                  }
+                                                  return 0.8;
+                                              },
+                                              1.0, "b"}});
+}
+
+Config nsga2_config() {
+    Config cfg;
+    cfg.selection_scheme = SelectionScheme::Nsga2;
+    return cfg;
+}
+
+void test_evolve_generation_nsga2_produces_target_size() {
+    const Config cfg = nsga2_config();
+    const AggregateWeightedFitnessFunction fns = two_objective_fns();
+    const std::vector<ScoredSpecification> pop = score_population(
+        cfg, {make_spec("p", "q"), make_spec("r", "s"), make_spec("t", "u")},
+        fns);
+    const auto next_gen =
+        evolve_generation(cfg, pop, 2, 0, fns, {}, make_source({}, 0));
+    expect(next_gen.size() == 2,
+           "evolve_generation/nsga2: (mu+lambda) pooling still yields exactly "
+           "target_size survivors");
+}
+
+void test_evolve_generation_nsga2_preserves_pareto_front_without_elitism() {
+    Config cfg = nsga2_config();
+    cfg.crossover_rate = 0.0;
+    cfg.mutation_rate = 0.0;
+    const AggregateWeightedFitnessFunction fns = two_objective_fns();
+    const std::vector<ScoredSpecification> pop = score_population(
+        cfg, {make_spec("p", "q"), make_spec("r", "s"), make_spec("t", "u")},
+        fns);
+    // Remove every "p" offspring: only NSGA-II's (mu+lambda) pooling, which
+    // retains the original parent, can keep the Pareto-optimal "p" alive with
+    // elitism_size = 0.
+    const std::vector<FilterFunction> filters = {
+        make_predicate_filter("", [](const Specification& spec) {
+            return first_condition(spec) != "p";
+        })};
+    const auto next_gen =
+        evolve_generation(cfg, pop, 3, 0, fns, filters, make_source({}, 0));
+    const bool p_survived =
+        std::any_of(next_gen.begin(), next_gen.end(),
+                    [](const ScoredSpecification& scored) {
+                        return first_condition(scored.specification) == "p";
+                    });
+    expect(p_survived,
+           "evolve_generation/nsga2: the Pareto-optimal parent survives via "
+           "(mu+lambda) pooling even with no elitism and its offspring "
+           "filtered out");
+}
+
+void test_evolve_generation_nsga2_is_deterministic() {
+    const Config cfg = nsga2_config();
+    const AggregateWeightedFitnessFunction fns = two_objective_fns();
+    const std::vector<ScoredSpecification> pop = score_population(
+        cfg, {make_spec("p", "q"), make_spec("r", "s"), make_spec("t", "u")},
+        fns);
+    const auto first =
+        evolve_generation(cfg, pop, 2, 0, fns, {}, make_source({1, 2, 3}, 0));
+    const auto second =
+        evolve_generation(cfg, pop, 2, 0, fns, {}, make_source({1, 2, 3}, 0));
+    bool identical = first.size() == second.size();
+    for (std::size_t i = 0; identical && i < first.size(); ++i) {
+        identical = first_condition(first[i].specification) ==
+                    first_condition(second[i].specification);
+    }
+    expect(identical,
+           "evolve_generation/nsga2: identical inputs and RNG produce an "
+           "identical, stably-ordered generation");
+}
+
 void test_filters_for_generation_respects_intervals() {
     FilterFunction every = make_predicate_filter(
         "every", [](const Specification&) { return true; });
@@ -336,6 +435,9 @@ void run_generation_tests() {
     test_evolve_generation_pads_up_to_target_size();
     test_evolve_generation_selects_parents_before_offspring_filtering();
     test_evolve_generation_elitism_preserves_best_through_filter();
+    test_evolve_generation_nsga2_produces_target_size();
+    test_evolve_generation_nsga2_preserves_pareto_front_without_elitism();
+    test_evolve_generation_nsga2_is_deterministic();
     test_filters_for_generation_respects_intervals();
     test_filters_for_generation_last_runs_all_filters();
 }

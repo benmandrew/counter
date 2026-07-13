@@ -140,6 +140,99 @@ void test_simplify_compound() {
     expect(fml.to_string() == "true", "simplify: (A & A) -> A -> true");
 }
 
+void test_simplify_contradiction() {
+    Formula fml = Formula::make_binary(
+        Formula::Kind::And, Formula::make_atom("A"),
+        Formula::make_unary(Formula::Kind::Not, Formula::make_atom("A")));
+    fml.simplify();
+    expect(fml.to_string() == "false", "simplify: A & !A -> false");
+
+    fml = Formula::make_binary(
+        Formula::Kind::And,
+        Formula::make_unary(Formula::Kind::Not, Formula::make_atom("A")),
+        Formula::make_atom("A"));
+    fml.simplify();
+    expect(fml.to_string() == "false", "simplify: !A & A -> false");
+
+    fml = Formula::make_binary(
+        Formula::Kind::Iff, Formula::make_atom("A"),
+        Formula::make_unary(Formula::Kind::Not, Formula::make_atom("A")));
+    fml.simplify();
+    expect(fml.to_string() == "false", "simplify: A <-> !A -> false");
+}
+
+void test_simplify_with_false() {
+    const Formula fls("false");
+
+    Formula fml =
+        Formula::make_binary(Formula::Kind::And, Formula::make_atom("A"), fls);
+    fml.simplify();
+    expect(fml.to_string() == "false", "simplify: A & false -> false");
+
+    fml = Formula::make_binary(Formula::Kind::Or, Formula::make_atom("A"), fls);
+    fml.simplify();
+    expect(fml.to_string() == "A", "simplify: A | false -> A");
+
+    fml = Formula::make_binary(Formula::Kind::Or, fls, Formula::make_atom("A"));
+    fml.simplify();
+    expect(fml.to_string() == "A", "simplify: false | A -> A");
+
+    fml = Formula::make_binary(Formula::Kind::Implies, fls,
+                               Formula::make_atom("A"));
+    fml.simplify();
+    expect(fml.to_string() == "true", "simplify: false -> A -> true");
+
+    fml = Formula::make_binary(Formula::Kind::Implies, Formula::make_atom("A"),
+                               fls);
+    fml.simplify();
+    expect(fml.to_string() == "!(A)", "simplify: A -> false -> !A");
+
+    fml =
+        Formula::make_binary(Formula::Kind::Iff, Formula::make_atom("A"), fls);
+    fml.simplify();
+    expect(fml.to_string() == "!(A)", "simplify: A <-> false -> !A");
+}
+
+void test_simplify_pointless_weakening() {
+    // A guarantee p weakened to !(!p <-> p) is semantically true, a pointless
+    // weakening that the simplifier must fold to the literal true.
+    Formula iff = Formula::make_binary(
+        Formula::Kind::Iff,
+        Formula::make_unary(Formula::Kind::Not, Formula::make_atom("p")),
+        Formula::make_atom("p"));
+    Formula fml = Formula::make_unary(Formula::Kind::Not, iff);
+    fml.simplify();
+    expect(fml.to_string() == "true", "simplify: !(!p <-> p) -> true");
+}
+
+void test_simplify_cascade() {
+    // A single post-order pass collapses a subformula to a constant and lets
+    // that constant ripple through every ancestor: (A & !A) reduces to false
+    // and (B | !B) to true, so (false <-> true) is false and the outer negation
+    // is true.
+    Formula contradiction = Formula::make_binary(
+        Formula::Kind::And, Formula::make_atom("A"),
+        Formula::make_unary(Formula::Kind::Not, Formula::make_atom("A")));
+    Formula tautology = Formula::make_binary(
+        Formula::Kind::Or, Formula::make_atom("B"),
+        Formula::make_unary(Formula::Kind::Not, Formula::make_atom("B")));
+    Formula fml = Formula::make_unary(
+        Formula::Kind::Not,
+        Formula::make_binary(Formula::Kind::Iff, contradiction, tautology));
+    fml.simplify();
+    expect(fml.to_string() == "true",
+           "simplify: !((A & !A) <-> (B | !B)) -> true");
+
+    // A rule whose output is itself reducible (A -> false yields !A) must not
+    // leave a residual double negation: ((A -> false) -> false) is A.
+    Formula inner = Formula::make_binary(
+        Formula::Kind::Implies, Formula::make_atom("A"), Formula("false"));
+    Formula outer =
+        Formula::make_binary(Formula::Kind::Implies, inner, Formula("false"));
+    outer.simplify();
+    expect(outer.to_string() == "A", "simplify: (A -> false) -> false -> A");
+}
+
 }  // namespace
 
 void run_prop_formula_rewrite_tests() {
@@ -152,4 +245,8 @@ void run_prop_formula_rewrite_tests() {
     test_simplify_double_negation();
     test_simplify_negated_constants();
     test_simplify_compound();
+    test_simplify_contradiction();
+    test_simplify_with_false();
+    test_simplify_pointless_weakening();
+    test_simplify_cascade();
 }

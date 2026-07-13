@@ -9,6 +9,16 @@ selection_rate  = 0.5   # fraction of population selected as parents each genera
 elitism_rate    = 0.1   # fraction carried over verbatim each generation (must be < selection_rate)
 crossover_rate  = 0.1   # probability of crossover between parents
 mutation_rate   = 0.8   # probability of mutating an offspring
+# Selection scheme:
+#   "weighted" (default) ranks candidates by the single weighted-average of the
+#     fitness components (the [fitness] weights below).
+#   "nsga2" ranks by Pareto non-domination and crowding distance over the
+#     individual components, searching for the Pareto front of repairs rather
+#     than one weighted compromise. Under "nsga2" the [fitness] weights only
+#     select which components are active (weight > 0); they no longer bias
+#     selection. NSGA-II's (mu+lambda) survivor pooling is already elitist, so
+#     elitism_rate = 0 is the natural setting.
+selection_scheme = "weighted"
 
 [fitness]
 weight_syntactic = 0.33  # syntactic similarity component weight

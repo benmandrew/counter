@@ -54,6 +54,10 @@ semantics.txt
 
 # Experiment outputs (generated at runtime)
 /experiments/
+# scripts/merge_experiments.py scratch dir + per-run results (also covered by
+# /experiments/, but kept explicit so they stay ignored if that's relaxed).
+.merge_tmp/
+results/
 
 # Experiment planning (not committed)
 PLAN.md

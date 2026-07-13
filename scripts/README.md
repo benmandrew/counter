@@ -57,14 +57,62 @@ Sweeps generated:
 ## 4. Run the experiments
 
 ```sh
-python scripts/run_experiments.py
+python scripts/run_experiments.py                 # quick profile (default)
+python scripts/run_experiments.py --profile full  # the full sweep
 ```
 
-Runs every combination of (sweep, level, spec, seed) and appends results to
-`experiments/results.csv`. Runs are skipped automatically if they already
-appear in the CSV, so the script is safe to interrupt and resume.
+Runs the selected combinations of (sweep, level, spec, seed) and appends
+results to the profile's results CSV. Runs are skipped automatically if they
+already appear in the CSV, so the script is safe to interrupt and resume.
 
-Specs tested by default: `takeoff`, `arbiter`. Each runs 30 seeds (0–29).
+The four specs are `takeoff`, `fsm`, `fsm-timing`, and `fsm-combined`; which
+of them run — and how many seeds — depends on the profile.
+
+### Profiles
+
+The full sweep is 3 sweeps × ~5 levels × 4 specs × 30 seeds, dominated by the
+slow `fsm-timing` and `fsm-combined` specs. The reduced profiles cut the
+levels to the informative range, drop `fsm-combined` (it has never produced a
+repair — zero information per second), and cap each run with a flat per-spec
+timeout instead of the full profile's generous formula.
+
+| Profile | Sweeps / levels | Specs | Seeds | Results CSV | Est. wall-clock |
+|---|---|---|---|---|---|
+| `full` | all levels of A, B, C | all 4 | 0–29 | `results.csv` | 70+ h of compute |
+| `quick` (default) | A: gen5/10/20; B: pop50/200/500; C only via `--sweeps C` | takeoff, fsm, fsm-timing | 0–11 | `results-quick.csv` | ~1–1.5 h at `--jobs 4` (~4 h serial) |
+| `smoke` | A: gen5/20; B: pop50/500 | takeoff, fsm | 0–7 | `results-smoke.csv` | ~5–10 min at `--jobs 4` (~20 min serial) |
+
+`--sweeps`, `--specs`, and `--seeds` still work on top of a profile:
+`--specs` and `--seeds` replace the profile's set (so
+`--profile quick --specs fsm-combined` is allowed), `--sweeps` selects which
+sweeps run (so `--profile quick --sweeps C` runs all five C levels).
+
+### Parallel runs (`--jobs`)
+
+`--jobs N` runs N experiments concurrently (default: 1 for `full`, 4 for
+`quick`/`smoke`). The `counter` binary parallelises internally with a thread
+pool sized to the machine's core count by default, so when jobs > 1 the
+runner caps each run's pool: it writes a derived config
+(`<output-dir>/config.toml` — the level's TOML with
+`parallel = max(1, cores // jobs)` under `[runtime]`) and passes that to
+`counter`. With jobs = 1 the original config file is used unchanged.
+
+### Baseline aliasing
+
+Three configs are byte-identical (generations 10, population 200, default
+weights): sweep A `gen10`, sweep B `pop200`, and sweep C `default`. The
+runner executes the canonical `A/gen10` run once per (spec, seed) and emits
+one CSV row per requested alias — the rows differ only in
+`sweep`/`level_name`/`level_value`. Identity is verified byte-for-byte before
+aliasing; if the files ever diverge the runner warns and runs them
+separately. `--dry-run` tags aliased rows with `(alias of A/gen10)`.
+
+### The `timed_out` column
+
+Each row records `timed_out` (0/1) so the analysis can distinguish
+timeout-censored runs from genuine failures to find a repair. When appending
+to a CSV written before this column existed, the runner keeps the file's
+original header and drops the column, so legacy files stay consistent.
 
 ### Useful flags
 
@@ -105,11 +153,11 @@ python scripts/run_experiments.py --seeds $(seq -s' ' 0 14)
 python scripts/run_experiments.py --seeds $(seq -s' ' 15 29)
 ```
 
-**By spec** — simplest if the two specs have similar runtimes:
+**By spec** — useful for isolating the slow specs on a faster machine:
 
 ```sh
-python scripts/run_experiments.py --specs takeoff   # machine 1
-python scripts/run_experiments.py --specs arbiter   # machine 2
+python scripts/run_experiments.py --specs takeoff fsm            # machine 1
+python scripts/run_experiments.py --specs fsm-timing fsm-combined  # machine 2
 ```
 
 **By sweep** — useful when sweep C is run separately:
@@ -156,7 +204,15 @@ jupyter nbconvert --to notebook --execute scripts/analyse.ipynb \
     --output scripts/analyse_executed.ipynb
 ```
 
-The notebook reads `experiments/results.csv` and produces:
+The notebook reads `experiments/results.csv` by default; point it at another
+results file (e.g. the quick profile's) with the `RESULTS_CSV` env var, which
+also works for `nbconvert --execute`:
+
+```sh
+RESULTS_CSV=../experiments/results-quick.csv jupyter notebook scripts/analyse.ipynb
+```
+
+It produces:
 
 - Box plots of best fitness per level
 - Bar charts of implies-ideal rate and found-repair rate

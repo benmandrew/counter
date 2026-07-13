@@ -1,6 +1,8 @@
 #include "fitness/semantic_similarity.hpp"
 
+#include <algorithm>
 #include <cassert>
+#include <cstddef>
 #include <mutex>
 #include <string>
 #include <unordered_map>
@@ -112,29 +114,33 @@ double semantic_similarity(const Requirement& requirement,
 double semantic_similarity(const Specification& specification,
                            const Specification& other_specification,
                            std::size_t step_count) {
-    assert(specification.m_assumptions.size() ==
-           other_specification.m_assumptions.size());
-    assert(specification.m_guarantees.size() ==
-           other_specification.m_guarantees.size());
-    [[maybe_unused]] const std::size_t total_count =
-        specification.m_assumptions.size() + specification.m_guarantees.size();
-    assert(total_count > 0 && (other_specification.m_assumptions.size() +
-                               other_specification.m_guarantees.size()) > 0);
+    assert(!specification.m_assumptions.empty() ||
+           !specification.m_guarantees.empty());
+    assert(!other_specification.m_assumptions.empty() ||
+           !other_specification.m_guarantees.empty());
     double total = 0.0;
     std::size_t changed_count = 0;
     // Requirement pairs that are identical contribute a trivial 1.0 and
     // dilute the average toward 1 as the specification grows, drowning out
     // the pairs that actually differ. Excluding them keeps the score
     // sensitive to the requirements a mutation actually touched.
+    //
+    // The two specifications need not have the same number of requirements: the
+    // p_add_assumption mutation grows a candidate's assumption list relative to
+    // the original it is scored against. Pair requirements by index over the
+    // count they share; surplus requirements on either side have no counterpart
+    // to compare against and are skipped. Advancing a second iterator in
+    // lockstep to reqs1.end() (as before) would run it past reqs2.end()
+    // whenever reqs1 is longer, which is undefined behaviour once NDEBUG
+    // disables the asserts that used to guard it.
     auto accumulate = [&](const std::vector<Requirement>& reqs1,
                           const std::vector<Requirement>& reqs2) {
-        auto it1 = reqs1.begin();
-        auto it2 = reqs2.begin();
-        for (; it1 != reqs1.end(); ++it1, ++it2) {
-            if (*it1 == *it2) {
+        const std::size_t common = std::min(reqs1.size(), reqs2.size());
+        for (std::size_t i = 0; i < common; ++i) {
+            if (reqs1[i] == reqs2[i]) {
                 continue;
             }
-            total += semantic_similarity(*it1, *it2, step_count);
+            total += semantic_similarity(reqs1[i], reqs2[i], step_count);
             ++changed_count;
         }
     };

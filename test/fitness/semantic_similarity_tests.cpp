@@ -58,6 +58,33 @@ void test_semantic_similarity_identical_specifications_score_one() {
            "semantic-similarity: identical specifications should have score 1");
 }
 
+// Regression: the p_add_assumption mutation grows a candidate's assumption
+// list, so a candidate can be scored against an original with fewer
+// assumptions. The specification-level overload used to advance a second
+// iterator in lockstep to the first spec's end, running it past the shorter
+// spec's assumptions (an assertion in debug builds, undefined behaviour once
+// NDEBUG disables it). The score must stay finite, bounded, and independent of
+// argument order.
+void test_semantic_similarity_differing_assumption_counts() {
+    const Requirement req_q{Formula("P"), Formula("Q"), timing::immediately()};
+    const Requirement req_not_q{Formula("P"), Formula("!Q"),
+                                timing::immediately()};
+    const Specification original({req_q}, {req_q}, {"P"}, {"Q"});
+    const Specification candidate({req_not_q, req_q}, {req_q}, {"P"}, {"Q"});
+    const double candidate_vs_original =
+        semantic_similarity(candidate, original, 1);
+    const double original_vs_candidate =
+        semantic_similarity(original, candidate, 1);
+    expect(std::isfinite(candidate_vs_original) &&
+               candidate_vs_original >= 0.0 && candidate_vs_original <= 1.0,
+           "semantic-similarity: a candidate with an extra assumption must "
+           "score a finite, bounded value against the original (no "
+           "out-of-bounds read)");
+    expect(std::fabs(candidate_vs_original - original_vs_candidate) < 1e-12,
+           "semantic-similarity: differing assumption counts score the same in "
+           "either argument order");
+}
+
 void test_semantic_similarity_specification_averages_requirements() {
     const Requirement req_imm{Formula("P"), Formula("Q"),
                               timing::immediately()};
@@ -182,6 +209,7 @@ void run_semantic_similarity_tests() {
     test_semantic_similarity_formula_value_explicit_step_count();
     test_semantic_similarity_default_overload_matches_explicit_step_count();
     test_semantic_similarity_identical_specifications_score_one();
+    test_semantic_similarity_differing_assumption_counts();
     test_semantic_similarity_specification_averages_requirements();
     test_semantic_similarity_tautology_scores_near_zero();
     test_semantic_similarity_liveness_in_range();

@@ -27,6 +27,16 @@ Specification make_spec(
     return Specification({}, std::move(req_vec), {}, {});
 }
 
+std::vector<Requirement> make_reqs(
+    std::initializer_list<std::pair<const char*, const char*>> reqs) {
+    std::vector<Requirement> req_vec;
+    req_vec.reserve(reqs.size());
+    for (const auto& [trigger, response] : reqs) {
+        req_vec.push_back(make_req(trigger, response));
+    }
+    return req_vec;
+}
+
 // --- requirement-level ---
 
 void test_req_similarity_averages_component_scores() {
@@ -98,6 +108,31 @@ void test_spec_similarity_partial_match_multi_req() {
     expect(std::fabs(result - (5.0 / 9.0)) < 1e-12,
            "spec-similarity: specs sharing one of two requirements should "
            "score 5/9");
+}
+
+// Regression: the p_add_assumption mutation grows a candidate's assumption
+// list, so a candidate can be scored against an original with fewer
+// assumptions. average_timing_similarity used to index the second spec by the
+// first spec's counts, reading out of bounds (an assertion in debug builds,
+// undefined behaviour once NDEBUG disables it). The score must stay finite,
+// bounded, and symmetric regardless of argument order.
+void test_spec_similarity_differing_assumption_counts() {
+    const Specification original(make_reqs({{"a", "b"}}),
+                                 make_reqs({{"p", "q"}}), {}, {});
+    const Specification candidate(make_reqs({{"a", "b"}, {"c", "d"}}),
+                                  make_reqs({{"p", "q"}}), {}, {});
+    const double candidate_vs_original =
+        syntactic_similarity(candidate, original, Config{});
+    const double original_vs_candidate =
+        syntactic_similarity(original, candidate, Config{});
+    expect(std::isfinite(candidate_vs_original) &&
+               candidate_vs_original >= 0.0 && candidate_vs_original <= 1.0,
+           "spec-similarity: a candidate with an extra assumption must score "
+           "a finite, bounded value against the original (no out-of-bounds "
+           "read)");
+    expect(std::fabs(candidate_vs_original - original_vs_candidate) < 1e-12,
+           "spec-similarity: differing assumption counts score the same in "
+           "either argument order");
 }
 
 // --- timing similarity ---
@@ -202,6 +237,7 @@ void run_syntactic_similarity_tests() {
     test_spec_similarity_same_trigger_different_response();
     test_spec_similarity_identical_multi_req();
     test_spec_similarity_partial_match_multi_req();
+    test_spec_similarity_differing_assumption_counts();
     test_timing_identical_immediately();
     test_timing_identical_within_ticks();
     test_timing_comparable_for_ticks();

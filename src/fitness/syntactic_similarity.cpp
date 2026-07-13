@@ -198,17 +198,32 @@ Formula conjoin_responses(const Specification& spec) {
 
 double average_timing_similarity(const Specification& spec1,
                                  const Specification& spec2) {
-    assert(spec1.m_assumptions.size() == spec2.m_assumptions.size());
-    assert(spec1.m_guarantees.size() == spec2.m_guarantees.size());
+    // The two specifications need not have the same number of assumptions or
+    // guarantees: the p_add_assumption mutation grows a candidate's assumption
+    // list relative to the original it is scored against. Pair requirements by
+    // index over the counts they share, treat each unmatched surplus
+    // requirement as contributing zero similarity, and normalise by the larger
+    // structure so a size difference lowers the score. This reduces to the
+    // exact per-index average when the counts match. Indexing by spec1's counts
+    // (as before) would read past the end of spec2 whenever spec1 has more
+    // requirements, which is undefined behaviour once NDEBUG disables the
+    // asserts that used to guard it.
+    const std::size_t common_assumptions =
+        std::min(spec1.m_assumptions.size(), spec2.m_assumptions.size());
+    const std::size_t common_guarantees =
+        std::min(spec1.m_guarantees.size(), spec2.m_guarantees.size());
     const std::size_t total =
-        spec1.m_assumptions.size() + spec1.m_guarantees.size();
-    assert(total > 0);
+        std::max(spec1.m_assumptions.size(), spec2.m_assumptions.size()) +
+        std::max(spec1.m_guarantees.size(), spec2.m_guarantees.size());
+    if (total == 0) {
+        return 0.0;
+    }
     double sum = 0.0;
-    for (std::size_t i = 0; i < spec1.m_assumptions.size(); ++i) {
+    for (std::size_t i = 0; i < common_assumptions; ++i) {
         sum += timing_syntactic_similarity(spec1.m_assumptions[i].m_timing,
                                            spec2.m_assumptions[i].m_timing);
     }
-    for (std::size_t i = 0; i < spec1.m_guarantees.size(); ++i) {
+    for (std::size_t i = 0; i < common_guarantees; ++i) {
         sum += timing_syntactic_similarity(spec1.m_guarantees[i].m_timing,
                                            spec2.m_guarantees[i].m_timing);
     }

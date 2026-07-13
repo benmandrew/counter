@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1783953193384,
+  "lastUpdate": 1783953297997,
   "repoUrl": "https://github.com/benmandrew/counter",
   "entries": {
     "counter benchmarks": [
@@ -2016,6 +2016,78 @@ window.BENCHMARK_DATA = {
             "value": 3409.9140139006686,
             "unit": "ns/iter",
             "extra": "iterations: 208336\ncpu: 3409.370680055294 ns\nthreads: 1"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "benmandrew@gmail.com",
+            "name": "benmandrew",
+            "username": "benmandrew"
+          },
+          "committer": {
+            "email": "benmandrew@gmail.com",
+            "name": "benmandrew",
+            "username": "benmandrew"
+          },
+          "distinct": true,
+          "id": "31d078729cdde835da2c6e3891caa45bfa42c18b",
+          "message": "fix: bounded requirement pairing in similarity scoring for uneven specs\n\nThe syntactic and semantic specification-similarity functions paired\nrequirements by index assuming both specifications had the same number of\nassumptions and guarantees, guarding the invariant with an assert. The\np_add_assumption mutation breaks it: a candidate can carry more assumptions\nthan the original it is scored against. average_timing_similarity looped over\nthe first spec's counts while indexing the second, and the semantic overload\nadvanced a second iterator in lockstep to the first spec's end — both read past\nthe shorter spec once the candidate was longer. In debug builds the assert\nfired; under NDEBUG (release/relwithdebinfo) the assert is a no-op, so the\nout-of-bounds read silently corrupted the score or crashed mid-generation.\n\nPair requirements only over the count the two specs share and skip the\nunmatched surplus (timing similarity additionally normalises by the larger\nstructure so a size difference lowers the score); behaviour is unchanged when\nthe counts match. Regression tests score a candidate with an extra assumption\nagainst a shorter original in both functions and both argument orders.\n\nSurfaced while testing NSGA-II selection but pre-existing and independent of\nit; reproduces on unmodified main.",
+          "timestamp": "2026-07-13T15:23:59+01:00",
+          "tree_id": "b8e44fc3927544bdbd2a5e24081442efb458a805",
+          "url": "https://github.com/benmandrew/counter/commit/31d078729cdde835da2c6e3891caa45bfa42c18b"
+        },
+        "date": 1783953297645,
+        "tool": "googlecpp",
+        "benches": [
+          {
+            "name": "Syntactic similarity - small formulas (3 variables)",
+            "value": 541.7869369277607,
+            "unit": "ns/iter",
+            "extra": "iterations: 1324941\ncpu: 541.6730873299264 ns\nthreads: 1"
+          },
+          {
+            "name": "Syntactic similarity - large formulas (11 variables, O(n*m) shared_subformulae)",
+            "value": 2209.075862941772,
+            "unit": "ns/iter",
+            "extra": "iterations: 308161\ncpu: 2208.7422970460243 ns\nthreads: 1"
+          },
+          {
+            "name": "Spec implication check - warm black cache",
+            "value": 876.2518048620562,
+            "unit": "ns/iter",
+            "extra": "iterations: 817514\ncpu: 876.1717719818864 ns\nthreads: 1"
+          },
+          {
+            "name": "Trace model counting - matrix exponentiation/steps:5",
+            "value": 164.30880466555155,
+            "unit": "ns/iter",
+            "extra": "iterations: 4362528\ncpu: 164.3018506700702 ns\nthreads: 1"
+          },
+          {
+            "name": "Trace model counting - matrix exponentiation/steps:10",
+            "value": 182.76007745874495,
+            "unit": "ns/iter",
+            "extra": "iterations: 3822938\ncpu: 182.73836457719173 ns\nthreads: 1"
+          },
+          {
+            "name": "Trace model counting - matrix exponentiation/steps:20",
+            "value": 205.17577366915657,
+            "unit": "ns/iter",
+            "extra": "iterations: 3411148\ncpu: 205.1721505487303 ns\nthreads: 1"
+          },
+          {
+            "name": "Trace model counting - matrix exponentiation/steps:50",
+            "value": 249.95844079005923,
+            "unit": "ns/iter",
+            "extra": "iterations: 2802291\ncpu: 249.9396536619503 ns\nthreads: 1"
+          },
+          {
+            "name": "Mutate specification - 3-guarantee takeoff spec",
+            "value": 3431.360911377031,
+            "unit": "ns/iter",
+            "extra": "iterations: 203604\ncpu: 3431.134756684542 ns\nthreads: 1"
           }
         ]
       }

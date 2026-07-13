@@ -192,7 +192,7 @@ void test_evolve_generation_produces_target_size() {
         Config{},
         {make_spec("p", "q"), make_spec("r", "s"), make_spec("t", "u")}, fns);
     const auto next_gen =
-        evolve_generation(Config{}, pop, 2, fns, {}, make_source({}, 0));
+        evolve_generation(Config{}, pop, 2, 0, fns, {}, make_source({}, 0));
     expect(
         next_gen.size() == 2,
         "evolve_generation: should produce the requested number of offspring");
@@ -205,7 +205,7 @@ void test_evolve_generation_pads_up_to_target_size() {
     const std::vector<ScoredSpecification> pop = score_population(
         Config{}, {make_spec("p", "q"), make_spec("r", "s")}, fns);
     const auto next_gen =
-        evolve_generation(Config{}, pop, 5, fns, {}, make_source({}, 0));
+        evolve_generation(Config{}, pop, 5, 0, fns, {}, make_source({}, 0));
     expect(next_gen.size() == 5,
            "evolve_generation: should pad the next generation back to the "
            "requested target size");
@@ -226,8 +226,8 @@ void test_evolve_generation_selects_parents_before_offspring_filtering() {
             }
             return std::vector<Specification>{candidates.front()};
         }};
-    const auto next_gen =
-        evolve_generation(Config{}, pop, 2, fns, filters, make_source({}, 0));
+    const auto next_gen = evolve_generation(Config{}, pop, 2, 0, fns, filters,
+                                            make_source({}, 0));
     expect(next_gen.size() == 2,
            "evolve_generation: the generation should be padded back to the "
            "requested target size after filtering");
@@ -235,6 +235,58 @@ void test_evolve_generation_selects_parents_before_offspring_filtering() {
                first_condition(next_gen[1].specification),
            "evolve_generation: padded offspring should duplicate the "
            "surviving specification");
+}
+
+void test_evolve_generation_elitism_preserves_best_through_filter() {
+    // Fitness ranks "p" > "r" > "t", so ("p","q") is the top (elite) parent.
+    const AggregateWeightedFitnessFunction fns =
+        AggregateWeightedFitnessFunction({{[](const Specification& spec) {
+                                               const std::string cond =
+                                                   first_condition(spec);
+                                               if (cond == "p") {
+                                                   return 1.0;
+                                               }
+                                               if (cond == "r") {
+                                                   return 0.5;
+                                               }
+                                               return 0.1;
+                                           },
+                                           1.0, ""}});
+    const std::vector<ScoredSpecification> pop = score_population(
+        Config{},
+        {make_spec("p", "q"), make_spec("r", "s"), make_spec("t", "u")}, fns);
+    // Drop every offspring whose condition is "p": the elite's own offspring is
+    // removed, so only elitism can keep a "p" specification alive.
+    const std::vector<FilterFunction> filters = {
+        make_predicate_filter("", [](const Specification& spec) {
+            return first_condition(spec) != "p";
+        })};
+    Config cfg;
+    cfg.crossover_rate = 0.0;
+    cfg.mutation_rate = 0.0;
+
+    const auto with_elitism =
+        evolve_generation(cfg, pop, 3, 1, fns, filters, make_source({}, 0));
+    const bool elite_survived =
+        std::any_of(with_elitism.begin(), with_elitism.end(),
+                    [](const ScoredSpecification& scored) {
+                        return first_condition(scored.specification) == "p";
+                    });
+    expect(elite_survived,
+           "evolve_generation: the top spec survives verbatim as an elite even "
+           "when a filter removes its offspring");
+
+    // With no elitism the same filter leaves no "p" specification behind.
+    const auto without_elitism =
+        evolve_generation(cfg, pop, 3, 0, fns, filters, make_source({}, 0));
+    const bool elite_absent =
+        std::none_of(without_elitism.begin(), without_elitism.end(),
+                     [](const ScoredSpecification& scored) {
+                         return first_condition(scored.specification) == "p";
+                     });
+    expect(elite_absent,
+           "evolve_generation: without elitism the filtered-out top spec does "
+           "not survive");
 }
 
 void test_filters_for_generation_respects_intervals() {
@@ -283,6 +335,7 @@ void run_generation_tests() {
     test_evolve_generation_produces_target_size();
     test_evolve_generation_pads_up_to_target_size();
     test_evolve_generation_selects_parents_before_offspring_filtering();
+    test_evolve_generation_elitism_preserves_best_through_filter();
     test_filters_for_generation_respects_intervals();
     test_filters_for_generation_last_runs_all_filters();
 }

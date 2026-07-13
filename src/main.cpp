@@ -253,6 +253,12 @@ run_evolution(const Config& cfg, std::vector<ScoredSpecification> population,
     const std::size_t selection_size = std::max(
         std::size_t{1}, static_cast<std::size_t>(static_cast<double>(pop_size) *
                                                  cfg.selection_rate));
+    // Elites carry over verbatim; unlike selection there is no floor of 1, so
+    // a small population or rate can legitimately yield no elites. The config
+    // guarantees elitism_rate < selection_rate, keeping this below
+    // selection_size.
+    const auto elitism_size = static_cast<std::size_t>(
+        static_cast<double>(pop_size) * cfg.elitism_rate);
     const std::string total_str = std::to_string(cfg.generations);
     for (std::size_t gen_idx = 0; gen_idx < cfg.generations; ++gen_idx) {
         const auto start = std::chrono::steady_clock::now();
@@ -276,9 +282,9 @@ run_evolution(const Config& cfg, std::vector<ScoredSpecification> population,
             filters_for_generation(filter_functions, gen_idx + 1,
                                    gen_idx + 1 == cfg.generations);
 
-        population =
-            evolve_generation(cfg, population, selection_size, fitness_function,
-                              active_filters, random_source, on_progress);
+        population = evolve_generation(
+            cfg, population, selection_size, elitism_size, fitness_function,
+            active_filters, random_source, on_progress);
 
         const double elapsed = std::chrono::duration<double>(
                                    std::chrono::steady_clock::now() - start)

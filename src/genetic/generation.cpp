@@ -65,14 +65,14 @@ const GeneticOperators<Specification>& fretish_operators() {
 
 std::vector<ScoredSpecification> evolve_generation(
     const Config& cfg, const std::vector<ScoredSpecification>& population,
-    std::size_t target_size,
+    std::size_t target_size, std::size_t elitism_size,
     const AggregateWeightedFitnessFunction& fitness_functions,
     const std::vector<FilterFunction>& filter_functions,
     const RandomSource& random_source,
     const GenerationProgressCallback& on_progress) {
     return evolve_generation_generic<Specification>(
-        cfg, population, target_size, fitness_functions, filter_functions,
-        fretish_operators(), random_source, on_progress);
+        cfg, population, target_size, elitism_size, fitness_functions,
+        filter_functions, fretish_operators(), random_source, on_progress);
 }
 
 std::vector<FilterFunction> get_filter_functions(

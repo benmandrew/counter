@@ -65,6 +65,10 @@ void apply_genetic(const toml::table& tbl, Config& cfg) {
         require_probability(*val, "genetic.selection_rate");
         cfg.selection_rate = *val;
     }
+    if (auto val = tbl["elitism_rate"].value<double>()) {
+        require_probability(*val, "genetic.elitism_rate");
+        cfg.elitism_rate = *val;
+    }
     if (auto val = tbl["crossover_rate"].value<double>()) {
         require_probability(*val, "genetic.crossover_rate");
         cfg.crossover_rate = *val;
@@ -72,6 +76,14 @@ void apply_genetic(const toml::table& tbl, Config& cfg) {
     if (auto val = tbl["mutation_rate"].value<double>()) {
         require_probability(*val, "genetic.mutation_rate");
         cfg.mutation_rate = *val;
+    }
+    // Elites are a subset of the selected parents, so elitism must be strictly
+    // smaller than selection. Checked against the final values (either may come
+    // from the TOML or fall back to its default).
+    if (cfg.elitism_rate >= cfg.selection_rate) {
+        throw std::runtime_error(
+            "config: genetic.elitism_rate must be less than "
+            "genetic.selection_rate");
     }
 }
 

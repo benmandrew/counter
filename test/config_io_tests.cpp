@@ -164,6 +164,28 @@ void test_config_io_invalid_filter_interval_throws() {
     expect(threw, "config_io: non-positive filter interval should throw");
 }
 
+void test_config_io_elitism_rate_parsed() {
+    const Config cfg = config_from_toml_string(
+        "[genetic]\nselection_rate = 0.6\nelitism_rate = 0.2\n");
+    expect(cfg.elitism_rate == 0.2,
+           "config_io: genetic.elitism_rate should be parsed from TOML");
+}
+
+void test_config_io_elitism_not_less_than_selection_throws() {
+    bool threw = false;
+    try {
+        config_from_toml_string(
+            "[genetic]\nselection_rate = 0.3\nelitism_rate = 0.3\n");
+    } catch (const std::exception& exc) {
+        threw = true;
+        const std::string msg(exc.what());
+        expect(msg.find("elitism_rate") != std::string::npos,
+               "config_io: constraint error should name elitism_rate");
+    }
+    expect(threw,
+           "config_io: elitism_rate not less than selection_rate should throw");
+}
+
 void test_config_io_empty_string_gives_defaults() {
     const Config cfg = config_from_toml_string("");
     const Config defaults;
@@ -182,5 +204,7 @@ void run_config_io_tests() {
     test_config_io_invalid_toml_throws();
     test_config_io_out_of_range_probability_throws();
     test_config_io_invalid_filter_interval_throws();
+    test_config_io_elitism_rate_parsed();
+    test_config_io_elitism_not_less_than_selection_throws();
     test_config_io_empty_string_gives_defaults();
 }

@@ -269,9 +269,9 @@ void test_end_to_end_evolution() {
 
     for (std::size_t generation = 0; generation < 2; ++generation) {
         const RandomSource rng = make_random_source_from_seed(generation + 1);
-        population =
-            evolve_generation_generic(cfg, population, target_size, fitness,
-                                      filters, tlsf_operators(), rng);
+        population = evolve_generation_generic(cfg, population, target_size,
+                                               /*elitism_size=*/0, fitness,
+                                               filters, tlsf_operators(), rng);
         expect(population.size() == target_size,
                "end-to-end: each generation returns target_size offspring");
         for (const Scored<tlsf::Specification>& scored : population) {

@@ -180,9 +180,11 @@ int run_repair(const std::string& input_path, const std::string& output_dir,
                 active.push_back(filter);
             }
         }
+        // TLSF mode keeps the full population each generation (no truncation
+        // selection), so elitism does not apply here — pass 0.
         population = evolve_generation_generic(
-            cfg, population, cfg.population_size, fitness, active,
-            tlsf_operators(), random_source);
+            cfg, population, cfg.population_size, /*elitism_size=*/0, fitness,
+            active, tlsf_operators(), random_source);
         const double best =
             population.empty() ? 0.0 : population.front().fitness;
         std::cout << "gen " << (gen + 1) << "/" << cfg.generations

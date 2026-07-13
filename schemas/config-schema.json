@@ -11,6 +11,7 @@
         "generations":     { "type": "integer", "minimum": 1, "description": "Number of evolution rounds." },
         "population_size": { "type": "integer", "minimum": 1, "description": "Candidates per generation." },
         "selection_rate":  { "type": "number",  "minimum": 0, "maximum": 1, "description": "Fraction of population selected as parents each generation." },
+        "elitism_rate":    { "type": "number",  "minimum": 0, "maximum": 1, "description": "Fraction of the population carried over verbatim each generation, bypassing crossover, mutation, and filters. Must be less than selection_rate." },
         "crossover_rate":  { "type": "number",  "minimum": 0, "maximum": 1, "description": "Probability of crossover between parents." },
         "mutation_rate":   { "type": "number",  "minimum": 0, "maximum": 1, "description": "Probability of mutating an offspring." }
       }

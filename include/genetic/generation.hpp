@@ -232,7 +232,8 @@ inline bool probability_check(double rate, const RandomSource& random_source) {
 template <typename Spec, typename Fitness>
 std::vector<Scored<Spec>> evolve_generation_generic(
     const Config& cfg, const std::vector<Scored<Spec>>& population,
-    std::size_t target_size, const Fitness& fitness_functions,
+    std::size_t target_size, std::size_t elitism_size,
+    const Fitness& fitness_functions,
     const std::vector<FilterFunctionT<Spec>>& filter_functions,
     const GeneticOperators<Spec>& ops, const RandomSource& random_source,
     const GenerationProgressCallback& on_progress = nullptr) {
@@ -250,9 +251,13 @@ std::vector<Scored<Spec>> evolve_generation_generic(
                   return lhs.fitness > rhs.fitness;
               });
     const std::size_t top_n = std::min(target_size, sorted_pop.size());
+    // The best elite_n of the selected parents carry over verbatim (see below);
+    // the remaining slots are bred from the top offspring_n parents.
+    const std::size_t elite_n = std::min(elitism_size, top_n);
+    const std::size_t offspring_n = top_n - elite_n;
     std::vector<Spec> next_generation;
-    next_generation.reserve(top_n);
-    for (std::size_t i = 0; i < top_n; ++i) {
+    next_generation.reserve(offspring_n);
+    for (std::size_t i = 0; i < offspring_n; ++i) {
         Spec offspring = sorted_pop[i].specification;
         if (generation_detail::probability_check(cfg.crossover_rate,
                                                  random_source)) {
@@ -269,21 +274,26 @@ std::vector<Scored<Spec>> evolve_generation_generic(
                                       : std::move(offspring));
     }
 
-    std::vector<Spec> filtered_offspring =
+    std::vector<Spec> survivors =
         filter_population(next_generation, filter_functions);
-    if (filtered_offspring.empty()) {
-        filtered_offspring = std::move(next_generation);
+    if (survivors.empty()) {
+        survivors = std::move(next_generation);
     }
-    assert(!filtered_offspring.empty());
-    const std::size_t filtered_count = filtered_offspring.size();
-    filtered_offspring.reserve(target_size);
-    while (filtered_offspring.size() < target_size) {
-        filtered_offspring.push_back(
-            filtered_offspring[filtered_offspring.size() % filtered_count]);
+    // Elites bypass crossover, mutation, and the offspring filters: the top
+    // elite_n specifications carry over unchanged so the best candidates are
+    // never lost to a stochastic operator or removed by a filter.
+    for (std::size_t i = 0; i < elite_n; ++i) {
+        survivors.push_back(sorted_pop[i].specification);
+    }
+    assert(!survivors.empty());
+    const std::size_t survivor_count = survivors.size();
+    survivors.reserve(target_size);
+    while (survivors.size() < target_size) {
+        survivors.push_back(survivors[survivors.size() % survivor_count]);
     }
 
-    std::vector<Scored<Spec>> scored = score_population(
-        cfg, filtered_offspring, fitness_functions, on_progress);
+    std::vector<Scored<Spec>> scored =
+        score_population(cfg, survivors, fitness_functions, on_progress);
     std::sort(scored.begin(), scored.end(),
               [](const Scored<Spec>& lhs, const Scored<Spec>& rhs) {
                   return lhs.fitness > rhs.fitness;
@@ -297,22 +307,28 @@ std::vector<Scored<Spec>> evolve_generation_generic(
 /// use with evolve_generation_generic.
 const GeneticOperators<Specification>& fretish_operators();
 
-/// Evolves a population for one generation using truncation selection:
+/// Evolves a population for one generation using truncation selection with
+/// elitism:
 ///   1. Sort the population by fitness (descending) and take the top
 ///      target_size as parents
-///   2. For each parent, apply crossover and mutation to produce an offspring
-///   3. Apply filter functions sequentially to the offspring to produce
-///      survivors
-///   4. Pad survivors back to target_size by duplicating them if filtering
+///   2. Carry the best elitism_size parents over verbatim as elites (they skip
+///      crossover, mutation, and the offspring filters)
+///   3. For the remaining parents, apply crossover and mutation to produce
+///      offspring
+///   4. Apply filter functions sequentially to the offspring to produce
+///      survivors, then add the elites back
+///   5. Pad survivors back to target_size by duplicating them if filtering
 ///      reduced the population
-///   5. Score the resulting population with fitness functions
+///   6. Score the resulting population with fitness functions
 ///
 /// If the population is smaller than target_size, all of it is used as
-/// parents.
+/// parents. elitism_size is clamped to the number of parents.
 ///
 /// @param cfg               Algorithm configuration (rates and filter flags)
 /// @param population        Current generation's specifications
 /// @param target_size       Number of offspring to produce
+/// @param elitism_size      Number of top parents carried over verbatim;
+///                          must be less than target_size
 /// @param fitness_function  Non-empty weighted fitness function for scoring
 /// @param filter_functions  Filters applied to the offspring after crossover
 ///                          and mutation, before scoring
@@ -325,7 +341,7 @@ const GeneticOperators<Specification>& fretish_operators();
 ///                               outside [0, 1]
 std::vector<ScoredSpecification> evolve_generation(
     const Config& cfg, const std::vector<ScoredSpecification>& population,
-    std::size_t target_size,
+    std::size_t target_size, std::size_t elitism_size,
     const AggregateWeightedFitnessFunction& fitness_function,
     const std::vector<FilterFunction>& filter_functions,
     const RandomSource& random_source,

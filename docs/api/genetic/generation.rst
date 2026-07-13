@@ -12,9 +12,12 @@ The main driver of one generation of the genetic repair loop. Key types:
   A ``Specification`` paired with its aggregated fitness score.
 
 ``evolve_generation`` runs truncation selection (sort by fitness, take top
-*N* as parents), applies crossover and mutation to produce *N* offspring,
-runs the per-generation filter pipeline, pads back to *N* if filters removed
-too many, then scores the result. Progress callbacks are forwarded to the
+*N* as parents) with elitism: the best *E* parents carry over verbatim,
+bypassing crossover, mutation, and the filters, so the fittest candidates are
+never lost to a stochastic operator. The remaining parents produce offspring
+via crossover and mutation; the per-generation filter pipeline runs on those
+offspring, the elites are added back, the result is padded to *N* if filters
+removed too many, then scored. Progress callbacks are forwarded to the
 scoring step.
 
 Factory functions ``get_filter_functions`` and ``get_final_filter_functions``

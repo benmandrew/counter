@@ -6,6 +6,7 @@
 generations     = 10    # number of evolution rounds
 population_size = 1000  # candidates per generation
 selection_rate  = 0.5   # fraction of population selected as parents each generation
+elitism_rate    = 0.1   # fraction carried over verbatim each generation (must be < selection_rate)
 crossover_rate  = 0.1   # probability of crossover between parents
 mutation_rate   = 0.8   # probability of mutating an offspring
 

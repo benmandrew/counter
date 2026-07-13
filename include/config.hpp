@@ -30,6 +30,12 @@ struct Config {
     // identical to before.
     bool report_cpu_timing = false;
     double selection_rate = 0.5;
+    // Elitism: the top elitism_rate fraction of the population carries over
+    // into the next generation verbatim, bypassing crossover, mutation, and
+    // the offspring filters, so the best candidates are never lost to a
+    // stochastic operator. Must be strictly less than selection_rate (the
+    // elites are a subset of the selected parents).
+    double elitism_rate = 0.1;
     double crossover_rate = 0.1;
     double mutation_rate = 1.0;
     double p_trigger = 0.5;

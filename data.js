@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1783703064400,
+  "lastUpdate": 1783946781901,
   "repoUrl": "https://github.com/benmandrew/counter",
   "entries": {
     "counter benchmarks": [
@@ -1872,6 +1872,78 @@ window.BENCHMARK_DATA = {
             "value": 3382.211756175359,
             "unit": "ns/iter",
             "extra": "iterations: 206870\ncpu: 3382.02083917436 ns\nthreads: 1"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "benmandrew@gmail.com",
+            "name": "benmandrew",
+            "username": "benmandrew"
+          },
+          "committer": {
+            "email": "benmandrew@gmail.com",
+            "name": "benmandrew",
+            "username": "benmandrew"
+          },
+          "distinct": true,
+          "id": "29500f845479e8cd6e6424f9b4a7d58776a44468",
+          "message": "feat: elitist selection via configurable elitism_rate\n\nThe genetic algorithm was not elitist: every candidate carried into the\nnext generation could still be mutated, crossed over, or dropped by an\noffspring filter, so the fittest specification of a generation could be\nlost to a stochastic operator.\n\nAdd a genetic.elitism_rate (default 0.1). The top elitism_rate fraction\nof each generation now carries over verbatim, bypassing crossover,\nmutation, and the offspring filters; the remaining slots are bred as\nbefore. The rate must be strictly less than selection_rate, since the\nelites are a subset of the selected parents, and this is enforced when\nthe config is loaded.\n\nElitism, like selection_rate, applies to FRETISH mode only. TLSF mode\nkeeps the full population each generation (no truncation selection), so\nit passes an elitism size of zero.",
+          "timestamp": "2026-07-13T13:32:01+01:00",
+          "tree_id": "4b9c97578eb2b05d35b152cad0f332206e64b42e",
+          "url": "https://github.com/benmandrew/counter/commit/29500f845479e8cd6e6424f9b4a7d58776a44468"
+        },
+        "date": 1783946780975,
+        "tool": "googlecpp",
+        "benches": [
+          {
+            "name": "Syntactic similarity - small formulas (3 variables)",
+            "value": 418.46331810951017,
+            "unit": "ns/iter",
+            "extra": "iterations: 1655081\ncpu: 418.4242873913724 ns\nthreads: 1"
+          },
+          {
+            "name": "Syntactic similarity - large formulas (11 variables, O(n*m) shared_subformulae)",
+            "value": 1654.4916658598984,
+            "unit": "ns/iter",
+            "extra": "iterations: 423499\ncpu: 1654.2502579699124 ns\nthreads: 1"
+          },
+          {
+            "name": "Spec implication check - warm black cache",
+            "value": 657.0039483918302,
+            "unit": "ns/iter",
+            "extra": "iterations: 1060685\ncpu: 656.8875688823731 ns\nthreads: 1"
+          },
+          {
+            "name": "Trace model counting - matrix exponentiation/steps:5",
+            "value": 126.00849786804515,
+            "unit": "ns/iter",
+            "extra": "iterations: 5542802\ncpu: 125.99710543512109 ns\nthreads: 1"
+          },
+          {
+            "name": "Trace model counting - matrix exponentiation/steps:10",
+            "value": 143.13693077095488,
+            "unit": "ns/iter",
+            "extra": "iterations: 4895503\ncpu: 143.12816149842007 ns\nthreads: 1"
+          },
+          {
+            "name": "Trace model counting - matrix exponentiation/steps:20",
+            "value": 161.6210254426113,
+            "unit": "ns/iter",
+            "extra": "iterations: 4370581\ncpu: 161.60344311202562 ns\nthreads: 1"
+          },
+          {
+            "name": "Trace model counting - matrix exponentiation/steps:50",
+            "value": 195.292823419132,
+            "unit": "ns/iter",
+            "extra": "iterations: 3606829\ncpu: 195.27590717497282 ns\nthreads: 1"
+          },
+          {
+            "name": "Mutate specification - 3-guarantee takeoff spec",
+            "value": 2600.770373935615,
+            "unit": "ns/iter",
+            "extra": "iterations: 270100\ncpu: 2600.422380599777 ns\nthreads: 1"
           }
         ]
       }

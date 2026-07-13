@@ -9,8 +9,8 @@ keeping exactly one row per key, so re-running never duplicates rows.
 
 Configure the remote machines in REMOTES below, then:
 
-    python scripts/merge_experiments.py                 # pull from all REMOTES
-    python scripts/merge_experiments.py machine-b        # only named remotes
+    python scripts/merge_experiments.py                  # pull from all REMOTES
+    python scripts/merge_experiments.py av2 av3          # only named remotes
     python scripts/merge_experiments.py --dry-run        # show rsync plan, no writes
     python scripts/merge_experiments.py /path/to/copy    # merge an already-rsynced dir
 
@@ -29,12 +29,12 @@ REPO_ROOT = Path(__file__).parent.parent
 # Each entry is an ssh destination as accepted by ssh/rsync. A bare host uses
 # REMOTE_ROOT as the repo path; append ":/custom/path/to/counter" to override.
 REMOTES: dict[str, str] = {
-    "machine-a": "user@machine-a.example.com",
-    "machine-b": "user@machine-b.example.com",
+    "av2": "benandrew@av2.cs.man.ac.uk",
+    "av3": "benandrew@av3.cs.man.ac.uk",
 }
 
 # Path to the counter checkout on a remote when only a host is given.
-REMOTE_ROOT = "~/projects/counter"
+REMOTE_ROOT = "/home/benandrew/projects/counter"
 # ──────────────────────────────────────────────────────────────────────────────
 
 RESULTS_CSV = REPO_ROOT / "experiments" / "results.csv"
@@ -51,13 +51,19 @@ def resolve_source(name: str) -> tuple[str, str]:
     local filesystem path to another counter checkout. A ``host`` with no path
     component gets REMOTE_ROOT appended.
     """
-    spec = REMOTES.get(name, name)
-    is_remote = ":" in spec and not Path(spec).exists()
-    if is_remote:
-        host, _, path = spec.partition(":")
-        root = f"{host}:{path}" if path else f"{host}:{REMOTE_ROOT}"
-    else:
-        root = str(Path(spec).expanduser())
+    if name in REMOTES:
+        # A configured entry is always an ssh destination — a bare host (no
+        # colon) or an explicit host:path. Append REMOTE_ROOT when no path given.
+        host, sep, path = REMOTES[name].partition(":")
+        root = f"{host}:{path}" if sep else f"{REMOTES[name]}:{REMOTE_ROOT}"
+        return name, root
+    # A raw argument: an existing local path is another checkout to merge;
+    # anything else is treated as a remote spec (host or host:path).
+    local = Path(name).expanduser()
+    if local.exists():
+        return name, str(local)
+    host, sep, _ = name.partition(":")
+    root = name if sep else f"{host}:{REMOTE_ROOT}"
     return name, root
 
 
@@ -101,13 +107,13 @@ def key_of(row: dict) -> tuple:
     return tuple(row.get(f, "") for f in KEY_FIELDS)
 
 
-def merge_csv(pulled: list[Path], results_csv: Path) -> None:
-    """Merge pulled CSVs into results_csv, one row per key. Local rows win.
+def merge_csv(pulled: list[Path]) -> None:
+    """Merge pulled CSVs into RESULTS_CSV, one row per key. Local rows win.
 
     Ordering is deterministic (sorted by key), so the file is byte-stable across
     repeated runs once every source has been merged in.
     """
-    header, local_rows = read_rows(results_csv)
+    header, local_rows = read_rows(RESULTS_CSV)
 
     merged: dict[tuple, dict] = {}
     # Local first so existing rows take precedence over remote copies of the
@@ -137,8 +143,8 @@ def merge_csv(pulled: list[Path], results_csv: Path) -> None:
             seed_v = seed
         return (sweep, level_name, spec, seed_v)
 
-    results_csv.parent.mkdir(parents=True, exist_ok=True)
-    with open(results_csv, "w", newline="") as f:
+    RESULTS_CSV.parent.mkdir(parents=True, exist_ok=True)
+    with open(RESULTS_CSV, "w", newline="") as f:
         writer = csv.DictWriter(f, fieldnames=header)
         writer.writeheader()
         for k in sorted(merged, key=sort_key):
@@ -146,7 +152,7 @@ def merge_csv(pulled: list[Path], results_csv: Path) -> None:
 
     print(
         f"\nMerged CSV: {len(merged)} rows total "
-        f"({len(local_rows)} local, {added} new from remotes) → {results_csv}"
+        f"({len(local_rows)} local, {added} new from remotes) → {RESULTS_CSV}"
     )
     seeds = sorted({int(r["seed"]) for r in merged.values() if r.get("seed", "").isdigit()})
     if seeds:
@@ -164,9 +170,6 @@ def main() -> None:
     )
     parser.add_argument("--dry-run", action="store_true",
                         help="Show the rsync commands without transferring or writing.")
-    parser.add_argument("--results", type=Path, default=RESULTS_CSV, metavar="PATH",
-                        help="Results CSV to merge into "
-                             "(default: experiments/results.csv)")
     args = parser.parse_args()
 
     names = args.sources or list(REMOTES)
@@ -184,7 +187,7 @@ def main() -> None:
         print("\nDry run — no files written. CSV merge skipped.")
         return
 
-    merge_csv(pulled, args.results)
+    merge_csv(pulled)
 
 
 if __name__ == "__main__":

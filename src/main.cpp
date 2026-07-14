@@ -91,6 +91,25 @@ void print_filter_report(const std::vector<FilterRunStats>& stats) {
     }
 }
 
+// Silent when nothing was dropped, so a clean run's output is unchanged and
+// any drop at all stands out.
+void print_scoring_report() {
+    if (ScoringStats::n_dropped == 0) {
+        return;
+    }
+    std::cout << "\nScoring report:\n"
+              << ScoringStats::n_dropped
+              << " individual(s) dropped after a fitness function threw. These "
+                 "were excluded from their generation rather than scored.\n";
+    for (const auto& [reason, count] : ScoringStats::reasons) {
+        std::cout << "  " << std::setw(6) << count << "x  " << reason << "\n";
+    }
+    if (ScoringStats::n_reasons_elided > 0) {
+        std::cout << "  (" << ScoringStats::n_reasons_elided
+                  << " further failure(s) with other messages not listed)\n";
+    }
+}
+
 void print_timing_report() {
     auto print_row = [](const char* name, std::size_t calls, double total_s,
                         std::size_t cache_hits, std::size_t timeouts = 0) {
@@ -478,6 +497,7 @@ int main(int argc, const char* const argv[]) {
         RandomSource tlsf_random_source = init_random_source(argc, argv);
         const int tlsf_result =
             tlsf::run_repair(*input_path, *output_dir, cfg, tlsf_random_source);
+        print_scoring_report();
         print_timing_report();
         if (cfg.report_cpu_timing) {
             const double wall_s =
@@ -531,6 +551,7 @@ int main(int argc, const char* const argv[]) {
         }
         std::cout << ", written to " << *output_dir << "/\n";
         print_filter_report(filter_stats);
+        print_scoring_report();
         print_timing_report();
         if (cfg.report_cpu_timing) {
             const double wall_s =

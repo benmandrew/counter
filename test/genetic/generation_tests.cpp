@@ -1,5 +1,6 @@
 #include <algorithm>
 #include <set>
+#include <stdexcept>
 #include <string>
 #include <utility>
 #include <vector>
@@ -83,6 +84,51 @@ void test_score_population_equal_weights_give_average() {
     const auto scored = score_population(Config{}, pop, fns);
     expect(scored[0].fitness == 0.5,
            "score_population: equal weights should give arithmetic average");
+}
+
+void test_score_population_drops_failing_individual() {
+    const std::vector<Specification> pop = {
+        make_spec("p", "q"), make_spec("boom", "q"), make_spec("r", "s")};
+    // Mimics an external tool failing on one evolved formula: the individual
+    // is dropped, the rest of the generation is scored as normal.
+    const AggregateWeightedFitnessFunction fns =
+        AggregateWeightedFitnessFunction({{[](const Specification& spec) {
+                                               if (first_condition(spec) ==
+                                                   "boom") {
+                                                   throw std::runtime_error(
+                                                       "tool exited with code "
+                                                       "2");
+                                               }
+                                               return 0.5;
+                                           },
+                                           1.0, ""}});
+    const auto scored = score_population(Config{}, pop, fns);
+    expect(scored.size() == 2,
+           "score_population: should drop the individual that threw");
+    expect(first_condition(scored[0].specification) == "p" &&
+               first_condition(scored[1].specification) == "r",
+           "score_population: survivors should keep their relative order");
+}
+
+void test_score_population_circuit_breaker_trips() {
+    const std::vector<Specification> pop = {
+        make_spec("p", "q"), make_spec("r", "s"), make_spec("t", "u")};
+    // Every individual fails, as it would with a missing or broken tool. That
+    // must abort rather than quietly evolving an empty population.
+    const AggregateWeightedFitnessFunction fns =
+        AggregateWeightedFitnessFunction({{[](const Specification&) -> double {
+                                               throw std::runtime_error(
+                                                   "tool not found");
+                                           },
+                                           1.0, ""}});
+    bool threw = false;
+    try {
+        score_population(Config{}, pop, fns);
+    } catch (const std::runtime_error&) {
+        threw = true;
+    }
+    expect(threw,
+           "score_population: should abort when the whole generation fails");
 }
 
 // --- make_predicate_filter / filter_population ---
@@ -426,6 +472,8 @@ void run_generation_tests() {
     test_score_population_single_function();
     test_score_population_weighted_aggregation();
     test_score_population_equal_weights_give_average();
+    test_score_population_drops_failing_individual();
+    test_score_population_circuit_breaker_trips();
     test_make_predicate_filter_keeps_matching();
     test_filter_population_empty_filter_list_keeps_all();
     test_filter_population_removes_failing();

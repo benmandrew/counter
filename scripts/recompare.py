@@ -67,7 +67,7 @@ def main() -> None:
                              "per-machine copy, e.g. results-av2")
     parser.add_argument("--results", type=Path, default=None, metavar="PATH",
                         help="results CSV to rewrite (default: <base>/results.csv; "
-                             "use e.g. experiments/results-quick.csv)")
+                             "point at an archived or per-machine copy to rewrite that)")
     parser.add_argument("--all", action="store_true",
                         help="recompute every row with repairs, not just "
                              "best_relation=unknown")

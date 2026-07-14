@@ -8,13 +8,12 @@ merged by its natural key ``(sweep, level_name, spec, seed)``, keeping exactly
 one row per key, so re-running never duplicates rows.
 
 ``--profile`` selects which CSV to merge, and must match the profile the runs
-were executed under: ``run_experiments.py --profile quick`` writes
-``results-quick.csv``, so merging those results needs ``--profile quick`` too.
+were executed under: each profile writes its own CSV, so merging a profile's
+results needs the same ``--profile`` the runs used.
 
 Configure the remote machines in REMOTES below, then:
 
     python scripts/merge_experiments.py                  # pull from all REMOTES (full)
-    python scripts/merge_experiments.py --profile quick  # merge results-quick.csv
     python scripts/merge_experiments.py av2 av3          # only named remotes
     python scripts/merge_experiments.py --dry-run        # show rsync plan, no writes
     python scripts/merge_experiments.py /path/to/copy    # merge an already-rsynced dir
@@ -49,8 +48,6 @@ RESULTS_DIR = REPO_ROOT / "experiments" / "results"
 # Adding a profile there means adding it here too.
 PROFILE_CSVS: dict[str, str] = {
     "full": "results.csv",
-    "quick": "results-quick.csv",
-    "smoke": "results-smoke.csv",
 }
 
 # Natural key of a results.csv row: one run per (sweep, level_name, spec, seed).

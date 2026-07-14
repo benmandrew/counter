@@ -10,6 +10,8 @@
 #include <cstddef>
 #include <functional>
 #include <iterator>
+#include <map>
+#include <stdexcept>
 #include <string>
 #include <type_traits>
 #include <utility>
@@ -99,14 +101,67 @@ FilterFunction make_predicate_filter(
 /// Scores each specification using a weighted average of all fitness functions:
 ///   fitness = sum(fn_i(spec) * w_i) / sum(w_i)
 ///
-/// @param cfg               Algorithm configuration (parallel thread count)
+/// An individual whose fitness scoring throws is dropped from the returned
+/// population rather than aborting the run (see
+/// Config::max_scoring_failure_rate). Every drop is tallied here so it is
+/// reported at the end of a run: a silent drop must never be mistaken for a
+/// clean sweep.
+struct ScoringStats {
+    // Distinct error messages are capped: a message names the offending
+    // formula, so an uncapped tally would grow with the search.
+    static constexpr std::size_t k_max_distinct_reasons = 8;
+
+    inline static std::size_t n_dropped = 0;
+    inline static std::size_t n_reasons_elided = 0;
+    inline static std::map<std::string, std::size_t> reasons;
+
+    static void record(const std::string& reason) {
+        n_dropped++;
+        const auto found = reasons.find(reason);
+        if (found != reasons.end()) {
+            found->second++;
+        } else if (reasons.size() < k_max_distinct_reasons) {
+            reasons.emplace(reason, 1);
+        } else {
+            n_reasons_elided++;
+        }
+    }
+};
+
+namespace generation_detail {
+
+/// Outcome of one scoring task: the objectives and their weighted scalar, or
+/// the message from the fitness function that threw. Failure is carried back
+/// as a value rather than left in the future, so a task that fails on one
+/// formula cannot unwind the whole scoring pass.
+struct ScoreOutcome {
+    std::pair<std::vector<double>, double> result;
+    std::string error;
+};
+
+}  // namespace generation_detail
+
+/// Scores each specification using a weighted average of all fitness functions:
+///   fitness = sum(fn_i(spec) * w_i) / sum(w_i)
+///
+/// An individual whose scoring throws is dropped: the returned population is
+/// shorter than @p population, in the same relative order. Above
+/// Config::max_scoring_failure_rate of the population the failure is taken to
+/// be systematic (a missing or broken external tool) rather than specific to
+/// one formula, and the run aborts instead of evolving noise.
+///
+/// @param cfg               Algorithm configuration (parallel thread count,
+///                          max_scoring_failure_rate)
 /// @param population        The population to score
 /// @param fitness_function  Non-empty set of weighted fitness functions
 /// @param on_progress       Optional callback invoked after each individual is
 ///                          scored; receives (done, total) counts
-/// @return                  Population paired with aggregated fitness scores
+/// @return                  Successfully scored population paired with their
+///                          aggregated fitness scores
 /// @throws std::invalid_argument if fitness_function is empty or total weight
 ///                               is not positive
+/// @throws std::runtime_error if more than max_scoring_failure_rate of the
+///                            population failed to score
 template <typename Spec, typename Fitness>
 std::vector<Scored<Spec>> score_population(
     const Config& cfg, const std::vector<Spec>& population,
@@ -115,25 +170,75 @@ std::vector<Scored<Spec>> score_population(
     assert(!fitness_function.empty());
     const std::size_t max_in_flight = cfg.parallel > 0 ? cfg.parallel * 4 : 1;
     std::vector<Scored<Spec>> scored(population.size());
+    std::vector<bool> succeeded(population.size(), false);
+    std::vector<std::string> errors;
     std::size_t done = 0;
     run_bounded_async(
         population.size(), max_in_flight,
         [&fitness_function, &population](std::size_t idx) {
             return global_thread_pool().submit(
                 [&fitness_function, &spec = population[idx]] {
-                    return fitness_function.objectives_and_fitness(spec);
+                    generation_detail::ScoreOutcome outcome;
+                    try {
+                        outcome.result =
+                            fitness_function.objectives_and_fitness(spec);
+                    } catch (const std::exception& exc) {
+                        outcome.error = exc.what();
+                    }
+                    return outcome;
                 });
         },
-        [&scored, &population, &on_progress, &done, total = population.size()](
-            std::size_t idx, std::pair<std::vector<double>, double> result) {
-            scored[idx].specification = population[idx];
-            scored[idx].objectives = std::move(result.first);
-            scored[idx].fitness = result.second;
+        [&scored, &succeeded, &errors, &population, &on_progress, &done,
+         total = population.size()](std::size_t idx,
+                                    generation_detail::ScoreOutcome outcome) {
+            if (outcome.error.empty()) {
+                scored[idx].specification = population[idx];
+                scored[idx].objectives = std::move(outcome.result.first);
+                scored[idx].fitness = outcome.result.second;
+                succeeded[idx] = true;
+            } else {
+                errors.push_back(std::move(outcome.error));
+            }
             if (on_progress) {
                 on_progress(++done, total);
             }
         });
-    return scored;
+
+    // A single failure is tolerated whatever the population size, so a small
+    // population is not held to a stricter standard than a large one -- but
+    // never the whole population, since evolution cannot continue from nothing.
+    const std::size_t tolerated =
+        population.empty()
+            ? 0
+            : std::min(population.size() - 1,
+                       std::max<std::size_t>(
+                           1, static_cast<std::size_t>(
+                                  cfg.max_scoring_failure_rate *
+                                  static_cast<double>(population.size()))));
+    if (errors.size() > tolerated) {
+        throw std::runtime_error(
+            "scoring failed for " + std::to_string(errors.size()) + " of " +
+            std::to_string(population.size()) + " individuals (tolerating " +
+            std::to_string(tolerated) +
+            "); the fitness tooling is broken rather than the formulae. First "
+            "error: " +
+            errors.front());
+    }
+    for (const std::string& error : errors) {
+        ScoringStats::record(error);
+    }
+
+    // Compacting by index keeps the surviving order independent of the order
+    // the workers happened to finish in, so a fixed RNG seed stays
+    // reproducible.
+    std::vector<Scored<Spec>> survivors;
+    survivors.reserve(population.size() - errors.size());
+    for (std::size_t idx = 0; idx < scored.size(); ++idx) {
+        if (succeeded[idx]) {
+            survivors.push_back(std::move(scored[idx]));
+        }
+    }
+    return survivors;
 }
 
 /// FRETISH overload of score_population. Provided so callers can pass a

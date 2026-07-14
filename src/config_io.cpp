@@ -217,6 +217,10 @@ void apply_runtime(const toml::table& tbl, Config& cfg) {
     if (auto val = tbl["report_cpu_timing"].value<bool>()) {
         cfg.report_cpu_timing = *val;
     }
+    if (auto val = tbl["max_scoring_failure_rate"].value<double>()) {
+        require_probability(*val, "runtime.max_scoring_failure_rate");
+        cfg.max_scoring_failure_rate = *val;
+    }
 }
 
 Config apply_toml(const toml::table& tbl) {

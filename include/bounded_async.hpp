@@ -27,7 +27,25 @@ void run_bounded_async(std::size_t n_items, std::size_t max_in_flight,
                        Spawn spawn, OnComplete on_complete) {
     using Future = decltype(spawn(std::size_t{0}));
     using T = decltype(std::declval<Future&>().get());
-    std::deque<std::pair<std::size_t, Future>> in_flight;
+    using InFlight = std::deque<std::pair<std::size_t, Future>>;
+    InFlight in_flight;
+
+    // Spawned tasks capture references to caller-owned data, and these futures
+    // are promise-backed, so unlike std::async's their destructor does not
+    // wait. An exception escaping this function (a task rethrown by get()
+    // below) would otherwise unwind past that data and free it while the
+    // remaining workers still read it. Waiting for every outstanding task
+    // before propagating keeps each worker within the lifetime it references.
+    struct DrainGuard {
+        InFlight& tasks;
+        ~DrainGuard() {
+            for (auto& task : tasks) {
+                if (task.second.valid()) {
+                    task.second.wait();
+                }
+            }
+        }
+    } drain_guard{in_flight};
 
     auto collect_one_ready = [&] {
         for (;;) {

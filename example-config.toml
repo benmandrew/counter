@@ -71,3 +71,8 @@ bloat           = 1
 [runtime]
 black_timeout_ms = 1000  # timeout per black SAT query in milliseconds
 # parallel         = 8     # thread pool size (omit to use hardware concurrency)
+# An individual whose fitness scoring throws is dropped from its generation
+# rather than aborting the run. Above this fraction of a generation the tooling
+# is assumed broken rather than the formula, and the run aborts. A single
+# failure per generation is always tolerated, whatever the population size.
+# max_scoring_failure_rate = 0.05

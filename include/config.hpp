@@ -69,4 +69,12 @@ struct Config {
     // temporal skeleton of existing formulae is never altered.
     double tlsf_p_temporal = 0.2;
     std::size_t parallel = std::thread::hardware_concurrency();
+    // A fitness function that throws (in practice an external tool failing on
+    // one evolved formula) costs that individual rather than the whole run:
+    // the search is stochastic, so one candidate lost out of a population is
+    // noise, while aborting at generation 23 of 40 loses everything. Above
+    // this fraction of a generation the tooling is broken rather than the
+    // formula, and the run aborts instead of evolving noise into the output.
+    // A single failure is always tolerated, whatever the population size.
+    double max_scoring_failure_rate = 0.05;
 };

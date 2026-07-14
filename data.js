@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1784047951051,
+  "lastUpdate": 1784048198722,
   "repoUrl": "https://github.com/benmandrew/counter",
   "entries": {
     "counter benchmarks": [
@@ -2736,6 +2736,78 @@ window.BENCHMARK_DATA = {
             "value": 3391.294062483441,
             "unit": "ns/iter",
             "extra": "iterations: 206871\ncpu: 3391.072682976348 ns\nthreads: 1"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "benmandrew@gmail.com",
+            "name": "benmandrew",
+            "username": "benmandrew"
+          },
+          "committer": {
+            "email": "benmandrew@gmail.com",
+            "name": "benmandrew",
+            "username": "benmandrew"
+          },
+          "distinct": true,
+          "id": "b40ae6631ce847ecc530d658b6dcaa21668c8f58",
+          "message": "ci: stop runner noise failing the benchmark job\n\nThe benchmark job failed on every PR that tripped the 150% threshold, and not\nfor the reason it appeared to. github-action-benchmark posts its alert as a\npull request review, but the job granted only contents: write, so the POST to\n/pulls/N/reviews came back 403 and the action threw. A docs-only commit on\nPR #21 failed identically, which is what gave it away.\n\nThe alert itself was noise. That branch changed no compiled code — four files,\nall Python, Markdown and notebook JSON — yet every benchmark came out 1.5-2x\nslower than the baseline: 543.5ns against 274.5ns on small-formula syntactic\nsimilarity, 603.9ns against 292.9ns on the implication check, 3388.3ns against\n1784.2ns on mutation. A uniform ~1.9x across eight unrelated benchmarks, from\na byte-identical binary, is what comparing absolute ns/iter across runner\ninstances looks like. It is not a regression.\n\nGranting pull-requests: write lets the comment post, so the 403 goes away.\nfail-on-alert is now false, so host contention no longer fails unrelated\nbuilds. The alert still surfaces as a comment, which is where that signal\nbelongs.",
+          "timestamp": "2026-07-14T17:53:17+01:00",
+          "tree_id": "18bfed86ff44606b6d0ee7477ba4aec349dc8a54",
+          "url": "https://github.com/benmandrew/counter/commit/b40ae6631ce847ecc530d658b6dcaa21668c8f58"
+        },
+        "date": 1784048198324,
+        "tool": "googlecpp",
+        "benches": [
+          {
+            "name": "Syntactic similarity - small formulas (3 variables)",
+            "value": 554.744312291055,
+            "unit": "ns/iter",
+            "extra": "iterations: 1254855\ncpu: 554.7080945607262 ns\nthreads: 1"
+          },
+          {
+            "name": "Syntactic similarity - large formulas (11 variables, O(n*m) shared_subformulae)",
+            "value": 2196.083968963494,
+            "unit": "ns/iter",
+            "extra": "iterations: 319237\ncpu: 2195.788079076047 ns\nthreads: 1"
+          },
+          {
+            "name": "Spec implication check - warm black cache",
+            "value": 561.0428202574938,
+            "unit": "ns/iter",
+            "extra": "iterations: 1238199\ncpu: 561.0372791449516 ns\nthreads: 1"
+          },
+          {
+            "name": "Trace model counting - matrix exponentiation/steps:5",
+            "value": 167.86195660234242,
+            "unit": "ns/iter",
+            "extra": "iterations: 4193913\ncpu: 167.84514080287306 ns\nthreads: 1"
+          },
+          {
+            "name": "Trace model counting - matrix exponentiation/steps:10",
+            "value": 191.4557401624594,
+            "unit": "ns/iter",
+            "extra": "iterations: 3710226\ncpu: 191.45212421022316 ns\nthreads: 1"
+          },
+          {
+            "name": "Trace model counting - matrix exponentiation/steps:20",
+            "value": 212.49684770127587,
+            "unit": "ns/iter",
+            "extra": "iterations: 3315517\ncpu: 212.47410976930595 ns\nthreads: 1"
+          },
+          {
+            "name": "Trace model counting - matrix exponentiation/steps:50",
+            "value": 257.99417205388903,
+            "unit": "ns/iter",
+            "extra": "iterations: 2718625\ncpu: 257.97890771989506 ns\nthreads: 1"
+          },
+          {
+            "name": "Mutate specification - 3-guarantee takeoff spec",
+            "value": 3266.5594720648724,
+            "unit": "ns/iter",
+            "extra": "iterations: 214193\ncpu: 3265.2371786192844 ns\nthreads: 1"
           }
         ]
       }

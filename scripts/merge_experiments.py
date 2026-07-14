@@ -48,10 +48,16 @@ RESULTS_DIR = REPO_ROOT / "experiments" / "results"
 # Adding a profile there means adding it here too.
 PROFILE_CSVS: dict[str, str] = {
     "full": "results.csv",
+    "factorial": "results-factorial.csv",
 }
 
-# Natural key of a results.csv row: one run per (sweep, level_name, spec, seed).
-KEY_FIELDS = ("sweep", "level_name", "spec", "seed")
+# Natural key of a results row: one run per (sweep, level_name, selection,
+# spec, seed). `selection` is part of it because the factorial profile runs
+# every level under both selection schemes — without it the two collapse onto
+# one key and half the rows are silently dropped. Rows written before the
+# column existed are all nsga2 (see run_experiments.py's LEGACY_SELECTION).
+KEY_FIELDS = ("sweep", "level_name", "selection", "spec", "seed")
+LEGACY_SELECTION = "nsga2"
 
 
 def resolve_source(name: str) -> tuple[str, str]:
@@ -133,7 +139,11 @@ def read_rows(path: Path) -> tuple[list[str], list[dict]]:
 
 
 def key_of(row: dict) -> tuple:
-    return tuple(row.get(f, "") for f in KEY_FIELDS)
+    # A CSV predating the selection column carries only nsga2 runs, so an
+    # absent value keys as nsga2 rather than "" — otherwise merging an old and
+    # a new copy of the same run would produce two rows instead of one.
+    return tuple(row.get(f) or (LEGACY_SELECTION if f == "selection" else "")
+                 for f in KEY_FIELDS)
 
 
 def merge_csv(pulled: list[Path], results_csv: Path) -> None:

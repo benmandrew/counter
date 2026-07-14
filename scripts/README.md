@@ -43,23 +43,45 @@ Dependencies installed:
 python scripts/gen_configs.py
 ```
 
-Writes one TOML file per (sweep, level) to `experiments/configs/`. Safe to
-re-run — existing files are overwritten, and regenerating reproduces them
-byte-for-byte.
+Writes one TOML file per (scheme, sweep, level) to
+`experiments/configs/<scheme>/`. Safe to re-run — existing files are
+overwritten, and regenerating reproduces them byte-for-byte.
 
-Every generated config pins `selection_scheme = "nsga2"`. That is a deliberate
-departure from `config.hpp`, which defaults to `weighted`: the sweeps are run
-under NSGA-II, and a config omitting the key hands the runs back to weighted
-selection without saying so. Check with `grep -c nsga2 experiments/configs/*.toml`
-if a run's results look unexpectedly poor.
+The whole grid is generated once per selection scheme, so `selection_scheme` is
+a factor of the design rather than a constant. The scheme lives in the
+directory because `run_experiments.py` parses (sweep, level) out of the
+filename and reads the scheme back off the parent directory.
 
-Sweeps generated:
+Every generated config pins `selection_scheme` explicitly. That matters:
+`config.hpp` defaults to `weighted`, so a config omitting the key hands the run
+to weighted selection without saying so. Check with
+`grep -rc nsga2 experiments/configs/nsga2/` if a run's results look unexpectedly
+poor.
+
+Sweeps generated, each holding every other parameter at its default:
 
 | Sweep | Parameter varied | Levels |
 |---|---|---|
-| A | Generations | 5, 10, 20, 40 — `population_size=200` |
-| B | Population size | 50, 100, 200, 500, 1000 — `generations=10` |
+| A | Generations | 5, 10, 15, 20, 30, 40, 60, 80 — `population_size=200` |
+| B | Population size | 50, 75, 100, 150, 200, 300, 500, 750, 1000, 1500 — `generations=10` |
 | C | Fitness weight presets | default, syntactic-heavy, semantic-heavy, status-only, no-halstead |
+| D | `p_trigger` | 0.0, 0.1, 0.25, 0.5, 0.75, 0.9, 1.0 |
+| E | `p_response` | 0.0, 0.1, 0.25, 0.5, 0.75, 0.9, 1.0 |
+| F | `p_timing` | 0.0, 0.05, 0.15, 0.3, 0.5, 0.75, 1.0 |
+| G | `default_bound` | 5, 10, 20, 40, 80, 160 |
+| H | `crossover_rate` | 0.0, 0.1, 0.25, 0.5, 0.75, 1.0 |
+| I | `mutation_rate` | 0.1, 0.25, 0.5, 0.75, 1.0 |
+| J | `run_weakening` | on, off |
+
+63 levels per scheme, 126 configs. Because each sweep holds the others at their
+defaults, exactly one level of each is byte-identical to the `A/gen10` baseline
+— the aliasing below collapses those nine onto one run per scheme.
+
+Two of these are worth a note. `G` is nearly free: the bound enters through the
+transfer matrix rather than a SAT call, and bound 160 measures within noise of
+bound 5, but it moves the semantic similarity score and so changes which
+repairs win. `H`'s `cross0.0` level tests whether crossover contributes at all
+— the default of 0.1 leaves the search almost entirely mutation-driven.
 
 ## 4. Run the experiments
 
@@ -72,30 +94,40 @@ Runs the selected combinations of (sweep, level, spec, seed) and appends
 results to the profile's results CSV. Runs are skipped automatically if they
 already appear in the CSV, so the script is safe to interrupt and resume.
 
-All four specs run — `takeoff`, `fsm`, `fsm-timing`, and `fsm-combined` — on
-seeds 0–29.
+All four specs run in every profile — `takeoff`, `fsm`, `fsm-timing`, and
+`fsm-combined`.
 
 ### Profiles
 
-A profile names one (sweeps, levels, specs, seeds) selection and the CSV it
-writes. `full` is the only one, and the default:
+A profile names one (schemes, sweeps, levels, specs, seeds) selection and the
+CSV it writes:
 
-| Profile | Sweeps / levels | Specs | Seeds | Results CSV | Wall-clock at `--jobs 4` |
+| Profile | Schemes | Sweeps / levels | Seeds | Results CSV | Wall-clock at `--jobs 4` |
 |---|---|---|---|---|---|
-| `full` | all levels of A, B, C | all 4 | 0–29 | `results.csv` | ~29 min (1440 runs) |
+| `full` (default) | nsga2 | the original 14 levels of A, B, C | 0–29 | `results.csv` | ~29 min (1440 runs) |
+| `factorial` | nsga2, weighted | every level of A–J | 0–99 | `results-factorial.csv` | ~14.6 h (43,200 runs) |
 
-The sweep is 3 sweeps totalling 14 levels × 4 specs × 30 seeds: 1680 rows from
-1440 executions, once the baseline aliasing below is accounted for. It finishes
-in roughly 29 minutes at `--jobs 4` on 32 cores. This README documented 70+
-hours until `ca46331`, and the difference is not a tuning win — `black` was
-timing out on the implication checks the genetic algorithm generates by the
-thousand, and now the ones SPOT folds to a boolean constant are decided without
-invoking `black` at all.
+`full` is pinned to the four generation and five population levels it has
+always had, so its `results.csv` stays one comparable dataset even though
+`gen_configs.py` now emits a finer grid around them. It is 1680 rows from 1440
+executions. This README documented 70+ hours for it until `ca46331`, and the
+difference is not a tuning win — `black` was timing out on the implication
+checks the genetic algorithm generates by the thousand, and now the ones SPOT
+folds to a boolean constant are decided without invoking `black` at all.
 
 Measured across two 32-core machines splitting the seeds, each running
 `python scripts/run_experiments.py --profile full --jobs 4`: 690 runs in 13.2
 minutes and 13.9 minutes. The table assumes `--jobs 4`; `full` defaults to
 `--jobs 1`, which serialises the same work into about 115 minutes.
+
+`factorial` is the wide one: 63 levels × 4 specs × 100 seeds × 2 schemes =
+50,400 rows from 43,200 executions, about 58 hours of serial compute. Split
+across av2 and av3 at `--jobs 4` that is roughly 7.3 hours each. Its point is
+that `selection_scheme` becomes a factor rather than a constant, so
+nsga2-vs-weighted is answerable at every level instead of only at the baseline
+— `results.csv` holds no weighted runs at all, so that comparison cannot be
+made from it. Seeds extend cheaply afterwards: `--seeds $(seq -s' ' 100 149)`
+against an existing `results-factorial.csv` runs only the new ones.
 
 Reduced `quick` and `smoke` profiles existed until that speedup made them
 pointless — they saved about 27 minutes between them, at the cost of dropping
@@ -119,13 +151,19 @@ runner caps each run's pool: it writes a derived config
 
 ### Baseline aliasing
 
-Three configs are byte-identical (generations 10, population 200, default
-weights): sweep A `gen10`, sweep B `pop200`, and sweep C `default`. The
-runner executes the canonical `A/gen10` run once per (spec, seed) and emits
-one CSV row per requested alias — the rows differ only in
-`sweep`/`level_name`/`level_value`. Identity is verified byte-for-byte before
-aliasing; if the files ever diverge the runner warns and runs them
-separately. `--dry-run` tags aliased rows with `(alias of A/gen10)`.
+Every sweep holds the other parameters at their defaults, so each sweep's
+default level is byte-identical to the `A/gen10` baseline (generations 10,
+population 200, default weights): `B/pop200`, `C/default`, `D/ptrig0.5`,
+`E/presp0.5`, `F/ptim0.15`, `G/bound20`, `H/cross0.1`, `I/mut1.0` and
+`J/weaken-on`. The runner executes the canonical `A/gen10` run once per
+(scheme, spec, seed) and emits one CSV row per requested alias — the rows
+differ only in `sweep`/`level_name`/`level_value`. Identity is verified
+byte-for-byte before aliasing; if the files ever diverge the runner warns and
+runs them separately. `--dry-run` tags aliased rows with `(alias of A/gen10)`.
+
+Aliasing never crosses schemes: nsga2's `B/pop200` aliases onto nsga2's
+`A/gen10`, never onto weighted's. The byte-identity check enforces that on its
+own, since the two configs differ on `selection_scheme`.
 
 ### The `timed_out` column
 
@@ -210,17 +248,24 @@ python scripts/merge_experiments.py /path/to/counter
 ```
 
 **`--profile` must match the profile the runs used.** Each profile writes its
-own CSV — `full` → `results.csv` — and the flag defaults to `full`. When no
-source carries a CSV for the chosen profile, the merge stops and names the
-mismatch rather than writing anything.
+own CSV — `full` → `results.csv`, `factorial` → `results-factorial.csv` — and
+the flag defaults to `full`. When no source carries a CSV for the chosen
+profile, the merge stops and names the mismatch rather than writing anything.
 
 The script rsyncs each remote's `experiments/results/` into the local one, then
-merges the CSVs on the natural key `(sweep, level_name, spec, seed)`, keeping one
-row per key. Local rows win, so a machine's own results are never overwritten by
-a remote copy of the same run. Output is sorted by key, which makes the file
-byte-stable and the whole operation idempotent — re-running it never duplicates
-rows. Per-run directories encode their seed (`sweep_A_gen10_fsm_seed17`), so they
-never collide between machines.
+merges the CSVs on the natural key `(sweep, level_name, selection, spec, seed)`,
+keeping one row per key. Local rows win, so a machine's own results are never
+overwritten by a remote copy of the same run. Output is sorted by key, which
+makes the file byte-stable and the whole operation idempotent — re-running it
+never duplicates rows. Per-run directories encode their scheme and seed
+(`sweep_A_gen10_nsga2_fsm_seed17`), so they never collide between machines or
+between schemes.
+
+`selection` is part of the key because `factorial` runs every level under both
+schemes; without it the two collapse onto one key and half the rows are dropped
+in silence. Rows written before the column existed are all nsga2 — every config
+in use pinned it — so both scripts read an absent value as `nsga2` rather than
+empty, which keeps resume and merge working against the older `results.csv`.
 
 Sources are reached over ssh. An entry in `~/.ssh/config` must match the
 hostname as written in `REMOTES` — a bare `Host av3` block does not apply to

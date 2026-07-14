@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1783962067195,
+  "lastUpdate": 1784039283855,
   "repoUrl": "https://github.com/benmandrew/counter",
   "entries": {
     "counter benchmarks": [
@@ -2448,6 +2448,78 @@ window.BENCHMARK_DATA = {
             "value": 3317.482083838596,
             "unit": "ns/iter",
             "extra": "iterations: 210285\ncpu: 3317.2958223363544 ns\nthreads: 1"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "benmandrew@gmail.com",
+            "name": "benmandrew",
+            "username": "benmandrew"
+          },
+          "committer": {
+            "email": "benmandrew@gmail.com",
+            "name": "benmandrew",
+            "username": "benmandrew"
+          },
+          "distinct": true,
+          "id": "d9d361228084f0565bde1af8f983c284fa325bac",
+          "message": "fix: make the fsm-family example fixes realisable\n\nEvery hand-written ideal fix under examples/fsm*/fixes/ was itself\nunrealisable, so implies_ideal could never reach 1 on the fsm family: a\nrealisable repair that implies an unrealisable ideal would witness the\nideal's realisability, a contradiction. The 0% implies-ideal rates in\nboth parameter sweeps were a benchmark defect, not a search failure.\n\nTwo defects, two changes. A *trigger* condition with Always timing\nlatches G(response) forever, so making two conditions disjoint at a\nsingle timepoint still lets the environment raise one trigger and later\nthe other, forcing contradictory outputs for good. I moved each\ncondition into the response as an implication under a trivial trigger,\nso the obligation is checked pointwise. Separately, fsm-combined stated\n!(state_nominal & state_maneuver) as a guarantee over two input atoms\nthe controller cannot influence; the environment violates it at will,\nwhich doomed every variant. That invariant is now an assumption — the\nonly encoding that gives the plant's state-enum discipline any force in\na realisability setting. The output-atom mutual exclusion stays a\nguarantee, since the controller owns those atoms.\n\nVerified with build-release/realize: all 3 input specs remain\nUNREALIZABLE and all 14 fixes now report REALIZABLE.",
+          "timestamp": "2026-07-14T15:18:10+01:00",
+          "tree_id": "1f6c3e33a0dee921c219a882477bb984f230bb82",
+          "url": "https://github.com/benmandrew/counter/commit/d9d361228084f0565bde1af8f983c284fa325bac"
+        },
+        "date": 1784039282889,
+        "tool": "googlecpp",
+        "benches": [
+          {
+            "name": "Syntactic similarity - small formulas (3 variables)",
+            "value": 487.3054633142772,
+            "unit": "ns/iter",
+            "extra": "iterations: 1431933\ncpu: 487.250888833486 ns\nthreads: 1"
+          },
+          {
+            "name": "Syntactic similarity - large formulas (11 variables, O(n*m) shared_subformulae)",
+            "value": 2041.0737775936802,
+            "unit": "ns/iter",
+            "extra": "iterations: 342787\ncpu: 2040.7278776616379 ns\nthreads: 1"
+          },
+          {
+            "name": "Spec implication check - warm black cache",
+            "value": 792.4107706977513,
+            "unit": "ns/iter",
+            "extra": "iterations: 877789\ncpu: 792.2710036238776 ns\nthreads: 1"
+          },
+          {
+            "name": "Trace model counting - matrix exponentiation/steps:5",
+            "value": 153.75522994844553,
+            "unit": "ns/iter",
+            "extra": "iterations: 4595791\ncpu: 153.68229168819903 ns\nthreads: 1"
+          },
+          {
+            "name": "Trace model counting - matrix exponentiation/steps:10",
+            "value": 173.36691694025112,
+            "unit": "ns/iter",
+            "extra": "iterations: 3953407\ncpu: 173.3287554253837 ns\nthreads: 1"
+          },
+          {
+            "name": "Trace model counting - matrix exponentiation/steps:20",
+            "value": 197.97906901488426,
+            "unit": "ns/iter",
+            "extra": "iterations: 3563043\ncpu: 197.93363453654658 ns\nthreads: 1"
+          },
+          {
+            "name": "Trace model counting - matrix exponentiation/steps:50",
+            "value": 234.8266003674766,
+            "unit": "ns/iter",
+            "extra": "iterations: 2977613\ncpu: 234.78979639059867 ns\nthreads: 1"
+          },
+          {
+            "name": "Mutate specification - 3-guarantee takeoff spec",
+            "value": 3145.58126125962,
+            "unit": "ns/iter",
+            "extra": "iterations: 221477\ncpu: 3145.1430125927277 ns\nthreads: 1"
           }
         ]
       }

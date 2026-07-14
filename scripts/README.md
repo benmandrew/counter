@@ -165,6 +165,18 @@ Aliasing never crosses schemes: nsga2's `B/pop200` aliases onto nsga2's
 `A/gen10`, never onto weighted's. The byte-identity check enforces that on its
 own, since the two configs differ on `selection_scheme`.
 
+### The `n_dropped` column
+
+`counter` drops an individual whose fitness scoring throws — in practice an
+external tool failing on one evolved formula — rather than aborting the whole
+run, up to `max_scoring_failure_rate` (5%) of a generation. It prints a scoring
+report naming the count and reasons, and stays silent when nothing was dropped.
+
+The runner parses that count into `n_dropped`. A run with drops evolved a
+thinner population than it asked for, so without the column it is
+indistinguishable from a clean one — which is the mistake the report exists to
+prevent. Filter on `n_dropped == 0` for a strictly clean dataset.
+
 ### The `timed_out` column
 
 Each row records `timed_out` (0/1) so the analysis can distinguish

@@ -73,7 +73,7 @@ CSV_FIELDS = [
     "sweep", "level_name", "level_value", "selection", "spec", "seed",
     "found_repair", "n_repairs", "best_fitness",
     "best_relation", "implies_ideal", "n_implies", "wall_time_s",
-    "timed_out",
+    "timed_out", "n_dropped",
 ]
 
 # Rows written before `selection` existed are all NSGA-II: every config in use
@@ -99,6 +99,13 @@ SUMMARY_RE = re.compile(
 PER_REPAIR_RE = re.compile(
     r"^\S.*?\s+:\s+(equivalent|strictly stronger|strictly weaker|incomparable|timeout)"
 )
+# counter's scoring report (src/main.cpp print_scoring_report). Individuals
+# whose fitness scoring throws are dropped from their generation rather than
+# aborting the run, up to Config::max_scoring_failure_rate. The report is
+# silent when nothing was dropped, so an absent match means zero — but a run
+# that dropped individuals evolved a thinner population than it asked for, and
+# without this column that is indistinguishable from a clean run.
+DROPPED_RE = re.compile(r"^(\d+) individual\(s\) dropped", re.MULTILINE)
 
 
 # ── Profiles ─────────────────────────────────────────────────────────────────
@@ -237,6 +244,16 @@ def parse_repair_files(output_dir: Path) -> tuple[int, float]:
         except Exception:
             pass
     return len(files), best if best != float("-inf") else float("nan")
+
+
+def parse_dropped(log_path: Path) -> int:
+    """Individuals counter dropped after a fitness function threw (0 if none)."""
+    try:
+        text = log_path.read_text(errors="replace")
+    except OSError:
+        return 0
+    m = DROPPED_RE.search(text)
+    return int(m.group(1)) if m else 0
 
 
 def tail_line(log_path: Path) -> str:
@@ -401,6 +418,7 @@ def run_one(config_path: Path, sweep: str, level_name: str, spec_name: str,
         "best_fitness": "" if math.isnan(best_fitness) else round(best_fitness, 6),
         "wall_time_s": wall,
         "timed_out": int(timed_out),
+        "n_dropped": parse_dropped(log_path),
     }
 
     if n_repairs == 0 or timed_out:

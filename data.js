@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1784054834626,
+  "lastUpdate": 1784054999984,
   "repoUrl": "https://github.com/benmandrew/counter",
   "entries": {
     "counter benchmarks": [
@@ -3024,6 +3024,78 @@ window.BENCHMARK_DATA = {
             "value": 3380.00701925583,
             "unit": "ns/iter",
             "extra": "iterations: 207002\ncpu: 3379.814185370191 ns\nthreads: 1"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "benmandrew@gmail.com",
+            "name": "benmandrew",
+            "username": "benmandrew"
+          },
+          "committer": {
+            "email": "benmandrew@gmail.com",
+            "name": "benmandrew",
+            "username": "benmandrew"
+          },
+          "distinct": true,
+          "id": "52167cb91e1207ab409924272988e068a88ca1af",
+          "message": "feat: record dropped individuals in the results CSV\n\n193e3dd made counter drop an individual whose fitness scoring throws instead\nof aborting the run, and print a scoring report on the way out — its comment\nputs the reason plainly: a silent drop must never be mistaken for a clean\nsweep. The experiment CSV had no column for it, so at the dataset level the\ndrop was silent anyway. A run that lost 5% of every generation to a failing\nexternal tool produced a row indistinguishable from one that lost nothing.\n\nn_dropped parses the count out of the run log, mirroring timed_out. The report\nis silent when nothing was dropped, so an absent match is a genuine zero rather\nthan a parse failure. Filtering on n_dropped == 0 now gives a strictly clean\ndataset, and a non-zero column is the signal that the tooling, not the search,\nis what moved a result.\n\nLanding this before the factorial profile's 50,400 rows rather than after: the\ncolumn cannot be recovered from a CSV that never carried it, only from 43,200\nindividual run logs.",
+          "timestamp": "2026-07-14T19:46:16+01:00",
+          "tree_id": "f3273bb3d84977032525ef6738ee096e0b5a8b17",
+          "url": "https://github.com/benmandrew/counter/commit/52167cb91e1207ab409924272988e068a88ca1af"
+        },
+        "date": 1784054999339,
+        "tool": "googlecpp",
+        "benches": [
+          {
+            "name": "Syntactic similarity - small formulas (3 variables)",
+            "value": 561.255069079005,
+            "unit": "ns/iter",
+            "extra": "iterations: 1278536\ncpu: 561.1980390071145 ns\nthreads: 1"
+          },
+          {
+            "name": "Syntactic similarity - large formulas (11 variables, O(n*m) shared_subformulae)",
+            "value": 2190.579437734452,
+            "unit": "ns/iter",
+            "extra": "iterations: 320169\ncpu: 2190.502278484176 ns\nthreads: 1"
+          },
+          {
+            "name": "Spec implication check - warm black cache",
+            "value": 582.0906906318246,
+            "unit": "ns/iter",
+            "extra": "iterations: 1234681\ncpu: 581.9983599002496 ns\nthreads: 1"
+          },
+          {
+            "name": "Trace model counting - matrix exponentiation/steps:5",
+            "value": 167.87450475925652,
+            "unit": "ns/iter",
+            "extra": "iterations: 4165146\ncpu: 167.8669792127335 ns\nthreads: 1"
+          },
+          {
+            "name": "Trace model counting - matrix exponentiation/steps:10",
+            "value": 190.74187278549434,
+            "unit": "ns/iter",
+            "extra": "iterations: 3664755\ncpu: 190.7268848804353 ns\nthreads: 1"
+          },
+          {
+            "name": "Trace model counting - matrix exponentiation/steps:20",
+            "value": 213.02660161916285,
+            "unit": "ns/iter",
+            "extra": "iterations: 3282319\ncpu: 213.0106503968687 ns\nthreads: 1"
+          },
+          {
+            "name": "Trace model counting - matrix exponentiation/steps:50",
+            "value": 263.4771902041376,
+            "unit": "ns/iter",
+            "extra": "iterations: 2676109\ncpu: 263.44306491252775 ns\nthreads: 1"
+          },
+          {
+            "name": "Mutate specification - 3-guarantee takeoff spec",
+            "value": 3315.2205161571997,
+            "unit": "ns/iter",
+            "extra": "iterations: 210556\ncpu: 3314.991930887745 ns\nthreads: 1"
           }
         ]
       }

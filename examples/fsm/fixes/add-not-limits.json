@@ -2,15 +2,15 @@
   "assumptions": [],
   "guarantees": [
     {
-      "condition": "state_nominal & limits",
+      "condition": "true",
       "condition-type": "trigger",
-      "response": "STATE_FAULT",
+      "response": "(state_nominal & limits) -> STATE_FAULT",
       "timing": { "type": "Always" }
     },
     {
-      "condition": "state_nominal & !request & !limits",
+      "condition": "true",
       "condition-type": "trigger",
-      "response": "STATE_TRANSITION",
+      "response": "(state_nominal & !request & !limits) -> STATE_TRANSITION",
       "timing": { "type": "Always" }
     },
     {

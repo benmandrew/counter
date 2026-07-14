@@ -2,15 +2,15 @@
   "assumptions": [],
   "guarantees": [
     {
-      "condition": "state_maneuver & standby & good",
+      "condition": "true",
       "condition-type": "trigger",
-      "response": "STATE_STANDBY",
+      "response": "(state_maneuver & standby & good) -> STATE_STANDBY",
       "timing": { "type": "ForTicks", "ticks": 5 }
     },
     {
-      "condition": "state_maneuver & supported & good & !standby",
+      "condition": "true",
       "condition-type": "trigger",
-      "response": "STATE_TRANSITION",
+      "response": "(state_maneuver & supported & good & !standby) -> STATE_TRANSITION",
       "timing": { "type": "WithinTicks", "ticks": 5 }
     },
     {

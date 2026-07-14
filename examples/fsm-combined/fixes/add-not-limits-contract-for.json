@@ -1,41 +1,42 @@
 {
-  "assumptions": [],
-  "guarantees": [
-    {
-      "condition": "state_nominal & limits",
-      "condition-type": "trigger",
-      "response": "STATE_FAULT",
-      "timing": { "type": "Always" }
-    },
-    {
-      "condition": "state_nominal & !request & !limits",
-      "condition-type": "trigger",
-      "response": "STATE_TRANSITION",
-      "timing": { "type": "Always" }
-    },
-    {
-      "condition": "state_maneuver & standby & good",
-      "condition-type": "trigger",
-      "response": "STATE_STANDBY",
-      "timing": { "type": "ForTicks", "ticks": 4 }
-    },
-    {
-      "condition": "state_maneuver & supported & good",
-      "condition-type": "trigger",
-      "response": "STATE_TRANSITION",
-      "timing": { "type": "WithinTicks", "ticks": 5 }
-    },
+  "assumptions": [
     {
       "condition": "true",
       "condition-type": "continual",
       "response": "!(state_nominal & state_maneuver)",
       "timing": { "type": "Always" },
       "weakenable": false
+    }
+  ],
+  "guarantees": [
+    {
+      "condition": "true",
+      "condition-type": "trigger",
+      "response": "(state_nominal & limits) -> STATE_FAULT",
+      "timing": { "type": "Always" }
+    },
+    {
+      "condition": "true",
+      "condition-type": "trigger",
+      "response": "(state_nominal & !request & !limits) -> STATE_TRANSITION",
+      "timing": { "type": "Always" }
+    },
+    {
+      "condition": "true",
+      "condition-type": "trigger",
+      "response": "(state_maneuver & standby & good) -> STATE_STANDBY",
+      "timing": { "type": "ForTicks", "ticks": 4 }
+    },
+    {
+      "condition": "true",
+      "condition-type": "trigger",
+      "response": "(state_maneuver & supported & good) -> STATE_TRANSITION",
+      "timing": { "type": "WithinTicks", "ticks": 5 }
     },
     {
       "condition": "true",
       "condition-type": "continual",
-      "response": "!(STATE_FAULT & STATE_STANDBY & STATE_TRANSITION)",
+      "response": "!(STATE_FAULT & STATE_STANDBY) & !(STATE_STANDBY & STATE_TRANSITION) & !(STATE_FAULT & STATE_TRANSITION)",
       "timing": { "type": "Always" },
       "weakenable": false
     }

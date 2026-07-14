@@ -1,171 +1,100 @@
 # Counter
 
-Repairing unrealisable reactive specifications using a genetic algorithm. Inputs
-are either *FRETISH* requirements (as JSON) or basic *TLSF* — the Temporal Logic
-Synthesis Format used by the reactive-synthesis community.
+Counter repairs unrealisable reactive specifications using a genetic algorithm.
 
-## Build
+A reactive specification is *unrealisable* when no implementation can satisfy it
+against every environment — the specification is at fault, not the code. Tools
+like `ltlsynt` will say so, but not what to change. Counter searches for the
+repairs: edits to the specification that make it realisable while staying as
+close as possible to what was originally written.
 
-### With Nix (recommended)
+Inputs are either *FRETISH* requirements as JSON, or basic *TLSF* — the Temporal
+Logic Synthesis Format used by the reactive-synthesis community.
 
-Requires [Nix](https://nixos.org/download/) with flakes enabled.
+## Quickstart
 
-```sh
-nix develop                          # enter dev shell (first run fetches dependencies)
-cmake --workflow --preset debug      # configure + build + test
-cmake --build build                  # incremental build only
-```
-
-A `.envrc` (`use flake`) is committed, so to enter the dev shell automatically on `cd`, just install [direnv](https://direnv.net) and allow it:
+Build, then repair the bundled arbiter example ([building from
+source](docs/building.md) covers the non-Nix route):
 
 ```sh
-direnv allow
+nix develop
+cmake --workflow --preset release
+
+./build-release/realize examples/arbiter-gr1/spec.tlsf
+# examples/arbiter-gr1/spec.tlsf: UNREALIZABLE
+
+mkdir -p out
+./build-release/counter --input examples/arbiter-gr1/spec.tlsf --output-dir out --seed 42
 ```
 
-### Without Nix
+That writes 19 candidate repairs to `out/`, best first, each `repair_N.tlsf`
+paired with a `repair_N.fitness.json` holding its score. Expect roughly 10–30 s
+on 20 threads; the seed fixes the repairs, not the runtime, which swings with how
+the external solvers get scheduled.
 
-Requires CMake ≥ 3.25, [Ninja](https://ninja-build.org) (the presets' generator), a C++17 compiler, `libunwind`, and [Node.js](https://nodejs.org) (runs the vendored FRET formaliser CLI). All other dependencies are fetched automatically by CMake.
+The example is a two-client arbiter that must grant each client infinitely
+often, but nothing forces clients to keep requesting — so it cannot be
+implemented. The top repair adds the missing fairness assumptions, `G F r0` and
+`G F r1`, recovering the standard fix. Lower-ranked repairs instead weaken the
+guarantees, which also works but is rarely what you want; reading down the
+fitness order is the intended way to use the output. The [TLSF
+guide](https://benmandrew.com/docs/counter/tlsf.html) walks through this run in
+full.
 
-```sh
-cmake --workflow --preset debug      # configure + build + test
-cmake --build build                  # incremental build only
-```
-
-## Usage
+## Commands
 
 ```
 counter --input <spec.json|spec.tlsf> --output-dir <dir> [--config <file.toml>] [--format <fretish|tlsf>] [--seed <n>]
 compare --repairs <dir> --ideals <dir>
 realize <spec.json|spec.tlsf> [...]
-ltl <spec.json|spec.tlsf> [...]
+ltl     <spec.json|spec.tlsf> [...]
 ```
 
-All four binaries accept both input formats. The format is inferred from the
-file extension — a `.tlsf` file is read as TLSF, anything else as FRETISH — or
-forced with `counter --format`. Run any binary with `--help` for full option
-descriptions.
+| Command | Purpose |
+|---|---|
+| `counter` | repair an unrealisable specification |
+| `realize` | report whether a specification is realisable |
+| `ltl` | print the LTL formulae a specification translates to |
+| `compare` | compare a directory of repairs against known-ideal ones |
+
+All four accept both input formats. The format is inferred from the file
+extension — `.tlsf` is read as TLSF, anything else as FRETISH — or forced with
+`counter --format`. Run any command with `--help` for full option descriptions.
 
 ## How it works
 
-Counter repairs an unrealisable specification by running a genetic algorithm
-over the space of candidate specifications. The description below is in terms of
-FRETISH requirements; TLSF inputs run through the same four stages, with the
-differences noted under [TLSF specifications](#tlsf-specifications):
+Counter evolves a population of candidate specifications over several
+generations, keeping those that are realisable and close to the original.
 
-1. **Seed** a population of `population_size` (default 200) specifications from
-   the input, each mutated slightly from the original.
-2. **Score** each candidate with a weighted fitness function combining:
-   - *Semantic similarity* — bounded model counting of satisfying LTL traces
-     (dominant component, weight 0.5).
-   - *Realizability status* — `ltlsynt` outcome mapped to {0, 0.1, 0.2, 0.5,
-     1.0} (weight 0.5).
-   - *Syntactic similarity* — shared sub-formula count normalised to [0, 1]
-     (weight 0.2).
-   - *Halstead complexity penalty* — penalises candidates larger than the
-     original (weight 0.1).
-3. **Evolve** for `generations` (default 10) rounds: selection (see
-   [Selection scheme](#selection-scheme)) → crossover → mutation →
-   per-generation filters (false-trigger removal, deduplication, optional
-   weakening).
-4. **Collect** realisable survivors, apply the implication filter to keep only
-   maximal repairs, and write each to `<output-dir>/` — as `repair_N.json` for
-   FRETISH, or `repair_N.tlsf` for TLSF.
+1. **Seed** a population of `population_size` (default 200) specifications, each
+   mutated slightly from the input.
+2. **Score** each candidate on four weighted components: semantic similarity
+   (bounded model counting of satisfying traces), realisability status,
+   syntactic similarity, and a Halstead size penalty.
+3. **Evolve** for `generations` (default 10) rounds of selection, crossover,
+   mutation, and filtering.
+4. **Collect** the realisable survivors, keep only the maximal ones under
+   implication, and write each to the output directory.
 
-Model counting uses [Ganak](https://github.com/meelgroup/ganak) on the
-transition matrices of SPOT-generated automata. Satisfiability and
-realizability queries use [black](https://www.black-sat.org) and
+Model counting uses [Ganak](https://github.com/meelgroup/ganak) over the
+transition matrices of SPOT-generated automata. Satisfiability and realisability
+queries use [black](https://www.black-sat.org) and
 [ltlsynt](https://spot.lre.epita.fr) respectively.
 
-See [`docs/architecture.rst`](docs/architecture.rst) for a full description of
-the key types and module layout.
+## Documentation
 
-### Selection scheme
+The full documentation is published at
+[benmandrew.com/docs/counter](https://benmandrew.com/docs/counter/).
 
-The four fitness components can be combined in two ways, chosen with
-`genetic.selection_scheme`:
-
-- **`weighted`** (default) collapses the components into the single
-  weighted-average score shown above and drives both parent and survivor
-  selection by that scalar (truncation selection with elitism). This finds the
-  one repair that best fits the configured weight trade-off.
-- **`nsga2`** treats the components as separate objectives and ranks candidates
-  by [NSGA-II](https://doi.org/10.1109/4235.996017): Pareto non-domination
-  first, then crowding distance to spread the population along the front. It
-  searches for the whole Pareto front of repairs — those not beaten on every
-  objective at once — rather than one weighted compromise, which is useful when
-  the right balance between, say, semantic similarity and size is not known in
-  advance. Under `nsga2` the `[fitness]` weights only decide which components
-  are active (weight > 0); they no longer bias selection. Survivor selection
-  pools each generation's parents with their offspring and keeps the best
-  (a (μ+λ) scheme), which is already elitist, so `elitism_rate = 0` is the
-  natural companion setting.
-
-Both schemes still emit the weighted-average scalar in each repair's fitness
-record, so outputs remain comparable across runs.
-
-### TLSF specifications
-
-Alongside FRETISH, counter repairs basic-TLSF specifications directly. A `.tlsf`
-input is auto-detected (or forced with `--format tlsf`), and the same genetic
-machinery evolves its six sections — `INITIALLY`, `PRESET`, `REQUIRE`, `ASSUME`,
-`ASSERT`, and `GUARANTEE` — rather than FRETISH requirements. Repairs are
-rendered back to TLSF as `repair_N.tlsf`, each paired with a
-`repair_N.fitness.json` score breakdown.
-
-```sh
-counter --input examples/arbiter-gr1/spec.tlsf --output-dir out
-```
-
-The bundled [`examples/arbiter-gr1`](examples/arbiter-gr1) is a two-client
-mutual-exclusion arbiter that is unrealisable without request fairness. The
-guarantees demand that each client is granted infinitely often (`G F g0`,
-`G F g1`) while never granted simultaneously, but nothing forces the environment
-to keep requesting — so the system cannot comply. Counter repairs it the way
-[`ideal.tlsf`](examples/arbiter-gr1/ideal.tlsf) does: by strengthening the
-environment with the fairness assumptions `G F r0` and `G F r1`. This
-environment-strengthening move is the same `--config`-tunable `p_add_assumption`
-mutation used in FRETISH mode.
-
-The fitness function mirrors the FRETISH one — semantic similarity (bounded
-model counting), realisability status, syntactic similarity, and a Halstead
-size penalty — scored over whole TLSF formulae. Because a repair is written as
-valid TLSF, it can be fed straight back into `realize`, `ltl`, or a synthesiser.
-
-### Configuration file
-
-Algorithm parameters (population size, fitness weights, mutation rates, etc.)
-can be tuned without recompiling by passing a TOML file to `--config`.  All
-keys are optional — absent keys keep their built-in defaults:
-
-```toml
-[genetic]
-generations     = 20   # double the default evolution rounds
-population_size = 500
-
-[runtime]
-parallel = 16              # override thread pool size
-report_cpu_timing = true   # print a CPU-attribution report at the end:
-                           # your code vs. the external CLI tools (black,
-                           # ltlsynt, ganak, ...), measured per-process via
-                           # getrusage/wait4. Defaults to false.
-```
-
-A fully-annotated template with every key and its default is provided in
-[`example-config.toml`](example-config.toml).
-
-## Dependencies
-
-When using the Nix dev shell (`nix develop`), all build-time dependencies are provided automatically. The following are fetched or built by CMake at configure time regardless of workflow:
-
-| Dependency | How obtained |
+| | |
 |---|---|
-| [Ganak](https://github.com/meelgroup/ganak) | Pre-built binary — [`cmake/ganak.cmake`](cmake/ganak.cmake) |
-| [Spot](https://spot.lre.epita.fr) | Built from source — [`cmake/spot.cmake`](cmake/spot.cmake) |
-| [Black](https://www.black-sat.org) | Pre-built `.deb` (Ubuntu 24.04 x86\_64) or built from source — [`cmake/black.cmake`](cmake/black.cmake) |
-| Eigen, nlohmann\_json, tomlplusplus, cpptrace | FetchContent (header-only) — [`cmake/dependencies.cmake`](cmake/dependencies.cmake) |
+| [Building from source](docs/building.md) | Nix and non-Nix builds, dependencies, presets, tests |
+| [Architecture](https://benmandrew.com/docs/counter/architecture.html) | algorithm flow, key types, module layout |
+| [Configuration](https://benmandrew.com/docs/counter/configuration.html) | tuning via TOML, fitness weights, selection schemes |
+| [TLSF specifications](https://benmandrew.com/docs/counter/tlsf.html) | TLSF mode and a worked repair |
+| [API reference](https://benmandrew.com/docs/counter/) | the `include/` headers, plus an internal reference covering `src/` |
+| [Experiment scripts](scripts/README.md) | parameter sweeps and result analysis |
 
-Without Nix, you need CMake ≥ 3.25, a C++17 compiler (gcc ≥ 7 or clang ≥ 5), `libunwind`, and [Node.js](https://nodejs.org) installed system-wide.
+## Licence
 
-> **Note on Node.js:** the FRET requirement-formaliser CLI is vendored as a plain script ([`vendor/fretCLI.main.js`](vendor/fretCLI.main.js), see [`vendor/README.md`](vendor/README.md)) and run with `node` looked up on `PATH` at run time (`runner/formaliser.hpp`) — it is not built or fetched by CMake, so `node` must be installed separately.
-
-> **Note on `libfmt`:** `black` requires `libfmt.so.9` at runtime, whether it's a system binary found on `PATH` or the prebuilt `.deb` that `cmake/black.cmake` downloads as a fallback — the `.deb` does not bundle it. The Nix dev shell provides this via the `fmt_9` package; outside Nix, install `libfmt-dev` (or equivalent) system-wide.
+See [LICENCE](LICENCE).

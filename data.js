@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1784048198722,
+  "lastUpdate": 1784052695908,
   "repoUrl": "https://github.com/benmandrew/counter",
   "entries": {
     "counter benchmarks": [
@@ -2808,6 +2808,78 @@ window.BENCHMARK_DATA = {
             "value": 3266.5594720648724,
             "unit": "ns/iter",
             "extra": "iterations: 214193\ncpu: 3265.2371786192844 ns\nthreads: 1"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "benmandrew@gmail.com",
+            "name": "benmandrew",
+            "username": "benmandrew"
+          },
+          "committer": {
+            "email": "benmandrew@gmail.com",
+            "name": "benmandrew",
+            "username": "benmandrew"
+          },
+          "distinct": true,
+          "id": "c0a64a94b59c72fe1a03f7998c5718bea221db95",
+          "message": "refactor: drop the quick and smoke experiment profiles\n\nThe reduced profiles traded coverage for wall-clock back when the full sweep\ncost 70+ hours. It now costs about 29 minutes at --jobs 4 on 32 cores,\nmeasured across two machines splitting seeds 0-29: 690 runs each, in 13.2 and\n13.9 minutes. Against that, quick finished in roughly 2.5 minutes and smoke in\nabout 1.\n\nThat saving was not free. Both profiles dropped fsm-combined on the grounds\nthat it had never produced a repair, and it now finds one in 328 of 418 runs,\nso the exclusion was discarding real data rather than dead weight. quick was\nalso the default, and it held sweep C back unless asked, so an out-of-the-box\nrun measured two sweeps of the three.\n\nfull is now the only profile and the default. The PROFILES machinery stays as\nit is — sweeps, levels, specs, seeds, timeout_caps and a per-profile CSV are\nstill how a profile is defined — because a wider one is next. Nothing writes\nresults-quick.csv or results-smoke.csv any more, and the copies on av2 and av3\nare deleted.",
+          "timestamp": "2026-07-14T19:03:07+01:00",
+          "tree_id": "6772a7d914b851eb5a538e5d7b096d4036f40640",
+          "url": "https://github.com/benmandrew/counter/commit/c0a64a94b59c72fe1a03f7998c5718bea221db95"
+        },
+        "date": 1784052695503,
+        "tool": "googlecpp",
+        "benches": [
+          {
+            "name": "Syntactic similarity - small formulas (3 variables)",
+            "value": 547.5642388511807,
+            "unit": "ns/iter",
+            "extra": "iterations: 1283678\ncpu: 547.5493036415675 ns\nthreads: 1"
+          },
+          {
+            "name": "Syntactic similarity - large formulas (11 variables, O(n*m) shared_subformulae)",
+            "value": 2234.7706659351547,
+            "unit": "ns/iter",
+            "extra": "iterations: 313499\ncpu: 2234.4723141062655 ns\nthreads: 1"
+          },
+          {
+            "name": "Spec implication check - warm black cache",
+            "value": 610.4991564796921,
+            "unit": "ns/iter",
+            "extra": "iterations: 1122676\ncpu: 610.4803407216331 ns\nthreads: 1"
+          },
+          {
+            "name": "Trace model counting - matrix exponentiation/steps:5",
+            "value": 161.11997214543936,
+            "unit": "ns/iter",
+            "extra": "iterations: 4354044\ncpu: 161.0973113730592 ns\nthreads: 1"
+          },
+          {
+            "name": "Trace model counting - matrix exponentiation/steps:10",
+            "value": 183.27236482889896,
+            "unit": "ns/iter",
+            "extra": "iterations: 3822285\ncpu: 183.26013523324383 ns\nthreads: 1"
+          },
+          {
+            "name": "Trace model counting - matrix exponentiation/steps:20",
+            "value": 205.92700482851865,
+            "unit": "ns/iter",
+            "extra": "iterations: 3403321\ncpu: 205.90489230959997 ns\nthreads: 1"
+          },
+          {
+            "name": "Trace model counting - matrix exponentiation/steps:50",
+            "value": 250.2094821860505,
+            "unit": "ns/iter",
+            "extra": "iterations: 2722136\ncpu: 250.18849719484996 ns\nthreads: 1"
+          },
+          {
+            "name": "Mutate specification - 3-guarantee takeoff spec",
+            "value": 3368.5166622478923,
+            "unit": "ns/iter",
+            "extra": "iterations: 207445\ncpu: 3368.1635373231447 ns\nthreads: 1"
           }
         ]
       }

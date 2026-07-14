@@ -176,25 +176,47 @@ python scripts/run_experiments.py --sweeps C     # machine 2
 
 ### Merging results
 
-Copy the remote machine's `experiments/results.csv` locally (e.g. as
-`machine2_results.csv`), then append its data rows:
+`merge_experiments.py` pulls each machine's results and merges them into this
+checkout. Configure the machines once in its `REMOTES` dict, then:
 
 ```sh
-tail -n +2 machine2_results.csv >> experiments/results.csv
+# Pull from every configured remote
+python scripts/merge_experiments.py --profile quick
+
+# Only named remotes
+python scripts/merge_experiments.py av2 av3 --profile quick
+
+# Show the rsync plan without transferring or writing
+python scripts/merge_experiments.py --dry-run
+
+# Merge another checkout on this machine
+python scripts/merge_experiments.py /path/to/counter --profile quick
 ```
 
-If there is any risk that both machines ran overlapping (sweep, level, spec,
-seed) combinations, deduplicate before merging:
+**`--profile` must match the profile the runs used.** Each profile writes its
+own CSV — `full` → `results.csv`, `quick` → `results-quick.csv`, `smoke` →
+`results-smoke.csv` — and the flag defaults to `full`. When no source carries a
+CSV for the chosen profile, the merge stops and names the mismatch rather than
+writing anything.
 
-```sh
-(head -1 experiments/results.csv; \
- tail -n +2 experiments/results.csv machine2_results.csv | sort -u) \
-    > merged.csv && mv merged.csv experiments/results.csv
+The script rsyncs each remote's `experiments/results/` into the local one, then
+merges the CSVs on the natural key `(sweep, level_name, spec, seed)`, keeping one
+row per key. Local rows win, so a machine's own results are never overwritten by
+a remote copy of the same run. Output is sorted by key, which makes the file
+byte-stable and the whole operation idempotent — re-running it never duplicates
+rows. Per-run directories encode their seed (`sweep_A_gen10_fsm_seed17`), so they
+never collide between machines.
+
+Sources are reached over ssh. An entry in `~/.ssh/config` must match the
+hostname as written in `REMOTES` — a bare `Host av3` block does not apply to
+`benandrew@av3.cs.man.ac.uk`, so give the block both names and a `HostName`:
+
 ```
-
-The per-run repair files under `experiments/results/` can be merged the same
-way — just `rsync` or copy the directories across; directory names encode the
-full run identity so there are no collisions as long as the seed split was clean.
+Host av3 av3.cs.man.ac.uk
+	HostName av3.cs.man.ac.uk
+	IdentityFile ~/.ssh/id_avlab
+	User benandrew
+```
 
 ## 6. Analyse the results
 

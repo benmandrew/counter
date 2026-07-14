@@ -14,6 +14,8 @@ functions, and anonymous namespaces, with source browsing and call graphs.
    :caption: Overview
 
    architecture
+   configuration
+   tlsf
 
 .. toctree::
    :maxdepth: 1

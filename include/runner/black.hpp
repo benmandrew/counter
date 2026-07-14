@@ -19,6 +19,8 @@ class SatisfiabilityChecker {
    public:
     inline static std::atomic<std::size_t> n_cache_misses{0};
     inline static std::atomic<std::size_t> n_cache_hits{0};
+    // Calls answered from ltlfilt's constant folding without consulting black.
+    inline static std::atomic<std::size_t> n_constant_folded{0};
     inline static std::size_t n_timeouts = 0;
     inline static double total_time_s = 0.0;
     // Child-process CPU time (user+sys), from wait4(); unlike total_time_s

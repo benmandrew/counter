@@ -103,7 +103,7 @@ ProcessResult execute_and_capture(const std::vector<std::string>& arguments) {
 
 std::string ltlfilt_path() { return spot_bin_dir() + "/ltlfilt"; }
 
-std::string normalize_ltl(const std::string& formula) {
+std::string simplify_ltl(const std::string& formula) {
     static std::unordered_map<std::string, std::string> cache;
     static std::mutex cache_mutex;
     {
@@ -127,25 +127,30 @@ std::string normalize_ltl(const std::string& formula) {
     const double elapsed =
         std::chrono::duration<double>(std::chrono::steady_clock::now() - start)
             .count();
-    std::string normalized = formula;
+    std::string simplified = formula;
     if (result.m_exit_code == 0 && !result.m_output.empty()) {
-        normalized = result.m_output;
-        while (!normalized.empty() && normalized.back() == '\n') {
-            normalized.pop_back();
-        }
-        // SPOT uses "0"/"1" for the boolean constants false/true. There is no
-        // single keyword accepted by all downstream tools (black treats
-        // "false" as an atom, not a constant), so fall back to the original
-        // formula in these cases to preserve correctness.
-        if (normalized == "0" || normalized == "1") {
-            normalized = formula;
+        simplified = result.m_output;
+        while (!simplified.empty() && simplified.back() == '\n') {
+            simplified.pop_back();
         }
     }
     std::scoped_lock lock(cache_mutex);
     LtlfiltStats::total_time_s += elapsed;
     LtlfiltStats::total_cpu_s += result.m_cpu_s;
-    cache.emplace(formula, normalized);
-    return normalized;
+    cache.emplace(formula, simplified);
+    return simplified;
+}
+
+std::string normalize_ltl(const std::string& formula) {
+    std::string simplified = simplify_ltl(formula);
+    // SPOT uses "0"/"1" for the boolean constants false/true. There is no
+    // single keyword accepted by all downstream tools (black treats "false" as
+    // an atom, not a constant), so fall back to the original formula in these
+    // cases to preserve correctness.
+    if (simplified == "0" || simplified == "1") {
+        return formula;
+    }
+    return simplified;
 }
 
 bool ltl_equivalent(const std::string& lhs, const std::string& rhs) {

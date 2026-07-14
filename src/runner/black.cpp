@@ -8,6 +8,7 @@
 
 #include <array>
 #include <cassert>
+#include <cctype>
 #include <cerrno>
 #include <chrono>
 #include <csignal>
@@ -19,6 +20,7 @@
 #include <shared_mutex>
 #include <stdexcept>
 #include <string>
+#include <string_view>
 #include <utility>
 #include <vector>
 
@@ -32,6 +34,49 @@ struct ProcessResult {
     bool m_timed_out = false;
     double m_cpu_s = 0.0;
 };
+
+bool is_identifier_char(char chr) {
+    return std::isalnum(static_cast<unsigned char>(chr)) != 0 || chr == '_';
+}
+
+// This codebase spells its boolean constants as atoms named "true"/"false"
+// (see prop_formula.hpp). black parses those bare identifiers as free
+// variables, so it reports e.g. "G(false)" satisfiable by holding the variable
+// forever. It does read "True"/"False" as genuine constants, so rewrite whole
+// tokens on the way in — without this, black is only ever correct about
+// constants when ltlfilt happens to fold them away first, which it cannot do
+// when the binary is missing or errors. SPOT needs no equivalent: ltlfilt and
+// ltl2tgba already treat "true"/"false" as constants.
+std::string to_black_constants(const std::string& formula) {
+    static constexpr std::array<std::pair<std::string_view, std::string_view>,
+                                2>
+        k_constants{{{"true", "True"}, {"false", "False"}}};
+    std::string out;
+    out.reserve(formula.size());
+    std::size_t pos = 0;
+    while (pos < formula.size()) {
+        bool rewritten = false;
+        if (pos == 0 || !is_identifier_char(formula[pos - 1])) {
+            for (const auto& [atom, constant] : k_constants) {
+                const std::size_t end = pos + atom.size();
+                if (formula.compare(pos, atom.size(), atom) != 0 ||
+                    (end < formula.size() &&
+                     is_identifier_char(formula[end]))) {
+                    continue;
+                }
+                out.append(constant);
+                pos = end;
+                rewritten = true;
+                break;
+            }
+        }
+        if (!rewritten) {
+            out.push_back(formula[pos]);
+            ++pos;
+        }
+    }
+    return out;
+}
 
 double rusage_cpu_seconds(const struct rusage& usage) {
     const double user_s = static_cast<double>(usage.ru_utime.tv_sec) +
@@ -163,7 +208,22 @@ std::string black_executable_path() {
 
 std::optional<bool> SatisfiabilityChecker::check_satisfiability(
     const std::string& ltl_formula) {
-    const std::string normalised = normalize_ltl(ltl_formula);
+    const std::string normalised = simplify_ltl(ltl_formula);
+    // A formula that SPOT reduces to a boolean constant is already decided:
+    // "0" is unsatisfiable, "1" is valid and therefore satisfiable. The
+    // genetic algorithm generates these constantly — mostly implication checks
+    // that reduce away entirely — and they are the bulk of what black would
+    // otherwise time out on, so answering here skips the subprocess. This is
+    // an optimisation only: to_black_constants keeps black correct on these
+    // formulae by itself if the folding does not fire.
+    if (normalised == "0") {
+        n_constant_folded++;
+        return false;
+    }
+    if (normalised == "1") {
+        n_constant_folded++;
+        return true;
+    }
     {
         std::shared_lock lock(m_cache_mutex);
         const auto found = m_cache.find(normalised);
@@ -177,13 +237,16 @@ std::optional<bool> SatisfiabilityChecker::check_satisfiability(
     assert(access(black.c_str(), F_OK) == 0);
     const auto timeout_s =
         std::chrono::duration_cast<std::chrono::seconds>(m_timeout).count();
-    // Pass ltl_formula (not normalised) to black: SPOT's compact notation
-    // (e.g. "FG!a", "GFa") is not valid in black's parser. The normalised form
-    // is used only as the cache key; the original formula is always
-    // black-compatible because it comes from requirement_to_ltl / implication
-    // check construction which uses fully-parenthesised SPOT-compatible syntax.
+    // Pass ltl_formula (not normalised) to black. black does parse SPOT's
+    // compact operator notation ("GFa", "a W b"), but not every token SPOT can
+    // emit: "0"/"1" are a syntax error and "xor" is unsupported. The original
+    // formula is always otherwise black-compatible because it comes from
+    // requirement_to_ltl / implication check construction. The normalised form
+    // is the cache key.
     const std::vector<std::string> command = {
-        black, "solve", "-t", std::to_string(timeout_s), "-f", ltl_formula};
+        black, "solve",
+        "-t",  std::to_string(timeout_s),
+        "-f",  to_black_constants(ltl_formula)};
     const auto start = std::chrono::steady_clock::now();
     const ProcessResult result = execute_and_capture(command, m_timeout);
     const double elapsed =

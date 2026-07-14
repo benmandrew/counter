@@ -50,7 +50,9 @@ class Formula {
         std::function<std::optional<Formula>(const Formula&)>;
 
     /// Default constructor creates a formula representing the logical constant
-    /// "true" (implemented as a single variable named "⊤").
+    /// "true" (implemented as a single atom named "true"; the parser
+    /// special-cases the names "true" and "false" so they can never be user
+    /// atoms).
     Formula();
 
     /// Static instance of the logical constant "true" for convenience.

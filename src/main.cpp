@@ -122,6 +122,8 @@ void print_timing_report() {
               SatisfiabilityChecker::n_timeouts);
     print_row("ganak", GanakStats::n_cache_misses, GanakStats::total_time_s,
               GanakStats::n_cache_hits);
+    std::cout << "\nConstant-folded (decided by ltlfilt, no black call): "
+              << SatisfiabilityChecker::n_constant_folded << "\n";
     std::cout << "\nFitness cache: "
               << AggregateWeightedFitnessFunction::n_cache_hits << " hits / "
               << AggregateWeightedFitnessFunction::n_cache_misses
@@ -472,9 +474,19 @@ int main(int argc, const char* const argv[]) {
             ? *format_arg == "tlsf"
             : std::filesystem::path(*input_path).extension() == ".tlsf";
     if (is_tlsf) {
+        const auto tlsf_wall_start = std::chrono::steady_clock::now();
         RandomSource tlsf_random_source = init_random_source(argc, argv);
-        return tlsf::run_repair(*input_path, *output_dir, cfg,
-                                tlsf_random_source);
+        const int tlsf_result =
+            tlsf::run_repair(*input_path, *output_dir, cfg, tlsf_random_source);
+        print_timing_report();
+        if (cfg.report_cpu_timing) {
+            const double wall_s =
+                std::chrono::duration<double>(std::chrono::steady_clock::now() -
+                                              tlsf_wall_start)
+                    .count();
+            print_cpu_report(wall_s);
+        }
+        return tlsf_result;
     }
     Specification original_spec;
     try {

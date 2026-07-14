@@ -194,13 +194,17 @@ int run_repair(const std::string& input_path, const std::string& output_dir,
 
     std::vector<Scored<Specification>> survivors =
         realizable_survivors(population, cfg, fitness);
+    const std::size_t n_realizable = survivors.size();
     // Final maximality pass: keep only realizable repairs not strictly implied
     // by another, mirroring the FRETISH final implication filter.
     if (cfg.run_implication_filter && survivors.size() > 1) {
         survivors = keep_maximal(survivors, global_sat_checker());
     }
     write_survivors(survivors, output_dir);
-    std::cout << "Realizable specifications: " << survivors.size();
+    std::cout << "Realizable specifications: " << n_realizable;
+    if (cfg.run_implication_filter) {
+        std::cout << " (" << survivors.size() << " maximal)";
+    }
     if (!survivors.empty()) {
         std::cout << ", written to " << output_dir << "/";
     }

@@ -163,7 +163,22 @@ std::string black_executable_path() {
 
 std::optional<bool> SatisfiabilityChecker::check_satisfiability(
     const std::string& ltl_formula) {
-    const std::string normalised = normalize_ltl(ltl_formula);
+    const std::string normalised = simplify_ltl(ltl_formula);
+    // A formula that SPOT reduces to a boolean constant is already decided:
+    // "0" is unsatisfiable, "1" is valid and therefore satisfiable. The
+    // genetic algorithm generates these constantly — mostly implication checks
+    // that reduce away entirely — and they are the bulk of what black would
+    // otherwise time out on. black cannot be asked these directly either: it
+    // parses SPOT's "0"/"1" as a syntax error and this codebase's
+    // "true"/"false" atoms as free variables, so it answers SAT for both.
+    if (normalised == "0") {
+        n_constant_folded++;
+        return false;
+    }
+    if (normalised == "1") {
+        n_constant_folded++;
+        return true;
+    }
     {
         std::shared_lock lock(m_cache_mutex);
         const auto found = m_cache.find(normalised);
@@ -177,11 +192,12 @@ std::optional<bool> SatisfiabilityChecker::check_satisfiability(
     assert(access(black.c_str(), F_OK) == 0);
     const auto timeout_s =
         std::chrono::duration_cast<std::chrono::seconds>(m_timeout).count();
-    // Pass ltl_formula (not normalised) to black: SPOT's compact notation
-    // (e.g. "FG!a", "GFa") is not valid in black's parser. The normalised form
-    // is used only as the cache key; the original formula is always
-    // black-compatible because it comes from requirement_to_ltl / implication
-    // check construction which uses fully-parenthesised SPOT-compatible syntax.
+    // Pass ltl_formula (not normalised) to black. black does parse SPOT's
+    // compact operator notation ("GFa", "a W b"), but not every token SPOT can
+    // emit: "0"/"1" are a syntax error and "xor" is unsupported. The constant
+    // cases are handled above; the rest stay on the original formula, which is
+    // always black-compatible because it comes from requirement_to_ltl /
+    // implication check construction. The normalised form is the cache key.
     const std::vector<std::string> command = {
         black, "solve", "-t", std::to_string(timeout_s), "-f", ltl_formula};
     const auto start = std::chrono::steady_clock::now();

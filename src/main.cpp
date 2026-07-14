@@ -122,6 +122,8 @@ void print_timing_report() {
               SatisfiabilityChecker::n_timeouts);
     print_row("ganak", GanakStats::n_cache_misses, GanakStats::total_time_s,
               GanakStats::n_cache_hits);
+    std::cout << "\nConstant-folded (decided by ltlfilt, no black call): "
+              << SatisfiabilityChecker::n_constant_folded << "\n";
     std::cout << "\nFitness cache: "
               << AggregateWeightedFitnessFunction::n_cache_hits << " hits / "
               << AggregateWeightedFitnessFunction::n_cache_misses

@@ -47,6 +47,31 @@ void test_valid_ltl_formula_normalises() {
            "ltlfilt-runner: normalised formula should be non-empty");
 }
 
+// simplify_ltl surfaces SPOT's boolean constants so callers can decide the
+// formula without a solver; normalize_ltl hides them behind the original
+// formula so its result stays safe to hand to a downstream tool.
+void test_constants_surface_only_in_simplify() {
+    expect(simplify_ltl("p & !p") == "0",
+           "ltlfilt-runner: a contradiction should simplify to \"0\"");
+    expect(simplify_ltl("p | !p") == "1",
+           "ltlfilt-runner: a tautology should simplify to \"1\"");
+    expect(normalize_ltl("p & !p") == "p & !p",
+           "ltlfilt-runner: normalize_ltl should fall back to the original "
+           "formula when it reduces to a constant");
+    expect(normalize_ltl("p | !p") == "p | !p",
+           "ltlfilt-runner: normalize_ltl should fall back to the original "
+           "formula when it reduces to a constant");
+}
+
+// The "true"/"false" atoms this codebase uses for its boolean constants are
+// real constants to SPOT, which is what lets them be folded away.
+void test_boolean_constant_atoms_fold() {
+    expect(simplify_ltl("G(false)") == "0",
+           "ltlfilt-runner: G(false) should simplify to \"0\"");
+    expect(simplify_ltl("G(true)") == "1",
+           "ltlfilt-runner: G(true) should simplify to \"1\"");
+}
+
 }  // namespace
 
 void run_ltlfilt_runner_tests() {
@@ -54,4 +79,6 @@ void run_ltlfilt_runner_tests() {
     test_reorders_atomic_propositions();
     test_invalid_formula_returns_original();
     test_valid_ltl_formula_normalises();
+    test_constants_surface_only_in_simplify();
+    test_boolean_constant_atoms_fold();
 }

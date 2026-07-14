@@ -9,10 +9,15 @@ from pathlib import Path
 
 CONFIGS_DIR = Path(__file__).parent.parent / "experiments" / "configs"
 
-# Mirrors the built-in defaults from include/config.hpp
+# Mirrors the built-in defaults from include/config.hpp, with one deliberate
+# exception: config.hpp defaults selection_scheme to "weighted", but every
+# sweep is run under NSGA-II, so the generated configs pin "nsga2" explicitly.
+# Emitting it matters — leaving it out silently hands the runs back to the
+# weighted default.
 DEFAULTS: dict = {
     "generations": 10,
     "population_size": 200,
+    "selection_scheme": "nsga2",
     "crossover_rate": 0.1,
     "mutation_rate": 1.0,
     "weight_syntactic": 0.33,
@@ -47,6 +52,7 @@ def make_toml(overrides: dict) -> str:
         "[genetic]",
         f"generations     = {d['generations']}",
         f"population_size = {d['population_size']}",
+        f'selection_scheme = "{d["selection_scheme"]}"',
         f"crossover_rate  = {_fmt(d['crossover_rate'])}",
         f"mutation_rate   = {_fmt(d['mutation_rate'])}",
         "",

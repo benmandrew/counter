@@ -44,7 +44,14 @@ python scripts/gen_configs.py
 ```
 
 Writes one TOML file per (sweep, level) to `experiments/configs/`. Safe to
-re-run — existing files are overwritten.
+re-run — existing files are overwritten, and regenerating reproduces them
+byte-for-byte.
+
+Every generated config pins `selection_scheme = "nsga2"`. That is a deliberate
+departure from `config.hpp`, which defaults to `weighted`: the sweeps are run
+under NSGA-II, and a config omitting the key hands the runs back to weighted
+selection without saying so. Check with `grep -c nsga2 experiments/configs/*.toml`
+if a run's results look unexpectedly poor.
 
 Sweeps generated:
 

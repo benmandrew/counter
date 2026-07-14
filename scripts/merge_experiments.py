@@ -25,6 +25,7 @@ counter checkout. Bare hostnames use REMOTE_ROOT as the repo path.
 
 import argparse
 import csv
+import re
 import subprocess
 from pathlib import Path
 
@@ -79,6 +80,23 @@ def resolve_source(name: str) -> tuple[str, str]:
     return name, root
 
 
+def safe_stem(label: str) -> str:
+    """Filename-safe stem for a source label.
+
+    A label may be an absolute path or a ``host:/path`` spec. Joining one onto
+    tmp_dir unsanitised escapes it entirely — ``Path("/tmp/x") / "/a/b.csv"``
+    is ``/a/b.csv``, since an absolute right-hand side discards the base. The
+    whole label is folded (rather than just its basename) so that two sources
+    sharing a basename stay distinct.
+    """
+    stem = re.sub(r"[^A-Za-z0-9._-]+", "_", label).strip("_")
+    # Keep filenames well inside the usual 255-byte limit; the tail is the
+    # discriminating part of a path, so keep that end.
+    if len(stem) > 100:
+        stem = stem[-100:].lstrip("_")
+    return stem or "source"
+
+
 def run_rsync(src: str, dst: str, dry_run: bool) -> None:
     cmd = ["rsync", "-av"]
     if dry_run:
@@ -100,7 +118,7 @@ def pull_source(
     # Trailing slash on the source dir: copy contents into results/, merging.
     run_rsync(f"{root}/experiments/results/", f"{RESULTS_DIR}/", dry_run)
 
-    csv_local = tmp_dir / f"{label}.{csv_name}"
+    csv_local = tmp_dir / f"{safe_stem(label)}.{csv_name}"
     try:
         run_rsync(f"{root}/experiments/{csv_name}", str(csv_local), dry_run)
     except subprocess.CalledProcessError:

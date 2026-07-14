@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1784052695908,
+  "lastUpdate": 1784054627790,
   "repoUrl": "https://github.com/benmandrew/counter",
   "entries": {
     "counter benchmarks": [
@@ -2880,6 +2880,78 @@ window.BENCHMARK_DATA = {
             "value": 3368.5166622478923,
             "unit": "ns/iter",
             "extra": "iterations: 207445\ncpu: 3368.1635373231447 ns\nthreads: 1"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "benmandrew@gmail.com",
+            "name": "benmandrew",
+            "username": "benmandrew"
+          },
+          "committer": {
+            "email": "benmandrew@gmail.com",
+            "name": "benmandrew",
+            "username": "benmandrew"
+          },
+          "distinct": true,
+          "id": "f51adebfaed79fd103ffb874783b95c570509f15",
+          "message": "feat: add the factorial profile sweeping mutation, crossover and bound\n\nThe sweeps measured generations, population size and the fitness weights, and\nheld everything else at config.hpp's defaults. That left the two core genetic\nknobs — crossover_rate at 0.1 and mutation_rate at 1.0 — never measured at all,\nalong with the per-operator mutation probabilities, the model-counting bound\nand the weakening filter. It also left selection_scheme a constant: every\nconfig pinned nsga2, so results.csv cannot answer whether NSGA-II beats\nweighted, which is the claim the scheme was adopted on.\n\ngen_configs.py now emits sweeps D-J and a finer grid on A and B, once per\nselection scheme, to experiments/configs/<scheme>/. 63 levels per scheme, 126\nconfigs. Each sweep still holds the others at their defaults, so each one's\ndefault level is byte-identical to the A/gen10 baseline and aliases onto it —\nnine per scheme, never across schemes, since the configs differ on\nselection_scheme and the byte-identity check catches it.\n\nselection joins the natural key in run_id, load_done_set and the merge. Without\nthat the two schemes share an output directory and read each other's\nrepair_*.json, resume marks the second scheme already done, and the merge drops\nhalf the rows — three silent successes. Rows predating the column are all\nnsga2, verified against the 1470 per-run config.toml snapshots of the\n2026-07-14 sweep, so both scripts read an absent value as nsga2 and the older\nresults.csv still resumes and merges unchanged.\n\nThe notebook treats selection as a factor rather than pooling the schemes into\none distribution per level, and gains a Fisher/Mann-Whitney comparison between\nthem plus a per-level rate delta, which is what shows a scheme that only wins\nin one corner of the space.\n\nfull is pinned to the 14 levels it has always had so its results.csv stays one\ncomparable dataset. factorial is 50,400 rows from 43,200 executions at 100\nseeds: 58 h serial, ~7.3 h per machine across av2 and av3 at --jobs 4, costed\nfrom the measured A/gen10 baseline of 15.3s per seed across the four specs.\n\ndefault_bound is close to free — it enters through the transfer matrix, not a\nSAT call, and bound 80 measured within noise of bound 5 (1.55s vs 1.53s on fsm)\n— but it moves the result: 4, 3 and 2 repairs at bounds 5, 20 and 80.",
+          "timestamp": "2026-07-14T19:40:13+01:00",
+          "tree_id": "2fd09d34d1ab38c5922cd5ebcc28f9bd9f98cf88",
+          "url": "https://github.com/benmandrew/counter/commit/f51adebfaed79fd103ffb874783b95c570509f15"
+        },
+        "date": 1784054627451,
+        "tool": "googlecpp",
+        "benches": [
+          {
+            "name": "Syntactic similarity - small formulas (3 variables)",
+            "value": 554.0863978057243,
+            "unit": "ns/iter",
+            "extra": "iterations: 1272405\ncpu: 553.9877334653669 ns\nthreads: 1"
+          },
+          {
+            "name": "Syntactic similarity - large formulas (11 variables, O(n*m) shared_subformulae)",
+            "value": 2263.131272195537,
+            "unit": "ns/iter",
+            "extra": "iterations: 311155\ncpu: 2262.598341662516 ns\nthreads: 1"
+          },
+          {
+            "name": "Spec implication check - warm black cache",
+            "value": 615.8959730873474,
+            "unit": "ns/iter",
+            "extra": "iterations: 1151577\ncpu: 615.7401476410174 ns\nthreads: 1"
+          },
+          {
+            "name": "Trace model counting - matrix exponentiation/steps:5",
+            "value": 161.33570118720024,
+            "unit": "ns/iter",
+            "extra": "iterations: 4356547\ncpu: 161.31390846925336 ns\nthreads: 1"
+          },
+          {
+            "name": "Trace model counting - matrix exponentiation/steps:10",
+            "value": 184.21761742126677,
+            "unit": "ns/iter",
+            "extra": "iterations: 3752195\ncpu: 184.19286497636722 ns\nthreads: 1"
+          },
+          {
+            "name": "Trace model counting - matrix exponentiation/steps:20",
+            "value": 206.12933440082392,
+            "unit": "ns/iter",
+            "extra": "iterations: 3386137\ncpu: 206.0981312923843 ns\nthreads: 1"
+          },
+          {
+            "name": "Trace model counting - matrix exponentiation/steps:50",
+            "value": 250.5868402914259,
+            "unit": "ns/iter",
+            "extra": "iterations: 2740623\ncpu: 250.55578786283283 ns\nthreads: 1"
+          },
+          {
+            "name": "Mutate specification - 3-guarantee takeoff spec",
+            "value": 3380.403746329401,
+            "unit": "ns/iter",
+            "extra": "iterations: 206709\ncpu: 3379.9487201815136 ns\nthreads: 1"
           }
         ]
       }

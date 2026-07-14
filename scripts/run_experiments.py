@@ -64,16 +64,6 @@ SPECS: dict[str, dict[str, Path]] = {
 
 N_SEEDS = 30
 
-# (sweep, level_name, spec) combos to skip outright. gen40 x {fsm-timing,
-# fsm-combined} was observed to time out (3600s cap) on nearly every seed —
-# per-generation cost grows superlinearly with generation count for these two
-# structurally complex specs (see bloat filter's fixed 2.0 max_ratio), so this
-# tier produces almost no usable data at ~1hr/seed. Drop it until that's fixed.
-SKIP_COMBOS: set[tuple[str, str, str]] = {
-    ("A", "gen40", "fsm-timing"),
-    ("A", "gen40", "fsm-combined"),
-}
-
 # compare runs n_repairs * n_ideals * 2 implication checks, each with compare's
 # own 20s black budget. fsm-timing (bounded-interval operators) is slow: a 29-
 # repair run measured ~141s, and repair counts grow with generations/population.
@@ -475,14 +465,11 @@ def main() -> None:
     # canonical run that produces them: (sweep, level, spec, seed) →
     # list of (sweep, level_name) rows to emit (aliases share one execution).
     runs: dict[tuple, list] = {}
-    n_rows = n_excluded = n_aliased = 0
+    n_rows = n_aliased = 0
     for cfg in selected_configs:
         sweep, level_name, _ = extract_metadata(cfg)
         canon = active_aliases.get((sweep, level_name), (sweep, level_name))
         for spec_name in specs:
-            if (sweep, level_name, spec_name) in SKIP_COMBOS:
-                n_excluded += len(seeds)
-                continue
             for seed in seeds:
                 n_rows += 1
                 if canon != (sweep, level_name):
@@ -501,8 +488,7 @@ def main() -> None:
         if any((s, l, key[2], key[3]) not in done for s, l in row_list)
     ]
     print(f"Plan: {n_rows} result rows ({n_aliased} via aliasing), "
-          f"{n_done} already done; {len(to_execute)} runs to execute"
-          + (f", {n_excluded} rows excluded via SKIP_COMBOS" if n_excluded else ""))
+          f"{n_done} already done; {len(to_execute)} runs to execute")
 
     if args.dry_run:
         for key, row_list in runs.items():

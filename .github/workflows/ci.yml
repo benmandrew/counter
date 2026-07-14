@@ -181,6 +181,8 @@ jobs:
     needs: build-and-test
     permissions:
       contents: write
+      # comment-on-alert posts a PR review, which contents: write does not cover.
+      pull-requests: write
 
     steps:
       - name: Check out repository
@@ -239,6 +241,9 @@ jobs:
           auto-push: ${{ github.ref == 'refs/heads/main' }}
           alert-threshold: '150%'
           comment-on-alert: true
-          fail-on-alert: true
+          # Absolute ns/iter is compared across runner instances, so host
+          # contention alone moves every benchmark by more than the threshold.
+          # Alert, but do not fail the build on it.
+          fail-on-alert: false
           gh-pages-branch: gh-pages
           benchmark-data-dir-path: .

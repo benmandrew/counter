@@ -174,13 +174,17 @@ def merge_csv(pulled: list[Path], results_csv: Path) -> None:
         print("No CSV data found anywhere — nothing to merge.")
         return
 
+    seed_idx = KEY_FIELDS.index("seed")
+
     def sort_key(k: tuple):
-        sweep, level_name, spec, seed = k
+        # Sort seeds numerically, everything else lexicographically. Derived from
+        # KEY_FIELDS so a new key field cannot silently break the arity here.
+        parts: list = list(k)
         try:
-            seed_v: object = int(seed)
+            parts[seed_idx] = (0, int(k[seed_idx]), "")
         except (TypeError, ValueError):
-            seed_v = seed
-        return (sweep, level_name, spec, seed_v)
+            parts[seed_idx] = (1, 0, str(k[seed_idx]))
+        return tuple(parts)
 
     results_csv.parent.mkdir(parents=True, exist_ok=True)
     with open(results_csv, "w", newline="") as f:

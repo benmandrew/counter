@@ -63,18 +63,22 @@ Selection scheme
 
 ``genetic.selection_scheme`` decides how those four components drive selection.
 
-**weighted** (default) collapses them into a single weighted average and ranks
-by that scalar, using truncation selection with elitism. This finds the one
-repair that best fits the configured trade-off, and is the right choice when the
-weights already encode what a good repair means.
-
-**nsga2** treats them as separate objectives and ranks candidates by
+**nsga2** (default) treats them as separate objectives and ranks candidates by
 *Non-dominated Sorting Genetic Algorithm II*
 (`NSGA-II <https://doi.org/10.1109/4235.996017>`_): Pareto non-domination first,
 then crowding distance to spread the population along the front. It searches for
 the whole Pareto front — the repairs not beaten on every objective at once —
 rather than one weighted compromise. That is useful when the right balance
 between, say, semantic similarity and size is not known in advance.
+
+**weighted** collapses them into a single weighted average and ranks by that
+scalar, using truncation selection with elitism. In principle this finds the one
+repair that best fits the configured trade-off; in practice it converges
+prematurely and then stagnates. Over a 50k-run parameter sweep its results did
+not move with the generation count at any level from 5 to 80, and on the
+``takeoff`` example it matched an ideal repair in 1.7% of runs against
+``nsga2``'s 89.3%, at no saving in wall-clock time. It is kept for comparison
+rather than for use.
 
 Two consequences are worth knowing. Under ``nsga2`` the ``[fitness]`` weights
 only decide which components are active (weight > 0); they no longer bias

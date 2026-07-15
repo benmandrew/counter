@@ -14,7 +14,7 @@
         "elitism_rate":    { "type": "number",  "minimum": 0, "maximum": 1, "description": "Fraction of the population carried over verbatim each generation, bypassing crossover, mutation, and filters. Must be less than selection_rate." },
         "crossover_rate":  { "type": "number",  "minimum": 0, "maximum": 1, "description": "Probability of crossover between parents." },
         "mutation_rate":   { "type": "number",  "minimum": 0, "maximum": 1, "description": "Probability of mutating an offspring." },
-        "selection_scheme": { "type": "string", "enum": ["weighted", "nsga2"], "description": "Selection scheme: 'weighted' ranks by the weighted-average fitness scalar; 'nsga2' ranks by Pareto non-domination and crowding distance over the individual fitness components." }
+        "selection_scheme": { "type": "string", "enum": ["weighted", "nsga2"], "default": "nsga2", "description": "Selection scheme: 'nsga2' (default) ranks by Pareto non-domination and crowding distance over the individual fitness components; 'weighted' ranks by the weighted-average fitness scalar, but converges prematurely and is retained for comparison." }
       }
     },
     "fitness": {

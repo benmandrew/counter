@@ -6,10 +6,11 @@
 #include <thread>
 
 /// Selection scheme driving parent and survivor selection during evolution.
-/// WeightedAverage ranks candidates by the single blended fitness scalar;
-/// Nsga2 ranks them by Pareto non-domination and crowding distance over the
-/// individual objectives, searching for the Pareto front rather than one
-/// weighted compromise.
+/// Nsga2 (the default) ranks candidates by Pareto non-domination and crowding
+/// distance over the individual objectives, searching for the Pareto front
+/// rather than one weighted compromise. WeightedAverage ranks them by the
+/// single blended fitness scalar; it converges prematurely and is retained for
+/// comparison rather than use.
 enum class SelectionScheme : std::uint8_t { WeightedAverage, Nsga2 };
 
 struct Config {
@@ -37,7 +38,7 @@ struct Config {
     // CLI tools, via getrusage + per-tool wait4). Opt-in: off leaves output
     // identical to before.
     bool report_cpu_timing = false;
-    SelectionScheme selection_scheme = SelectionScheme::WeightedAverage;
+    SelectionScheme selection_scheme = SelectionScheme::Nsga2;
     double selection_rate = 0.5;
     // Elitism: the top elitism_rate fraction of the population carries over
     // into the next generation verbatim, bypassing crossover, mutation, and

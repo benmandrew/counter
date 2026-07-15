@@ -186,10 +186,18 @@ void test_config_io_elitism_not_less_than_selection_throws() {
            "config_io: elitism_rate not less than selection_rate should throw");
 }
 
-void test_config_io_selection_scheme_defaults_to_weighted() {
+void test_config_io_selection_scheme_defaults_to_nsga2() {
     const Config cfg = config_from_toml_string("");
+    expect(cfg.selection_scheme == SelectionScheme::Nsga2,
+           "config_io: selection_scheme should default to Nsga2");
+}
+
+void test_config_io_selection_scheme_weighted_parsed() {
+    const Config cfg =
+        config_from_toml_string("[genetic]\nselection_scheme = \"weighted\"\n");
     expect(cfg.selection_scheme == SelectionScheme::WeightedAverage,
-           "config_io: selection_scheme should default to WeightedAverage");
+           "config_io: selection_scheme = \"weighted\" should parse as "
+           "WeightedAverage");
 }
 
 void test_config_io_selection_scheme_nsga2_parsed() {
@@ -233,7 +241,8 @@ void run_config_io_tests() {
     test_config_io_invalid_filter_interval_throws();
     test_config_io_elitism_rate_parsed();
     test_config_io_elitism_not_less_than_selection_throws();
-    test_config_io_selection_scheme_defaults_to_weighted();
+    test_config_io_selection_scheme_defaults_to_nsga2();
+    test_config_io_selection_scheme_weighted_parsed();
     test_config_io_selection_scheme_nsga2_parsed();
     test_config_io_selection_scheme_invalid_throws();
     test_config_io_empty_string_gives_defaults();

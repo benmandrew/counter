@@ -260,11 +260,17 @@ void test_evolve_generation_pads_up_to_target_size() {
 void test_evolve_generation_selects_parents_before_offspring_filtering() {
     // The filter is applied after breeding, and the generation is then padded
     // back to the requested size if filtering shrinks the offspring pool.
+    // Padding is truncation selection's path, so this pins WeightedAverage
+    // rather than taking the Nsga2 default: NSGA-II pools parents with
+    // offspring to refill a generation, so it never reaches the duplication
+    // below.
+    Config cfg;
+    cfg.selection_scheme = SelectionScheme::WeightedAverage;
     const AggregateWeightedFitnessFunction fns =
         AggregateWeightedFitnessFunction(
             {{[](const Specification&) { return 0.5; }, 1.0, ""}});
-    const std::vector<ScoredSpecification> pop = score_population(
-        Config{}, {make_spec("p", "q"), make_spec("r", "s")}, fns);
+    const std::vector<ScoredSpecification> pop =
+        score_population(cfg, {make_spec("p", "q"), make_spec("r", "s")}, fns);
     const std::vector<FilterFunction> filters = {
         [](const std::vector<Specification>& candidates) {
             if (candidates.empty()) {
@@ -272,8 +278,8 @@ void test_evolve_generation_selects_parents_before_offspring_filtering() {
             }
             return std::vector<Specification>{candidates.front()};
         }};
-    const auto next_gen = evolve_generation(Config{}, pop, 2, 0, fns, filters,
-                                            make_source({}, 0));
+    const auto next_gen =
+        evolve_generation(cfg, pop, 2, 0, fns, filters, make_source({}, 0));
     expect(next_gen.size() == 2,
            "evolve_generation: the generation should be padded back to the "
            "requested target size after filtering");
@@ -298,18 +304,24 @@ void test_evolve_generation_elitism_preserves_best_through_filter() {
                                                return 0.1;
                                            },
                                            1.0, ""}});
+    // elitism_rate only drives truncation selection, so this pins
+    // WeightedAverage rather than taking the Nsga2 default: NSGA-II's
+    // (mu+lambda) survivor pooling is already elitist, and keeps the top spec
+    // alive at elitism_rate = 0 -- which is exactly why that is its natural
+    // setting.
+    Config cfg;
+    cfg.selection_scheme = SelectionScheme::WeightedAverage;
+    cfg.crossover_rate = 0.0;
+    cfg.mutation_rate = 0.0;
     const std::vector<ScoredSpecification> pop = score_population(
-        Config{},
-        {make_spec("p", "q"), make_spec("r", "s"), make_spec("t", "u")}, fns);
+        cfg, {make_spec("p", "q"), make_spec("r", "s"), make_spec("t", "u")},
+        fns);
     // Drop every offspring whose condition is "p": the elite's own offspring is
     // removed, so only elitism can keep a "p" specification alive.
     const std::vector<FilterFunction> filters = {
         make_predicate_filter("", [](const Specification& spec) {
             return first_condition(spec) != "p";
         })};
-    Config cfg;
-    cfg.crossover_rate = 0.0;
-    cfg.mutation_rate = 0.0;
 
     const auto with_elitism =
         evolve_generation(cfg, pop, 3, 1, fns, filters, make_source({}, 0));

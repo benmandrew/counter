@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1784117624104,
+  "lastUpdate": 1784118152241,
   "repoUrl": "https://github.com/benmandrew/counter",
   "entries": {
     "counter benchmarks": [
@@ -3168,6 +3168,78 @@ window.BENCHMARK_DATA = {
             "value": 3270.9725368422637,
             "unit": "ns/iter",
             "extra": "iterations: 212867\ncpu: 3270.784489845774 ns\nthreads: 1"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "benmandrew@gmail.com",
+            "name": "benmandrew",
+            "username": "benmandrew"
+          },
+          "committer": {
+            "email": "benmandrew@gmail.com",
+            "name": "benmandrew",
+            "username": "benmandrew"
+          },
+          "distinct": true,
+          "id": "a37a911b164585296ec6f6883d545d4b96f9746c",
+          "message": "fix: stop signal_tracer leaking a process per concurrent crash\n\ncounter faults inside the std::async scoring pool, so several worker threads\nenter crash_handler at once. Each one ran pipe() + fork() + execl(signal_tracer),\nand pipe() leaves the descriptors without close-on-exec. A concurrent handler's\nfork() therefore copied a sibling's pipe write end into its own tracer, where it\nsurvived execl and held the pipe open. The sibling's tracer never read EOF, its\nfread loop blocked forever, and the handler's waitpid blocked on a child that\ncould not exit.\n\nThe tracers outlived the process that forked them, reparented to init, and\naccumulated: 111 across three machines (51 local, 23 on av2, 37 on av3), the\noldest alive for 1 day 20 hours, holding 226MB of resident memory on the two\nremote machines alone. One tracer's stdin pipe had 13 write-end copies spread\nacross 7 sibling tracers.\n\npipe2(O_CLOEXEC) closes those stray copies at execl, so the pipe reaches EOF as\nsoon as the real writer closes it. The flag is set atomically because pipe()\nfollowed by fcntl() would leave a window for a concurrent fork() to race, which\nis the failure being fixed. dup2 onto stdin clears close-on-exec, so the tracer\nkeeps its input.\n\nAn atomic_flag guard now admits one thread to the reporting path and parks the\nrest until it _exits, which keeps one crash to one log and one tracer rather\nthan one per faulting thread.\n\nVerified with a standalone reproduction of the same pipe/fork/exec shape:\nreaders deadlock on pipe(), exit cleanly on pipe2(O_CLOEXEC).",
+          "timestamp": "2026-07-15T13:18:43+01:00",
+          "tree_id": "4fb031824e3f3cb147231057851150860c837920",
+          "url": "https://github.com/benmandrew/counter/commit/a37a911b164585296ec6f6883d545d4b96f9746c"
+        },
+        "date": 1784118151272,
+        "tool": "googlecpp",
+        "benches": [
+          {
+            "name": "Syntactic similarity - small formulas (3 variables)",
+            "value": 455.5954512272343,
+            "unit": "ns/iter",
+            "extra": "iterations: 1567104\ncpu: 455.55061565792704 ns\nthreads: 1"
+          },
+          {
+            "name": "Syntactic similarity - large formulas (11 variables, O(n*m) shared_subformulae)",
+            "value": 1762.5879805498864,
+            "unit": "ns/iter",
+            "extra": "iterations: 396707\ncpu: 1762.4035446815906 ns\nthreads: 1"
+          },
+          {
+            "name": "Spec implication check - warm black cache",
+            "value": 452.70460973206553,
+            "unit": "ns/iter",
+            "extra": "iterations: 1549743\ncpu: 452.6623078794355 ns\nthreads: 1"
+          },
+          {
+            "name": "Trace model counting - matrix exponentiation/steps:5",
+            "value": 129.77976590773642,
+            "unit": "ns/iter",
+            "extra": "iterations: 5387363\ncpu: 129.76670812789118 ns\nthreads: 1"
+          },
+          {
+            "name": "Trace model counting - matrix exponentiation/steps:10",
+            "value": 148.65577612424931,
+            "unit": "ns/iter",
+            "extra": "iterations: 4520436\ncpu: 148.64309681632486 ns\nthreads: 1"
+          },
+          {
+            "name": "Trace model counting - matrix exponentiation/steps:20",
+            "value": 164.7191553305322,
+            "unit": "ns/iter",
+            "extra": "iterations: 4213151\ncpu: 164.7047831895891 ns\nthreads: 1"
+          },
+          {
+            "name": "Trace model counting - matrix exponentiation/steps:50",
+            "value": 200.020565627359,
+            "unit": "ns/iter",
+            "extra": "iterations: 3408746\ncpu: 199.9973855488207 ns\nthreads: 1"
+          },
+          {
+            "name": "Mutate specification - 3-guarantee takeoff spec",
+            "value": 2589.0154425584155,
+            "unit": "ns/iter",
+            "extra": "iterations: 270292\ncpu: 2588.492238024063 ns\nthreads: 1"
           }
         ]
       }

@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1784054999984,
+  "lastUpdate": 1784117624104,
   "repoUrl": "https://github.com/benmandrew/counter",
   "entries": {
     "counter benchmarks": [
@@ -3096,6 +3096,78 @@ window.BENCHMARK_DATA = {
             "value": 3315.2205161571997,
             "unit": "ns/iter",
             "extra": "iterations: 210556\ncpu: 3314.991930887745 ns\nthreads: 1"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "benmandrew@gmail.com",
+            "name": "benmandrew",
+            "username": "benmandrew"
+          },
+          "committer": {
+            "email": "benmandrew@gmail.com",
+            "name": "benmandrew",
+            "username": "benmandrew"
+          },
+          "distinct": true,
+          "id": "58b77aac086cdf660914433d6cba19a1f54a3d00",
+          "message": "fix: derive the merge sort key from KEY_FIELDS\n\nAdding `selection` to KEY_FIELDS widened the natural key to five fields, but\nsort_key still destructured four of them, so merge_csv raised ValueError: too\nmany values to unpack (expected 4) on every merge. The failure landed after\nrsync had already pulled 2.2GB, making it look like a transfer problem rather\nthan an arity mismatch.\n\nThe seed index now comes from KEY_FIELDS.index(\"seed\"), so a sixth key field\ncannot silently break the arity again. Seeds still sort numerically and\nnon-numeric seeds sort after them rather than raising.\n\nVerified against the factorial run: 50,393 rows merged from av2 and av3 with\n0 duplicate keys, seeds 0-99.",
+          "timestamp": "2026-07-15T13:07:14+01:00",
+          "tree_id": "5ae1e090b3db4638152fbbdbe3eb4971d6722229",
+          "url": "https://github.com/benmandrew/counter/commit/58b77aac086cdf660914433d6cba19a1f54a3d00"
+        },
+        "date": 1784117623554,
+        "tool": "googlecpp",
+        "benches": [
+          {
+            "name": "Syntactic similarity - small formulas (3 variables)",
+            "value": 554.4852144224702,
+            "unit": "ns/iter",
+            "extra": "iterations: 1281722\ncpu: 554.4018055397348 ns\nthreads: 1"
+          },
+          {
+            "name": "Syntactic similarity - large formulas (11 variables, O(n*m) shared_subformulae)",
+            "value": 2182.9268603604683,
+            "unit": "ns/iter",
+            "extra": "iterations: 312211\ncpu: 2181.9847955389146 ns\nthreads: 1"
+          },
+          {
+            "name": "Spec implication check - warm black cache",
+            "value": 564.0833573527069,
+            "unit": "ns/iter",
+            "extra": "iterations: 1238583\ncpu: 564.0412875035424 ns\nthreads: 1"
+          },
+          {
+            "name": "Trace model counting - matrix exponentiation/steps:5",
+            "value": 176.8171524750887,
+            "unit": "ns/iter",
+            "extra": "iterations: 4163644\ncpu: 176.81233337912644 ns\nthreads: 1"
+          },
+          {
+            "name": "Trace model counting - matrix exponentiation/steps:10",
+            "value": 192.09766732416068,
+            "unit": "ns/iter",
+            "extra": "iterations: 3640583\ncpu: 192.0809625820919 ns\nthreads: 1"
+          },
+          {
+            "name": "Trace model counting - matrix exponentiation/steps:20",
+            "value": 218.8159492449827,
+            "unit": "ns/iter",
+            "extra": "iterations: 3259264\ncpu: 218.79807036189789 ns\nthreads: 1"
+          },
+          {
+            "name": "Trace model counting - matrix exponentiation/steps:50",
+            "value": 265.19690428251835,
+            "unit": "ns/iter",
+            "extra": "iterations: 2488793\ncpu: 265.1545423825928 ns\nthreads: 1"
+          },
+          {
+            "name": "Mutate specification - 3-guarantee takeoff spec",
+            "value": 3270.9725368422637,
+            "unit": "ns/iter",
+            "extra": "iterations: 212867\ncpu: 3270.784489845774 ns\nthreads: 1"
           }
         ]
       }

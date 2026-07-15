@@ -1,9 +1,11 @@
 #include "crash/crash_handler.hpp"
 
+#include <fcntl.h>
 #include <sys/wait.h>
 #include <unistd.h>
 
 #include <array>
+#include <atomic>
 #include <cerrno>
 #include <csignal>
 #include <cstring>
@@ -24,6 +26,10 @@ constexpr std::size_t k_metadata_buffer_size = 4096;
 std::array<char, k_path_buffer_size> g_tracer_path = {};
 std::array<char, k_path_buffer_size> g_crash_dir = {};
 std::array<char, k_metadata_buffer_size> g_crash_metadata = {};
+
+// atomic_flag is the only type the standard guarantees lock-free, hence the
+// only one safe to touch from a signal handler.
+std::atomic_flag g_crash_in_progress = ATOMIC_FLAG_INIT;
 
 void copy_path_to_buffer(std::array<char, k_path_buffer_size>& destination,
                          const std::filesystem::path& path) {
@@ -80,6 +86,18 @@ void warmup_cpptrace() {
 
 void crash_handler(int signo, [[maybe_unused]] siginfo_t* siginfo,
                    [[maybe_unused]] void* context) {
+    // A faulting scoring-pool thread usually takes its siblings down with it,
+    // so the handler must expect concurrent entry. Only the first thread
+    // reports; the rest park until it calls _exit and takes the process with
+    // it. Parking rather than returning keeps the report from being truncated,
+    // and parking rather than reporting keeps one crash to one log and one
+    // tracer.
+    if (g_crash_in_progress.test_and_set()) {
+        while (true) {
+            pause();
+        }
+    }
+
     std::array<cpptrace::frame_ptr, k_frame_buffer_size> buf = {};
     const std::size_t frame_count =
         cpptrace::safe_generate_raw_trace(buf.data(), buf.size());
@@ -132,14 +150,21 @@ void crash_handler(int signo, [[maybe_unused]] siginfo_t* siginfo,
     cursor += std::strlen(suffix);
     log_path[cursor] = '\0';
 
+    // O_CLOEXEC is load-bearing. Crashes arrive on several scoring-pool threads
+    // at once, so a concurrent handler's fork() copies this pipe's write end
+    // into its own tracer. Without close-on-exec that copy survives execl and
+    // holds the pipe open, our tracer never reads EOF, and waitpid below blocks
+    // forever. pipe2 sets the flag atomically; pipe+fcntl would race the fork.
     std::array<int, 2> pipefd = {-1, -1};
-    if (pipe(pipefd.data()) != 0) {
+    if (pipe2(pipefd.data(), O_CLOEXEC) != 0) {
         _exit(1);
     }
 
     pid_t child_pid = fork();
     if (child_pid == 0) {
         close(pipefd[1]);
+        // dup2 clears close-on-exec on the new descriptor, which is what lets
+        // stdin survive the execl that O_CLOEXEC closes every other copy on.
         if (dup2(pipefd[0], STDIN_FILENO) < 0) {
             _exit(1);
         }

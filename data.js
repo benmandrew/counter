@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1784118152241,
+  "lastUpdate": 1784134627416,
   "repoUrl": "https://github.com/benmandrew/counter",
   "entries": {
     "counter benchmarks": [
@@ -3240,6 +3240,78 @@ window.BENCHMARK_DATA = {
             "value": 2589.0154425584155,
             "unit": "ns/iter",
             "extra": "iterations: 270292\ncpu: 2588.492238024063 ns\nthreads: 1"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "benmandrew@gmail.com",
+            "name": "benmandrew",
+            "username": "benmandrew"
+          },
+          "committer": {
+            "email": "benmandrew@gmail.com",
+            "name": "benmandrew",
+            "username": "benmandrew"
+          },
+          "distinct": true,
+          "id": "587a5b64fa46df6dbc5dec2c63baa8f6a1342d55",
+          "message": "feat: default the selection scheme to nsga2\n\nWeightedAverage was the shipped default in both Config and\nexample-config.toml, and it is the weakest setting available. Over a\n50,393-run parameter sweep across four example specifications, both\nschemes, and ten swept parameters:\n\n  - takeoff:      1.7% of runs matched an ideal repair under weighted,\n                  89.3% under nsga2 (Fisher p ~ 0)\n  - fsm-timing:  86.6% vs 95.6% (p = 5.8e-72)\n  - fsm:          0.7% vs  4.4% (p = 4.9e-43)\n\nIt costs nothing: nsga2's median wall-clock time is at or below\nweighted's on every specification (takeoff 3.06s vs 3.25s; fsm-timing\n3.62s vs 4.07s).\n\nWeighted converges prematurely and then stagnates. Its results do not\nmove with the generation count at any level from 5 to 80 -- fsm-timing\nsits flat at 0.94 and takeoff at 0.00 across a 16x budget increase --\nand across 800 runs it produces only 9 distinct fitness values, so the\nseed barely matters. nsga2 keeps improving with budget.\n\nWeighted is retained for comparison rather than removed.\n\nTwo generation tests took the default implicitly while covering\ntruncation-selection behaviour, and now pin WeightedAverage: padding a\nfiltered generation back to size, and elitism keeping a filtered-out top\nspec alive. NSGA-II reaches neither -- its (mu+lambda) survivor pooling\nrefills from the parents and is already elitist, which is why\nelitism_rate = 0 is its natural companion setting.",
+          "timestamp": "2026-07-15T17:35:58+01:00",
+          "tree_id": "ce0e91ea9237fe407118a1ed1cd8e66b736089cc",
+          "url": "https://github.com/benmandrew/counter/commit/587a5b64fa46df6dbc5dec2c63baa8f6a1342d55"
+        },
+        "date": 1784134626547,
+        "tool": "googlecpp",
+        "benches": [
+          {
+            "name": "Syntactic similarity - small formulas (3 variables)",
+            "value": 550.2164458276487,
+            "unit": "ns/iter",
+            "extra": "iterations: 1285250\ncpu: 550.1730986189457 ns\nthreads: 1"
+          },
+          {
+            "name": "Syntactic similarity - large formulas (11 variables, O(n*m) shared_subformulae)",
+            "value": 2357.7642756187192,
+            "unit": "ns/iter",
+            "extra": "iterations: 290793\ncpu: 2357.485916098393 ns\nthreads: 1"
+          },
+          {
+            "name": "Spec implication check - warm black cache",
+            "value": 592.5914103348398,
+            "unit": "ns/iter",
+            "extra": "iterations: 1152315\ncpu: 592.5419603146709 ns\nthreads: 1"
+          },
+          {
+            "name": "Trace model counting - matrix exponentiation/steps:5",
+            "value": 163.17352717646375,
+            "unit": "ns/iter",
+            "extra": "iterations: 4165774\ncpu: 163.16312670826593 ns\nthreads: 1"
+          },
+          {
+            "name": "Trace model counting - matrix exponentiation/steps:10",
+            "value": 186.1762041877402,
+            "unit": "ns/iter",
+            "extra": "iterations: 3753526\ncpu: 186.1623702619882 ns\nthreads: 1"
+          },
+          {
+            "name": "Trace model counting - matrix exponentiation/steps:20",
+            "value": 209.16798362497394,
+            "unit": "ns/iter",
+            "extra": "iterations: 3352422\ncpu: 209.13262888741312 ns\nthreads: 1"
+          },
+          {
+            "name": "Trace model counting - matrix exponentiation/steps:50",
+            "value": 255.2384435069302,
+            "unit": "ns/iter",
+            "extra": "iterations: 2754577\ncpu: 255.23300673751356 ns\nthreads: 1"
+          },
+          {
+            "name": "Mutate specification - 3-guarantee takeoff spec",
+            "value": 3427.5317712528463,
+            "unit": "ns/iter",
+            "extra": "iterations: 204855\ncpu: 3426.8997388396647 ns\nthreads: 1"
           }
         ]
       }

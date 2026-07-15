@@ -5,7 +5,9 @@
 #include <cstddef>
 #include <mutex>
 #include <string>
+#include <type_traits>
 #include <unordered_map>
+#include <variant>
 #include <vector>
 
 #include "fitness/model_counter.hpp"
@@ -51,21 +53,85 @@ Count cached_count_traces(const std::string& ltl, std::size_t n_total_atoms,
     return count;
 }
 
+// The number of timepoints a timing constrains, i.e. the first step count at
+// which its deadline has been reached. Eventually and Always have no deadline,
+// so they impose no requirement on the bound and return 0.
+std::size_t timing_horizon(const Timing& timing) {
+    return std::visit(
+        [](const auto& value) -> std::size_t {
+            using T = std::decay_t<decltype(value)>;
+            // Both close their window at m_ticks, so both are due at the tick
+            // after it.
+            constexpr bool is_window = std::is_same_v<T, timing::WithinTicks> ||
+                                       std::is_same_v<T, timing::ForTicks>;
+            if constexpr (std::is_same_v<T, timing::Immediately>) {
+                return 1;
+            } else if constexpr (std::is_same_v<T, timing::NextTimepoint>) {
+                return 2;
+            } else if constexpr (is_window) {
+                return value.m_ticks + 1;
+            } else if constexpr (std::is_same_v<T, timing::AfterTicks>) {
+                // The response falls due at m_ticks + 1, one past the window
+                // in which it must not hold.
+                return value.m_ticks + 2;
+            } else {
+                return 0;
+            }
+        },
+        timing);
+}
+
+// count_traces sums at most 2^(n_atoms * k) traces, so k is only representable
+// while n_atoms * k stays under Count's width. Beyond it the products inside
+// count_traces wrap, and the assert guarding them is compiled out under NDEBUG
+// -- so a release build yields silently wrong counts rather than aborting.
+std::size_t max_representable_step_count(std::size_t n_atoms) {
+    constexpr std::size_t count_bits = sizeof(Count) * 8;
+    return n_atoms == 0 ? count_bits - 1 : (count_bits - 1) / n_atoms;
+}
+
+// A bounded timing compiles to a safety automaton (ltl2tgba emits
+// "acc-name: all") that rejects by running out of transitions at its deadline;
+// Eventually compiles to a complete Buchi automaton where rejection rides
+// entirely on the accepting mask. Counting k-step traces asks both the same
+// question only once k reaches the bounded operand's deadline -- below it the
+// safety automaton still counts traces that already missed the deadline, which
+// breaks conjunction_count <= min(individual counts) and lets the similarity
+// ratio exceed 1. Raising k to the horizon costs almost nothing (the bound
+// barely moves wall time, which is dominated by black/ltlsynt), so prefer it.
+//
+// The ceiling wins ties: a k past max_representable_step_count would overflow
+// Count. Clamping there can land back under the horizon for atom-rich
+// requirements, which reopens the ratio defect -- a wrong-but-bounded score is
+// preferred to a silently wrapped count.
+std::size_t effective_step_count(const Requirement& requirement,
+                                 const Requirement& other_requirement,
+                                 std::size_t step_count, std::size_t n_atoms) {
+    const std::size_t horizon =
+        std::max(timing_horizon(requirement.m_timing),
+                 timing_horizon(other_requirement.m_timing));
+    return std::min(std::max(step_count, horizon),
+                    max_representable_step_count(n_atoms));
+}
+
 SemanticSimilarityCounts count_semantic_similarity_terms(
     const Requirement& requirement, const Requirement& other_requirement,
     std::size_t step_count) {
     // All three systems must use the same atom universe so that the
     // conjunction count is always <= each individual count, keeping
-    // the similarity ratio in [0, 1].
+    // the similarity ratio in [0, 1]. A shared universe is necessary but not
+    // sufficient: see effective_step_count for the bound's role.
     const std::size_t n_atoms =
         count_joint_atoms(requirement, other_requirement);
+    const std::size_t steps = effective_step_count(
+        requirement, other_requirement, step_count, n_atoms);
     const std::string ltl = requirement_to_ltl(requirement);
     const std::string other_ltl = requirement_to_ltl(other_requirement);
     const std::string conjunction_ltl = "(" + ltl + ") & (" + other_ltl + ")";
     return {
-        cached_count_traces(ltl, n_atoms, step_count),
-        cached_count_traces(other_ltl, n_atoms, step_count),
-        cached_count_traces(conjunction_ltl, n_atoms, step_count),
+        cached_count_traces(ltl, n_atoms, steps),
+        cached_count_traces(other_ltl, n_atoms, steps),
+        cached_count_traces(conjunction_ltl, n_atoms, steps),
     };
 }
 

@@ -202,6 +202,49 @@ void test_semantic_similarity_all_timings_in_range() {
     }
 }
 
+// A bounded timing (WithinTicks/AfterTicks/...) compiles to a safety automaton
+// -- ltl2tgba emits "acc-name: all", and a violating trace is rejected by
+// running out of transitions. Eventually compiles to a Buchi automaton, which
+// is complete: every trace has a run, and rejection is carried entirely by the
+// accepting mask. Counting k-step traces asks the same question of both only
+// once k reaches the bounded operand's horizon (ticks + 1). Below it the safety
+// automaton has not yet reached its stuck transition, so it still counts traces
+// that already missed the deadline -- more than the Buchi side admits for the
+// weaker formula it implies. The containment ratio then exceeds 1.
+void test_semantic_similarity_bounded_timing_vs_eventually_in_range() {
+    const Requirement within5{Formula("true"), Formula("lift_off"),
+                              timing::within_ticks(5), ConditionType::Trigger};
+    const Requirement eventually{Formula("true"), Formula("lift_off"),
+                                 timing::eventually(), ConditionType::Trigger};
+    // Spans both sides of the horizon (6): 3-5 are below it, 6-10 at or above.
+    for (const std::size_t step_count : {3, 4, 5, 6, 7, 10}) {
+        const double score =
+            semantic_similarity(within5, eventually, step_count);
+        expect(score >= 0.0 && score <= 1.0,
+               "semantic-similarity: WithinTicks(5) vs Eventually must stay in "
+               "[0, 1] at bound " +
+                   std::to_string(step_count) +
+                   ", including below the horizon where the safety automaton "
+                   "has not yet enforced its deadline");
+    }
+}
+
+// The same defect at the shipped default_bound of 10: mutate_timing can raise a
+// requirement's tick count to 10 or beyond, putting its horizon (11) above the
+// bound. Guards against treating the defect as a small-bound curiosity.
+void test_semantic_similarity_deep_ticks_at_default_bound_in_range() {
+    const Requirement within10{Formula("true"), Formula("lift_off"),
+                               timing::within_ticks(10),
+                               ConditionType::Trigger};
+    const Requirement eventually{Formula("true"), Formula("lift_off"),
+                                 timing::eventually(), ConditionType::Trigger};
+    const double score = semantic_similarity(
+        within10, eventually, Config{}.default_model_counting_bound);
+    expect(score >= 0.0 && score <= 1.0,
+           "semantic-similarity: a WithinTicks(10) mutant scored against "
+           "Eventually at the default bound must stay in [0, 1]");
+}
+
 }  // namespace
 
 void run_semantic_similarity_tests() {
@@ -213,6 +256,8 @@ void run_semantic_similarity_tests() {
     test_semantic_similarity_specification_averages_requirements();
     test_semantic_similarity_tautology_scores_near_zero();
     test_semantic_similarity_liveness_in_range();
+    test_semantic_similarity_bounded_timing_vs_eventually_in_range();
+    test_semantic_similarity_deep_ticks_at_default_bound_in_range();
     test_semantic_similarity_all_timings_in_range();
     test_semantic_similarity_propequiv_responses_score_equal();
 }

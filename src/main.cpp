@@ -495,6 +495,11 @@ int main(int argc, const char* const argv[]) {
     if (is_tlsf) {
         const auto tlsf_wall_start = std::chrono::steady_clock::now();
         RandomSource tlsf_random_source = init_random_source(argc, argv);
+        const std::optional<std::size_t> tlsf_seed = tlsf_random_source.seed();
+        if (tlsf_seed.has_value()) {
+            register_crash_metadata(
+                format_crash_metadata(*tlsf_seed, *input_path, cfg));
+        }
         const int tlsf_result =
             tlsf::run_repair(*input_path, *output_dir, cfg, tlsf_random_source);
         print_scoring_report();

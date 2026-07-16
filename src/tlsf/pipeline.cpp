@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cstddef>
 #include <fstream>
+#include <iomanip>
 #include <iostream>
 #include <optional>
 #include <sstream>
@@ -18,6 +19,7 @@
 #include "genetic/random_source.hpp"
 #include "genetic/scored.hpp"
 #include "runner/black.hpp"
+#include "serialisation.hpp"
 #include "tlsf/filter.hpp"
 #include "tlsf/fitness.hpp"
 #include "tlsf/operators.hpp"
@@ -94,8 +96,10 @@ std::vector<Scored<Specification>> keep_maximal(
     return result;
 }
 
-void write_survivors(const std::vector<Scored<Specification>>& survivors,
-                     const std::string& output_dir) {
+void write_survivors(
+    const std::vector<Scored<Specification>>& survivors,
+    const AggregateWeightedFitnessFunctionT<Specification>& fitness,
+    const std::string& output_dir) {
     for (std::size_t i = 0; i < survivors.size(); ++i) {
         const std::string base = output_dir + "/repair_" + std::to_string(i);
         std::ofstream spec_file(base + ".tlsf");
@@ -110,9 +114,47 @@ void write_survivors(const std::vector<Scored<Specification>>& survivors,
             throw std::runtime_error("cannot open output file: " + base +
                                      ".fitness.json");
         }
-        nlohmann::json record;
-        record["fitness"] = survivors[i].fitness;
-        fitness_file << record.dump(2) << "\n";
+        // Mirror the FRETISH per-objective breakdown: the weighted total plus
+        // each component's score and weight, in registration order.
+        serialisation::FitnessRecord record;
+        record.total = survivors[i].fitness;
+        for (const WeightedFitnessFunctionT<Specification>& wff : fitness) {
+            record.components.push_back(
+                {wff.name, wff.function(survivors[i].specification),
+                 wff.weight});
+        }
+        const nlohmann::json jobj = record;
+        fitness_file << jobj.dump(2) << "\n";
+    }
+}
+
+struct FilterRunStats {
+    std::string name;
+    std::size_t total_in = 0;
+    std::size_t total_out = 0;
+};
+
+void print_filter_report(const std::vector<FilterRunStats>& stats) {
+    const bool any =
+        std::any_of(stats.begin(), stats.end(), [](const FilterRunStats& stat) {
+            return !stat.name.empty() && stat.total_in > 0;
+        });
+    if (!any) {
+        return;
+    }
+    std::cout << "\nFilter report:\n";
+    for (const FilterRunStats& stat : stats) {
+        if (stat.name.empty() || stat.total_in == 0) {
+            continue;
+        }
+        const double pct_drop =
+            100.0 * (1.0 - static_cast<double>(stat.total_out) /
+                               static_cast<double>(stat.total_in));
+        std::cout << std::left << std::setw(16) << stat.name << std::right
+                  << std::setw(8) << stat.total_in << " in  " << std::setw(8)
+                  << stat.total_out << " out  " << std::fixed
+                  << std::setprecision(1) << std::setw(5) << pct_drop
+                  << "% avg drop\n";
     }
 }
 
@@ -172,20 +214,45 @@ int run_repair(const std::string& input_path, const std::string& output_dir,
     std::vector<Scored<Specification>> population =
         score_population(cfg, seed_population, fitness);
 
+    // Truncation selection with elitism, matching the FRETISH path: each
+    // generation breeds down to selection_size survivors, carrying the best
+    // elitism_size over verbatim. Both are derived once from the seed
+    // population size (cfg guarantees elitism_rate < selection_rate).
+    const std::size_t selection_size = std::max(
+        std::size_t{1},
+        static_cast<std::size_t>(static_cast<double>(cfg.population_size) *
+                                 cfg.selection_rate));
+    const auto elitism_size = static_cast<std::size_t>(
+        static_cast<double>(cfg.population_size) * cfg.elitism_rate);
+
+    std::vector<FilterRunStats> filter_stats;
+    filter_stats.reserve(per_gen_filters.size());
+    for (const FilterFunctionT<Specification>& filter : per_gen_filters) {
+        filter_stats.push_back({filter.name(), 0, 0});
+    }
+
     for (std::size_t gen = 0; gen < cfg.generations; ++gen) {
         const bool is_last = gen + 1 == cfg.generations;
         std::vector<FilterFunctionT<Specification>> active;
+        std::vector<std::size_t> active_index;
         active.reserve(per_gen_filters.size());
-        for (const FilterFunctionT<Specification>& filter : per_gen_filters) {
+        active_index.reserve(per_gen_filters.size());
+        for (std::size_t k = 0; k < per_gen_filters.size(); ++k) {
+            const FilterFunctionT<Specification>& filter = per_gen_filters[k];
             if (is_last || (gen + 1) % filter.interval() == 0) {
                 active.push_back(filter);
+                active_index.push_back(k);
             }
         }
-        // TLSF mode keeps the full population each generation (no truncation
-        // selection), so elitism does not apply here — pass 0.
-        population = evolve_generation_generic(
-            cfg, population, cfg.population_size, /*elitism_size=*/0, fitness,
-            active, tlsf_operators(), random_source);
+        population = evolve_generation_generic(cfg, population, selection_size,
+                                               elitism_size, fitness, active,
+                                               tlsf_operators(), random_source);
+        // The active copies hold this generation's in/out sizes; fold them into
+        // the running per-filter totals for the end-of-run report.
+        for (std::size_t k = 0; k < active.size(); ++k) {
+            filter_stats[active_index[k]].total_in += active[k].n_in();
+            filter_stats[active_index[k]].total_out += active[k].n_out();
+        }
         const double best =
             population.empty() ? 0.0 : population.front().fitness;
         std::cout << "gen " << (gen + 1) << "/" << cfg.generations
@@ -200,7 +267,7 @@ int run_repair(const std::string& input_path, const std::string& output_dir,
     if (cfg.run_implication_filter && survivors.size() > 1) {
         survivors = keep_maximal(survivors, global_sat_checker());
     }
-    write_survivors(survivors, output_dir);
+    write_survivors(survivors, fitness, output_dir);
     std::cout << "Realizable specifications: " << n_realizable;
     if (cfg.run_implication_filter) {
         std::cout << " (" << survivors.size() << " maximal)";
@@ -209,6 +276,7 @@ int run_repair(const std::string& input_path, const std::string& output_dir,
         std::cout << ", written to " << output_dir << "/";
     }
     std::cout << "\n";
+    print_filter_report(filter_stats);
     return 0;
 }
 

@@ -8,8 +8,17 @@ The scheme lives in the directory rather than the filename because
 run_experiments.py parses (sweep, level) out of the filename, and it reads the
 scheme back off the parent directory. Every sweep is generated once per scheme,
 which makes selection_scheme a factor of the design rather than a constant.
+
+Usage:
+    python scripts/gen_configs.py                       # the standard grid
+    python scripts/gen_configs.py --schemes nsga2       # one scheme only
+    python scripts/gen_configs.py --sweeps C D E        # specific sweeps
+    python scripts/gen_configs.py --generations 40 --population-size 1000 \\
+        --out-dir experiments/configs-cj-large          # a larger operating point
+    python scripts/gen_configs.py --weakening both      # cross run_weakening in
 """
 
+import argparse
 from pathlib import Path
 
 CONFIGS_DIR = Path(__file__).parent.parent / "experiments" / "configs"
@@ -18,6 +27,23 @@ CONFIGS_DIR = Path(__file__).parent.parent / "experiments" / "configs"
 # "weighted"; a config omitting the key silently gets that, which is why every
 # generated config pins it explicitly.
 SCHEMES: list[str] = ["nsga2", "weighted"]
+
+# run_weakening as a crossed factor: each (scheme, sweep, level) is emitted once
+# per weakening state into its own <scheme>/<wkon|wkoff>/ directory. The state
+# lives in the directory for the same reason the scheme does — level_value_of()
+# in run_experiments.py parses a trailing number off level_name, so folding it
+# into the filename would corrupt the level value.
+#
+# --weakening defaults to None rather than a state, because passing it is what
+# introduces the extra directory level. Without it the layout stays flat
+# (<scheme>/sweep_X_level.toml) and run_weakening comes from DEFAULTS or the
+# level's own override, which is what keeps the no-arg output byte-identical to
+# the grids generated before this factor existed.
+WEAKENINGS: dict[str, list[tuple[str, bool]]] = {
+    "on":   [("wkon", True)],
+    "off":  [("wkoff", False)],
+    "both": [("wkon", True), ("wkoff", False)],
+}
 
 # Mirrors the built-in defaults from include/config.hpp, with one deliberate
 # exception: config.hpp defaults selection_scheme to "weighted", but the
@@ -55,8 +81,11 @@ def _fmt(v: object) -> str:
     return str(v)
 
 
-def make_toml(overrides: dict) -> str:
-    d = {**DEFAULTS, **overrides}
+def make_toml(overrides: dict, defaults: dict = DEFAULTS) -> str:
+    # Per-level overrides win over `defaults`, so --generations/--population-size
+    # shift the operating point of every sweep that leaves those keys alone
+    # without flattening sweeps A/B, which vary exactly those keys per level.
+    d = {**defaults, **overrides}
     return "\n".join([
         "[genetic]",
         f"generations     = {d['generations']}",
@@ -225,19 +254,70 @@ SWEEPS: list[tuple[str, list]] = [
 ]
 
 
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(
+        description=__doc__,
+        formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser.add_argument("--generations", type=int, default=DEFAULTS["generations"],
+                        metavar="N",
+                        help=f"Baseline generations (default: "
+                             f"{DEFAULTS['generations']}); sweep A overrides it "
+                             f"per level")
+    parser.add_argument("--population-size", type=int,
+                        default=DEFAULTS["population_size"], metavar="N",
+                        help=f"Baseline population size (default: "
+                             f"{DEFAULTS['population_size']}); sweep B overrides "
+                             f"it per level")
+    parser.add_argument("--schemes", nargs="+", choices=SCHEMES, default=SCHEMES,
+                        metavar="SCHEME",
+                        help=f"Selection schemes to emit (default: "
+                             f"{' '.join(SCHEMES)})")
+    parser.add_argument("--sweeps", nargs="+", choices=[n for n, _ in SWEEPS],
+                        default=[n for n, _ in SWEEPS], metavar="SWEEP",
+                        help="Sweeps to emit (default: all)")
+    parser.add_argument("--weakening", choices=list(WEAKENINGS), default=None,
+                        metavar="STATE",
+                        help="Cross run_weakening in as a factor, writing "
+                             "<scheme>/<wkon|wkoff>/ (choices: "
+                             f"{', '.join(WEAKENINGS)}). Omit to keep the flat "
+                             "layout and take run_weakening from the defaults")
+    parser.add_argument("--out-dir", type=Path, default=CONFIGS_DIR, metavar="PATH",
+                        help=f"Directory to write <scheme>/ dirs into (default: "
+                             f"{CONFIGS_DIR})")
+    return parser.parse_args()
+
+
 def main() -> None:
+    args = parse_args()
+    defaults = {**DEFAULTS,
+                "generations": args.generations,
+                "population_size": args.population_size}
+    wanted = set(args.sweeps)
+    sweeps = [(name, levels) for name, levels in SWEEPS if name in wanted]
+    # (subdirectory, run_weakening override). The flat case carries no override,
+    # so sweep J's per-level run_weakening still reaches the emitted TOML.
+    weakenings: list[tuple[str | None, dict]] = (
+        [(d, {"run_weakening": v}) for d, v in WEAKENINGS[args.weakening]]
+        if args.weakening else [(None, {})]
+    )
+
     count = 0
-    for scheme in SCHEMES:
-        scheme_dir = CONFIGS_DIR / scheme
-        scheme_dir.mkdir(parents=True, exist_ok=True)
-        for sweep_name, levels in SWEEPS:
-            for level_name, overrides in levels:
-                path = scheme_dir / f"sweep_{sweep_name}_{level_name}.toml"
-                path.write_text(
-                    make_toml({**overrides, "selection_scheme": scheme}))
-                count += 1
-        print(f"  {scheme:9} {len(list(scheme_dir.glob('sweep_*.toml'))):3} configs")
-    print(f"\nGenerated {count} config files in {CONFIGS_DIR}")
+    for scheme in args.schemes:
+        for wk_dir, wk_override in weakenings:
+            out = args.out_dir / scheme
+            if wk_dir is not None:
+                out = out / wk_dir
+            out.mkdir(parents=True, exist_ok=True)
+            for sweep_name, levels in sweeps:
+                for level_name, overrides in levels:
+                    path = out / f"sweep_{sweep_name}_{level_name}.toml"
+                    path.write_text(make_toml(
+                        {**overrides, "selection_scheme": scheme, **wk_override},
+                        defaults))
+                    count += 1
+            label = scheme if wk_dir is None else f"{scheme}/{wk_dir}"
+            print(f"  {label:14} {len(list(out.glob('sweep_*.toml'))):3} configs")
+    print(f"\nGenerated {count} config files in {args.out_dir}")
 
 
 if __name__ == "__main__":

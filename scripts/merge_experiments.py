@@ -4,8 +4,8 @@
 Idempotent: run it as many times as you like. Per-run result directories are
 named with their seed (``sweep_A_gen10_fsm_seed17``) so they never collide
 between machines; rsync only transfers what changed. The aggregate CSV is
-merged by its natural key ``(sweep, level_name, spec, seed)``, keeping exactly
-one row per key, so re-running never duplicates rows.
+merged by its natural key (see KEY_FIELDS), keeping exactly one row per key, so
+re-running never duplicates rows.
 
 ``--profile`` selects which CSV to merge, and must match the profile the runs
 were executed under: each profile writes its own CSV, so merging a profile's
@@ -42,22 +42,32 @@ REMOTES: dict[str, str] = {
 REMOTE_ROOT = "/home/benandrew/projects/counter"
 # ──────────────────────────────────────────────────────────────────────────────
 
-RESULTS_DIR = REPO_ROOT / "experiments" / "results"
-
 # Mirrors the per-profile results_csv names in run_experiments.py's PROFILES.
 # Adding a profile there means adding it here too.
 PROFILE_CSVS: dict[str, str] = {
     "full": "results.csv",
     "factorial": "results-factorial.csv",
+    "cj-large": "results-cj-large.csv",
+}
+
+# Per-run output directory each profile writes under experiments/. Most profiles
+# share "results"; cj-large uses its own so its runs never collide with another
+# profile's per-run dirs. Both the remote source and local dest use this name.
+PROFILE_RESULT_DIRS: dict[str, str] = {
+    "full": "results",
+    "factorial": "results",
+    "cj-large": "results-cj-large",
 }
 
 # Natural key of a results row: one run per (sweep, level_name, selection,
-# spec, seed). `selection` is part of it because the factorial profile runs
-# every level under both selection schemes — without it the two collapse onto
-# one key and half the rows are silently dropped. Rows written before the
-# column existed are all nsga2 (see run_experiments.py's LEGACY_SELECTION).
-KEY_FIELDS = ("sweep", "level_name", "selection", "spec", "seed")
+# weakening, spec, seed). `selection` and `weakening` are part of it because a
+# profile may run every level under both selection schemes (factorial) and both
+# weakening states (cj-large) — without them the crossed rows collapse onto one
+# key and half are silently dropped. Rows written before either column existed
+# carry the legacy defaults below (see run_experiments.py's LEGACY_* constants).
+KEY_FIELDS = ("sweep", "level_name", "selection", "weakening", "spec", "seed")
 LEGACY_SELECTION = "nsga2"
+LEGACY_WEAKENING = "wkon"
 
 
 def resolve_source(name: str) -> tuple[str, str]:
@@ -110,16 +120,22 @@ def run_rsync(src: str, dst: str, dry_run: bool) -> None:
 
 
 def pull_source(
-    label: str, root: str, dry_run: bool, tmp_dir: Path, csv_name: str
+    label: str, root: str, dry_run: bool, tmp_dir: Path, csv_name: str,
+    result_dir: str | None,
 ) -> Path | None:
-    """rsync one source's results/ and its profile CSV locally.
+    """rsync one source's per-run result dir and its profile CSV locally.
 
-    Returns the local path of the pulled CSV (under tmp_dir), or None if that
-    machine had no CSV for this profile.
+    ``result_dir`` is the profile's per-run directory name, or None to skip the
+    (potentially large) per-run pull and merge only the CSV. Returns the local
+    path of the pulled CSV (under tmp_dir), or None if that machine had no CSV
+    for this profile.
     """
     print(f"[{label}] {root}")
-    # Trailing slash on the source dir: copy contents into results/, merging.
-    run_rsync(f"{root}/experiments/results/", f"{RESULTS_DIR}/", dry_run)
+    if result_dir is not None:
+        dst = REPO_ROOT / "experiments" / result_dir
+        dst.mkdir(parents=True, exist_ok=True)
+        # Trailing slash on the source dir: copy contents in, merging.
+        run_rsync(f"{root}/experiments/{result_dir}/", f"{dst}/", dry_run)
 
     csv_local = tmp_dir / f"{safe_stem(label)}.{csv_name}"
     try:
@@ -138,12 +154,14 @@ def read_rows(path: Path) -> tuple[list[str], list[dict]]:
         return list(reader.fieldnames or []), list(reader)
 
 
+FIELD_DEFAULTS = {"selection": LEGACY_SELECTION, "weakening": LEGACY_WEAKENING}
+
+
 def key_of(row: dict) -> tuple:
-    # A CSV predating the selection column carries only nsga2 runs, so an
-    # absent value keys as nsga2 rather than "" — otherwise merging an old and
-    # a new copy of the same run would produce two rows instead of one.
-    return tuple(row.get(f) or (LEGACY_SELECTION if f == "selection" else "")
-                 for f in KEY_FIELDS)
+    # A CSV predating the selection/weakening columns carries only nsga2 / wkon
+    # runs, so an absent value keys as that default rather than "" — otherwise
+    # merging an old and a new copy of the same run would produce two rows.
+    return tuple(row.get(f) or FIELD_DEFAULTS.get(f, "") for f in KEY_FIELDS)
 
 
 def merge_csv(pulled: list[Path], results_csv: Path) -> None:
@@ -216,9 +234,13 @@ def main() -> None:
                              "the runs used (default: full).")
     parser.add_argument("--dry-run", action="store_true",
                         help="Show the rsync commands without transferring or writing.")
+    parser.add_argument("--no-results", action="store_true",
+                        help="Merge only the CSV; skip rsyncing the (potentially "
+                             "large) per-run result directories.")
     args = parser.parse_args()
 
     csv_name = PROFILE_CSVS[args.profile]
+    result_dir = None if args.no_results else PROFILE_RESULT_DIRS[args.profile]
     results_csv = REPO_ROOT / "experiments" / csv_name
     print(f"Profile: {args.profile} → {csv_name}\n")
 
@@ -229,7 +251,8 @@ def main() -> None:
     pulled: list[Path] = []
     for name in names:
         label, root = resolve_source(name)
-        csv_path = pull_source(label, root, args.dry_run, tmp_dir, csv_name)
+        csv_path = pull_source(
+            label, root, args.dry_run, tmp_dir, csv_name, result_dir)
         if csv_path is not None:
             pulled.append(csv_path)
 

@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1784221361817,
+  "lastUpdate": 1784222390223,
   "repoUrl": "https://github.com/benmandrew/counter",
   "entries": {
     "counter benchmarks": [
@@ -3672,6 +3672,78 @@ window.BENCHMARK_DATA = {
             "value": 3355.35692378189,
             "unit": "ns/iter",
             "extra": "iterations: 213886\ncpu: 3355.3442067269507 ns\nthreads: 1"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "benmandrew@gmail.com",
+            "name": "benmandrew",
+            "username": "benmandrew"
+          },
+          "committer": {
+            "email": "benmandrew@gmail.com",
+            "name": "benmandrew",
+            "username": "benmandrew"
+          },
+          "distinct": true,
+          "id": "865b4dc915f3673812f7579892a4c56f755d4375",
+          "message": "feat: default the similarity metric to logarithmic\n\nThe direct-vs-log campaign (metric profile, 800 runs at generations=40/\npopulation=1000) found logarithmic recovers more ideal repairs across every\nspec -- overall implies-ideal 68.8% vs 61.5%, decisively on fsm (66% vs 40%,\nFisher p=3.7e-4) -- and is never worse. Flip Config::similarity_metric's default\nfrom Direct to Logarithmic so a config omitting model_counting.metric now scores\nlogarithmically; production reaches it through the Config overload, which passes\ncfg.similarity_metric, so no call site changes.\n\nThe low-level semantic_similarity/…_from_counts overloads keep their metric\ndefault argument at Direct: those are test-facing entry points and their\ndirect-formula unit tests (e.g. the 6/7 case) assert that metric's arithmetic,\nso Direct stays the natural fixture there. The one test that compared the Config\noverload against a bound-only call now pins the metric too, since Config carries\nboth the bound and the metric.\n\ngen_configs.py's DEFAULTS keeps metric = \"direct\": a flat (non-crossed) config\nhas no metric directory, so run_experiments.py's metric_of() records it as\nLEGACY_METRIC (\"direct\"); pinning direct there keeps the emitted value matching\nthe recorded CSV column and past grids comparable. Cross --metric to exercise\nlogarithmic. example-config.toml now shows logarithmic as the default.",
+          "timestamp": "2026-07-16T18:12:13+01:00",
+          "tree_id": "c967eac0912e9c6fa14ececa15ae15d1630258a3",
+          "url": "https://github.com/benmandrew/counter/commit/865b4dc915f3673812f7579892a4c56f755d4375"
+        },
+        "date": 1784222389799,
+        "tool": "googlecpp",
+        "benches": [
+          {
+            "name": "Syntactic similarity - small formulas (3 variables)",
+            "value": 539.0817092087509,
+            "unit": "ns/iter",
+            "extra": "iterations: 1302240\ncpu: 538.9987552217718 ns\nthreads: 1"
+          },
+          {
+            "name": "Syntactic similarity - large formulas (11 variables, O(n*m) shared_subformulae)",
+            "value": 2185.5710189292295,
+            "unit": "ns/iter",
+            "extra": "iterations: 320140\ncpu: 2185.2905385144 ns\nthreads: 1"
+          },
+          {
+            "name": "Spec implication check - warm black cache",
+            "value": 571.8778443291078,
+            "unit": "ns/iter",
+            "extra": "iterations: 1216104\ncpu: 571.809101030833 ns\nthreads: 1"
+          },
+          {
+            "name": "Trace model counting - matrix exponentiation/steps:5",
+            "value": 208.7850228448121,
+            "unit": "ns/iter",
+            "extra": "iterations: 3450455\ncpu: 208.76256058983535 ns\nthreads: 1"
+          },
+          {
+            "name": "Trace model counting - matrix exponentiation/steps:10",
+            "value": 230.4204807613564,
+            "unit": "ns/iter",
+            "extra": "iterations: 3003902\ncpu: 230.38780459548946 ns\nthreads: 1"
+          },
+          {
+            "name": "Trace model counting - matrix exponentiation/steps:20",
+            "value": 259.84761357226796,
+            "unit": "ns/iter",
+            "extra": "iterations: 2755206\ncpu: 259.8246131142284 ns\nthreads: 1"
+          },
+          {
+            "name": "Trace model counting - matrix exponentiation/steps:50",
+            "value": 315.1366985354956,
+            "unit": "ns/iter",
+            "extra": "iterations: 2209892\ncpu: 315.0747068182517 ns\nthreads: 1"
+          },
+          {
+            "name": "Mutate specification - 3-guarantee takeoff spec",
+            "value": 3257.746990482445,
+            "unit": "ns/iter",
+            "extra": "iterations: 214237\ncpu: 3257.2145054309008 ns\nthreads: 1"
           }
         ]
       }

@@ -1,3 +1,6 @@
+#include <cmath>
+#include <cstddef>
+#include <limits>
 #include <sstream>
 #include <string>
 #include <type_traits>
@@ -358,6 +361,132 @@ void test_transfer_system_vs_oracle() {
     }
 }
 
+// build_transfer_system_from_ltl weights each edge by
+// ganak_models(guard) * 2^(n_total_atoms - n_mentioned), so a single-state
+// automaton with self-loop weight W counts exactly W^k traces. Every case below
+// asserts a value past 2^128, i.e. one that a 128-bit Count could not hold --
+// which is the regime the long double Count exists for, and the one the rest of
+// this file (expected counts of 1, 3, 17) never reaches.
+Count exact_power_of_two(int exponent) { return std::ldexp(1.0L, exponent); }
+
+void expect_exact_count(Count actual, Count expected,
+                        const std::string& label) {
+    if (actual != expected) {
+        std::ostringstream message;
+        message << label << ": expected " << count_to_string(expected)
+                << " but found " << count_to_string(actual);
+        fail(message.str());
+    }
+}
+
+// A tautology mentions no atoms, so every one of the N is free and the "t"
+// self-loop weighs 2^N. Powers of two are bit-exact in long double at any
+// magnitude (mantissa 1.0, exponent e), so this is an exact comparison.
+void test_count_traces_tautology_beyond_128_bits() {
+    struct TautologyCase {
+        std::size_t m_n_atoms;
+        std::size_t m_step_count;
+    };
+
+    const std::vector<TautologyCase> cases = {
+        {10, 20},   // 2^200
+        {32, 100},  // 2^3200
+        {50, 300},  // 2^15000, deliberately near long double's 2^16384 ceiling
+    };
+
+    run_cases(cases, [](const TautologyCase& test_case) {
+        const TransferSystem system =
+            build_transfer_system_from_ltl("1", test_case.m_n_atoms);
+        const auto exponent =
+            static_cast<int>(test_case.m_n_atoms * test_case.m_step_count);
+        expect_exact_count(
+            count_traces(system, test_case.m_step_count),
+            exact_power_of_two(exponent),
+            "tautology over " + std::to_string(test_case.m_n_atoms) +
+                " atoms at k=" + std::to_string(test_case.m_step_count));
+    });
+}
+
+// Drives ganak and the HOA label parse with ten genuinely mentioned atoms,
+// while keeping the oracle exact: the guard has a single model over them, so
+// the self-loop weighs 2^(20-10) and the count is exactly 2^(10*k).
+void test_count_traces_many_mentioned_atoms() {
+    std::string conjunction = "a0";
+    for (std::size_t atom_idx = 1; atom_idx < 10; ++atom_idx) {
+        conjunction += " & a" + std::to_string(atom_idx);
+    }
+    const TransferSystem system =
+        build_transfer_system_from_ltl("G(" + conjunction + ")", 20);
+    expect_exact_count(count_traces(system, 30), exact_power_of_two(10 * 30),
+                       "G(a0 & ... & a9) over 20 atoms at k=30");
+}
+
+// The strongest case: three of the four (a, b) valuations satisfy the guard, so
+// the self-loop weighs 3 * 2^8 and the count is 3^k * 2^(8k) -- mantissa
+// exactness and exponent range at once, where the 2^160 factor alone already
+// overflows 128 bits. k stays <= 40 so that 3^k remains under 2^64 and is
+// therefore still exact in long double's 64-bit mantissa.
+void test_count_traces_non_power_of_two_weight() {
+    const std::size_t step_count = 20;
+    const TransferSystem system =
+        build_transfer_system_from_ltl("G(a | b)", 10);
+    Count mantissa = 1.0L;
+    for (std::size_t step = 0; step < step_count; ++step) {
+        mantissa *= 3.0L;
+    }
+    const Count expected =
+        mantissa * exact_power_of_two(static_cast<int>(8 * step_count));
+    expect_exact_count(count_traces(system, step_count), expected,
+                       "G(a | b) over 10 atoms at k=20");
+}
+
+// Now that Count is floating-point, overflow is reported by an isfinite check
+// rather than a carry flag. Past the ceiling it must still be reported, not
+// silently saturated to a finite maximum.
+void test_count_overflow_detected_at_ceiling() {
+    Count result = 0;
+    expect(count_mul_overflow(std::numeric_limits<Count>::max(), 2.0L, result),
+           "count_mul_overflow: max * 2 must report overflow");
+    expect(!std::isfinite(result),
+           "count_mul_overflow: an overflowing product must not stay finite");
+}
+
+#ifdef __SIZEOF_INT128__
+// The cases above all stay exact: powers of two are bit-exact at any exponent,
+// and the 3^k factor was kept under 2^64. This one deliberately pushes the
+// count's non-power-of-two part past the 64-bit mantissa so it is genuinely
+// rounded -- the trade the float Count makes -- and pins that the rounding is
+// faithful (correct to a few ulps), not garbage. The exact reference is 3^70
+// held in unsigned __int128, the very width the count no longer uses; the test
+// compiles out where that width is unavailable, since the exactness bound is
+// x86-specific anyway.
+void test_count_traces_rounds_faithfully_above_64_bits() {
+    const std::size_t step_count = 70;  // 6^70 = 3^70 * 2^70; 3^70 ~ 2^111
+    const std::size_t n_atoms = 3;      // G(a|b): self-loop weight 3 * 2^(3-2)
+    const TransferSystem system =
+        build_transfer_system_from_ltl("G(a | b)", n_atoms);
+
+    unsigned __int128 exact_three_pow = 1;
+    for (std::size_t step = 0; step < step_count; ++step) {
+        exact_three_pow *= 3U;
+    }
+    // count = weight^k = 3^k * 2^((n_atoms - 2) * k); the 2^70 scale is exact.
+    const int scale_exponent = static_cast<int>((n_atoms - 2) * step_count);
+    const Count reference = static_cast<Count>(exact_three_pow) *
+                            exact_power_of_two(scale_exponent);
+
+    const Count actual = count_traces(system, step_count);
+    expect(
+        actual > exact_power_of_two(64),
+        "precondition: the count must exceed 2^64 for rounding to be in play");
+    const Count relative_error = std::fabs(actual - reference) / reference;
+    expect(relative_error < 1e-16,
+           "count_traces: a count past 2^64 must round faithfully (relative "
+           "error " +
+               std::to_string(static_cast<double>(relative_error)) + ")");
+}
+#endif
+
 }  // namespace
 
 void expect_square_matrix_size(const CountMatrix& matrix,
@@ -426,4 +555,11 @@ void run_transfer_matrix_tests() {
     test_transfer_system_vs_oracle();
     test_weighted_transition_matrix_cases();
     test_count_traces_formula();
+    test_count_traces_tautology_beyond_128_bits();
+    test_count_traces_many_mentioned_atoms();
+    test_count_traces_non_power_of_two_weight();
+    test_count_overflow_detected_at_ceiling();
+#ifdef __SIZEOF_INT128__
+    test_count_traces_rounds_faithfully_above_64_bits();
+#endif
 }

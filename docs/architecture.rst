@@ -79,10 +79,11 @@ Key types
   via matrix exponentiation.
 
 ``Count``
-  ``uint64_t`` or ``unsigned __int128`` (selected at configure time via
-  ``COUNTER_USE_UINT128``).  All arithmetic must go through
-  ``count_add_overflow`` / ``count_mul_overflow`` with an assert on the
-  overflow flag.
+  ``long double``.  Trace counts are only consumed as ratios cast to
+  ``double``, so exponent range matters more than exact integer width.  All
+  arithmetic must go through ``count_add_overflow`` / ``count_mul_overflow``
+  with an assert on the overflow flag; overflow means the result went
+  non-finite.
 
 Module layout
 -------------

@@ -361,7 +361,12 @@ PROFILES: dict[str, dict] = {
         "sweeps": ["A", "B"],
         "levels": {},
         "specs": list(TLSF_SPECS),
-        "seeds": list(range(16)),
+        # A generous ceiling, not a commitment. Ordering is seed-major, so a
+        # machine killed at the wall-clock deadline leaves a balanced design at
+        # whatever seed depth it reached; splitting 0-29/30-59 across av2/av3
+        # keeps the two seed ranges disjoint so a truncated pair still merges to
+        # one balanced dataset. ~16 h/machine is the real stop condition.
+        "seeds": list(range(60)),
         # Flat per-spec caps generous enough that the largest operating point
         # (gen40 / pop500) never censors a slow-but-progressing run — a cap that
         # bites records implies_ideal = 0 for a run that merely ran long, which

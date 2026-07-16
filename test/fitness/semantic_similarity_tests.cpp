@@ -40,11 +40,16 @@ void test_semantic_similarity_default_overload_matches_explicit_step_count() {
                                         timing::immediately()};
     const double with_default =
         semantic_similarity(requirement, other_requirement, Config{});
-    const double with_explicit_step_count = semantic_similarity(
-        requirement, other_requirement, Config{}.default_model_counting_bound);
-    expect(std::fabs(with_default - with_explicit_step_count) < 1e-12,
-           "semantic-similarity: default overload should use "
-           "Config{}.default_model_counting_bound");
+    // Pin both the bound and the metric explicitly: the Config overload carries
+    // both, so comparing against a bound-only call (which defaults the metric
+    // to Direct) would conflate them now that Config defaults the metric to
+    // Logarithmic. This isolates the bound-wiring this test is about.
+    const double with_explicit = semantic_similarity(
+        requirement, other_requirement, Config{}.default_model_counting_bound,
+        Config{}.similarity_metric);
+    expect(std::fabs(with_default - with_explicit) < 1e-12,
+           "semantic-similarity: Config overload should use the config's bound "
+           "and metric");
 }
 
 void test_semantic_similarity_identical_specifications_score_one() {

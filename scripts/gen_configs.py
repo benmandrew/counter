@@ -58,10 +58,15 @@ METRICS: dict[str, list[tuple[str, str]]] = {
     "both":   [("direct", "direct"), ("log", "logarithmic")],
 }
 
-# Mirrors the built-in defaults from include/config.hpp, with one deliberate
-# exception: config.hpp defaults selection_scheme to "weighted", but the
-# baseline of every sweep is NSGA-II, so DEFAULTS pins "nsga2" and the
-# generator overrides it per scheme.
+# Mirrors the built-in defaults from include/config.hpp, with two deliberate
+# exceptions. config.hpp defaults selection_scheme to "weighted", but the
+# baseline of every sweep is NSGA-II, so DEFAULTS pins "nsga2" and the generator
+# overrides it per scheme. config.hpp now defaults metric to "logarithmic", but
+# the experiment baseline stays "direct": a flat (non-crossed) config carries no
+# metric directory, so run_experiments.py's metric_of() attributes it to
+# LEGACY_METRIC ("direct") — pinning "direct" here keeps the emitted config's
+# value matching that recorded CSV column and keeps past grids comparable. Cross
+# the metric explicitly with --metric to exercise "logarithmic".
 DEFAULTS: dict = {
     "generations": 10,
     "population_size": 200,

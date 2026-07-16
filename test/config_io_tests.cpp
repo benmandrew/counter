@@ -221,10 +221,10 @@ void test_config_io_selection_scheme_invalid_throws() {
     expect(threw, "config_io: an unknown selection_scheme should throw");
 }
 
-void test_config_io_similarity_metric_defaults_to_direct() {
+void test_config_io_similarity_metric_defaults_to_logarithmic() {
     const Config cfg = config_from_toml_string("");
-    expect(cfg.similarity_metric == SimilarityMetric::Direct,
-           "config_io: similarity_metric should default to Direct");
+    expect(cfg.similarity_metric == SimilarityMetric::Logarithmic,
+           "config_io: similarity_metric should default to Logarithmic");
 }
 
 void test_config_io_similarity_metric_direct_parsed() {
@@ -278,7 +278,7 @@ void run_config_io_tests() {
     test_config_io_selection_scheme_weighted_parsed();
     test_config_io_selection_scheme_nsga2_parsed();
     test_config_io_selection_scheme_invalid_throws();
-    test_config_io_similarity_metric_defaults_to_direct();
+    test_config_io_similarity_metric_defaults_to_logarithmic();
     test_config_io_similarity_metric_direct_parsed();
     test_config_io_similarity_metric_logarithmic_parsed();
     test_config_io_similarity_metric_invalid_throws();

@@ -59,8 +59,8 @@ p_temporal   = 0.2
 
 [model_counting]
 default_bound = 10       # trace-length bound k for bounded model counting
-metric        = "direct" # "direct" (count ratio) or "logarithmic" (growth-rate
-                         # ratio; stays stable as the bound grows)
+metric        = "logarithmic" # default; "logarithmic" (growth-rate ratio; stays
+                         # stable as the bound grows) or "direct" (count ratio)
 
 [filters]
 run_weakening   = true  # enable per-generation weakening filter

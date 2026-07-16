@@ -64,6 +64,22 @@ SPECS: dict[str, dict[str, Path]] = {
     },
 }
 
+# The basic-TLSF examples, run by the `tlsf` profile. counter auto-detects the
+# .tlsf extension and runs the TLSF pipeline, writing repair_N.tlsf beside a
+# repair_N.fitness.json; compare auto-detects .tlsf ideals and repairs. These
+# are kept out of SPECS so the FRETISH profiles' `list(SPECS)` is unchanged;
+# run_one and --specs resolve names against ALL_SPECS, which spans both.
+TLSF_SPECS: dict[str, dict[str, Path]] = {
+    name: {
+        "input": EXAMPLES_DIR / name / "spec.tlsf",
+        "ideals_dir": EXAMPLES_DIR / name / "fixes",
+    }
+    for name in ("arbiter", "gyro-var1", "humanoid-531", "lift", "lily02",
+                 "minepump")
+}
+
+ALL_SPECS: dict[str, dict[str, Path]] = {**SPECS, **TLSF_SPECS}
+
 N_SEEDS = 30
 
 # compare runs n_repairs * n_ideals * 2 implication checks, each with compare's
@@ -170,6 +186,14 @@ CJ_LARGE_ALIASES: dict[tuple[str, str], tuple[str, str]] = {
     ("E", "presp0.5"): ("C", "default"),
     ("F", "ptim0.15"): ("C", "default"),
     ("I", "mut1.0"): ("C", "default"),
+}
+
+# The TLSF campaign runs only sweeps A (generations) and B (population), which
+# cross at the gen10/pop200 baseline, so B/pop200 aliases onto A/gen10 exactly
+# as in the FRETISH grid. No other sweep is generated, so the rest of
+# BASELINE_ALIASES has nothing to match and is left out.
+TLSF_ALIASES: dict[tuple[str, str], tuple[str, str]] = {
+    ("B", "pop200"): ("A", "gen10"),
 }
 
 
@@ -280,6 +304,44 @@ PROFILES: dict[str, dict] = {
         "results_csv": EXPERIMENTS_DIR / "results-metric.csv",
         "default_jobs": 4,
     },
+    # The basic-TLSF examples swept over generations (A) and population (B), the
+    # two operating-point parameters, NSGA-II only, default weakening. These
+    # specs are much slower than the FRETISH ones — three of them (lift,
+    # gyro-var1, humanoid-531) take ~3 min even at the gen10/pop200 baseline and
+    # scale with generations*population — so the grid is a coarse cross (four
+    # levels per axis, sharing the baseline) rather than the fine FRETISH grid,
+    # trading gradations for seeds within a fixed wall-clock budget. Reads its
+    # own experiments/configs-tlsf/ grid; generate it with
+    #   python scripts/gen_configs.py --tlsf
+    "tlsf": {
+        "schemes": ["nsga2"],
+        "weakenings": None,
+        "metrics": None,
+        "sweeps": ["A", "B"],
+        "levels": {},
+        "specs": list(TLSF_SPECS),
+        "seeds": list(range(16)),
+        # Flat per-spec caps generous enough that the largest operating point
+        # (gen40 / pop500) never censors a slow-but-progressing run — a cap that
+        # bites records implies_ideal = 0 for a run that merely ran long, which
+        # corrupts the response variable. Sized from the measured baseline
+        # (~190s for the heavy specs at gen10/pop200) times the ~4x operating
+        # range times a safety margin for the jobs>1 thread-pool cap.
+        "timeout_caps": {"arbiter": 2400, "gyro-var1": 3600,
+                         "humanoid-531": 3600, "lift": 3600,
+                         "lily02": 1200, "minepump": 1200},
+        "baseline_aliases": TLSF_ALIASES,
+        "configs_dir": EXPERIMENTS_DIR / "configs-tlsf",
+        "results_dir": EXPERIMENTS_DIR / "results-tlsf",
+        "results_csv": EXPERIMENTS_DIR / "results-tlsf.csv",
+        # jobs=1: one counter process per machine, using its full internal
+        # thread pool. The configs cap concurrent ltlsynt
+        # (max_concurrent_realizability) to bound peak RAM, and that cap is
+        # per-process, so a single process keeps it the machine-wide limit —
+        # running several counter processes at once (jobs>1) would multiply the
+        # ltlsynt count by jobs and risk the OOM the cap exists to prevent.
+        "default_jobs": 1,
+    },
 }
 
 
@@ -367,7 +429,27 @@ def counter_timeout(level_name: str, level_value) -> int:
 # ── Parsing ───────────────────────────────────────────────────────────────────
 
 def parse_repair_files(output_dir: Path) -> tuple[int, float]:
-    """Return (n_repairs, best_fitness) from repair_N.json files."""
+    """Return (n_repairs, best_fitness) from a run's repair files.
+
+    FRETISH runs write repair_N.json with the weighted total nested under a
+    "fitness" object. TLSF runs write repair_N.tlsf beside a repair_N.fitness.json
+    sidecar carrying the total at top level. The sidecar also matches
+    repair_*.json, so TLSF is detected first (by its .tlsf files) to avoid
+    counting sidecars as repairs and reading a missing nested "fitness".
+    """
+    tlsf_files = list(output_dir.glob("repair_*.tlsf"))
+    if tlsf_files:
+        best = float("-inf")
+        for f in tlsf_files:
+            try:
+                total = json.loads(
+                    f.with_suffix(".fitness.json").read_text()).get("total")
+                if total is not None:
+                    best = max(best, float(total))
+            except Exception:
+                pass
+        return len(tlsf_files), best if best != float("-inf") else float("nan")
+
     files = list(output_dir.glob("repair_*.json"))
     if not files:
         return 0, float("nan")
@@ -510,7 +592,7 @@ def run_one(config_path: Path, sweep: str, level_name: str, spec_name: str,
     `run_id` does not encode the operating point, so profiles that differ only
     in that must pass different `results_dir`s for the same reason.
     """
-    spec = SPECS[spec_name]
+    spec = ALL_SPECS[spec_name]
 
     if run_id is None:
         run_id = f"sweep_{sweep}_{level_name}_{spec_name}_seed{seed:02d}"
@@ -591,7 +673,8 @@ def main() -> None:
                         help="Concurrent runs (default: per profile)")
     parser.add_argument("--sweeps", nargs="+", metavar="SWEEP",
                         help="Sweeps to run (default: per profile)")
-    parser.add_argument("--specs", nargs="+", choices=list(SPECS), metavar="SPEC",
+    parser.add_argument("--specs", nargs="+", choices=list(ALL_SPECS),
+                        metavar="SPEC",
                         help="Specs to run (default: per profile)")
     parser.add_argument("--seeds", nargs="+", type=int, metavar="N",
                         help="Seeds to run (default: per profile)")

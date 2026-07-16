@@ -93,11 +93,61 @@ void test_all_sections_and_aliases() {
     expect(spec.m_assert.size() == 1, "sections: INVARIANTS alias");
     expect(spec.m_guarantee.size() == 1, "sections: GUARANTEES alias");
 
-    const tlsf::Specification spec2 = tlsf::parse(
-        doc("ASSUME { a; } ASSERT { b; } GUARANTEE { b; } INVARIANT { a; }"));
+    const tlsf::Specification spec2 =
+        tlsf::parse(doc("ASSUME { a; } ASSERT { b; } GUARANTEE { b; } "
+                        "REQUIREMENTS { a; } INVARIANTS { a; }"));
     expect(spec2.m_assume.size() == 1, "sections: ASSUME singular");
-    expect(spec2.m_assert.size() == 2, "sections: ASSERT + INVARIANT merge");
+    expect(spec2.m_assert.size() == 2, "sections: ASSERT + INVARIANTS merge");
     expect(spec2.m_guarantee.size() == 1, "sections: GUARANTEE singular");
+    expect(spec2.m_require.size() == 1, "sections: REQUIREMENTS alias");
+}
+
+// Real-world basic TLSF (as emitted by syfco): INFO entries have no `;`
+// terminator and boolean connectives use the doubled `&&`/`||`.
+void test_real_format_no_semicolons_and_double_ops() {
+    const tlsf::Specification spec = tlsf::parse(
+        "INFO {\n"
+        "  TITLE:       \"TLSF - Test Specification\"\n"
+        "  DESCRIPTION: \"Test Test Test\"\n"
+        "  SEMANTICS:   Mealy\n"
+        "  TARGET:      Mealy\n"
+        "}\n"
+        "MAIN {\n"
+        "  INPUTS { methane; high_water; }\n"
+        "  OUTPUTS { pump_on; }\n"
+        "  ASSUMPTIONS {\n"
+        "    G (pump_on -> (!high_water || X(!high_water || "
+        "X(!high_water))));\n"
+        "  }\n"
+        "  GUARANTEES {\n"
+        "    G (high_water -> X (pump_on));\n"
+        "    G (methane -> X (!pump_on));\n"
+        "  }\n"
+        "}\n");
+    expect(spec.m_title == "TLSF - Test Specification",
+           "real: TITLE parsed without a semicolon terminator");
+    expect(spec.m_description == "Test Test Test",
+           "real: DESCRIPTION parsed without a semicolon terminator");
+    expect(spec.m_semantics == tlsf::Semantics::MealyStandard,
+           "real: SEMANTICS parsed without a semicolon terminator");
+    expect(spec.m_inputs.size() == 2, "real: two inputs");
+    expect(spec.m_outputs.size() == 1, "real: one output");
+    expect(spec.m_assume.size() == 1, "real: ASSUMPTIONS with || parsed");
+    expect(spec.m_guarantee.size() == 2, "real: two GUARANTEES parsed");
+}
+
+void test_double_operators() {
+    auto first = [](const std::string& body) {
+        return tlsf::parse(
+                   doc("OUTPUTS { a; b; c; } GUARANTEE { " + body + "; }"))
+            .m_guarantee.front()
+            .to_string();
+    };
+    // `&&`/`||` are the TLSF connectives; they parse identically to `&`/`|`.
+    expect(first("a && b || c") == first("a & b | c"),
+           "operators: && / || match & / |");
+    expect(first("a && b || c") == "((a) & (b)) | (c)",
+           "operators: && binds tighter than ||");
 }
 
 void test_precedence_and_associativity() {
@@ -182,6 +232,10 @@ void test_error_cases() {
                   "loop aggregate", "reject: loop aggregate");
     expect_reject(doc("OUTPUTS { g; } GUARANTEE { g@0; }"), "primed/bus-access",
                   "reject: bus-access syntax");
+    // Singular INVARIANT is not a TLSF keyword (only the plural INVARIANTS);
+    // syfco rejects it, so we do too.
+    expect_reject(doc("OUTPUTS { g; } INVARIANT { g; } GUARANTEE { g; }"),
+                  "INVARIANT", "reject: non-standard singular INVARIANT");
 
     // Genuine syntax errors throw invalid_argument rather than crashing.
     bool threw_missing_semi = false;
@@ -243,6 +297,8 @@ void run_tlsf_parser_tests() {
     test_semantics_variants();
     test_finite_rejected();
     test_all_sections_and_aliases();
+    test_real_format_no_semicolons_and_double_ops();
+    test_double_operators();
     test_precedence_and_associativity();
     test_bounded_expansion();
     test_comments_and_multistatement();

@@ -70,10 +70,25 @@ void test_semantics_written() {
            "write: semantics survives round-trip");
 }
 
+// Written output must follow the TLSF grammar: INFO entries carry no `;`
+// terminator, and boolean connectives use the doubled `&&`/`||`.
+void test_write_conformance() {
+    const tlsf::Specification spec = tlsf::parse(
+        "INFO { TITLE: \"T\"; SEMANTICS: Mealy; }\n"
+        "MAIN { OUTPUTS { a; b; } GUARANTEE { a & b; } }");
+    const std::string out = tlsf::write(spec);
+    expect(out.find("Mealy;") == std::string::npos,
+           "write: INFO entries are not ';'-terminated");
+    expect(out.find("&&") != std::string::npos,
+           "write: conjunction uses the doubled && form");
+    expect(tlsf::parse(out) == spec, "write: conformant output round-trips");
+}
+
 }  // namespace
 
 void run_tlsf_writer_tests() {
     test_round_trips();
     test_write_structure();
     test_semantics_written();
+    test_write_conformance();
 }

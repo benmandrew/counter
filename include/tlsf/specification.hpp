@@ -39,11 +39,11 @@ struct Specification {
     std::vector<Formula> m_initially;
     /// PRESET — system initial state.
     std::vector<Formula> m_preset;
-    /// REQUIRE — environment invariant (G-wrapped in the lowering).
+    /// REQUIRE / REQUIREMENTS — environment invariant (G-wrapped in lowering).
     std::vector<Formula> m_require;
     /// ASSUME / ASSUMPTIONS — environment property, taken verbatim.
     std::vector<Formula> m_assume;
-    /// ASSERT / INVARIANT(S) — system invariant (G-wrapped in the lowering).
+    /// ASSERT / INVARIANTS — system invariant (G-wrapped in the lowering).
     std::vector<Formula> m_assert;
     /// GUARANTEE(S) — system property, taken verbatim.
     std::vector<Formula> m_guarantee;

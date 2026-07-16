@@ -324,6 +324,16 @@ class Parser {
 
     // --- INFO ---
 
+    // True at the end of the INFO block or the start of the next `KEY:` entry —
+    // the boundaries that terminate a semicolon-less INFO value.
+    [[nodiscard]] bool at_info_boundary() const {
+        const Tok type = peek().m_type;
+        if (type == Tok::RBrace || type == Tok::End || type == Tok::Semicolon) {
+            return true;
+        }
+        return type == Tok::Ident && peek(1).m_type == Tok::Colon;
+    }
+
     void parse_info(Specification& spec) {
         expect_ident("INFO");
         expect(Tok::LBrace, "'{'");
@@ -333,36 +343,36 @@ class Parser {
         expect(Tok::RBrace, "'}'");
     }
 
+    // TLSF INFO entries are whitespace-separated `KEY: value`, with no `;`
+    // terminator (unlike MAIN statements); a stray trailing `;` is tolerated.
     void parse_info_entry(Specification& spec) {
         const Token key = expect(Tok::Ident, "an INFO key");
         expect(Tok::Colon, "':'");
         if (key.m_text == "TITLE") {
             spec.m_title = expect(Tok::String, "a string").m_text;
-            expect(Tok::Semicolon, "';'");
-            return;
-        }
-        if (key.m_text == "DESCRIPTION") {
+        } else if (key.m_text == "DESCRIPTION") {
             spec.m_description = expect(Tok::String, "a string").m_text;
-            expect(Tok::Semicolon, "';'");
+        } else if (key.m_text == "SEMANTICS") {
+            parse_semantics(spec);  // consumes its own optional ';'
+            return;
+        } else {
+            // TARGET, TAGS, VERSION, and any other key: value consumed
+            // verbatim.
+            skip_info_value();  // consumes its own optional ';'
             return;
         }
-        if (key.m_text == "SEMANTICS") {
-            parse_semantics(spec);
-            return;
-        }
-        // TARGET, TAGS, VERSION, and any other key: consume the value verbatim.
-        skip_to_semicolon();
+        accept(Tok::Semicolon);
     }
 
     void parse_semantics(Specification& spec) {
         std::vector<std::string> idents;
-        while (peek().m_type != Tok::Semicolon && peek().m_type != Tok::End) {
+        while (!at_info_boundary()) {
             if (peek().m_type == Tok::Ident) {
                 idents.push_back(peek().m_text);
             }
             advance();
         }
-        expect(Tok::Semicolon, "';'");
+        accept(Tok::Semicolon);
         bool machine_moore = false;
         bool machine_found = false;
         bool strict = false;
@@ -398,15 +408,11 @@ class Parser {
         }
     }
 
-    void skip_to_semicolon() {
-        while (peek().m_type != Tok::Semicolon) {
-            if (peek().m_type == Tok::RBrace || peek().m_type == Tok::End) {
-                throw std::invalid_argument(
-                    "TLSF parse error: missing ';' in INFO section");
-            }
+    void skip_info_value() {
+        while (!at_info_boundary()) {
             advance();
         }
-        advance();  // consume ';'
+        accept(Tok::Semicolon);
     }
 
     // --- MAIN ---
@@ -452,13 +458,13 @@ class Parser {
         if (name == "PRESET") {
             return &spec.m_preset;
         }
-        if (name == "REQUIRE") {
+        if (name == "REQUIRE" || name == "REQUIREMENTS") {
             return &spec.m_require;
         }
         if (name == "ASSUME" || name == "ASSUMPTIONS") {
             return &spec.m_assume;
         }
-        if (name == "ASSERT" || name == "INVARIANT" || name == "INVARIANTS") {
+        if (name == "ASSERT" || name == "INVARIANTS") {
             return &spec.m_assert;
         }
         if (name == "GUARANTEE" || name == "GUARANTEES") {
@@ -514,9 +520,15 @@ class Parser {
         return lhs;
     }
 
+    // TLSF's boolean connectives are the doubled `&&`/`||`; the
+    // single-character
+    // `&`/`|` are accepted too so SPOT-syntax formulae (e.g. Formula::to_string
+    // output) round-trip. The bracketed `&&[...]`/`||[...]` loop aggregates are
+    // rejected as operands in parse_unary/parse_primary, not here.
     Formula parse_or() {
         Formula lhs = parse_and();
-        while (accept(Tok::Or)) {
+        while (peek().m_type == Tok::Or || peek().m_type == Tok::OrOr) {
+            advance();
             Formula rhs = parse_and();
             lhs = Formula::make_binary(Formula::Kind::Or, lhs, rhs);
         }
@@ -525,7 +537,8 @@ class Parser {
 
     Formula parse_and() {
         Formula lhs = parse_until();
-        while (accept(Tok::And)) {
+        while (peek().m_type == Tok::And || peek().m_type == Tok::AndAnd) {
+            advance();
             Formula rhs = parse_until();
             lhs = Formula::make_binary(Formula::Kind::And, lhs, rhs);
         }
@@ -551,7 +564,8 @@ class Parser {
     }
 
     Formula parse_unary() {
-        if (peek().m_type == Tok::AndAnd || peek().m_type == Tok::OrOr) {
+        if ((peek().m_type == Tok::AndAnd || peek().m_type == Tok::OrOr) &&
+            peek(1).m_type == Tok::LBracket) {
             reject_construct("loop aggregate");
         }
         if (peek().m_type == Tok::At || peek().m_type == Tok::Prime) {
@@ -649,7 +663,8 @@ class Parser {
             expect(Tok::RParen, "')'");
             return inner;
         }
-        if (peek().m_type == Tok::AndAnd || peek().m_type == Tok::OrOr) {
+        if ((peek().m_type == Tok::AndAnd || peek().m_type == Tok::OrOr) &&
+            peek(1).m_type == Tok::LBracket) {
             reject_construct("loop aggregate");
         }
         if (peek().m_type == Tok::At || peek().m_type == Tok::Prime) {

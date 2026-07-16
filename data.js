@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1784224578553,
+  "lastUpdate": 1784224992921,
   "repoUrl": "https://github.com/benmandrew/counter",
   "entries": {
     "counter benchmarks": [
@@ -3888,6 +3888,78 @@ window.BENCHMARK_DATA = {
             "value": 2208.023366803708,
             "unit": "ns/iter",
             "extra": "iterations: 288315\ncpu: 2207.1866014602056 ns\nthreads: 1"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "benmandrew@gmail.com",
+            "name": "benmandrew",
+            "username": "benmandrew"
+          },
+          "committer": {
+            "email": "benmandrew@gmail.com",
+            "name": "benmandrew",
+            "username": "benmandrew"
+          },
+          "distinct": true,
+          "id": "d9ae0ea8e62e5325b3135fa319f72bfd5312412f",
+          "message": "feat: add TLSF examples and rename arbiter-gr1 to arbiter\n\nAdd per-scenario TLSF example directories (gyro-var1, humanoid-531,\nlift, lily02, minepump), each with a spec.tlsf and fixes/. Rename the\narbiter-gr1 scenario to arbiter, moving its ideal to a named fix under\nfixes/.",
+          "timestamp": "2026-07-16T19:00:21+01:00",
+          "tree_id": "d28beca99120d42501cee975698d19d496f4dba6",
+          "url": "https://github.com/benmandrew/counter/commit/d9ae0ea8e62e5325b3135fa319f72bfd5312412f"
+        },
+        "date": 1784224991892,
+        "tool": "googlecpp",
+        "benches": [
+          {
+            "name": "Syntactic similarity - small formulas (3 variables)",
+            "value": 576.5357254325431,
+            "unit": "ns/iter",
+            "extra": "iterations: 1063724\ncpu: 576.4584459878689 ns\nthreads: 1"
+          },
+          {
+            "name": "Syntactic similarity - large formulas (11 variables, O(n*m) shared_subformulae)",
+            "value": 2494.08010929407,
+            "unit": "ns/iter",
+            "extra": "iterations: 293886\ncpu: 2493.3800010888576 ns\nthreads: 1"
+          },
+          {
+            "name": "Spec implication check - warm black cache",
+            "value": 604.6462855769734,
+            "unit": "ns/iter",
+            "extra": "iterations: 1152817\ncpu: 604.5445200756059 ns\nthreads: 1"
+          },
+          {
+            "name": "Trace model counting - matrix exponentiation/steps:5",
+            "value": 197.6361578704583,
+            "unit": "ns/iter",
+            "extra": "iterations: 3203994\ncpu: 197.60322366396437 ns\nthreads: 1"
+          },
+          {
+            "name": "Trace model counting - matrix exponentiation/steps:10",
+            "value": 222.8591102920759,
+            "unit": "ns/iter",
+            "extra": "iterations: 3137007\ncpu: 222.8280905971839 ns\nthreads: 1"
+          },
+          {
+            "name": "Trace model counting - matrix exponentiation/steps:20",
+            "value": 248.90475796261092,
+            "unit": "ns/iter",
+            "extra": "iterations: 2645397\ncpu: 248.90009136624866 ns\nthreads: 1"
+          },
+          {
+            "name": "Trace model counting - matrix exponentiation/steps:50",
+            "value": 299.83578317961025,
+            "unit": "ns/iter",
+            "extra": "iterations: 2334024\ncpu: 299.810238026687 ns\nthreads: 1"
+          },
+          {
+            "name": "Mutate specification - 3-guarantee takeoff spec",
+            "value": 3404.683008167589,
+            "unit": "ns/iter",
+            "extra": "iterations: 206305\ncpu: 3404.4356365575245 ns\nthreads: 1"
           }
         ]
       }

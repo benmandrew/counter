@@ -82,6 +82,15 @@ struct Config {
     // temporal skeleton of existing formulae is never altered.
     double tlsf_p_temporal = 0.2;
     std::size_t parallel = std::thread::hardware_concurrency();
+    // Upper bound on ltlsynt processes running concurrently across the whole
+    // program, independent of `parallel`. ltlsynt is by far the heaviest
+    // external tool on hard specs (multi-GB resident per call for the TLSF
+    // examples), so a scoring pool of `parallel` workers each spawning one can
+    // exhaust RAM and OOM the machine. 0 means unlimited (the default, which
+    // preserves prior behaviour); a positive value serialises the surplus while
+    // the other workers keep doing non-ltlsynt work. Size it to fit RAM:
+    // roughly (available_GB / per-call_GB).
+    std::size_t max_concurrent_realizability = 0;
     // A fitness function that throws (in practice an external tool failing on
     // one evolved formula) costs that individual rather than the whole run:
     // the search is stochastic, so one candidate lost out of a population is

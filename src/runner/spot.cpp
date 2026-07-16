@@ -244,7 +244,15 @@ bool RealizabilityChecker::check_realizability(
 bool RealizabilityChecker::check_realizability_ltl(
     const std::string& ltl_formula, const std::vector<std::string>& inputs,
     const std::vector<std::string>& outputs) {
-    const std::string conj_ltl = normalize_ltl(ltl_formula);
+    // No normalize_ltl() pre-pass, matching run_ltl2tgba_for_counting: ltlsynt
+    // simplifies internally, and the specification formula is a conjunction of
+    // the guarantees, which reproduces the deeply nested-X shape that hangs
+    // ltlfilt --simplify for multi-guarantee deep-horizon specs (e.g. two
+    // WithinTicks(20) guarantees with different responses -- reachable via
+    // mutate_timing, and re-checked here for every survivor). ltlsynt decides
+    // the raw formula in milliseconds, so pass it straight through. Unlike the
+    // black path, nothing here depends on the "0"/"1" fold normalize enables.
+    const std::string& conj_ltl = ltl_formula;
     const std::string cache_key =
         conj_ltl + "|" + join_comma(inputs) + "|" + join_comma(outputs);
     {

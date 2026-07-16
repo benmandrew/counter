@@ -1,3 +1,4 @@
+#include <cmath>
 #include <string>
 
 #include "config.hpp"
@@ -31,6 +32,33 @@ void test_semantic_self_similarity_is_one() {
     expect(tlsf_semantic_similarity(spec, spec, cfg) == 1.0,
            "semantic: identical section formulae contribute nothing, so self "
            "similarity is 1.0");
+}
+
+// The metric config must reach the TLSF path, not only the FRETISH one. A
+// non-equivalent guarantee pair (G(r -> g) strictly implies G(r -> F g)) scores
+// differently under the two metrics, so their cross-scores must diverge -- were
+// the config ignored, the TLSF path would stay on direct and the two would be
+// identical.
+void test_semantic_similarity_honours_configured_metric() {
+    Config cfg;
+    cfg.default_model_counting_bound = 4;
+    const tlsf::Specification original =
+        parse("INPUTS { r; } OUTPUTS { g; } GUARANTEE { G(r -> F g); }");
+    const tlsf::Specification candidate =
+        parse("INPUTS { r; } OUTPUTS { g; } GUARANTEE { G(r -> g); }");
+
+    cfg.similarity_metric = SimilarityMetric::Direct;
+    const double direct = tlsf_semantic_similarity(candidate, original, cfg);
+    cfg.similarity_metric = SimilarityMetric::Logarithmic;
+    const double logarithmic =
+        tlsf_semantic_similarity(candidate, original, cfg);
+
+    expect(direct >= 0.0 && direct <= 1.0 && logarithmic >= 0.0 &&
+               logarithmic <= 1.0,
+           "semantic: both metrics stay within [0, 1] on the TLSF path");
+    expect(std::fabs(direct - logarithmic) > 1e-9,
+           "semantic: the configured metric must reach the TLSF path, so the "
+           "direct and logarithmic scores diverge for a non-equivalent pair");
 }
 
 void test_halstead_self_is_one_and_bounded() {
@@ -84,6 +112,7 @@ void test_aggregate_scores_in_unit_interval() {
 void run_tlsf_fitness_tests() {
     test_syntactic_self_similarity_is_one();
     test_semantic_self_similarity_is_one();
+    test_semantic_similarity_honours_configured_metric();
     test_halstead_self_is_one_and_bounded();
     test_status_realizable_is_one();
     test_status_unsatisfiable_guarantee_is_low();

@@ -13,6 +13,15 @@
 /// comparison rather than use.
 enum class SelectionScheme : std::uint8_t { WeightedAverage, Nsga2 };
 
+/// Metric turning the bounded trace counts into a semantic-similarity score.
+/// Direct (the default) takes the ratio of counts -- the fraction of one
+/// requirement's satisfying traces that also satisfy the other, a Sorensen-Dice
+/// overlap. Logarithmic takes the ratio of the counts' logarithms, comparing
+/// the languages' growth rates instead: unlike the direct ratio it stays
+/// roughly constant as the counting bound grows, rather than decaying toward
+/// zero for requirements of differing permissiveness.
+enum class SimilarityMetric : std::uint8_t { Direct, Logarithmic };
+
 struct Config {
     std::size_t generations = 10;
     std::size_t population_size = 200;
@@ -24,6 +33,7 @@ struct Config {
     double syntactic_weight_response = 1.0;
     double syntactic_weight_timing = 1.0;
     std::size_t default_model_counting_bound = 20;
+    SimilarityMetric similarity_metric = SimilarityMetric::Direct;
     bool run_weakening_filter = true;
     bool run_implication_filter = true;
     // Per-generation filters run only every Nth generation (1 = every

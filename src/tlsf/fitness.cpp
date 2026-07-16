@@ -9,6 +9,7 @@
 
 #include "fitness/halstead.hpp"
 #include "fitness/model_counter.hpp"
+#include "fitness/semantic_similarity.hpp"
 #include "fitness/transfer_matrix.hpp"
 #include "prop_formula.hpp"
 #include "runner/black.hpp"
@@ -67,14 +68,17 @@ void collect_atoms(const Formula& formula, std::set<std::string>& out) {
     }
 }
 
-// Semantic similarity of a single (changed) formula pair: the harmonic mean of
-// the two directional bounded-trace containment ratios, mirroring the FRETISH
-// requirement-pair routine in semantic_similarity.cpp. All three systems share
-// one atom universe (the union of both formulae's atoms) so the conjunction
-// count never exceeds either individual count.
+// Semantic similarity of a single (changed) formula pair. Counts the bounded
+// traces of both formulae and their conjunction over one shared atom universe
+// (the union of both formulae's atoms, so the conjunction count never exceeds
+// either individual count), then hands the three counts to the shared
+// semantic_similarity_from_counts -- the same routine the FRETISH requirement
+// pairs use -- so the configured metric (direct or logarithmic) and its [0, 1]
+// clamp apply here too.
 double formula_pair_semantic_similarity(const Formula& first,
                                         const Formula& second,
-                                        std::size_t bound) {
+                                        std::size_t bound,
+                                        SimilarityMetric metric) {
     std::set<std::string> atoms;
     collect_atoms(first, atoms);
     collect_atoms(second, atoms);
@@ -86,28 +90,13 @@ double formula_pair_semantic_similarity(const Formula& first,
     const std::string ltl_second = second.to_string();
     const std::string conjunction =
         "(" + ltl_first + ") & (" + ltl_second + ")";
-    const Count count_first =
-        count_traces(build_transfer_system_from_ltl(ltl_first, n_atoms), bound);
-    const Count count_second = count_traces(
-        build_transfer_system_from_ltl(ltl_second, n_atoms), bound);
-    const Count count_conjunction = count_traces(
-        build_transfer_system_from_ltl(conjunction, n_atoms), bound);
-    if (count_first == 0 && count_second == 0) {
-        return 1.0;
-    }
-    if (count_first == 0 || count_second == 0) {
-        return 0.0;
-    }
-    const auto forward =
-        static_cast<double>(static_cast<long double>(count_conjunction) /
-                            static_cast<long double>(count_first));
-    const auto backward =
-        static_cast<double>(static_cast<long double>(count_conjunction) /
-                            static_cast<long double>(count_second));
-    if (forward == 0.0 && backward == 0.0) {
-        return 0.0;
-    }
-    return (2.0 * forward * backward) / (forward + backward);
+    const SemanticSimilarityCounts counts{
+        count_traces(build_transfer_system_from_ltl(ltl_first, n_atoms), bound),
+        count_traces(build_transfer_system_from_ltl(ltl_second, n_atoms),
+                     bound),
+        count_traces(build_transfer_system_from_ltl(conjunction, n_atoms),
+                     bound)};
+    return semantic_similarity_from_counts(counts, metric);
 }
 
 HalsteadCounts merge_counts(HalsteadCounts lhs, const HalsteadCounts& rhs) {
@@ -165,7 +154,8 @@ double tlsf_semantic_similarity(const tlsf::Specification& spec,
             if (lhs[i] == rhs[i]) {
                 continue;
             }
-            total += formula_pair_semantic_similarity(lhs[i], rhs[i], bound);
+            total += formula_pair_semantic_similarity(lhs[i], rhs[i], bound,
+                                                      cfg.similarity_metric);
             ++changed;
         }
     }

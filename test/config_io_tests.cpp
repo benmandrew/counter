@@ -221,6 +221,39 @@ void test_config_io_selection_scheme_invalid_throws() {
     expect(threw, "config_io: an unknown selection_scheme should throw");
 }
 
+void test_config_io_similarity_metric_defaults_to_direct() {
+    const Config cfg = config_from_toml_string("");
+    expect(cfg.similarity_metric == SimilarityMetric::Direct,
+           "config_io: similarity_metric should default to Direct");
+}
+
+void test_config_io_similarity_metric_direct_parsed() {
+    const Config cfg =
+        config_from_toml_string("[model_counting]\nmetric = \"direct\"\n");
+    expect(cfg.similarity_metric == SimilarityMetric::Direct,
+           "config_io: metric = \"direct\" should parse as Direct");
+}
+
+void test_config_io_similarity_metric_logarithmic_parsed() {
+    const Config cfg =
+        config_from_toml_string("[model_counting]\nmetric = \"logarithmic\"\n");
+    expect(cfg.similarity_metric == SimilarityMetric::Logarithmic,
+           "config_io: metric = \"logarithmic\" should parse as Logarithmic");
+}
+
+void test_config_io_similarity_metric_invalid_throws() {
+    bool threw = false;
+    try {
+        config_from_toml_string("[model_counting]\nmetric = \"geometric\"\n");
+    } catch (const std::exception& exc) {
+        threw = true;
+        const std::string msg(exc.what());
+        expect(msg.find("metric") != std::string::npos,
+               "config_io: invalid metric error should name the field");
+    }
+    expect(threw, "config_io: an unknown similarity metric should throw");
+}
+
 void test_config_io_empty_string_gives_defaults() {
     const Config cfg = config_from_toml_string("");
     const Config defaults;
@@ -245,5 +278,9 @@ void run_config_io_tests() {
     test_config_io_selection_scheme_weighted_parsed();
     test_config_io_selection_scheme_nsga2_parsed();
     test_config_io_selection_scheme_invalid_throws();
+    test_config_io_similarity_metric_defaults_to_direct();
+    test_config_io_similarity_metric_direct_parsed();
+    test_config_io_similarity_metric_logarithmic_parsed();
+    test_config_io_similarity_metric_invalid_throws();
     test_config_io_empty_string_gives_defaults();
 }

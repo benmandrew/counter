@@ -294,6 +294,38 @@ void test_semantic_similarity_from_counts_clamps_rounding_overshoot() {
            "semantic-similarity: clamped ratios of 1 must give exactly 1");
 }
 
+// Direct and logarithmic metrics agree on identical languages but diverge on a
+// strict subset. With 2^10 shared traces out of 2^20 the direct metric returns
+// the count ratio 2^-10, while the logarithmic metric returns
+// log(2^10)/log(2^20) == 1/2 -- the ratio of growth rates, which is what keeps
+// it stable as the counting bound (and hence the counts' magnitude) grows.
+// Exercises the metric branch through semantic_similarity_from_counts, without
+// invoking the model counter.
+void test_semantic_similarity_metric_direct_vs_logarithmic() {
+    const Count whole = std::ldexp(1.0L, 20);
+    const Count shared = std::ldexp(1.0L, 10);
+    const SemanticSimilarityCounts counts{whole, whole, shared};
+
+    const double direct =
+        semantic_similarity_from_counts(counts, SimilarityMetric::Direct);
+    expect(std::fabs(direct - std::ldexp(1.0, -10)) < 1e-12,
+           "semantic-similarity: the direct metric must return the count ratio "
+           "2^-10 for a 2^10-of-2^20 overlap");
+
+    const double logarithmic =
+        semantic_similarity_from_counts(counts, SimilarityMetric::Logarithmic);
+    expect(std::fabs(logarithmic - 0.5) < 1e-12,
+           "semantic-similarity: the logarithmic metric must return the "
+           "growth-rate ratio 1/2 for a 2^10-of-2^20 overlap");
+
+    const SemanticSimilarityCounts identical{whole, whole, whole};
+    expect(std::fabs(semantic_similarity_from_counts(
+                         identical, SimilarityMetric::Logarithmic) -
+                     1.0) < 1e-12,
+           "semantic-similarity: the logarithmic metric must score identical "
+           "counts exactly 1");
+}
+
 }  // namespace
 
 void run_semantic_similarity_tests() {
@@ -311,4 +343,5 @@ void run_semantic_similarity_tests() {
     test_semantic_similarity_from_counts_clamps_rounding_overshoot();
     test_semantic_similarity_all_timings_in_range();
     test_semantic_similarity_propequiv_responses_score_equal();
+    test_semantic_similarity_metric_direct_vs_logarithmic();
 }

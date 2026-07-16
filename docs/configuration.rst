@@ -58,6 +58,27 @@ candidate up to ``model_counting.default_bound`` (default 20) using Ganak over
 the transition matrices of SPOT-generated automata. Raising the bound sharpens
 the measure and costs time.
 
+Similarity metric
+-----------------
+
+``model_counting.metric`` chooses how those trace counts become a score. Both
+options take the harmonic mean of two directional containment terms — how much
+of each requirement's satisfying traces the other also accepts — and differ
+only in that term.
+
+**direct** (default) uses the ratio of counts: the fraction of one
+requirement's satisfying traces that also satisfy the other, a Sørensen–Dice
+overlap. It is a true overlap measure, but because trace counts grow like
+``λ^k``, the ratio decays toward zero as the bound grows for requirements of
+differing permissiveness — so the score depends on ``default_bound``.
+
+**logarithmic** uses the ratio of the counts' *logarithms*, comparing the
+languages' growth rates rather than their overlap. That ratio tends to a
+constant as the bound grows, so the score is stable across bounds, at the cost
+of the direct overlap interpretation. Useful when comparing runs at different
+bounds, or when the bound is driven by timing horizons that vary between
+candidates.
+
 Selection scheme
 ----------------
 

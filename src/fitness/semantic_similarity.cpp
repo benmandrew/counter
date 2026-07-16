@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cassert>
+#include <cmath>
 #include <cstddef>
 #include <limits>
 #include <mutex>
@@ -19,6 +20,30 @@ namespace {
 double ratio_or_throw(Count numerator, Count denominator) {
     assert(denominator != 0);
     return static_cast<double>(numerator / denominator);
+}
+
+// One directional containment term: how much of @p whole's satisfying traces
+// are shared. Direct is the plain ratio, clamped to [0, 1] because rounding can
+// push shared a few ulps past whole now that Count is a float. Logarithmic
+// takes the ratio of the counts' logarithms, which -- since trace counts grow
+// like lambda^k -- tends to the ratio of the two languages' growth rates and
+// stays roughly constant as the bound grows, where the plain ratio decays
+// toward 0. A count of 1 has no exponential regime to compare (log 1 == 0), so
+// the log branch falls back to membership at that boundary.
+double directional_containment(Count shared, Count whole,
+                               SimilarityMetric metric) {
+    if (metric == SimilarityMetric::Logarithmic) {
+        if (whole <= 1) {
+            return shared >= whole ? 1.0 : 0.0;
+        }
+        if (shared <= 1) {
+            return 0.0;
+        }
+        return std::clamp(std::log(static_cast<double>(shared)) /
+                              std::log(static_cast<double>(whole)),
+                          0.0, 1.0);
+    }
+    return std::clamp(ratio_or_throw(shared, whole), 0.0, 1.0);
 }
 
 // Caches trace counts by (ltl, n_total_atoms, step_count): the matrix
@@ -134,7 +159,8 @@ SemanticSimilarityCounts count_semantic_similarity_terms(
 
 }  // namespace
 
-double semantic_similarity_from_counts(const SemanticSimilarityCounts& counts) {
+double semantic_similarity_from_counts(const SemanticSimilarityCounts& counts,
+                                       SimilarityMetric metric) {
     if (counts.m_requirement_count == 0 &&
         counts.m_other_requirement_count == 0) {
         return 1.0;
@@ -143,17 +169,12 @@ double semantic_similarity_from_counts(const SemanticSimilarityCounts& counts) {
         counts.m_other_requirement_count == 0) {
         return 0.0;
     }
-    // conjunction_count <= min(individual counts) holds only up to rounding
-    // now that Count is a float, so a ratio can land a few ulps above 1.
-    const double first = std::clamp(
-        ratio_or_throw(counts.m_conjunction_count, counts.m_requirement_count),
-        0.0, 1.0);
-    const double second =
-        std::clamp(ratio_or_throw(counts.m_conjunction_count,
-                                  counts.m_other_requirement_count),
-                   0.0, 1.0);
-    // Harmonic mean of the two directional containment ratios: unlike the
-    // arithmetic mean, this can't be pulled up to 0.5 by one ratio alone
+    const double first = directional_containment(
+        counts.m_conjunction_count, counts.m_requirement_count, metric);
+    const double second = directional_containment(
+        counts.m_conjunction_count, counts.m_other_requirement_count, metric);
+    // Harmonic mean of the two directional containment terms: unlike the
+    // arithmetic mean, this can't be pulled up to 0.5 by one term alone
     // hitting 1 (e.g. a requirement weakened to a tautology, which trivially
     // contains the original and makes second == 1 regardless of how small
     // first is). Mutually exclusive requirements give first == second == 0,
@@ -166,22 +187,23 @@ double semantic_similarity_from_counts(const SemanticSimilarityCounts& counts) {
 
 double semantic_similarity(const Requirement& requirement,
                            const Requirement& other_requirement,
-                           std::size_t step_count) {
+                           std::size_t step_count, SimilarityMetric metric) {
     const SemanticSimilarityCounts counts = count_semantic_similarity_terms(
         requirement, other_requirement, step_count);
-    return semantic_similarity_from_counts(counts);
+    return semantic_similarity_from_counts(counts, metric);
 }
 
 double semantic_similarity(const Requirement& requirement,
                            const Requirement& other_requirement,
                            const Config& cfg) {
     return semantic_similarity(requirement, other_requirement,
-                               cfg.default_model_counting_bound);
+                               cfg.default_model_counting_bound,
+                               cfg.similarity_metric);
 }
 
 double semantic_similarity(const Specification& specification,
                            const Specification& other_specification,
-                           std::size_t step_count) {
+                           std::size_t step_count, SimilarityMetric metric) {
     assert(!specification.m_assumptions.empty() ||
            !specification.m_guarantees.empty());
     assert(!other_specification.m_assumptions.empty() ||
@@ -208,7 +230,8 @@ double semantic_similarity(const Specification& specification,
             if (reqs1[i] == reqs2[i]) {
                 continue;
             }
-            total += semantic_similarity(reqs1[i], reqs2[i], step_count);
+            total +=
+                semantic_similarity(reqs1[i], reqs2[i], step_count, metric);
             ++changed_count;
         }
     };
@@ -224,5 +247,6 @@ double semantic_similarity(const Specification& specification,
                            const Specification& other_specification,
                            const Config& cfg) {
     return semantic_similarity(specification, other_specification,
-                               cfg.default_model_counting_bound);
+                               cfg.default_model_counting_bound,
+                               cfg.similarity_metric);
 }

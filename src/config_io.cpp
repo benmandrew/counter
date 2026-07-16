@@ -173,6 +173,17 @@ void apply_model_counting(const toml::table& tbl, Config& cfg) {
         cfg.default_model_counting_bound = static_cast<std::size_t>(
             require_positive(*val, "model_counting.default_bound"));
     }
+    if (auto val = tbl["metric"].value<std::string>()) {
+        if (*val == "direct") {
+            cfg.similarity_metric = SimilarityMetric::Direct;
+        } else if (*val == "logarithmic") {
+            cfg.similarity_metric = SimilarityMetric::Logarithmic;
+        } else {
+            throw std::runtime_error(
+                "config: model_counting.metric must be \"direct\" or "
+                "\"logarithmic\"");
+        }
+    }
 }
 
 void apply_filters(const toml::table& tbl, Config& cfg) {

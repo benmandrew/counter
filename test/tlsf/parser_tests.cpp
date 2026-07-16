@@ -270,14 +270,15 @@ void test_to_ltl_standard_lowering() {
     expect(equiv(guar_only.to_ltl(), "G p"),
            "to_ltl: guarantee-only has no implication");
 
-    // Initial states + G-wrapped invariants on both sides.
+    // Initial states nest around the invariant implication (TLSF §3.2):
+    // θ_e -> (θ_s & ((G ψ_e & φ_e) -> (G ψ_s & φ_s))), here with φ_e/φ_s empty.
     const tlsf::Specification invariants =
         tlsf::parse(doc("INPUTS { a; b; } OUTPUTS { c; d; }\n"
                         "INITIALLY { !a; }\n"
                         "REQUIRE { a -> b; }\n"
                         "PRESET { d; }\n"
                         "ASSERT { c; }"));
-    expect(equiv(invariants.to_ltl(), "((!a) & G(a -> b)) -> (d & G(c))"),
+    expect(equiv(invariants.to_ltl(), "(!a) -> (d & (G(a -> b) -> G(c)))"),
            "to_ltl: initially/require/preset/assert lowering");
 
     // Multiple verbatim terms conjoined on each side.
@@ -287,6 +288,27 @@ void test_to_ltl_standard_lowering() {
                         "GUARANTEE { c; d; }"));
     expect(equiv(multi.to_ltl(), "(a & b) -> (c & d)"),
            "to_ltl: multi-statement conjunction on both sides");
+}
+
+void test_to_ltl_strict_lowering() {
+    // Strict semantics move the system invariant ψ_s (ASSERT) into a weak-until
+    // guard (ψ_s W ¬ψ_e) and drop it from the consequent:
+    //   θ_e -> (θ_s & (ψ_s W ¬ψ_e) & ((G ψ_e & φ_e) -> φ_s))
+    const tlsf::Specification strict = tlsf::parse(
+        "INFO { SEMANTICS: Mealy,Strict; }\n"
+        "MAIN { INPUTS { a; } OUTPUTS { c; }\n"
+        "       REQUIRE { a; } ASSERT { c; } GUARANTEE { F c; } }");
+    expect(equiv(strict.to_ltl(), "(c W !a) & ((G a) -> (F c))"),
+           "to_ltl: strict pulls ASSERT into a weak-until guard");
+
+    // The standard counterpart keeps ASSERT as a G-conjunct on the guarantee
+    // side, with no weak-until guard.
+    const tlsf::Specification standard = tlsf::parse(
+        "INFO { SEMANTICS: Mealy; }\n"
+        "MAIN { INPUTS { a; } OUTPUTS { c; }\n"
+        "       REQUIRE { a; } ASSERT { c; } GUARANTEE { F c; } }");
+    expect(equiv(standard.to_ltl(), "(G a) -> ((G c) & (F c))"),
+           "to_ltl: standard keeps ASSERT as a G-conjunct");
 }
 
 }  // namespace
@@ -304,4 +326,5 @@ void run_tlsf_parser_tests() {
     test_comments_and_multistatement();
     test_error_cases();
     test_to_ltl_standard_lowering();
+    test_to_ltl_strict_lowering();
 }

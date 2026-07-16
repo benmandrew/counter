@@ -48,18 +48,21 @@ struct Specification {
     /// GUARANTEE(S) — system property, taken verbatim.
     std::vector<Formula> m_guarantee;
 
-    /// Lowers this specification to a single LTL formula in SPOT syntax.
+    /// Lowers this specification to a single LTL formula in SPOT syntax,
+    /// following the TLSF v1.1 combination (paper §3.2). With θ_e=INITIALLY,
+    /// θ_s=PRESET, ψ_e=REQUIRE, ψ_s=ASSERT, φ_e=ASSUME, φ_s=GUARANTEE (each an
+    /// And-fold of its section, absent ⇒ `true` and dropped):
     ///
-    /// This implements the STANDARD-implication lowering. The assumption side
-    /// collects, in order and skipping empty sections, `conj(m_initially)`,
-    /// `G(conj(m_require))`, and `conj(m_assume)`; the guarantee side collects
-    /// `conj(m_preset)`, `G(conj(m_assert))`, and `conj(m_guarantee)`, where
-    /// `conj` folds a section with And (empty ⇒ `true`). If the assumption side
-    /// contributed no terms the result is just the guarantee conjunction;
-    /// otherwise it is `assumptions -> guarantees`.
+    ///   standard: `θ_e -> (θ_s & ((G ψ_e & φ_e) -> (G ψ_s & φ_s)))`
+    ///   strict:   `θ_e -> (θ_s & (ψ_s W ¬ψ_e) & ((G ψ_e & φ_e) -> φ_s))`
     ///
-    /// Strict semantics (MealyStrict/MooreStrict) are lowered identically to
-    /// standard for now — strict implication is a later refinement.
+    /// The strict form (MealyStrict/MooreStrict) requires the system invariant
+    /// ψ_s to hold at least as long as the environment invariant ψ_e does.
+    ///
+    /// Note this nests the initial constraints θ_e/θ_s around the invariant
+    /// implication rather than conjoining them flat; assumption_ltl() and
+    /// guarantee_ltl() below still return the flat per-side conjunctions, which
+    /// are used only for per-side satisfiability checks, not realizability.
     [[nodiscard]] std::string to_ltl() const;
 
     /// Lowers only the assumption side (INITIALLY, G(REQUIRE), ASSUME) to an

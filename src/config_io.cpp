@@ -233,6 +233,13 @@ void apply_runtime(const toml::table& tbl, Config& cfg) {
         }
         cfg.black_timeout = std::chrono::milliseconds{*val};
     }
+    if (auto val = tbl["ltlsynt_timeout_ms"].value<int64_t>()) {
+        if (*val < 0) {
+            throw std::runtime_error(
+                "config: runtime.ltlsynt_timeout_ms must be >= 0");
+        }
+        cfg.ltlsynt_timeout = std::chrono::milliseconds{*val};
+    }
     if (auto val = tbl["parallel"].value<int64_t>()) {
         if (*val <= 0) {
             throw std::runtime_error("config: runtime.parallel must be >= 1");

@@ -106,6 +106,10 @@ DEFAULTS: dict = {
     # positive (see make_toml), so the standard grids stay byte-identical to the
     # pre-cap output; the TLSF campaign sets it to bound ltlsynt's peak RAM.
     "max_concurrent_realizability": 0,
+    # Per-call ltlsynt timeout in ms; 0 = no timeout, matching config.hpp.
+    # Emitted only when positive, so the standard grids stay byte-identical. The
+    # heavy TLSF specs set it to cut ltlsynt's multi-minute realizability tail.
+    "ltlsynt_timeout_ms": 0,
 }
 
 
@@ -158,7 +162,9 @@ def make_toml(overrides: dict, defaults: dict = DEFAULTS) -> str:
         "[runtime]",
         f"black_timeout_ms = {d['black_timeout_ms']}",
     ] + ([f"max_concurrent_realizability = {d['max_concurrent_realizability']}"]
-         if d.get("max_concurrent_realizability") else []) + [
+         if d.get("max_concurrent_realizability") else []) + (
+        [f"ltlsynt_timeout_ms = {d['ltlsynt_timeout_ms']}"]
+        if d.get("ltlsynt_timeout_ms") else []) + [
         "",
         "[tlsf]",
         f'repair_mode = "{d["repair_mode"]}"',
@@ -335,6 +341,14 @@ TLSF_CONFIGS_DIR = Path(__file__).parent.parent / "experiments" / "configs-tlsf"
 # default) for it to remain the machine-wide limit.
 TLSF_MAX_REALIZABILITY = 0
 
+# Default per-call ltlsynt timeout (ms) for the TLSF campaign. ltlsynt has no
+# internal timeout, and these specs occasionally produce synthesis queries that
+# run for minutes; without a bound one such query stalls a whole run. Normal
+# calls finish in milliseconds, so a multi-second timeout cuts the tail with
+# wide margin. Value chosen from the measured call-duration distribution (see
+# scripts/README.md). A timed-out check is treated as unrealizable.
+TLSF_LTLSYNT_TIMEOUT_MS = 30000
+
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
@@ -393,6 +407,15 @@ def parse_args() -> argparse.Namespace:
                              "smaller-RAM box (e.g. 6 ~= 16 GB); the TLSF "
                              "campaign defaults to uncapped for the 128 GB "
                              "av2/av3 machines")
+    parser.add_argument("--ltlsynt-timeout", type=int, default=None,
+                        metavar="MS",
+                        help="Per-call ltlsynt timeout in ms "
+                             "(runtime.ltlsynt_timeout_ms). 0 = no timeout; the "
+                             "key is omitted from the emitted TOML when 0. "
+                             "ltlsynt has no internal timeout and the heavy TLSF "
+                             "specs occasionally generate multi-minute synthesis "
+                             f"queries, so --tlsf defaults to "
+                             f"{TLSF_LTLSYNT_TIMEOUT_MS} ms")
     return parser.parse_args()
 
 
@@ -408,6 +431,7 @@ def main() -> None:
     schemes = args.schemes
     out_dir = args.out_dir
     max_realizability = args.max_realizability
+    ltlsynt_timeout = args.ltlsynt_timeout
     if args.tlsf:
         sweep_table = TLSF_SWEEPS
         if schemes == SCHEMES:
@@ -416,7 +440,10 @@ def main() -> None:
             out_dir = TLSF_CONFIGS_DIR
         if max_realizability is None:
             max_realizability = TLSF_MAX_REALIZABILITY
+        if ltlsynt_timeout is None:
+            ltlsynt_timeout = TLSF_LTLSYNT_TIMEOUT_MS
     defaults["max_concurrent_realizability"] = max_realizability or 0
+    defaults["ltlsynt_timeout_ms"] = ltlsynt_timeout or 0
     wanted = set(args.sweeps)
     sweeps = [(name, levels) for name, levels in sweep_table if name in wanted]
     # (subdirectory, run_weakening override). The flat case carries no override,

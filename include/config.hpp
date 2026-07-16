@@ -54,6 +54,13 @@ struct Config {
     std::size_t weakening_filter_interval = 1;
     std::size_t bloat_filter_interval = 1;
     std::chrono::milliseconds black_timeout{1000};
+    // Per-call wall-clock budget for ltlsynt realizability checks. Unlike
+    // black, ltlsynt has no internal timeout, and the genetic search
+    // occasionally generates synthesis queries that run for minutes with no
+    // upper bound, stalling a run on the tail. A call exceeding this is killed
+    // and treated as unrealizable. 0 (the default) disables the timeout,
+    // preserving prior behaviour; the heavy TLSF specs set it.
+    std::chrono::milliseconds ltlsynt_timeout{0};
     // When true, print the CPU-attribution report (your code vs. the external
     // CLI tools, via getrusage + per-tool wait4). Opt-in: off leaves output
     // identical to before.

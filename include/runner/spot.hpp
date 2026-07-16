@@ -57,6 +57,15 @@ class RealizabilityChecker {
                                  const std::vector<std::string>& inputs,
                                  const std::vector<std::string>& outputs);
 
+    /// Caps the number of ltlsynt processes running concurrently across the
+    /// whole program. The gate is process-global (shared by every
+    /// RealizabilityChecker, including test instances) because the memory
+    /// pressure it guards against is process-global: ltlsynt is multi-GB
+    /// resident per call on hard specs, so an uncapped scoring pool can OOM the
+    /// machine. 0 (the default) means unlimited. Set once at startup from
+    /// Config::max_concurrent_realizability.
+    static void set_max_concurrency(std::size_t limit);
+
    private:
     mutable std::mutex m_cache_mutex;
     std::unordered_map<std::string, bool> m_cache;

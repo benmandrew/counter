@@ -239,6 +239,13 @@ void apply_runtime(const toml::table& tbl, Config& cfg) {
         }
         cfg.parallel = static_cast<std::size_t>(*val);
     }
+    if (auto val = tbl["max_concurrent_realizability"].value<int64_t>()) {
+        if (*val < 0) {
+            throw std::runtime_error(
+                "config: runtime.max_concurrent_realizability must be >= 0");
+        }
+        cfg.max_concurrent_realizability = static_cast<std::size_t>(*val);
+    }
     if (auto val = tbl["report_cpu_timing"].value<bool>()) {
         cfg.report_cpu_timing = *val;
     }

@@ -10,6 +10,7 @@
 #include <cassert>
 #include <cerrno>
 #include <chrono>
+#include <condition_variable>
 #include <cstring>
 #include <iostream>
 #include <memory>
@@ -23,6 +24,54 @@
 #include "runner/ltlfilt.hpp"
 
 namespace {
+
+// Process-global counting gate limiting concurrent ltlsynt executions. C++17
+// has no counting_semaphore, so this is a mutex + condition_variable. A limit
+// of 0 means unlimited, so acquire()/release() are no-ops in that case and the
+// pre-cap behaviour is preserved exactly.
+class ConcurrencyGate {
+   public:
+    void set_limit(std::size_t limit) {
+        {
+            const std::scoped_lock lock(m_mutex);
+            m_limit = limit;
+        }
+        m_cv.notify_all();
+    }
+    void acquire() {
+        std::unique_lock<std::mutex> lock(m_mutex);
+        m_cv.wait(lock, [this] { return m_limit == 0 || m_active < m_limit; });
+        ++m_active;
+    }
+    void release() {
+        {
+            const std::scoped_lock lock(m_mutex);
+            --m_active;
+        }
+        m_cv.notify_one();
+    }
+
+   private:
+    std::mutex m_mutex;
+    std::condition_variable m_cv;
+    std::size_t m_limit = 0;
+    std::size_t m_active = 0;
+};
+
+ConcurrencyGate& ltlsynt_gate() {
+    static ConcurrencyGate gate;
+    return gate;
+}
+
+// RAII acquire/release around the ltlsynt exec, so a throwing execute call
+// (or parse) never leaks a permit and deadlocks the remaining workers.
+class GateGuard {
+   public:
+    GateGuard() { ltlsynt_gate().acquire(); }
+    ~GateGuard() { ltlsynt_gate().release(); }
+    GateGuard(const GateGuard&) = delete;
+    GateGuard& operator=(const GateGuard&) = delete;
+};
 
 struct ProcessResult {
     int m_exit_code = 0;
@@ -218,6 +267,10 @@ std::string spot_bin_dir() {
 
 std::string ltlsynt_path() { return spot_bin_dir() + "/ltlsynt"; }
 
+void RealizabilityChecker::set_max_concurrency(std::size_t limit) {
+    ltlsynt_gate().set_limit(limit);
+}
+
 std::string ltl2tgba_path() { return spot_bin_dir() + "/ltl2tgba"; }
 
 std::string run_ltl2tgba_for_counting(const std::string& formula) {
@@ -316,7 +369,14 @@ bool RealizabilityChecker::check_realizability_ltl(
         command.push_back("--outs=" + join_comma(outputs));
     }
     const auto start = std::chrono::steady_clock::now();
-    const ProcessResult result = execute_and_capture(command);
+    ProcessResult result;
+    {
+        // Hold a permit only for the exec: the child's multi-GB footprint is
+        // freed once execute_and_capture reaps it, so parsing and cache updates
+        // run outside the gate.
+        const GateGuard gate_guard;
+        result = execute_and_capture(command);
+    }
     const double elapsed =
         std::chrono::duration<double>(std::chrono::steady_clock::now() - start)
             .count();

@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1784220479296,
+  "lastUpdate": 1784221361817,
   "repoUrl": "https://github.com/benmandrew/counter",
   "entries": {
     "counter benchmarks": [
@@ -3600,6 +3600,78 @@ window.BENCHMARK_DATA = {
             "value": 2639.7634159547097,
             "unit": "ns/iter",
             "extra": "iterations: 265952\ncpu: 2639.049873661413 ns\nthreads: 1"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "benmandrew@gmail.com",
+            "name": "benmandrew",
+            "username": "benmandrew"
+          },
+          "committer": {
+            "email": "benmandrew@gmail.com",
+            "name": "benmandrew",
+            "username": "benmandrew"
+          },
+          "distinct": true,
+          "id": "81c8462df966aa3c8246845ded78301f5064c521",
+          "message": "fix: silence -Wpedantic on the __int128 rounding-reference in transfer_matrix_tests\n\ntest_count_traces_rounds_faithfully_above_64_bits holds its exact reference in\nunsigned __int128 -- the wider type the float Count deliberately no longer uses\n-- to pin that a count past 2^64 rounds faithfully. Under -Werror=pedantic the\nbare `unsigned __int128` declaration trips \"ISO C++ does not support __int128\"\nand fails the counter_tests build, so `cmake --workflow --preset release`\n(build + test) never completed even though counter/compare built fine.\n\nPrefix the declaration with __extension__, the GCC/Clang keyword that accepts\nthe extension without the pedantic diagnostic. The block is already guarded by\n#ifdef __SIZEOF_INT128__, so no new portability surface. Full suite: 30/30.",
+          "timestamp": "2026-07-16T17:57:20+01:00",
+          "tree_id": "6693b0a404c471c5799dd78455c8ba5ef80843f2",
+          "url": "https://github.com/benmandrew/counter/commit/81c8462df966aa3c8246845ded78301f5064c521"
+        },
+        "date": 1784221361400,
+        "tool": "googlecpp",
+        "benches": [
+          {
+            "name": "Syntactic similarity - small formulas (3 variables)",
+            "value": 541.18625508835,
+            "unit": "ns/iter",
+            "extra": "iterations: 1306418\ncpu: 541.1466307108445 ns\nthreads: 1"
+          },
+          {
+            "name": "Syntactic similarity - large formulas (11 variables, O(n*m) shared_subformulae)",
+            "value": 2132.5071387674097,
+            "unit": "ns/iter",
+            "extra": "iterations: 328348\ncpu: 2132.2286415632193 ns\nthreads: 1"
+          },
+          {
+            "name": "Spec implication check - warm black cache",
+            "value": 605.7290208576732,
+            "unit": "ns/iter",
+            "extra": "iterations: 1195771\ncpu: 605.6796869969249 ns\nthreads: 1"
+          },
+          {
+            "name": "Trace model counting - matrix exponentiation/steps:5",
+            "value": 202.30404481258006,
+            "unit": "ns/iter",
+            "extra": "iterations: 3445104\ncpu: 202.29934190665935 ns\nthreads: 1"
+          },
+          {
+            "name": "Trace model counting - matrix exponentiation/steps:10",
+            "value": 229.00046800150105,
+            "unit": "ns/iter",
+            "extra": "iterations: 3053409\ncpu: 228.98090003664745 ns\nthreads: 1"
+          },
+          {
+            "name": "Trace model counting - matrix exponentiation/steps:20",
+            "value": 254.1529352387282,
+            "unit": "ns/iter",
+            "extra": "iterations: 2748124\ncpu: 254.14219773198008 ns\nthreads: 1"
+          },
+          {
+            "name": "Trace model counting - matrix exponentiation/steps:50",
+            "value": 305.9387375645329,
+            "unit": "ns/iter",
+            "extra": "iterations: 2287911\ncpu: 305.9231543534695 ns\nthreads: 1"
+          },
+          {
+            "name": "Mutate specification - 3-guarantee takeoff spec",
+            "value": 3355.35692378189,
+            "unit": "ns/iter",
+            "extra": "iterations: 213886\ncpu: 3355.3442067269507 ns\nthreads: 1"
           }
         ]
       }

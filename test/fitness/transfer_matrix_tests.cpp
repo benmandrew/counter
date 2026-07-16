@@ -466,7 +466,9 @@ void test_count_traces_rounds_faithfully_above_64_bits() {
     const TransferSystem system =
         build_transfer_system_from_ltl("G(a | b)", n_atoms);
 
-    unsigned __int128 exact_three_pow = 1;
+    // __extension__ silences -Wpedantic's "ISO C++ does not support __int128":
+    // the reference value is deliberately held in that wider type (see above).
+    __extension__ unsigned __int128 exact_three_pow = 1;
     for (std::size_t step = 0; step < step_count; ++step) {
         exact_three_pow *= 3U;
     }

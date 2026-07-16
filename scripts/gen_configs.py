@@ -16,6 +16,7 @@ Usage:
     python scripts/gen_configs.py --generations 40 --population-size 1000 \\
         --out-dir experiments/configs-cj-large          # a larger operating point
     python scripts/gen_configs.py --weakening both      # cross run_weakening in
+    python scripts/gen_configs.py --metric both         # cross direct/log metric in
 """
 
 import argparse
@@ -45,6 +46,18 @@ WEAKENINGS: dict[str, list[tuple[str, bool]]] = {
     "both": [("wkon", True), ("wkoff", False)],
 }
 
+# model_counting.metric as a crossed factor, exactly like WEAKENINGS above.
+# Each entry is (dir_label, toml_value): the directory + CSV label is the short
+# "direct"/"log", but the TOML value must be the full "direct"/"logarithmic"
+# string config_io.cpp's apply_model_counting accepts, or the run aborts. Like
+# --weakening, --metric defaults to None so the flat layout and the metric from
+# DEFAULTS stay byte-identical to the pre-factor grids.
+METRICS: dict[str, list[tuple[str, str]]] = {
+    "direct": [("direct", "direct")],
+    "log":    [("log", "logarithmic")],
+    "both":   [("direct", "direct"), ("log", "logarithmic")],
+}
+
 # Mirrors the built-in defaults from include/config.hpp, with one deliberate
 # exception: config.hpp defaults selection_scheme to "weighted", but the
 # baseline of every sweep is NSGA-II, so DEFAULTS pins "nsga2" and the
@@ -66,6 +79,7 @@ DEFAULTS: dict = {
     "p_response": 0.5,
     "p_timing": 0.15,
     "default_bound": 20,
+    "metric": "direct",
     "run_weakening": True,
     "run_implication": True,
     "black_timeout_ms": 1000,
@@ -112,6 +126,7 @@ def make_toml(overrides: dict, defaults: dict = DEFAULTS) -> str:
         "",
         "[model_counting]",
         f"default_bound = {d['default_bound']}",
+        f'metric = "{d["metric"]}"',
         "",
         "[filters]",
         f"run_weakening   = {_fmt(d['run_weakening'])}",
@@ -281,6 +296,12 @@ def parse_args() -> argparse.Namespace:
                              "<scheme>/<wkon|wkoff>/ (choices: "
                              f"{', '.join(WEAKENINGS)}). Omit to keep the flat "
                              "layout and take run_weakening from the defaults")
+    parser.add_argument("--metric", choices=list(METRICS), default=None,
+                        metavar="METRIC",
+                        help="Cross model_counting.metric in as a factor, "
+                             "writing <scheme>/[<weakening>/]<direct|log>/ "
+                             f"(choices: {', '.join(METRICS)}). Omit to keep the "
+                             "flat layout and take metric from the defaults")
     parser.add_argument("--out-dir", type=Path, default=CONFIGS_DIR, metavar="PATH",
                         help=f"Directory to write <scheme>/ dirs into (default: "
                              f"{CONFIGS_DIR})")
@@ -300,23 +321,36 @@ def main() -> None:
         [(d, {"run_weakening": v}) for d, v in WEAKENINGS[args.weakening]]
         if args.weakening else [(None, {})]
     )
+    # (subdirectory, metric override). None ⇒ flat layout with the metric from
+    # DEFAULTS, mirroring the weakening default. The metric directory nests
+    # below the weakening one: <scheme>/[<weakening>/]<direct|log>/.
+    metrics: list[tuple[str | None, dict]] = (
+        [(d, {"metric": v}) for d, v in METRICS[args.metric]]
+        if args.metric else [(None, {})]
+    )
 
     count = 0
     for scheme in args.schemes:
         for wk_dir, wk_override in weakenings:
-            out = args.out_dir / scheme
-            if wk_dir is not None:
-                out = out / wk_dir
-            out.mkdir(parents=True, exist_ok=True)
-            for sweep_name, levels in sweeps:
-                for level_name, overrides in levels:
-                    path = out / f"sweep_{sweep_name}_{level_name}.toml"
-                    path.write_text(make_toml(
-                        {**overrides, "selection_scheme": scheme, **wk_override},
-                        defaults))
-                    count += 1
-            label = scheme if wk_dir is None else f"{scheme}/{wk_dir}"
-            print(f"  {label:14} {len(list(out.glob('sweep_*.toml'))):3} configs")
+            for mx_dir, mx_override in metrics:
+                out = args.out_dir / scheme
+                if wk_dir is not None:
+                    out = out / wk_dir
+                if mx_dir is not None:
+                    out = out / mx_dir
+                out.mkdir(parents=True, exist_ok=True)
+                for sweep_name, levels in sweeps:
+                    for level_name, overrides in levels:
+                        path = out / f"sweep_{sweep_name}_{level_name}.toml"
+                        path.write_text(make_toml(
+                            {**overrides, "selection_scheme": scheme,
+                             **wk_override, **mx_override},
+                            defaults))
+                        count += 1
+                label = "/".join(p for p in (scheme, wk_dir, mx_dir)
+                                 if p is not None)
+                print(f"  {label:20} "
+                      f"{len(list(out.glob('sweep_*.toml'))):3} configs")
     print(f"\nGenerated {count} config files in {args.out_dir}")
 
 

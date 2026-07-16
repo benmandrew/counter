@@ -73,8 +73,8 @@ N_SEEDS = 30
 COMPARE_TIMEOUT_S = 600
 
 CSV_FIELDS = [
-    "sweep", "level_name", "level_value", "selection", "weakening", "spec",
-    "seed", "found_repair", "n_repairs", "best_fitness",
+    "sweep", "level_name", "level_value", "selection", "weakening", "metric",
+    "spec", "seed", "found_repair", "n_repairs", "best_fitness",
     "best_relation", "implies_ideal", "n_implies", "wall_time_s",
     "timed_out", "n_dropped",
 ]
@@ -94,6 +94,21 @@ LEGACY_WEAKENING = "wkon"
 # Directory names gen_configs.py --weakening emits. A config directly under
 # <scheme>/ predates the factor and is read as LEGACY_WEAKENING.
 WEAKENING_DIRS: tuple[str, ...] = ("wkon", "wkoff")
+
+# Rows written before `metric` existed ran the direct similarity metric (the
+# config.hpp / DEFAULTS value; model_counting.metric did not yet exist, so the
+# binary always scored directly). Same purpose as LEGACY_SELECTION: keep resume
+# and merge matching those rows rather than re-running them.
+LEGACY_METRIC = "direct"
+
+# Directory names gen_configs.py --metric emits (the short label, not the TOML
+# value "logarithmic"). A config with no such ancestor predates the factor and
+# is read as LEGACY_METRIC.
+METRIC_DIRS: tuple[str, ...] = ("direct", "log")
+
+# Every factor directory name, so scheme_of can tell a scheme segment apart
+# from a factor segment regardless of nesting order or depth.
+FACTOR_DIRS: frozenset[str] = frozenset(WEAKENING_DIRS) | frozenset(METRIC_DIRS)
 
 # Higher index = better relation
 RELATION_PRIORITY: dict[str, int] = {
@@ -165,6 +180,8 @@ CJ_LARGE_ALIASES: dict[tuple[str, str], tuple[str, str]] = {
 # `weakenings` picks the <scheme>/<wkon|wkoff>/ directories under those; None
 # means the profile predates the factor and reads the flat <scheme>/ layout,
 # recording every row as LEGACY_WEAKENING.
+# `metrics` picks the <direct|log> directories nested below (after weakening,
+# where present); None means the flat layout, recorded as LEGACY_METRIC.
 # `sweeps` is the set run by default (--sweeps overrides it, so a profile can
 # hold back a sweep until asked). `levels` restricts a sweep to named levels;
 # sweeps absent from the map keep every level found in `configs_dir`.
@@ -182,6 +199,7 @@ PROFILES: dict[str, dict] = {
     "full": {
         "schemes": ["nsga2"],
         "weakenings": None,
+        "metrics": None,
         "sweeps": ["A", "B", "C"],
         "levels": {
             "A": ["gen5", "gen10", "gen20", "gen40"],
@@ -203,6 +221,7 @@ PROFILES: dict[str, dict] = {
     "factorial": {
         "schemes": ["nsga2", "weighted"],
         "weakenings": None,
+        "metrics": None,
         "sweeps": None,  # every sweep found in experiments/configs/
         "levels": {},
         "specs": list(SPECS),
@@ -222,6 +241,7 @@ PROFILES: dict[str, dict] = {
     "cj-large": {
         "schemes": ["nsga2"],
         "weakenings": ["wkon", "wkoff"],
+        "metrics": None,
         "sweeps": ["C", "D", "E", "F", "I"],
         "levels": {},
         "specs": list(SPECS),
@@ -238,20 +258,43 @@ PROFILES: dict[str, dict] = {
         "results_csv": EXPERIMENTS_DIR / "results-cj-large.csv",
         "default_jobs": 4,
     },
+    # Direct-vs-log similarity metric as the sole crossed factor, at the same
+    # large operating point as cj-large (generations=40, population_size=1000)
+    # where repairs are strong enough for the metric to move outcomes. Only the
+    # all-defaults C/default level runs — the metric is the experiment, so the
+    # seed count is spent on statistical power for the main effect rather than
+    # on a grid. No aliasing: a single level has nothing to alias onto.
+    "metric": {
+        "schemes": ["nsga2"],
+        "weakenings": None,
+        "metrics": ["direct", "log"],
+        "sweeps": ["C"],
+        "levels": {"C": ["default"]},
+        "specs": list(SPECS),
+        "seeds": list(range(100)),
+        "timeout_caps": {"takeoff": 600, "fsm": 600, "fsm-timing": 600,
+                         "fsm-combined": 900},
+        "baseline_aliases": {},
+        "configs_dir": EXPERIMENTS_DIR / "configs-metric",
+        "results_dir": EXPERIMENTS_DIR / "results-metric",
+        "results_csv": EXPERIMENTS_DIR / "results-metric.csv",
+        "default_jobs": 4,
+    },
 }
 
 
-def verify_aliases(configs_by_key: dict[tuple[str, str, str, str], Path],
-                   scheme: str, weakening: str, aliases: dict) -> dict:
+def verify_aliases(configs_by_key: dict[tuple[str, str, str, str, str], Path],
+                   scheme: str, weakening: str, metric: str,
+                   aliases: dict) -> dict:
     """Return the alias map restricted to pairs whose files are byte-identical."""
     active: dict[tuple[str, str], tuple[str, str]] = {}
     for alias, canon in aliases.items():
-        a_path = configs_by_key.get((scheme, weakening, *alias))
-        c_path = configs_by_key.get((scheme, weakening, *canon))
+        a_path = configs_by_key.get((scheme, weakening, metric, *alias))
+        c_path = configs_by_key.get((scheme, weakening, metric, *canon))
         if a_path is None:
             continue  # alias config not generated; nothing to alias
         if c_path is None or a_path.read_bytes() != c_path.read_bytes():
-            print(f"WARN: {scheme}/{weakening}/{a_path.name} is not "
+            print(f"WARN: {scheme}/{weakening}/{metric}/{a_path.name} is not "
                   f"byte-identical to canonical sweep_{canon[0]}_{canon[1]}.toml "
                   f"— treating as distinct")
             continue
@@ -273,17 +316,36 @@ def level_value_of(level_name: str) -> int | float | str:
     return float(m.group(1)) if "." in m.group(1) else int(m.group(1))
 
 
+def _factor_dir(config_path: Path, known: tuple[str, ...] | frozenset[str]):
+    """First ancestor directory whose name is in `known`, or None.
+
+    Scans ancestors rather than assuming a fixed depth, so a factor is found
+    wherever it nests. With metric crossed in the layout is up to three deep
+    (<scheme>/<weakening>/<metric>/sweep_*.toml), and a parent/parent.parent
+    walk would mis-attribute the segments.
+    """
+    for p in config_path.parents:
+        if p.name in known:
+            return p.name
+    return None
+
+
 def scheme_of(config_path: Path) -> str:
-    """Selection scheme from the config's ancestor directories."""
-    parent = config_path.parent
-    return (parent.parent.name if parent.name in WEAKENING_DIRS
-            else parent.name)
+    """Selection scheme: the first ancestor that is not a factor directory."""
+    for p in config_path.parents:
+        if p.name not in FACTOR_DIRS:
+            return p.name
+    return config_path.parent.name
 
 
 def weakening_of(config_path: Path) -> str:
-    """Weakening state from the config's parent directory."""
-    name = config_path.parent.name
-    return name if name in WEAKENING_DIRS else LEGACY_WEAKENING
+    """Weakening state from the config's ancestor directories."""
+    return _factor_dir(config_path, WEAKENING_DIRS) or LEGACY_WEAKENING
+
+
+def metric_of(config_path: Path) -> str:
+    """Similarity metric (short label) from the config's ancestor directories."""
+    return _factor_dir(config_path, METRIC_DIRS) or LEGACY_METRIC
 
 
 def extract_metadata(config_path: Path) -> tuple:
@@ -386,6 +448,7 @@ def load_done_set(csv_path: Path) -> set:
             done.add((row["sweep"], row["level_name"],
                       row.get("selection") or LEGACY_SELECTION,
                       row.get("weakening") or LEGACY_WEAKENING,
+                      row.get("metric") or LEGACY_METRIC,
                       row["spec"], int(row["seed"])))
     return done
 
@@ -575,17 +638,25 @@ def main() -> None:
     def _config_sort_key(p: Path):
         sweep, _, level_value = extract_metadata(p)
         numeric = isinstance(level_value, (int, float))
-        return (scheme_of(p), weakening_of(p), sweep, 0 if numeric else 1,
-                level_value if numeric else 0, str(p))
+        return (scheme_of(p), weakening_of(p), metric_of(p), sweep,
+                0 if numeric else 1, level_value if numeric else 0, str(p))
 
     wanted_schemes = profile["schemes"]
     wanted_weakenings = profile["weakenings"]
-    # A profile without the factor reads <scheme>/ directly; one with it reads
-    # each <scheme>/<weakening>/ below.
-    config_dirs = [configs_dir / s for s in wanted_schemes] \
-        if wanted_weakenings is None \
-        else [configs_dir / s / w for s in wanted_schemes
-              for w in wanted_weakenings]
+    wanted_metrics = profile["metrics"]
+    # Build the directory list by nesting each crossed factor a level deeper:
+    # <scheme>/[<weakening>/][<metric>/]. A None factor means the profile
+    # predates it and its segment is skipped, keeping the flat layout readable.
+    config_dirs = []
+    for s in wanted_schemes:
+        for w in (wanted_weakenings or [None]):
+            for m in (wanted_metrics or [None]):
+                d = configs_dir / s
+                if w is not None:
+                    d = d / w
+                if m is not None:
+                    d = d / m
+                config_dirs.append(d)
     all_configs = sorted(
         (c for d in config_dirs for c in d.glob("sweep_*.toml")),
         key=_config_sort_key)
@@ -595,7 +666,8 @@ def main() -> None:
             f"{', '.join(wanted_schemes)}\nRun: python scripts/gen_configs.py"
         )
     configs_by_key = {
-        (scheme_of(c), weakening_of(c), *extract_metadata(c)[:2]): c
+        (scheme_of(c), weakening_of(c), metric_of(c),
+         *extract_metadata(c)[:2]): c
         for c in all_configs}
 
     if args.sweeps:
@@ -616,15 +688,17 @@ def main() -> None:
     if not selected_configs:
         sys.exit("No matching config files found.")
 
-    # Aliasing holds within a (scheme, weakening) pair: wkoff's D/ptrig0.5
-    # aliases onto wkoff's C/default, never onto wkon's. The byte-identity
-    # check enforces it, since the configs differ on run_weakening.
-    factor_pairs = [(s, w) for s in wanted_schemes
-                    for w in (wanted_weakenings or [LEGACY_WEAKENING])]
+    # Aliasing holds within one (scheme, weakening, metric) cell: wkoff/log's
+    # D/ptrig0.5 aliases onto wkoff/log's C/default, never onto another cell's.
+    # The byte-identity check enforces it, since the configs differ on the
+    # factor keys.
+    factor_cells = [(s, w, m) for s in wanted_schemes
+                    for w in (wanted_weakenings or [LEGACY_WEAKENING])
+                    for m in (wanted_metrics or [LEGACY_METRIC])]
     active_aliases = {
-        (s, w): verify_aliases(configs_by_key, s, w,
-                               profile["baseline_aliases"])
-        for s, w in factor_pairs}
+        (s, w, m): verify_aliases(configs_by_key, s, w, m,
+                                  profile["baseline_aliases"])
+        for s, w, m in factor_cells}
 
     done = set() if args.no_resume else load_done_set(results_csv)
 
@@ -634,21 +708,23 @@ def main() -> None:
     runs: dict[tuple, list] = {}
     n_rows = n_aliased = 0
     for cfg in selected_configs:
-        scheme, weakening = scheme_of(cfg), weakening_of(cfg)
+        scheme, weakening, metric = (scheme_of(cfg), weakening_of(cfg),
+                                     metric_of(cfg))
         sweep, level_name, _ = extract_metadata(cfg)
-        canon = active_aliases[(scheme, weakening)].get((sweep, level_name),
-                                                        (sweep, level_name))
+        canon = active_aliases[(scheme, weakening, metric)].get(
+            (sweep, level_name), (sweep, level_name))
         for spec_name in specs:
             for seed in seeds:
                 n_rows += 1
                 if canon != (sweep, level_name):
                     n_aliased += 1
-                key = (scheme, weakening, canon[0], canon[1], spec_name, seed)
+                key = (scheme, weakening, metric, canon[0], canon[1],
+                       spec_name, seed)
                 runs.setdefault(key, []).append((sweep, level_name))
 
     def row_key(key: tuple, sweep: str, level_name: str) -> tuple:
-        scheme, weakening, _, _, spec_name, seed = key
-        return (sweep, level_name, scheme, weakening, spec_name, seed)
+        scheme, weakening, metric, _, _, spec_name, seed = key
+        return (sweep, level_name, scheme, weakening, metric, spec_name, seed)
 
     n_done = sum(
         1
@@ -663,14 +739,14 @@ def main() -> None:
     to_execute = sorted(
         (key for key, row_list in runs.items()
          if any(row_key(key, s, l) not in done for s, l in row_list)),
-        key=lambda k: (k[5], k[4], k[0], k[1], k[2], k[3]),
+        key=lambda k: (k[6], k[5], k[0], k[1], k[2], k[3], k[4]),
     )
     print(f"Plan: {n_rows} result rows ({n_aliased} via aliasing), "
           f"{n_done} already done; {len(to_execute)} runs to execute")
 
     if args.dry_run:
         for key, row_list in runs.items():
-            scheme, weakening, c_sweep, c_level, spec_name, seed = key
+            scheme, weakening, metric, c_sweep, c_level, spec_name, seed = key
             for sweep, level_name in row_list:
                 tags = []
                 if (sweep, level_name) != (c_sweep, c_level):
@@ -678,9 +754,12 @@ def main() -> None:
                 if row_key(key, sweep, level_name) in done:
                     tags.append("(skip)")
                 # Names the config as it sits on disk, so a flat profile shows
-                # no weakening segment even though its rows record one.
-                cfg_dir = (scheme if wanted_weakenings is None
-                           else f"{scheme}/{weakening}")
+                # no factor segment even though its rows record the defaults.
+                cfg_dir = "/".join(
+                    p for p in (scheme,
+                                None if wanted_weakenings is None else weakening,
+                                None if wanted_metrics is None else metric)
+                    if p is not None)
                 print(f"  {cfg_dir}/sweep_{sweep}_{level_name}"
                       f"  spec={spec_name}  seed={seed:02d}"
                       + ("  " + " ".join(tags) if tags else ""))
@@ -690,7 +769,7 @@ def main() -> None:
     results_csv.parent.mkdir(parents=True, exist_ok=True)
 
     fieldnames = existing_fieldnames(results_csv) or CSV_FIELDS
-    for column in ["timed_out", "weakening"]:
+    for column in ["timed_out", "weakening", "metric"]:
         if column not in fieldnames:
             print(f"Note: {results_csv.name} predates the {column} column; "
                   f"appending without it")
@@ -706,17 +785,18 @@ def main() -> None:
     t0 = time.monotonic()
 
     def execute(key: tuple) -> None:
-        scheme, weakening, c_sweep, c_level, spec_name, seed = key
-        cfg = configs_by_key[(scheme, weakening, c_sweep, c_level)]
+        scheme, weakening, metric, c_sweep, c_level, spec_name, seed = key
+        cfg = configs_by_key[(scheme, weakening, metric, c_sweep, c_level)]
         caps = profile["timeout_caps"]
         timeout = (caps[spec_name] if caps
                    else counter_timeout(c_level, level_value_of(c_level)))
-        # The weakening state joins run_id only where the profile crosses it:
-        # adding it unconditionally would rename every existing run directory
-        # of the profiles that predate the factor, orphaning their results.
+        # A factor state joins run_id only where the profile crosses it: adding
+        # it unconditionally would rename every existing run directory of the
+        # profiles that predate the factor, orphaning their results.
         wk_tag = "" if wanted_weakenings is None else f"_{weakening}"
-        run_id = (f"sweep_{c_sweep}_{c_level}_{scheme}{wk_tag}_{spec_name}"
-                  f"_seed{seed:02d}")
+        mx_tag = "" if wanted_metrics is None else f"_{metric}"
+        run_id = (f"sweep_{c_sweep}_{c_level}_{scheme}{wk_tag}{mx_tag}"
+                  f"_{spec_name}_seed{seed:02d}")
         with lock:
             print(f"[start]      {run_id}  (timeout {timeout}s)", flush=True)
 
@@ -738,7 +818,8 @@ def main() -> None:
                     continue
                 row = {**result, "sweep": sweep, "level_name": level_name,
                        "level_value": level_value_of(level_name),
-                       "selection": scheme, "weakening": weakening}
+                       "selection": scheme, "weakening": weakening,
+                       "metric": metric}
                 append_row(results_csv, row, fieldnames)
                 done.add(row_key(key, sweep, level_name))
                 state["rows_written"] += 1

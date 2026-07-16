@@ -77,6 +77,13 @@ Sweeps generated, each holding every other parameter at its default:
 defaults, exactly one level of each is byte-identical to the `A/gen10` baseline
 — the aliasing below collapses those nine onto one run per scheme.
 
+`--weakening both` and `--metric both` cross `run_weakening` and
+`model_counting.metric` in as factors, nesting them under
+`<scheme>/[<wkon|wkoff>/][<direct|log>/]`. The directory label is the short
+`direct`/`log`; the TOML value written is the full `direct`/`logarithmic` the
+C++ parser accepts. Omitting a flag keeps the flat layout and takes that factor
+from the defaults, so a no-arg run reproduces the pre-factor grid.
+
 Two of these are worth a note. `G` is nearly free: the bound enters through the
 transfer matrix rather than a SAT call, and bound 160 measures within noise of
 bound 5, but it moves the semantic similarity score and so changes which
@@ -106,6 +113,7 @@ CSV it writes:
 |---|---|---|---|---|---|
 | `full` (default) | nsga2 | the original 14 levels of A, B, C | 0–29 | `results.csv` | ~29 min (1440 runs) |
 | `factorial` | nsga2, weighted | every level of A–J | 0–99 | `results-factorial.csv` | ~14.6 h (43,200 runs) |
+| `metric` | nsga2 | C/default only, `metric` crossed direct×log | 0–99 | `results-metric.csv` | ~1 h split across two machines (800 runs at generations=40/population=1000) |
 
 `full` is pinned to the four generation and five population levels it has
 always had, so its `results.csv` stays one comparable dataset even though
@@ -128,6 +136,28 @@ nsga2-vs-weighted is answerable at every level instead of only at the baseline
 — `results.csv` holds no weighted runs at all, so that comparison cannot be
 made from it. Seeds extend cheaply afterwards: `--seeds $(seq -s' ' 100 149)`
 against an existing `results-factorial.csv` runs only the new ones.
+
+`metric` isolates the `model_counting.metric` factor — the direct-vs-log choice
+of how bounded trace counts become a semantic-similarity score. It crosses that
+factor (`direct` × `logarithmic`) over the single all-defaults `C/default` level
+at the larger `generations=40`/`population_size=1000` operating point, where
+repairs are strong enough for the metric to move outcomes. It reads its own
+`experiments/configs-metric/<scheme>/<direct|log>/` grid, so generate it with
+`--metric both` (below) before running:
+
+```sh
+python scripts/gen_configs.py --generations 40 --population-size 1000 \
+    --schemes nsga2 --sweeps C --metric both --out-dir experiments/configs-metric
+python scripts/run_experiments.py --profile metric --seeds $(seq -s' ' 0 49) --jobs 4   # av2
+python scripts/run_experiments.py --profile metric --seeds $(seq -s' ' 50 99) --jobs 4  # av3
+python scripts/merge_experiments.py av2 av3 --profile metric
+```
+
+The 800 rows are `2 metrics × 4 specs × 100 seeds` — no sweep grid, so the
+budget buys statistical power on the main effect. Ordering is seed-major, so
+killing a machine at the wall-clock deadline leaves a balanced design (every
+metric/spec sampled at the same seeds, just fewer of them) rather than a
+half-finished one.
 
 Reduced `quick` and `smoke` profiles existed until that speedup made them
 pointless — they saved about 27 minutes between them, at the cost of dropping
@@ -265,19 +295,22 @@ the flag defaults to `full`. When no source carries a CSV for the chosen
 profile, the merge stops and names the mismatch rather than writing anything.
 
 The script rsyncs each remote's `experiments/results/` into the local one, then
-merges the CSVs on the natural key `(sweep, level_name, selection, spec, seed)`,
-keeping one row per key. Local rows win, so a machine's own results are never
+merges the CSVs on the natural key
+`(sweep, level_name, selection, weakening, metric, spec, seed)`, keeping one row
+per key. Local rows win, so a machine's own results are never
 overwritten by a remote copy of the same run. Output is sorted by key, which
 makes the file byte-stable and the whole operation idempotent — re-running it
 never duplicates rows. Per-run directories encode their scheme and seed
 (`sweep_A_gen10_nsga2_fsm_seed17`), so they never collide between machines or
 between schemes.
 
-`selection` is part of the key because `factorial` runs every level under both
-schemes; without it the two collapse onto one key and half the rows are dropped
-in silence. Rows written before the column existed are all nsga2 — every config
-in use pinned it — so both scripts read an absent value as `nsga2` rather than
-empty, which keeps resume and merge working against the older `results.csv`.
+`selection`, `weakening` and `metric` are part of the key because a profile may
+run every level under both selection schemes (`factorial`), both weakening
+states (`cj-large`), or both similarity metrics (`metric`); without them the
+crossed rows collapse onto one key and half are dropped in silence. Rows written
+before a column existed carry its legacy default — nsga2, wkon, direct — so both
+scripts read an absent value as that rather than empty, which keeps resume and
+merge working against the older CSVs.
 
 Sources are reached over ssh. An entry in `~/.ssh/config` must match the
 hostname as written in `REMOTES` — a bare `Host av3` block does not apply to

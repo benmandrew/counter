@@ -48,6 +48,7 @@ PROFILE_CSVS: dict[str, str] = {
     "full": "results.csv",
     "factorial": "results-factorial.csv",
     "cj-large": "results-cj-large.csv",
+    "metric": "results-metric.csv",
 }
 
 # Per-run output directory each profile writes under experiments/. Most profiles
@@ -57,17 +58,21 @@ PROFILE_RESULT_DIRS: dict[str, str] = {
     "full": "results",
     "factorial": "results",
     "cj-large": "results-cj-large",
+    "metric": "results-metric",
 }
 
 # Natural key of a results row: one run per (sweep, level_name, selection,
-# weakening, spec, seed). `selection` and `weakening` are part of it because a
-# profile may run every level under both selection schemes (factorial) and both
-# weakening states (cj-large) — without them the crossed rows collapse onto one
-# key and half are silently dropped. Rows written before either column existed
-# carry the legacy defaults below (see run_experiments.py's LEGACY_* constants).
-KEY_FIELDS = ("sweep", "level_name", "selection", "weakening", "spec", "seed")
+# weakening, metric, spec, seed). `selection`, `weakening` and `metric` are part
+# of it because a profile may run every level under both selection schemes
+# (factorial), both weakening states (cj-large), and both similarity metrics —
+# without them the crossed rows collapse onto one key and half are silently
+# dropped. Rows written before any of these columns existed carry the legacy
+# defaults below (see run_experiments.py's LEGACY_* constants).
+KEY_FIELDS = ("sweep", "level_name", "selection", "weakening", "metric",
+              "spec", "seed")
 LEGACY_SELECTION = "nsga2"
 LEGACY_WEAKENING = "wkon"
+LEGACY_METRIC = "direct"
 
 
 def resolve_source(name: str) -> tuple[str, str]:
@@ -154,7 +159,8 @@ def read_rows(path: Path) -> tuple[list[str], list[dict]]:
         return list(reader.fieldnames or []), list(reader)
 
 
-FIELD_DEFAULTS = {"selection": LEGACY_SELECTION, "weakening": LEGACY_WEAKENING}
+FIELD_DEFAULTS = {"selection": LEGACY_SELECTION, "weakening": LEGACY_WEAKENING,
+                  "metric": LEGACY_METRIC}
 
 
 def key_of(row: dict) -> tuple:

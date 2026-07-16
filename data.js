@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1784224520265,
+  "lastUpdate": 1784224578553,
   "repoUrl": "https://github.com/benmandrew/counter",
   "entries": {
     "counter benchmarks": [
@@ -3816,6 +3816,78 @@ window.BENCHMARK_DATA = {
             "value": 3370.110526162371,
             "unit": "ns/iter",
             "extra": "iterations: 205716\ncpu: 3369.884938458844 ns\nthreads: 1"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "benmandrew@gmail.com",
+            "name": "benmandrew",
+            "username": "benmandrew"
+          },
+          "committer": {
+            "email": "benmandrew@gmail.com",
+            "name": "benmandrew",
+            "username": "benmandrew"
+          },
+          "distinct": true,
+          "id": "390d30a830de466d55937deafbb4d0e25b373ed2",
+          "message": "ci: run the benchmark job in parallel with build-and-test\n\nDrop `needs: build-and-test` from the benchmark job. It shares no data\nwith build-and-test (there are no `needs.*` references) and keeps its own\ndependency cache, so the edge only serialised two otherwise independent\njobs. Removing it lets benchmark start immediately alongside check and\nbuild-and-test.",
+          "timestamp": "2026-07-16T18:54:22+01:00",
+          "tree_id": "baa34803b72e99f49526feb1fd42994ada01603d",
+          "url": "https://github.com/benmandrew/counter/commit/390d30a830de466d55937deafbb4d0e25b373ed2"
+        },
+        "date": 1784224577916,
+        "tool": "googlecpp",
+        "benches": [
+          {
+            "name": "Syntactic similarity - small formulas (3 variables)",
+            "value": 358.90670156865497,
+            "unit": "ns/iter",
+            "extra": "iterations: 1806965\ncpu: 358.8859125660984 ns\nthreads: 1"
+          },
+          {
+            "name": "Syntactic similarity - large formulas (11 variables, O(n*m) shared_subformulae)",
+            "value": 1411.001926715906,
+            "unit": "ns/iter",
+            "extra": "iterations: 493586\ncpu: 1410.926341103678 ns\nthreads: 1"
+          },
+          {
+            "name": "Spec implication check - warm black cache",
+            "value": 389.5197063672794,
+            "unit": "ns/iter",
+            "extra": "iterations: 1757706\ncpu: 389.50324229421756 ns\nthreads: 1"
+          },
+          {
+            "name": "Trace model counting - matrix exponentiation/steps:5",
+            "value": 124.83691197965678,
+            "unit": "ns/iter",
+            "extra": "iterations: 5614134\ncpu: 124.82908583941882 ns\nthreads: 1"
+          },
+          {
+            "name": "Trace model counting - matrix exponentiation/steps:10",
+            "value": 139.61261707446835,
+            "unit": "ns/iter",
+            "extra": "iterations: 5011447\ncpu: 139.60873037268476 ns\nthreads: 1"
+          },
+          {
+            "name": "Trace model counting - matrix exponentiation/steps:20",
+            "value": 156.8172346901486,
+            "unit": "ns/iter",
+            "extra": "iterations: 4473524\ncpu: 156.8076959014863 ns\nthreads: 1"
+          },
+          {
+            "name": "Trace model counting - matrix exponentiation/steps:50",
+            "value": 191.26219592423627,
+            "unit": "ns/iter",
+            "extra": "iterations: 3670919\ncpu: 191.20273152308715 ns\nthreads: 1"
+          },
+          {
+            "name": "Mutate specification - 3-guarantee takeoff spec",
+            "value": 2208.023366803708,
+            "unit": "ns/iter",
+            "extra": "iterations: 288315\ncpu: 2207.1866014602056 ns\nthreads: 1"
           }
         ]
       }

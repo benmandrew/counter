@@ -17,6 +17,7 @@ Usage:
         --out-dir experiments/configs-cj-large          # a larger operating point
     python scripts/gen_configs.py --weakening both      # cross run_weakening in
     python scripts/gen_configs.py --metric both         # cross direct/log metric in
+    python scripts/gen_configs.py --tlsf                # the TLSF campaign grid
 """
 
 import argparse
@@ -101,6 +102,10 @@ DEFAULTS: dict = {
     "run_implication": True,
     "black_timeout_ms": 1000,
     "repair_mode": "monolithic",
+    # 0 = unlimited, matching config.hpp. Emitted into [runtime] only when
+    # positive (see make_toml), so the standard grids stay byte-identical to the
+    # pre-cap output; the TLSF campaign sets it to bound ltlsynt's peak RAM.
+    "max_concurrent_realizability": 0,
 }
 
 
@@ -152,6 +157,8 @@ def make_toml(overrides: dict, defaults: dict = DEFAULTS) -> str:
         "",
         "[runtime]",
         f"black_timeout_ms = {d['black_timeout_ms']}",
+    ] + ([f"max_concurrent_realizability = {d['max_concurrent_realizability']}"]
+         if d.get("max_concurrent_realizability") else []) + [
         "",
         "[tlsf]",
         f'repair_mode = "{d["repair_mode"]}"',
@@ -289,6 +296,45 @@ SWEEPS: list[tuple[str, list]] = [
     ("J", SWEEP_J),
 ]
 
+# ── TLSF campaign grid ───────────────────────────────────────────────────────
+
+# The basic-TLSF examples are far slower than the FRETISH specs — three of them
+# take ~3 min even at gen10/pop200 and cost scales with generations*population —
+# so the TLSF campaign sweeps only the two operating-point axes over a coarse
+# four-level cross rather than the fine FRETISH grid, spending the fixed
+# wall-clock budget on seeds instead of gradations. The two axes cross at the
+# gen10/pop200 baseline (shared level), matching the FRETISH aliasing so
+# B/pop200 collapses onto A/gen10. Emitted by `--tlsf` into configs-tlsf/.
+TLSF_SWEEP_A: list[tuple[str, dict]] = [
+    ("gen5",  {"generations": 5}),
+    ("gen10", {"generations": 10}),   # baseline (shared with B/pop200)
+    ("gen20", {"generations": 20}),
+    ("gen40", {"generations": 40}),
+]
+
+TLSF_SWEEP_B: list[tuple[str, dict]] = [
+    ("pop50",  {"population_size": 50}),
+    ("pop100", {"population_size": 100}),
+    ("pop200", {"population_size": 200}),   # baseline (shared with A/gen10)
+    ("pop500", {"population_size": 500}),
+]
+
+TLSF_SWEEPS: list[tuple[str, list]] = [
+    ("A", TLSF_SWEEP_A),
+    ("B", TLSF_SWEEP_B),
+]
+
+TLSF_CONFIGS_DIR = Path(__file__).parent.parent / "experiments" / "configs-tlsf"
+
+# Default ltlsynt concurrency cap for the TLSF campaign. 0 = uncapped, which
+# suits the 128 GB av2/av3 machines the campaign targets (32 cores * ~2.7 GB per
+# ltlsynt ~= 86 GB peak, comfortably within RAM). ltlsynt is multi-GB resident
+# per call on these specs, so on a smaller-RAM box pass e.g.
+# `--max-realizability 6` to bound peak RAM (~16 GB) and avoid an OOM. The cap
+# is per counter process, so keep the campaign at --jobs 1 (the tlsf profile's
+# default) for it to remain the machine-wide limit.
+TLSF_MAX_REALIZABILITY = 0
+
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
@@ -332,6 +378,21 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--out-dir", type=Path, default=CONFIGS_DIR, metavar="PATH",
                         help=f"Directory to write <scheme>/ dirs into (default: "
                              f"{CONFIGS_DIR})")
+    parser.add_argument("--tlsf", action="store_true",
+                        help="Emit the TLSF campaign grid: a coarse "
+                             "generations x population cross (sweeps A, B) for "
+                             "nsga2 only, into configs-tlsf. Unless overridden, "
+                             "sets --schemes nsga2 and --out-dir configs-tlsf")
+    parser.add_argument("--max-realizability", type=int, default=None,
+                        metavar="N",
+                        help="Cap concurrent ltlsynt processes "
+                             "(runtime.max_concurrent_realizability). 0 = "
+                             "unlimited; the key is omitted from the emitted "
+                             "TOML when 0, keeping the standard grids "
+                             "byte-identical. Bounds ltlsynt peak RAM on a "
+                             "smaller-RAM box (e.g. 6 ~= 16 GB); the TLSF "
+                             "campaign defaults to uncapped for the 128 GB "
+                             "av2/av3 machines")
     return parser.parse_args()
 
 
@@ -340,8 +401,24 @@ def main() -> None:
     defaults = {**DEFAULTS,
                 "generations": args.generations,
                 "population_size": args.population_size}
+    # --tlsf swaps in the coarse TLSF cross and, unless the user overrode them,
+    # pins the scheme and output directory the campaign expects. Comparing
+    # against the argparse defaults is how "left unset" is detected.
+    sweep_table = SWEEPS
+    schemes = args.schemes
+    out_dir = args.out_dir
+    max_realizability = args.max_realizability
+    if args.tlsf:
+        sweep_table = TLSF_SWEEPS
+        if schemes == SCHEMES:
+            schemes = ["nsga2"]
+        if out_dir == CONFIGS_DIR:
+            out_dir = TLSF_CONFIGS_DIR
+        if max_realizability is None:
+            max_realizability = TLSF_MAX_REALIZABILITY
+    defaults["max_concurrent_realizability"] = max_realizability or 0
     wanted = set(args.sweeps)
-    sweeps = [(name, levels) for name, levels in SWEEPS if name in wanted]
+    sweeps = [(name, levels) for name, levels in sweep_table if name in wanted]
     # (subdirectory, run_weakening override). The flat case carries no override,
     # so sweep J's per-level run_weakening still reaches the emitted TOML.
     weakenings: list[tuple[str | None, dict]] = (
@@ -364,7 +441,7 @@ def main() -> None:
     )
 
     count = 0
-    for scheme in args.schemes:
+    for scheme in schemes:
         for wk_dir, wk_override in weakenings:
             for mx_dir, mx_override in metrics:
                 for rp_dir, rp_override in repairs:

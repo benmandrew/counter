@@ -191,7 +191,7 @@ av2/av3 grid is generated uncapped (32 cores × ~2.7 GB peaks near 86 GB), but a
 smaller-RAM box should pass `--tlsf --max-realizability 6`. Second, `ltlsynt` has
 no internal timeout and the genetic search occasionally generates a synthesis
 query that runs for minutes; the campaign sets `runtime.ltlsynt_timeout_ms`
-(30 s) so such a query is killed and its candidate treated as unrealizable
+(10 s) so such a query is killed and its candidate treated as unrealizable
 rather than stalling the run — the count of these appears as `(N timeouts)` in
 each run's `ltlsynt` timing row. `compare` decides implies-ideal on TLSF the
 same way it does on FRETISH, via the whole-formula implication check, so

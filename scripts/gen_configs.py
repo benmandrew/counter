@@ -345,9 +345,8 @@ TLSF_MAX_REALIZABILITY = 0
 # internal timeout, and these specs occasionally produce synthesis queries that
 # run for minutes; without a bound one such query stalls a whole run. Normal
 # calls finish in milliseconds, so a multi-second timeout cuts the tail with
-# wide margin. Value chosen from the measured call-duration distribution (see
-# scripts/README.md). A timed-out check is treated as unrealizable.
-TLSF_LTLSYNT_TIMEOUT_MS = 30000
+# wide margin. A timed-out check is treated as unrealizable.
+TLSF_LTLSYNT_TIMEOUT_MS = 10000
 
 
 def parse_args() -> argparse.Namespace:

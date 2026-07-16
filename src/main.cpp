@@ -313,6 +313,18 @@ run_evolution(const Config& cfg, std::vector<ScoredSpecification> population,
             cfg, population, selection_size, elitism_size, fitness_function,
             active_filters, random_source, on_progress);
 
+        // Each active filter copy carries this generation's in/out sizes; fold
+        // them into the running per-filter totals reported at the end.
+        for (const FilterFunction& flt : active_filters) {
+            for (FilterRunStats& stat : filter_stats) {
+                if (stat.name == flt.name()) {
+                    stat.total_in += flt.n_in();
+                    stat.total_out += flt.n_out();
+                    break;
+                }
+            }
+        }
+
         const double elapsed = std::chrono::duration<double>(
                                    std::chrono::steady_clock::now() - start)
                                    .count();

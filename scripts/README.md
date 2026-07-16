@@ -114,6 +114,7 @@ CSV it writes:
 | `full` (default) | nsga2 | the original 14 levels of A, B, C | 0–29 | `results.csv` | ~29 min (1440 runs) |
 | `factorial` | nsga2, weighted | every level of A–J | 0–99 | `results-factorial.csv` | ~14.6 h (43,200 runs) |
 | `metric` | nsga2 | C/default only, `metric` crossed direct×log | 0–99 | `results-metric.csv` | ~1 h split across two machines (800 runs at generations=40/population=1000) |
+| `tlsf` | nsga2 | A + B, coarse 4-level cross (7 operating points) | 0–59 (ceiling) | `results-tlsf.csv` | ~16 h split across av2+av3 (`--jobs 1`; the six TLSF specs) |
 
 `full` is pinned to the four generation and five population levels it has
 always had, so its `results.csv` stays one comparable dataset even though
@@ -158,6 +159,43 @@ budget buys statistical power on the main effect. Ordering is seed-major, so
 killing a machine at the wall-clock deadline leaves a balanced design (every
 metric/spec sampled at the same seeds, just fewer of them) rather than a
 half-finished one.
+
+`tlsf` runs the six basic-TLSF examples (arbiter, gyro-var1, humanoid-531,
+lift, lily02, minepump) rather than the four FRETISH specs, swept over
+generations (A) and population (B). These specs are far heavier: `ltlsynt`
+turns multi-gigabyte resident on them, and three — lift, gyro-var1,
+humanoid-531 — take about three minutes each even at the `gen10/pop200`
+baseline, against a few seconds for the FRETISH specs. So the grid is a coarse
+four-level cross per axis (seven distinct operating points, sharing the
+baseline) rather than the fine FRETISH grid: the budget is spent on seeds
+instead of gradations. It reads its own `experiments/configs-tlsf/nsga2/` grid,
+so generate it with `--tlsf` first:
+
+```sh
+python scripts/gen_configs.py --tlsf
+python scripts/run_experiments.py --profile tlsf --seeds $(seq -s' ' 0 29)   # av2
+python scripts/run_experiments.py --profile tlsf --seeds $(seq -s' ' 30 59)  # av3
+python scripts/merge_experiments.py av2 av3 --profile tlsf
+```
+
+The seed count is a ceiling, not a commitment: ordering is seed-major, so a
+machine killed at its ~16 h deadline leaves a balanced design at whatever seed
+depth it reached, and the disjoint 0-29 / 30-59 ranges merge to one balanced
+dataset whether or not either finishes.
+
+The profile runs at `--jobs 1`, unlike the FRETISH profiles' `--jobs 4`, for two
+reasons. First, `ltlsynt` turns multi-gigabyte resident on these specs, and its
+concurrency cap (`runtime.max_concurrent_realizability`) is per counter process,
+so one process per machine keeps that cap the machine-wide limit — the 128 GB
+av2/av3 grid is generated uncapped (32 cores × ~2.7 GB peaks near 86 GB), but a
+smaller-RAM box should pass `--tlsf --max-realizability 6`. Second, `ltlsynt` has
+no internal timeout and the genetic search occasionally generates a synthesis
+query that runs for minutes; the campaign sets `runtime.ltlsynt_timeout_ms`
+(30 s) so such a query is killed and its candidate treated as unrealizable
+rather than stalling the run — the count of these appears as `(N timeouts)` in
+each run's `ltlsynt` timing row. `compare` decides implies-ideal on TLSF the
+same way it does on FRETISH, via the whole-formula implication check, so
+`results-tlsf.csv` carries the same columns.
 
 Reduced `quick` and `smoke` profiles existed until that speedup made them
 pointless — they saved about 27 minutes between them, at the cost of dropping

@@ -8,6 +8,7 @@
 #include <optional>
 #include <string>
 #include <thread>
+#include <unordered_map>
 #include <unordered_set>
 #include <utility>
 #include <vector>
@@ -49,9 +50,11 @@ bool any_formula_exceeds(const tlsf::Specification& spec, std::size_t cap) {
     return false;
 }
 
-// Marks whichever of the unordered pair {a, b} is strictly dominated, if any.
-// Short-circuits once either endpoint is already known subsumed.
+// Marks whichever of the unordered pair of representative positions {a, b} is
+// strictly dominated, if any. Short-circuits once either endpoint is already
+// known subsumed.
 void check_pair(const std::vector<tlsf::Specification>& pop,
+                const std::vector<std::size_t>& representatives,
                 std::vector<std::atomic<uint8_t>>& subsumed,
                 SatisfiabilityChecker& checker, std::size_t pos_a,
                 std::size_t pos_b) {
@@ -59,15 +62,81 @@ void check_pair(const std::vector<tlsf::Specification>& pop,
         subsumed[pos_b].load(std::memory_order_relaxed) != 0U) {
         return;
     }
+    const tlsf::Specification& spec_a = pop[representatives[pos_a]];
+    const tlsf::Specification& spec_b = pop[representatives[pos_b]];
     const bool a_implies_b =
-        tlsf_spec_implies(pop[pos_a], pop[pos_b], checker).value_or(false);
+        tlsf_spec_implies(spec_a, spec_b, checker).value_or(false);
     const bool b_implies_a =
-        tlsf_spec_implies(pop[pos_b], pop[pos_a], checker).value_or(false);
+        tlsf_spec_implies(spec_b, spec_a, checker).value_or(false);
     if (a_implies_b && !b_implies_a) {
         subsumed[pos_b].store(1, std::memory_order_relaxed);
     } else if (b_implies_a && !a_implies_b) {
         subsumed[pos_a].store(1, std::memory_order_relaxed);
     }
+}
+
+// Computes subsumed[j] = 1 iff some spec strictly dominates pop[j] (implies it
+// without being implied back). Exact duplicates relate identically to every
+// other spec (the implication check depends only on the lowered LTL formula),
+// so only one representative per group of equal specs is run through the
+// pairwise sweep; its verdict is copied to every member afterwards.
+std::vector<uint8_t> compute_subsumed(
+    const std::vector<tlsf::Specification>& pop, SatisfiabilityChecker& checker,
+    const GenerationProgressCallback& on_progress) {
+    const std::size_t pop_size = pop.size();
+    std::unordered_map<tlsf::Specification, std::size_t> rep_position_of;
+    std::vector<std::size_t> representatives;
+    std::vector<std::vector<std::size_t>> members;
+    for (std::size_t i = 0; i < pop_size; ++i) {
+        const auto [iter, inserted] =
+            rep_position_of.try_emplace(pop[i], representatives.size());
+        if (inserted) {
+            representatives.push_back(i);
+            members.push_back({i});
+        } else {
+            members[iter->second].push_back(i);
+        }
+    }
+    const std::size_t n_reps = representatives.size();
+    std::vector<std::pair<std::size_t, std::size_t>> pairs;
+    pairs.reserve(n_reps * (n_reps - 1) / 2);
+    for (std::size_t i = 0; i < n_reps; ++i) {
+        for (std::size_t j = i + 1; j < n_reps; ++j) {
+            pairs.emplace_back(i, j);
+        }
+    }
+    std::vector<std::atomic<uint8_t>> subsumed(n_reps);
+    for (auto& flag : subsumed) {
+        flag.store(0, std::memory_order_relaxed);
+    }
+    const std::size_t n_hw = std::thread::hardware_concurrency();
+    const std::size_t max_in_flight = n_hw > 0 ? n_hw * 2 : 1;
+    std::size_t completed = 0;
+    run_bounded_async(
+        pairs.size(), max_in_flight,
+        [&checker, &pop, &representatives, &subsumed, &pairs](std::size_t idx) {
+            const std::size_t pos_a = pairs[idx].first;
+            const std::size_t pos_b = pairs[idx].second;
+            return global_thread_pool().submit(
+                [&checker, &pop, &representatives, &subsumed, pos_a, pos_b] {
+                    check_pair(pop, representatives, subsumed, checker, pos_a,
+                               pos_b);
+                });
+        },
+        [&on_progress, &completed, total = pairs.size()](std::size_t) {
+            if (on_progress) {
+                on_progress(++completed, total);
+            }
+        });
+    std::vector<uint8_t> result(pop_size, 0);
+    for (std::size_t rep_pos = 0; rep_pos < n_reps; ++rep_pos) {
+        const uint8_t status =
+            subsumed[rep_pos].load(std::memory_order_relaxed);
+        for (const std::size_t idx : members[rep_pos]) {
+            result[idx] = status;
+        }
+    }
+    return result;
 }
 
 }  // namespace
@@ -179,48 +248,19 @@ FilterFunctionT<tlsf::Specification> tlsf_make_weakening_filter(
 FilterFunctionT<tlsf::Specification> tlsf_make_implication_filter(
     SatisfiabilityChecker& checker,
     const GenerationProgressCallback& on_progress) {
-    return {
-        "implication",
-        [&checker, on_progress](const std::vector<tlsf::Specification>& pop) {
-            if (pop.size() <= 1) {
-                return pop;
-            }
-            const std::size_t n_specs = pop.size();
-            std::vector<std::pair<std::size_t, std::size_t>> pairs;
-            pairs.reserve(n_specs * (n_specs - 1) / 2);
-            for (std::size_t i = 0; i < n_specs; ++i) {
-                for (std::size_t j = i + 1; j < n_specs; ++j) {
-                    pairs.emplace_back(i, j);
+    return {"implication", [&checker, on_progress](
+                               const std::vector<tlsf::Specification>& pop) {
+                if (pop.size() <= 1) {
+                    return pop;
                 }
-            }
-            std::vector<std::atomic<uint8_t>> subsumed(n_specs);
-            for (auto& flag : subsumed) {
-                flag.store(0, std::memory_order_relaxed);
-            }
-            const std::size_t n_hw = std::thread::hardware_concurrency();
-            const std::size_t max_in_flight = n_hw > 0 ? n_hw * 2 : 1;
-            std::size_t completed = 0;
-            run_bounded_async(
-                pairs.size(), max_in_flight,
-                [&checker, &pop, &subsumed, &pairs](std::size_t idx) {
-                    const std::size_t pos_a = pairs[idx].first;
-                    const std::size_t pos_b = pairs[idx].second;
-                    return global_thread_pool().submit(
-                        [&checker, &pop, &subsumed, pos_a, pos_b] {
-                            check_pair(pop, subsumed, checker, pos_a, pos_b);
-                        });
-                },
-                [&on_progress, &completed, total = pairs.size()](std::size_t) {
-                    if (on_progress) {
-                        on_progress(++completed, total);
+                const std::vector<uint8_t> subsumed =
+                    compute_subsumed(pop, checker, on_progress);
+                std::vector<tlsf::Specification> maximal;
+                for (std::size_t i = 0; i < pop.size(); ++i) {
+                    if (subsumed[i] == 0U) {
+                        maximal.push_back(pop[i]);
                     }
-                });
-            std::vector<tlsf::Specification> maximal;
-            for (std::size_t i = 0; i < n_specs; ++i) {
-                if (subsumed[i].load(std::memory_order_relaxed) == 0U) {
-                    maximal.push_back(pop[i]);
                 }
-            }
-            return maximal;
-        }};
+                return maximal;
+            }};
 }

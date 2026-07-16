@@ -5,6 +5,8 @@
 #include <string>
 #include <system_error>
 
+#include <nlohmann/json.hpp>
+
 #include "config.hpp"
 #include "genetic/random_source.hpp"
 #include "runner/spot.hpp"
@@ -102,6 +104,34 @@ void test_run_repair_end_to_end() {
         const tlsf::Specification spec = tlsf::parse(contents.str());
         expect(is_realizable(spec),
                "pipeline: each written repair re-parses and is realizable");
+
+        // Each repair carries a sidecar fitness record with the weighted total
+        // and the per-objective breakdown, mirroring the FRETISH output.
+        const std::filesystem::path fitness_path =
+            entry.path().parent_path() /
+            (entry.path().stem().string() + ".fitness.json");
+        expect(std::filesystem::exists(fitness_path),
+               "pipeline: each repair has a .fitness.json sidecar");
+        std::ifstream fitness_stream(fitness_path);
+        std::ostringstream fitness_contents;
+        fitness_contents << fitness_stream.rdbuf();
+        const nlohmann::json record =
+            nlohmann::json::parse(fitness_contents.str());
+        expect(record.contains("total") && record.at("total").is_number(),
+               "pipeline: fitness record has a numeric total");
+        expect(record.contains("components") &&
+                   record.at("components").is_array() &&
+                   !record.at("components").empty(),
+               "pipeline: fitness record lists per-objective components");
+        for (const nlohmann::json& component : record.at("components")) {
+            expect(component.contains("name") &&
+                       component.at("name").is_string() &&
+                       component.contains("score") &&
+                       component.at("score").is_number() &&
+                       component.contains("weight") &&
+                       component.at("weight").is_number(),
+                   "pipeline: each component has name, score, and weight");
+        }
     }
 
     std::filesystem::remove_all(dir, err_code);

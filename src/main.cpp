@@ -313,6 +313,18 @@ run_evolution(const Config& cfg, std::vector<ScoredSpecification> population,
             cfg, population, selection_size, elitism_size, fitness_function,
             active_filters, random_source, on_progress);
 
+        // Each active filter copy carries this generation's in/out sizes; fold
+        // them into the running per-filter totals reported at the end.
+        for (const FilterFunction& flt : active_filters) {
+            for (FilterRunStats& stat : filter_stats) {
+                if (stat.name == flt.name()) {
+                    stat.total_in += flt.n_in();
+                    stat.total_out += flt.n_out();
+                    break;
+                }
+            }
+        }
+
         const double elapsed = std::chrono::duration<double>(
                                    std::chrono::steady_clock::now() - start)
                                    .count();
@@ -495,6 +507,11 @@ int main(int argc, const char* const argv[]) {
     if (is_tlsf) {
         const auto tlsf_wall_start = std::chrono::steady_clock::now();
         RandomSource tlsf_random_source = init_random_source(argc, argv);
+        const std::optional<std::size_t> tlsf_seed = tlsf_random_source.seed();
+        if (tlsf_seed.has_value()) {
+            register_crash_metadata(
+                format_crash_metadata(*tlsf_seed, *input_path, cfg));
+        }
         const int tlsf_result =
             tlsf::run_repair(*input_path, *output_dir, cfg, tlsf_random_source);
         print_scoring_report();

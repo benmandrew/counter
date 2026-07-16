@@ -4,8 +4,6 @@ project(counter VERSION 0.1.0 LANGUAGES CXX)
 
 enable_testing()
 
-include(CheckCXXSourceCompiles)
-
 if(NOT DEFINED CMAKE_BUILD_PARALLEL_LEVEL)
   include(ProcessorCount)
   ProcessorCount(NPROC)
@@ -34,10 +32,6 @@ if(COUNTER_TSAN)
 endif()
 
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
-
-check_cxx_source_compiles(
-    "int main() { unsigned __int128 value = 0; (void)value; return 0; }"
-    COUNTER_HAS_UINT128)
 
 add_library(counter_core STATIC)
 target_sources(counter_core PRIVATE
@@ -97,11 +91,6 @@ target_compile_definitions(counter_fitness PRIVATE
     SPOT_BIN_DIR="${SPOT_BIN_DIR}"
     BLACK_EXECUTABLE_PATH="${BLACK_EXECUTABLE}"
 )
-target_compile_definitions(counter_fitness
-    PUBLIC
-    $<$<BOOL:${COUNTER_HAS_UINT128}>:COUNTER_USE_UINT128=1>
-)
-
 if(DEFINED COUNTER_DEFAULT_FITNESS_WEIGHT)
     target_compile_definitions(counter_fitness PUBLIC
         COUNTER_DEFAULT_FITNESS_WEIGHT=${COUNTER_DEFAULT_FITNESS_WEIGHT})

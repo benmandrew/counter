@@ -10,6 +10,23 @@
 #include "fitness/transfer_matrix.hpp"
 #include "requirement.hpp"
 
+/// The three trace counts a requirement pair yields over a shared atom
+/// universe and bound. @c m_conjunction_count counts traces satisfying both
+/// requirements; mathematically it is at most either individual count, but
+/// only up to floating-point rounding now that @c Count is a float.
+struct SemanticSimilarityCounts {
+    Count m_requirement_count;
+    Count m_other_requirement_count;
+    Count m_conjunction_count;
+};
+
+/// Combines the three trace counts into a similarity score in [0, 1] via the
+/// harmonic mean of the two directional containment ratios. Each ratio is
+/// clamped to [0, 1] because rounding can push @c m_conjunction_count a few
+/// ulps past an individual count. Exposed for testing; the @c Requirement
+/// overloads of @c semantic_similarity are the normal entry points.
+double semantic_similarity_from_counts(const SemanticSimilarityCounts& counts);
+
 /// Computes the semantic similarity between two requirements using bounded
 /// model counting of satisfying traces. The similarity metric is defined as:
 ///   0.5 * ((shared(req, other, k) / count(req, k)) + (shared(req, other, k) /

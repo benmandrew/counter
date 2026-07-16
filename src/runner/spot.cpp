@@ -192,12 +192,19 @@ std::string ltlsynt_path() { return spot_bin_dir() + "/ltlsynt"; }
 std::string ltl2tgba_path() { return spot_bin_dir() + "/ltl2tgba"; }
 
 std::string run_ltl2tgba_for_counting(const std::string& formula) {
-    const std::string normalised = normalize_ltl(formula);
+    // No normalize_ltl() pre-pass here, unlike the other SPOT/black callers.
+    // ltl2tgba simplifies internally, so it is redundant -- and ltlfilt
+    // --simplify blows up super-exponentially on the deeply nested-X
+    // conjunctions this path builds for atom-rich, deep-horizon requirement
+    // pairs (e.g. WithinTicks(20) over ~10 atoms): ~1s at 12 ticks, ~21s at
+    // 15, unbounded by 20, where ltl2tgba yields the identical automaton from
+    // the raw formula in milliseconds. Passing the formula straight through
+    // avoids that cliff.
     static std::unordered_map<std::string, std::string> cache;
     static std::mutex cache_mutex;
     {
         std::scoped_lock lock(cache_mutex);
-        const auto found = cache.find(normalised);
+        const auto found = cache.find(formula);
         if (found != cache.end()) {
             Ltl2tgbaStats::n_cache_hits++;
             return found->second;
@@ -208,7 +215,7 @@ std::string run_ltl2tgba_for_counting(const std::string& formula) {
     assert(access(binary.c_str(), F_OK) == 0);
     const auto start = std::chrono::steady_clock::now();
     const ProcessResult result =
-        execute_and_capture({binary, "-D", "-S", "-H", "-f", normalised});
+        execute_and_capture({binary, "-D", "-S", "-H", "-f", formula});
     const double elapsed =
         std::chrono::duration<double>(std::chrono::steady_clock::now() - start)
             .count();
@@ -217,12 +224,12 @@ std::string run_ltl2tgba_for_counting(const std::string& formula) {
         // concurrent forking) must not be cached as a successful result
         throw std::runtime_error("ltl2tgba exited with code " +
                                  std::to_string(result.m_exit_code) +
-                                 " for formula: " + normalised);
+                                 " for formula: " + formula);
     }
     std::scoped_lock lock(cache_mutex);
     Ltl2tgbaStats::total_time_s += elapsed;
     Ltl2tgbaStats::total_cpu_s += result.m_cpu_s;
-    cache.emplace(normalised, result.m_output);
+    cache.emplace(formula, result.m_output);
     return result.m_output;
 }
 
@@ -237,7 +244,15 @@ bool RealizabilityChecker::check_realizability(
 bool RealizabilityChecker::check_realizability_ltl(
     const std::string& ltl_formula, const std::vector<std::string>& inputs,
     const std::vector<std::string>& outputs) {
-    const std::string conj_ltl = normalize_ltl(ltl_formula);
+    // No normalize_ltl() pre-pass, matching run_ltl2tgba_for_counting: ltlsynt
+    // simplifies internally, and the specification formula is a conjunction of
+    // the guarantees, which reproduces the deeply nested-X shape that hangs
+    // ltlfilt --simplify for multi-guarantee deep-horizon specs (e.g. two
+    // WithinTicks(20) guarantees with different responses -- reachable via
+    // mutate_timing, and re-checked here for every survivor). ltlsynt decides
+    // the raw formula in milliseconds, so pass it straight through. Unlike the
+    // black path, nothing here depends on the "0"/"1" fold normalize enables.
+    const std::string& conj_ltl = ltl_formula;
     const std::string cache_key =
         conj_ltl + "|" + join_comma(inputs) + "|" + join_comma(outputs);
     {

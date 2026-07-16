@@ -245,6 +245,55 @@ void test_semantic_similarity_deep_ticks_at_default_bound_in_range() {
            "Eventually at the default bound must stay in [0, 1]");
 }
 
+// An atom-rich pair whose horizon (21) sits above the ceiling a 128-bit Count
+// imposed: max_representable_step_count clamped to 127/10 == 12, so the bound
+// landed below the horizon and reopened the ratio defect documented on
+// effective_step_count. long double's 16384-bit exponent range lifts the clamp
+// to 1638, letting the bound actually reach the horizon.
+void test_semantic_similarity_atom_rich_deep_horizon_in_range() {
+    const Formula condition("a0 & a1 & a2 & a3 & a4");
+    const Requirement wide{condition, Formula("a5 | a6 | a7 | a8 | a9"),
+                           timing::within_ticks(20), ConditionType::Trigger};
+    const Requirement narrow{condition, Formula("a5 | a6"),
+                             timing::within_ticks(20), ConditionType::Trigger};
+    const double self_score = semantic_similarity(wide, wide, 1);
+    expect(std::fabs(self_score - 1.0) < 1e-12,
+           "semantic-similarity: an atom-rich requirement scored against "
+           "itself must be exactly 1 even once the horizon drives the bound "
+           "past the old 128-bit clamp");
+    const double cross_score = semantic_similarity(wide, narrow, 1);
+    expect(cross_score >= 0.0 && cross_score <= 1.0,
+           "semantic-similarity: a 10-atom pair with a horizon of 21 must stay "
+           "in [0, 1] (got " +
+               std::to_string(cross_score) + ")");
+}
+
+// A conjunction count is mathematically at most either individual count, but
+// once Count is a float and the counts climb past the 64-bit mantissa, a
+// rounding error larger than double's precision can leave it slightly greater
+// -- driving a directional ratio above 1. Feeding that straight in checks the
+// [0, 1] clamp in semantic_similarity_from_counts: without it the harmonic mean
+// would exceed 1. The overshoot (2^30 against a 2^70 count) is deliberately
+// coarser than double epsilon so it survives ratio_or_throw's cast to double,
+// which a mere ulp of long double would not.
+void test_semantic_similarity_from_counts_clamps_rounding_overshoot() {
+    const Count base = std::ldexp(1.0L, 70);
+    // base + 2^30 is exact and strictly greater in long double's 64-bit
+    // mantissa (the two differ by 40 bits), so the conjunction count exceeds
+    // the individual counts and the directional ratios land just above 1.
+    const Count overshoot = base + std::ldexp(1.0L, 30);
+    const SemanticSimilarityCounts counts{base, base, overshoot};
+    const double score = semantic_similarity_from_counts(counts);
+    expect(score >= 0.0 && score <= 1.0,
+           "semantic-similarity: a conjunction count rounded above the "
+           "individual counts must still yield a score in [0, 1] (got " +
+               std::to_string(score) + ")");
+    // Both ratios clamp to exactly 1, so the harmonic mean is exactly 1 -- the
+    // clamp lands on the boundary, it does not merely bound from above.
+    expect(std::fabs(score - 1.0) < 1e-12,
+           "semantic-similarity: clamped ratios of 1 must give exactly 1");
+}
+
 }  // namespace
 
 void run_semantic_similarity_tests() {
@@ -258,6 +307,8 @@ void run_semantic_similarity_tests() {
     test_semantic_similarity_liveness_in_range();
     test_semantic_similarity_bounded_timing_vs_eventually_in_range();
     test_semantic_similarity_deep_ticks_at_default_bound_in_range();
+    test_semantic_similarity_atom_rich_deep_horizon_in_range();
+    test_semantic_similarity_from_counts_clamps_rounding_overshoot();
     test_semantic_similarity_all_timings_in_range();
     test_semantic_similarity_propequiv_responses_score_equal();
 }

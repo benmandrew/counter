@@ -219,4 +219,4 @@ for those build types), so:
 - `Requirement` — holds `m_condition`, `m_response`, `m_timing`, `m_condition_type`, the derived `m_ltl` string, and `m_weakenable`. When `m_weakenable` is false the requirement is locked: the genetic algorithm never mutates it, uses it as a crossover source, or simplifies it. It is part of `Requirement`'s identity (`operator<`/`==`/`hash`). Serialised as the optional JSON key `weakenable` (default `true`, emitted only when `false`).
 - `Formula` — propositional AST with `syntactic_similarity`, `rewrite_post_order`, `n_subformulae`.
 - `TransferSystem` — weighted automaton transition matrix for bounded model counting.
-- `Count` — `uint64_t` or `unsigned __int128` (selected at configure time via `COUNTER_USE_UINT128`).
+- `Count` — `long double` (x87 80-bit: integers exact to 2^64, exponent range to 2^16384). Trace counts are only consumed as ratios cast to `double`, so range matters more than exact integer width; `count_add_overflow`/`count_mul_overflow` report overflow as a non-finite result.

@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cassert>
 #include <cstddef>
+#include <limits>
 #include <mutex>
 #include <string>
 #include <type_traits>
@@ -17,15 +18,8 @@ namespace {
 
 double ratio_or_throw(Count numerator, Count denominator) {
     assert(denominator != 0);
-    return static_cast<double>(static_cast<long double>(numerator) /
-                               static_cast<long double>(denominator));
+    return static_cast<double>(numerator / denominator);
 }
-
-struct SemanticSimilarityCounts {
-    Count m_requirement_count;
-    Count m_other_requirement_count;
-    Count m_conjunction_count;
-};
 
 // Caches trace counts by (ltl, n_total_atoms, step_count): the matrix
 // construction and exponentiation in count_traces is redone from scratch on
@@ -82,12 +76,15 @@ std::size_t timing_horizon(const Timing& timing) {
 }
 
 // count_traces sums at most 2^(n_atoms * k) traces, so k is only representable
-// while n_atoms * k stays under Count's width. Beyond it the products inside
-// count_traces wrap, and the assert guarding them is compiled out under NDEBUG
-// -- so a release build yields silently wrong counts rather than aborting.
+// while n_atoms * k stays under Count's exponent range -- sizeof(Count) would
+// overstate it, since only the 15-bit exponent governs range. Beyond it the
+// products inside count_traces saturate to infinity, and the assert guarding
+// them is compiled out under NDEBUG -- so a release build yields silently
+// wrong counts rather than aborting.
 std::size_t max_representable_step_count(std::size_t n_atoms) {
-    constexpr std::size_t count_bits = sizeof(Count) * 8;
-    return n_atoms == 0 ? count_bits - 1 : (count_bits - 1) / n_atoms;
+    constexpr auto max_exponent =
+        static_cast<std::size_t>(std::numeric_limits<Count>::max_exponent);
+    return n_atoms == 0 ? max_exponent - 1 : (max_exponent - 1) / n_atoms;
 }
 
 // A bounded timing compiles to a safety automaton (ltl2tgba emits
@@ -103,7 +100,7 @@ std::size_t max_representable_step_count(std::size_t n_atoms) {
 // The ceiling wins ties: a k past max_representable_step_count would overflow
 // Count. Clamping there can land back under the horizon for atom-rich
 // requirements, which reopens the ratio defect -- a wrong-but-bounded score is
-// preferred to a silently wrapped count.
+// preferred to a silently saturated count.
 std::size_t effective_step_count(const Requirement& requirement,
                                  const Requirement& other_requirement,
                                  std::size_t step_count, std::size_t n_atoms) {
@@ -135,6 +132,8 @@ SemanticSimilarityCounts count_semantic_similarity_terms(
     };
 }
 
+}  // namespace
+
 double semantic_similarity_from_counts(const SemanticSimilarityCounts& counts) {
     if (counts.m_requirement_count == 0 &&
         counts.m_other_requirement_count == 0) {
@@ -144,10 +143,15 @@ double semantic_similarity_from_counts(const SemanticSimilarityCounts& counts) {
         counts.m_other_requirement_count == 0) {
         return 0.0;
     }
-    const double first =
-        ratio_or_throw(counts.m_conjunction_count, counts.m_requirement_count);
-    const double second = ratio_or_throw(counts.m_conjunction_count,
-                                         counts.m_other_requirement_count);
+    // conjunction_count <= min(individual counts) holds only up to rounding
+    // now that Count is a float, so a ratio can land a few ulps above 1.
+    const double first = std::clamp(
+        ratio_or_throw(counts.m_conjunction_count, counts.m_requirement_count),
+        0.0, 1.0);
+    const double second =
+        std::clamp(ratio_or_throw(counts.m_conjunction_count,
+                                  counts.m_other_requirement_count),
+                   0.0, 1.0);
     // Harmonic mean of the two directional containment ratios: unlike the
     // arithmetic mean, this can't be pulled up to 0.5 by one ratio alone
     // hitting 1 (e.g. a requirement weakened to a tautology, which trivially
@@ -159,8 +163,6 @@ double semantic_similarity_from_counts(const SemanticSimilarityCounts& counts) {
     }
     return (2.0 * first * second) / (first + second);
 }
-
-}  // namespace
 
 double semantic_similarity(const Requirement& requirement,
                            const Requirement& other_requirement,

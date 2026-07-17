@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1784313258121,
+  "lastUpdate": 1784314600498,
   "repoUrl": "https://github.com/benmandrew/counter",
   "entries": {
     "counter benchmarks": [
@@ -4176,6 +4176,78 @@ window.BENCHMARK_DATA = {
             "value": 3305.407378583941,
             "unit": "ns/iter",
             "extra": "iterations: 212019\ncpu: 3304.9078101490904 ns\nthreads: 1"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "benmandrew@gmail.com",
+            "name": "benmandrew",
+            "username": "benmandrew"
+          },
+          "committer": {
+            "email": "benmandrew@gmail.com",
+            "name": "benmandrew",
+            "username": "benmandrew"
+          },
+          "distinct": true,
+          "id": "a373c14130e544c192ecdb6e5cecfe7419a874d9",
+          "message": "feat: add TLSF mono-vs-muc mutation-split campaign (profile muc, sweep M)\n\nRework the muc profile from a single all-defaults level into repair_mode\n{mono, muc} crossed with a new TLSF assumption/guarantee mutation split\n(sweep M: p_guarantee in 0.3/0.5/0.7/0.9, p_assumption its complement).\n\nThe split interacts with repair_mode without confounding it: muc keeps the\nenvironment side at full size while shrinking the guarantee side to the\nminimal core, so at a fixed p_guarantee it spends more of its guarantee\nmutations on the culprit formulae, while the assumption side stays live in\nboth arms. Responses are implies_ideal and wall_time_s co-equal.\n\ngen_configs.py: add the p_assumption/p_guarantee/p_temporal keys, emit a\n[tlsf.mutation] section only when a sweep overrides one of them (the FRETISH\nand A/B TLSF grids stay byte-identical), define sweep M, and widen --sweeps\nto accept TLSF-only sweeps while keeping them out of the default set.\n\nrun_experiments.py: point the muc profile at sweep M, size the timeout caps\nto the slow monolithic arm so it is never censored (humanoid 2400s, from a\nmeasured 768s mean / 1739s p90), and drop default_jobs to 1 so the\nper-process ltlsynt RAM cap stays machine-wide.",
+          "timestamp": "2026-07-17T19:54:35+01:00",
+          "tree_id": "8016cb2754b271c1fd613f7f3d548aeee668ee90",
+          "url": "https://github.com/benmandrew/counter/commit/a373c14130e544c192ecdb6e5cecfe7419a874d9"
+        },
+        "date": 1784314599688,
+        "tool": "googlecpp",
+        "benches": [
+          {
+            "name": "Syntactic similarity - small formulas (3 variables)",
+            "value": 547.9303482933897,
+            "unit": "ns/iter",
+            "extra": "iterations: 1290837\ncpu: 547.8816698002923 ns\nthreads: 1"
+          },
+          {
+            "name": "Syntactic similarity - large formulas (11 variables, O(n*m) shared_subformulae)",
+            "value": 2269.2142265166576,
+            "unit": "ns/iter",
+            "extra": "iterations: 311306\ncpu: 2269.0651481179293 ns\nthreads: 1"
+          },
+          {
+            "name": "Spec implication check - warm black cache",
+            "value": 627.4247397466826,
+            "unit": "ns/iter",
+            "extra": "iterations: 1135048\ncpu: 627.3594843566085 ns\nthreads: 1"
+          },
+          {
+            "name": "Trace model counting - matrix exponentiation/steps:5",
+            "value": 197.73633834193205,
+            "unit": "ns/iter",
+            "extra": "iterations: 3539047\ncpu: 197.71725806410595 ns\nthreads: 1"
+          },
+          {
+            "name": "Trace model counting - matrix exponentiation/steps:10",
+            "value": 223.29097136756369,
+            "unit": "ns/iter",
+            "extra": "iterations: 3139656\ncpu: 223.27004200460192 ns\nthreads: 1"
+          },
+          {
+            "name": "Trace model counting - matrix exponentiation/steps:20",
+            "value": 249.09731773510498,
+            "unit": "ns/iter",
+            "extra": "iterations: 2811430\ncpu: 249.0786649498656 ns\nthreads: 1"
+          },
+          {
+            "name": "Trace model counting - matrix exponentiation/steps:50",
+            "value": 300.1654010801619,
+            "unit": "ns/iter",
+            "extra": "iterations: 2332252\ncpu: 300.14313676223657 ns\nthreads: 1"
+          },
+          {
+            "name": "Mutate specification - 3-guarantee takeoff spec",
+            "value": 3474.0506263593593,
+            "unit": "ns/iter",
+            "extra": "iterations: 200923\ncpu: 3473.670858985783 ns\nthreads: 1"
           }
         ]
       }

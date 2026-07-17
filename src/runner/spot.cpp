@@ -14,7 +14,9 @@
 #include <chrono>
 #include <condition_variable>
 #include <csignal>
+#include <cstdlib>
 #include <cstring>
+#include <fstream>
 #include <iostream>
 #include <memory>
 #include <mutex>
@@ -466,6 +468,17 @@ bool RealizabilityChecker::check_realizability_ltl(
     // otherwise stall the run for minutes each.
     const bool realizable =
         result.m_timed_out ? false : parse_realizability_output(result);
+    // Diagnostic hook (off unless COUNTER_LTLSYNT_LOG names a file): append one
+    // "elapsed_s timed_out n_atoms" line per ltlsynt exec, for studying the
+    // call-duration distribution and tuning ltlsynt_timeout. Zero cost when the
+    // env var is unset.
+    if (const char* log_path = std::getenv("COUNTER_LTLSYNT_LOG")) {
+        static std::mutex log_mutex;
+        const std::scoped_lock log_lock(log_mutex);
+        std::ofstream log_file(log_path, std::ios::app);
+        log_file << elapsed << ' ' << (result.m_timed_out ? 1 : 0) << ' '
+                 << (inputs.size() + outputs.size()) << '\n';
+    }
     std::scoped_lock lock(m_cache_mutex);
     total_time_s += elapsed;
     total_cpu_s += result.m_cpu_s;

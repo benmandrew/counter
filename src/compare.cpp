@@ -279,9 +279,10 @@ void run_and_report(const std::vector<RepairMeta>& repairs,
                 ++n_timeout;
                 break;
         }
-        if (repairs[idx].fitness) {
+        const std::optional<double>& fitness = repairs[idx].fitness;
+        if (fitness) {
             std::cout << std::fixed << std::setprecision(4)
-                      << "  [fitness: " << *repairs[idx].fitness << "]";
+                      << "  [fitness: " << *fitness << "]";
         }
         std::cout << "\n";
     }

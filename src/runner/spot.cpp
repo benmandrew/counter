@@ -117,7 +117,8 @@ std::string read_from_fd(int read_fd) {
     std::array<char, 4096> read_buf{};
     while (true) {
         const ssize_t bytes_read =
-            read(read_fd, read_buf.data(), read_buf.size());
+            read(  // NOLINT(clang-analyzer-unix.BlockInCriticalSection)
+                read_fd, read_buf.data(), read_buf.size());
         if (bytes_read > 0) {
             output.append(read_buf.data(),
                           static_cast<std::size_t>(bytes_read));
@@ -166,7 +167,8 @@ std::pair<std::string, bool> read_from_fd_timed(
             return {output, true};
         }
         const ssize_t bytes_read =
-            read(read_fd, read_buf.data(), read_buf.size());
+            read(  // NOLINT(clang-analyzer-unix.BlockInCriticalSection)
+                read_fd, read_buf.data(), read_buf.size());
         if (bytes_read > 0) {
             output.append(read_buf.data(),
                           static_cast<std::size_t>(bytes_read));

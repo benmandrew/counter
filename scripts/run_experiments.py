@@ -319,30 +319,51 @@ PROFILES: dict[str, dict] = {
         "results_csv": EXPERIMENTS_DIR / "results-metric.csv",
         "default_jobs": 4,
     },
-    # Monolithic vs MUC-guided repair (tlsf.repair_mode) as the sole crossed
-    # factor, on the TLSF spec corpus — repair_mode is a no-op on the FRETISH
-    # specs, so crossing it over them would compare two identical arms. A single
-    # all-defaults level: the factor is the experiment, so the seeds buy paired
-    # mono-vs-muc statistical power rather than a grid. MUC re-runs the GA once
-    # per extracted core, so it is slower than monolithic; the caps are generous.
-    # Set the operating point when generating the configs, e.g.
-    #   python scripts/gen_configs.py --schemes nsga2 --sweeps C --repair both \
+    # Monolithic vs MUC-guided repair (tlsf.repair_mode) crossed with the TLSF
+    # assumption/guarantee mutation split (sweep M), on the TLSF spec corpus —
+    # repair_mode is a no-op on the FRETISH specs, so crossing it over them would
+    # compare two identical arms. The split interacts with repair_mode: muc keeps
+    # the environment side at full size while shrinking the guarantee side to the
+    # minimal core, so at a fixed p_guarantee it spends a larger share of its
+    # guarantee mutations on the culprit formulae (verified: the assumption side
+    # stays live in muc, so the factor is not confounded). Responses are
+    # implies_ideal and wall_time_s co-equal — muc's pitch is quality where
+    # monolithic sits at implies_ideal~=0 (gyro/lift/humanoid) AND runtime on the
+    # heavy specs. Operating point gen10/pop200 (the config defaults), matching
+    # the prior monolithic TLSF data for comparability. Generate the configs with
+    #   python scripts/gen_configs.py --tlsf --sweeps M --repair both \
     #       --out-dir experiments/configs-muc
+    # (--tlsf carries the 500 ms ltlsynt timeout and 0.15 scoring tolerance the
+    # heavy specs need; --sweeps C would not — TLSF_SWEEPS has no C level.)
     "muc": {
         "schemes": ["nsga2"],
         "weakenings": None,
         "metrics": None,
         "repair_modes": ["mono", "muc"],
-        "sweeps": ["C"],
-        "levels": {"C": ["default"]},
+        "sweeps": ["M"],
+        "levels": {"M": ["pg0.3", "pg0.5", "pg0.7", "pg0.9"]},
         "specs": list(TLSF_SPECS),
-        "seeds": list(range(N_SEEDS)),
-        "timeout_caps": {name: 900 for name in TLSF_SPECS},
+        # Seed-major disjoint ranges across av2/av3 (pass --seeds on launch); the
+        # list is the ceiling a 60 h/machine deadline kill truncates to a
+        # balanced design.
+        "seeds": list(range(60)),
+        # Caps sized to the slow (monolithic) arm so it is never censored — a cap
+        # that bites records implies_ideal=0 and truncates wall_time_s for a run
+        # that merely ran long, corrupting both responses. From the measured
+        # gen10/pop200 monolithic means: humanoid 768 s (p90 1739 s), lift 73 s,
+        # gyro 16 s, the rest single-digit. Applied identically to both arms so
+        # muc's speed shows as a genuinely lower wall_time rather than a cap.
+        "timeout_caps": {"humanoid-531": 2400, "lift": 600, "gyro-var1": 300,
+                         "arbiter": 120, "lily02": 120, "minepump": 120},
         "baseline_aliases": {},
         "configs_dir": EXPERIMENTS_DIR / "configs-muc",
         "results_dir": EXPERIMENTS_DIR / "results-muc",
         "results_csv": EXPERIMENTS_DIR / "results-muc.csv",
-        "default_jobs": 4,
+        # jobs=1: one counter process per machine using its full 32-worker pool.
+        # ltlsynt is multi-GB resident per call and max_concurrent_realizability
+        # is per-process, so jobs>1 would multiply peak RAM and risk OOM; a single
+        # process keeps the (uncapped, 128 GB) limit machine-wide.
+        "default_jobs": 1,
     },
     # The basic-TLSF examples swept over generations (A) and population (B), the
     # two operating-point parameters, NSGA-II only, default weakening. These

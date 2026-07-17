@@ -102,6 +102,14 @@ DEFAULTS: dict = {
     "run_implication": True,
     "black_timeout_ms": 1000,
     "repair_mode": "monolithic",
+    # TLSF-only [tlsf.mutation] split (see config.hpp). Emitted only when a sweep
+    # overrides one of them (see make_toml), so the FRETISH and A/B TLSF grids
+    # stay byte-identical to the pre-factor output; the mutation-split sweep sets
+    # them to vary how mutation divides its budget between the environment
+    # (assumption) and guarantee sides.
+    "p_assumption": 0.3,
+    "p_guarantee": 0.7,
+    "p_temporal": 0.2,
     # 0 = unlimited, matching config.hpp. Emitted into [runtime] only when
     # positive (see make_toml), so the standard grids stay byte-identical to the
     # pre-cap output; the TLSF campaign sets it to bound ltlsynt's peak RAM.
@@ -176,6 +184,14 @@ def make_toml(overrides: dict, defaults: dict = DEFAULTS) -> str:
         "",
         "[tlsf]",
         f'repair_mode = "{d["repair_mode"]}"',
+    ] + ([
+        "",
+        "[tlsf.mutation]",
+        f"p_assumption = {_fmt(d['p_assumption'])}",
+        f"p_guarantee  = {_fmt(d['p_guarantee'])}",
+        f"p_temporal   = {_fmt(d['p_temporal'])}",
+    ] if overrides.keys() & {"p_assumption", "p_guarantee", "p_temporal"}
+        else []) + [
         "",
     ])
 
@@ -333,9 +349,25 @@ TLSF_SWEEP_B: list[tuple[str, dict]] = [
     ("pop500", {"population_size": 500}),
 ]
 
+# TLSF sweep M: vary the assumption/guarantee mutation split (TLSF-only). Named
+# by the guarantee share; p_assumption is its complement so the two sides always
+# sum to 1. In monolithic mode this trades environment-side against guarantee-
+# side mutation over the whole spec; in muc mode the environment side is kept at
+# full size while the guarantee side is the minimal core, so the same split
+# spends a larger share of guarantee mutations on the culprit formulae. pg0.7 is
+# the config.hpp baseline (p_assumption=0.3). Crossed with tlsf.repair_mode via
+# `--tlsf --sweeps M --repair both` for the mono-vs-muc campaign.
+TLSF_SWEEP_M: list[tuple[str, dict]] = [
+    ("pg0.3", {"p_assumption": 0.7, "p_guarantee": 0.3}),
+    ("pg0.5", {"p_assumption": 0.5, "p_guarantee": 0.5}),
+    ("pg0.7", {"p_assumption": 0.3, "p_guarantee": 0.7}),   # baseline
+    ("pg0.9", {"p_assumption": 0.1, "p_guarantee": 0.9}),
+]
+
 TLSF_SWEEPS: list[tuple[str, list]] = [
     ("A", TLSF_SWEEP_A),
     ("B", TLSF_SWEEP_B),
+    ("M", TLSF_SWEEP_M),
 ]
 
 TLSF_CONFIGS_DIR = Path(__file__).parent.parent / "experiments" / "configs-tlsf"
@@ -388,9 +420,15 @@ def parse_args() -> argparse.Namespace:
                         metavar="SCHEME",
                         help=f"Selection schemes to emit (default: "
                              f"{' '.join(SCHEMES)})")
-    parser.add_argument("--sweeps", nargs="+", choices=[n for n, _ in SWEEPS],
+    # TLSF-only sweeps (e.g. M) are selectable but excluded from the default set,
+    # so `--tlsf` alone still emits only A/B and an explicit `--sweeps M` is
+    # needed to reach them.
+    tlsf_only_sweeps = [n for n, _ in TLSF_SWEEPS if n not in dict(SWEEPS)]
+    parser.add_argument("--sweeps", nargs="+",
+                        choices=[n for n, _ in SWEEPS] + tlsf_only_sweeps,
                         default=[n for n, _ in SWEEPS], metavar="SWEEP",
-                        help="Sweeps to emit (default: all)")
+                        help="Sweeps to emit (default: all FRETISH sweeps; "
+                             f"TLSF-only: {' '.join(tlsf_only_sweeps)})")
     parser.add_argument("--weakening", choices=list(WEAKENINGS), default=None,
                         metavar="STATE",
                         help="Cross run_weakening in as a factor, writing "

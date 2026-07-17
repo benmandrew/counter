@@ -343,10 +343,13 @@ TLSF_MAX_REALIZABILITY = 0
 
 # Default per-call ltlsynt timeout (ms) for the TLSF campaign. ltlsynt has no
 # internal timeout, and these specs occasionally produce synthesis queries that
-# run for minutes; without a bound one such query stalls a whole run. Normal
-# calls finish in milliseconds, so a multi-second timeout cuts the tail with
-# wide margin. A timed-out check is treated as unrealizable.
-TLSF_LTLSYNT_TIMEOUT_MS = 10000
+# run for minutes; without a bound one such query stalls a whole run. The
+# measured call-duration distribution is sharply bimodal: 95% of calls finish
+# under 50ms and only ~2% pass 100ms, with an almost-empty 0.5-1s band, so 500ms
+# and the earlier 10s abandon nearly the same set (they differ by ~0.1% of
+# calls) while 500ms caps the pathological tail far tighter. A timed-out check
+# is treated as unrealizable.
+TLSF_LTLSYNT_TIMEOUT_MS = 500
 
 
 def parse_args() -> argparse.Namespace:

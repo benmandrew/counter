@@ -263,6 +263,56 @@ void test_config_io_empty_string_gives_defaults() {
            "config_io: empty TOML should give default population_size");
 }
 
+void test_config_io_repair_mode_defaults_to_monolithic() {
+    const Config cfg = config_from_toml_string("");
+    expect(cfg.repair_mode == RepairMode::Monolithic,
+           "config_io: repair_mode should default to Monolithic");
+}
+
+void test_config_io_repair_mode_muc_parsed() {
+    const Config cfg =
+        config_from_toml_string("[tlsf]\nrepair_mode = \"muc\"\n");
+    expect(cfg.repair_mode == RepairMode::Muc,
+           "config_io: repair_mode = \"muc\" should be parsed");
+}
+
+void test_config_io_repair_mode_monolithic_parsed() {
+    const Config cfg =
+        config_from_toml_string("[tlsf]\nrepair_mode = \"monolithic\"\n");
+    expect(cfg.repair_mode == RepairMode::Monolithic,
+           "config_io: repair_mode = \"monolithic\" should be parsed");
+}
+
+void test_config_io_repair_mode_invalid_throws() {
+    bool threw = false;
+    try {
+        config_from_toml_string("[tlsf]\nrepair_mode = \"iterative\"\n");
+    } catch (const std::exception& exc) {
+        threw = true;
+        const std::string msg(exc.what());
+        expect(msg.find("repair_mode") != std::string::npos,
+               "config_io: invalid repair_mode error should name the field");
+    }
+    expect(threw, "config_io: an unknown repair_mode should throw");
+}
+
+void test_config_io_muc_max_iterations_parsed() {
+    const Config cfg =
+        config_from_toml_string("[tlsf]\nmuc_max_iterations = 7\n");
+    expect(cfg.muc_max_iterations == 7,
+           "config_io: tlsf.muc_max_iterations should be parsed");
+}
+
+void test_config_io_muc_max_iterations_nonpositive_throws() {
+    bool threw = false;
+    try {
+        config_from_toml_string("[tlsf]\nmuc_max_iterations = 0\n");
+    } catch (const std::exception&) {
+        threw = true;
+    }
+    expect(threw, "config_io: muc_max_iterations = 0 should throw");
+}
+
 }  // namespace
 
 void run_config_io_tests() {
@@ -283,4 +333,10 @@ void run_config_io_tests() {
     test_config_io_similarity_metric_logarithmic_parsed();
     test_config_io_similarity_metric_invalid_throws();
     test_config_io_empty_string_gives_defaults();
+    test_config_io_repair_mode_defaults_to_monolithic();
+    test_config_io_repair_mode_muc_parsed();
+    test_config_io_repair_mode_monolithic_parsed();
+    test_config_io_repair_mode_invalid_throws();
+    test_config_io_muc_max_iterations_parsed();
+    test_config_io_muc_max_iterations_nonpositive_throws();
 }

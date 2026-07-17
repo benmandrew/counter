@@ -166,6 +166,20 @@ void apply_tlsf(const toml::table& tbl, Config& cfg) {
             cfg.tlsf_p_temporal = *val;
         }
     }
+    if (auto val = tbl["repair_mode"].value<std::string>()) {
+        if (*val == "monolithic") {
+            cfg.repair_mode = RepairMode::Monolithic;
+        } else if (*val == "muc") {
+            cfg.repair_mode = RepairMode::Muc;
+        } else {
+            throw std::runtime_error(
+                R"(config: tlsf.repair_mode must be "monolithic" or "muc")");
+        }
+    }
+    if (auto val = tbl["muc_max_iterations"].value<int64_t>()) {
+        cfg.muc_max_iterations = static_cast<std::size_t>(
+            require_positive(*val, "tlsf.muc_max_iterations"));
+    }
 }
 
 void apply_model_counting(const toml::table& tbl, Config& cfg) {

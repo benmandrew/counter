@@ -35,6 +35,21 @@ std::vector<CoreFormula> guarantee_side_candidates(const Specification& spec) {
     return candidates;
 }
 
+// Appends a tagged formula to the guarantee-side section named by its id.
+void append_by_section(Specification& spec, const CoreFormula& entry) {
+    switch (entry.section_id) {
+        case k_preset:
+            spec.m_preset.push_back(entry.formula);
+            break;
+        case k_assert:
+            spec.m_assert.push_back(entry.formula);
+            break;
+        default:
+            spec.m_guarantee.push_back(entry.formula);
+            break;
+    }
+}
+
 // Builds a Specification with `base`'s full environment side (INITIALLY,
 // REQUIRE, ASSUME) and metadata, and only `subset` on the guarantee side. With
 // `subset` = all of base's guarantee-side formulae this reproduces `base`.
@@ -50,17 +65,7 @@ Specification build_candidate_spec(const Specification& base,
     sub.m_require = base.m_require;
     sub.m_assume = base.m_assume;
     for (const CoreFormula& entry : subset) {
-        switch (entry.section_id) {
-            case k_preset:
-                sub.m_preset.push_back(entry.formula);
-                break;
-            case k_assert:
-                sub.m_assert.push_back(entry.formula);
-                break;
-            default:
-                sub.m_guarantee.push_back(entry.formula);
-                break;
-        }
+        append_by_section(sub, entry);
     }
     return sub;
 }
@@ -132,6 +137,42 @@ MinimalUnrealizableCore extract_muc(const Specification& spec) {
         return checker.check_realizability_ltl(
             candidate.to_ltl(), candidate.m_inputs, candidate.m_outputs);
     });
+}
+
+std::vector<CoreFormula> non_core_formulae(
+    const Specification& spec, const std::vector<CoreFormula>& core) {
+    std::vector<bool> consumed(core.size(), false);
+    std::vector<CoreFormula> result;
+    auto collect = [&](std::size_t section_id,
+                       const std::vector<Formula>& section) {
+        for (const Formula& formula : section) {
+            bool matched = false;
+            for (std::size_t i = 0; i < core.size(); ++i) {
+                if (!consumed[i] && core[i].section_id == section_id &&
+                    core[i].formula == formula) {
+                    consumed[i] = true;
+                    matched = true;
+                    break;
+                }
+            }
+            if (!matched) {
+                result.push_back({section_id, formula});
+            }
+        }
+    };
+    collect(k_preset, spec.m_preset);
+    collect(k_assert, spec.m_assert);
+    collect(k_guarantee, spec.m_guarantee);
+    return result;
+}
+
+Specification reintegrate(const Specification& repaired_subspec,
+                          const std::vector<CoreFormula>& non_core) {
+    Specification result = repaired_subspec;
+    for (const CoreFormula& entry : non_core) {
+        append_by_section(result, entry);
+    }
+    return result;
 }
 
 const char* section_name(std::size_t section_id) {

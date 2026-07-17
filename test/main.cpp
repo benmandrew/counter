@@ -26,6 +26,10 @@ bool run_tlsf_suite(std::string_view suite_name) {
         run_tlsf_fitness_tests();
         return true;
     }
+    if (suite_name == "tlsf_mucs") {
+        run_tlsf_mucs_tests();
+        return true;
+    }
     if (suite_name == "tlsf_genetic") {
         run_tlsf_genetic_tests();
         return true;
@@ -186,6 +190,7 @@ int main(int argc, const char* const argv[]) {
             run_tlsf_writer_tests();
             run_tlsf_filter_tests();
             run_tlsf_fitness_tests();
+            run_tlsf_mucs_tests();
             run_tlsf_genetic_tests();
             run_tlsf_pipeline_tests();
             return 0;

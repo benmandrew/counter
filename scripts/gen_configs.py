@@ -58,6 +58,18 @@ METRICS: dict[str, list[tuple[str, str]]] = {
     "both":   [("direct", "direct"), ("log", "logarithmic")],
 }
 
+# tlsf.repair_mode as a crossed factor, exactly like WEAKENINGS/METRICS above.
+# Each entry is (dir_label, toml_value): the directory + CSV label is the short
+# "mono"/"muc", and here the TOML value happens to differ only for "mono"
+# ("monolithic"), the string config_io.cpp's apply_tlsf accepts. Like
+# --weakening/--metric, --repair defaults to None so the flat layout and the
+# repair_mode from DEFAULTS stay byte-identical to the pre-factor grids.
+REPAIRS: dict[str, list[tuple[str, str]]] = {
+    "mono": [("mono", "monolithic")],
+    "muc":  [("muc", "muc")],
+    "both": [("mono", "monolithic"), ("muc", "muc")],
+}
+
 # Mirrors the built-in defaults from include/config.hpp, with two deliberate
 # exceptions. config.hpp defaults selection_scheme to "weighted", but the
 # baseline of every sweep is NSGA-II, so DEFAULTS pins "nsga2" and the generator
@@ -88,6 +100,7 @@ DEFAULTS: dict = {
     "run_weakening": True,
     "run_implication": True,
     "black_timeout_ms": 1000,
+    "repair_mode": "monolithic",
 }
 
 
@@ -139,6 +152,9 @@ def make_toml(overrides: dict, defaults: dict = DEFAULTS) -> str:
         "",
         "[runtime]",
         f"black_timeout_ms = {d['black_timeout_ms']}",
+        "",
+        "[tlsf]",
+        f'repair_mode = "{d["repair_mode"]}"',
         "",
     ])
 
@@ -307,6 +323,12 @@ def parse_args() -> argparse.Namespace:
                              "writing <scheme>/[<weakening>/]<direct|log>/ "
                              f"(choices: {', '.join(METRICS)}). Omit to keep the "
                              "flat layout and take metric from the defaults")
+    parser.add_argument("--repair", choices=list(REPAIRS), default=None,
+                        metavar="MODE",
+                        help="Cross tlsf.repair_mode in as a factor, writing "
+                             "<scheme>/[<weakening>/][<metric>/]<mono|muc>/ "
+                             f"(choices: {', '.join(REPAIRS)}). Omit to keep the "
+                             "flat layout and take repair_mode from the defaults")
     parser.add_argument("--out-dir", type=Path, default=CONFIGS_DIR, metavar="PATH",
                         help=f"Directory to write <scheme>/ dirs into (default: "
                              f"{CONFIGS_DIR})")
@@ -333,29 +355,36 @@ def main() -> None:
         [(d, {"metric": v}) for d, v in METRICS[args.metric]]
         if args.metric else [(None, {})]
     )
+    # (subdirectory, repair_mode override). None ⇒ flat layout with repair_mode
+    # from DEFAULTS, mirroring weakening/metric. The repair directory nests
+    # below the metric one: <scheme>/[<weakening>/][<metric>/]<mono|muc>/.
+    repairs: list[tuple[str | None, dict]] = (
+        [(d, {"repair_mode": v}) for d, v in REPAIRS[args.repair]]
+        if args.repair else [(None, {})]
+    )
 
     count = 0
     for scheme in args.schemes:
         for wk_dir, wk_override in weakenings:
             for mx_dir, mx_override in metrics:
-                out = args.out_dir / scheme
-                if wk_dir is not None:
-                    out = out / wk_dir
-                if mx_dir is not None:
-                    out = out / mx_dir
-                out.mkdir(parents=True, exist_ok=True)
-                for sweep_name, levels in sweeps:
-                    for level_name, overrides in levels:
-                        path = out / f"sweep_{sweep_name}_{level_name}.toml"
-                        path.write_text(make_toml(
-                            {**overrides, "selection_scheme": scheme,
-                             **wk_override, **mx_override},
-                            defaults))
-                        count += 1
-                label = "/".join(p for p in (scheme, wk_dir, mx_dir)
-                                 if p is not None)
-                print(f"  {label:20} "
-                      f"{len(list(out.glob('sweep_*.toml'))):3} configs")
+                for rp_dir, rp_override in repairs:
+                    out = args.out_dir / scheme
+                    for seg in (wk_dir, mx_dir, rp_dir):
+                        if seg is not None:
+                            out = out / seg
+                    out.mkdir(parents=True, exist_ok=True)
+                    for sweep_name, levels in sweeps:
+                        for level_name, overrides in levels:
+                            path = out / f"sweep_{sweep_name}_{level_name}.toml"
+                            path.write_text(make_toml(
+                                {**overrides, "selection_scheme": scheme,
+                                 **wk_override, **mx_override, **rp_override},
+                                defaults))
+                            count += 1
+                    label = "/".join(p for p in (scheme, wk_dir, mx_dir, rp_dir)
+                                     if p is not None)
+                    print(f"  {label:24} "
+                          f"{len(list(out.glob('sweep_*.toml'))):3} configs")
     print(f"\nGenerated {count} config files in {args.out_dir}")
 
 

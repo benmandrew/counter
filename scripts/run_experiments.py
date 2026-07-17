@@ -45,24 +45,37 @@ COMPARE_BIN = Path(os.environ.get("COMPARE_BIN",
                                   REPO_ROOT / "build-release" / "compare"))
 
 EXAMPLES_DIR = REPO_ROOT / "examples"
-SPECS: dict[str, dict[str, Path]] = {
-    "takeoff": {
-        "input": EXAMPLES_DIR / "takeoff" / "spec.json",
-        "ideals_dir": EXAMPLES_DIR / "takeoff" / "fixes",
-    },
-    "fsm": {
-        "input": EXAMPLES_DIR / "fsm" / "spec.json",
-        "ideals_dir": EXAMPLES_DIR / "fsm" / "fixes",
-    },
-    "fsm-timing": {
-        "input": EXAMPLES_DIR / "fsm-timing" / "spec.json",
-        "ideals_dir": EXAMPLES_DIR / "fsm-timing" / "fixes",
-    },
-    "fsm-combined": {
-        "input": EXAMPLES_DIR / "fsm-combined" / "spec.json",
-        "ideals_dir": EXAMPLES_DIR / "fsm-combined" / "fixes",
-    },
+
+
+def _spec(name: str, ext: str) -> dict[str, Path]:
+    return {"input": EXAMPLES_DIR / name / f"spec.{ext}",
+            "ideals_dir": EXAMPLES_DIR / name / "fixes"}
+
+
+# FRETISH (JSON) specs: the original repair benchmark. repair_mode is TLSF-only
+# and does not affect these, so the mono-vs-muc factor is never crossed over
+# them — the "muc" profile uses the TLSF specs below.
+FRETISH_SPECS: dict[str, dict[str, Path]] = {
+    "takeoff": _spec("takeoff", "json"),
+    "fsm": _spec("fsm", "json"),
+    "fsm-timing": _spec("fsm-timing", "json"),
+    "fsm-combined": _spec("fsm-combined", "json"),
 }
+
+# Basic-TLSF specs with ideal fixes: the corpus the mono-vs-muc comparison runs
+# on. counter infers the TLSF format from the .tlsf extension, and compare reads
+# the .tlsf ideals the same way.
+TLSF_SPECS: dict[str, dict[str, Path]] = {
+    "arbiter": _spec("arbiter", "tlsf"),
+    "gyro-var1": _spec("gyro-var1", "tlsf"),
+    "humanoid-531": _spec("humanoid-531", "tlsf"),
+    "lift": _spec("lift", "tlsf"),
+    "lily02": _spec("lily02", "tlsf"),
+    "minepump": _spec("minepump", "tlsf"),
+}
+
+# Unified lookup for run_one()/--specs; each profile picks its own subset.
+SPECS: dict[str, dict[str, Path]] = {**FRETISH_SPECS, **TLSF_SPECS}
 
 N_SEEDS = 30
 
@@ -74,7 +87,7 @@ COMPARE_TIMEOUT_S = 600
 
 CSV_FIELDS = [
     "sweep", "level_name", "level_value", "selection", "weakening", "metric",
-    "spec", "seed", "found_repair", "n_repairs", "best_fitness",
+    "repair_mode", "spec", "seed", "found_repair", "n_repairs", "best_fitness",
     "best_relation", "implies_ideal", "n_implies", "wall_time_s",
     "timed_out", "n_dropped",
 ]
@@ -106,9 +119,21 @@ LEGACY_METRIC = "direct"
 # is read as LEGACY_METRIC.
 METRIC_DIRS: tuple[str, ...] = ("direct", "log")
 
+# Rows written before `repair_mode` existed ran monolithic repair (the
+# config.hpp / DEFAULTS value; tlsf.repair_mode did not yet exist, so the binary
+# always evolved the whole spec). Same purpose as LEGACY_SELECTION: keep resume
+# and merge matching those rows rather than re-running them.
+LEGACY_REPAIR = "mono"
+
+# Directory names gen_configs.py --repair emits (the short label, not the TOML
+# value "monolithic"). A config with no such ancestor predates the factor and is
+# read as LEGACY_REPAIR.
+REPAIR_DIRS: tuple[str, ...] = ("mono", "muc")
+
 # Every factor directory name, so scheme_of can tell a scheme segment apart
 # from a factor segment regardless of nesting order or depth.
-FACTOR_DIRS: frozenset[str] = frozenset(WEAKENING_DIRS) | frozenset(METRIC_DIRS)
+FACTOR_DIRS: frozenset[str] = (frozenset(WEAKENING_DIRS) | frozenset(METRIC_DIRS)
+                               | frozenset(REPAIR_DIRS))
 
 # Higher index = better relation
 RELATION_PRIORITY: dict[str, int] = {
@@ -182,6 +207,8 @@ CJ_LARGE_ALIASES: dict[tuple[str, str], tuple[str, str]] = {
 # recording every row as LEGACY_WEAKENING.
 # `metrics` picks the <direct|log> directories nested below (after weakening,
 # where present); None means the flat layout, recorded as LEGACY_METRIC.
+# `repair_modes` picks the <mono|muc> directories nested below the metric one;
+# None means the flat layout, recorded as LEGACY_REPAIR.
 # `sweeps` is the set run by default (--sweeps overrides it, so a profile can
 # hold back a sweep until asked). `levels` restricts a sweep to named levels;
 # sweeps absent from the map keep every level found in `configs_dir`.
@@ -200,12 +227,13 @@ PROFILES: dict[str, dict] = {
         "schemes": ["nsga2"],
         "weakenings": None,
         "metrics": None,
+        "repair_modes": None,
         "sweeps": ["A", "B", "C"],
         "levels": {
             "A": ["gen5", "gen10", "gen20", "gen40"],
             "B": ["pop50", "pop100", "pop200", "pop500", "pop1000"],
         },
-        "specs": list(SPECS),
+        "specs": list(FRETISH_SPECS),
         "seeds": list(range(N_SEEDS)),
         "timeout_caps": None,
         "baseline_aliases": BASELINE_ALIASES,
@@ -222,9 +250,10 @@ PROFILES: dict[str, dict] = {
         "schemes": ["nsga2", "weighted"],
         "weakenings": None,
         "metrics": None,
+        "repair_modes": None,
         "sweeps": None,  # every sweep found in experiments/configs/
         "levels": {},
-        "specs": list(SPECS),
+        "specs": list(FRETISH_SPECS),
         "seeds": list(range(100)),
         "timeout_caps": None,
         "baseline_aliases": BASELINE_ALIASES,
@@ -242,9 +271,10 @@ PROFILES: dict[str, dict] = {
         "schemes": ["nsga2"],
         "weakenings": ["wkon", "wkoff"],
         "metrics": None,
+        "repair_modes": None,
         "sweeps": ["C", "D", "E", "F", "I"],
         "levels": {},
-        "specs": list(SPECS),
+        "specs": list(FRETISH_SPECS),
         "seeds": list(range(90)),
         # Measured worst case at this operating point is ~41s, so these are
         # 15-20x margin. A cap that bites records implies_ideal = 0 for a run
@@ -268,9 +298,10 @@ PROFILES: dict[str, dict] = {
         "schemes": ["nsga2"],
         "weakenings": None,
         "metrics": ["direct", "log"],
+        "repair_modes": None,
         "sweeps": ["C"],
         "levels": {"C": ["default"]},
-        "specs": list(SPECS),
+        "specs": list(FRETISH_SPECS),
         "seeds": list(range(100)),
         "timeout_caps": {"takeoff": 600, "fsm": 600, "fsm-timing": 600,
                          "fsm-combined": 900},
@@ -280,23 +311,48 @@ PROFILES: dict[str, dict] = {
         "results_csv": EXPERIMENTS_DIR / "results-metric.csv",
         "default_jobs": 4,
     },
+    # Monolithic vs MUC-guided repair (tlsf.repair_mode) as the sole crossed
+    # factor, on the TLSF spec corpus — repair_mode is a no-op on the FRETISH
+    # specs, so crossing it over them would compare two identical arms. A single
+    # all-defaults level: the factor is the experiment, so the seeds buy paired
+    # mono-vs-muc statistical power rather than a grid. MUC re-runs the GA once
+    # per extracted core, so it is slower than monolithic; the caps are generous.
+    # Set the operating point when generating the configs, e.g.
+    #   python scripts/gen_configs.py --schemes nsga2 --sweeps C --repair both \
+    #       --out-dir experiments/configs-muc
+    "muc": {
+        "schemes": ["nsga2"],
+        "weakenings": None,
+        "metrics": None,
+        "repair_modes": ["mono", "muc"],
+        "sweeps": ["C"],
+        "levels": {"C": ["default"]},
+        "specs": list(TLSF_SPECS),
+        "seeds": list(range(N_SEEDS)),
+        "timeout_caps": {name: 900 for name in TLSF_SPECS},
+        "baseline_aliases": {},
+        "configs_dir": EXPERIMENTS_DIR / "configs-muc",
+        "results_dir": EXPERIMENTS_DIR / "results-muc",
+        "results_csv": EXPERIMENTS_DIR / "results-muc.csv",
+        "default_jobs": 4,
+    },
 }
 
 
-def verify_aliases(configs_by_key: dict[tuple[str, str, str, str, str], Path],
-                   scheme: str, weakening: str, metric: str,
+def verify_aliases(configs_by_key: dict[tuple[str, str, str, str, str, str], Path],
+                   scheme: str, weakening: str, metric: str, repair: str,
                    aliases: dict) -> dict:
     """Return the alias map restricted to pairs whose files are byte-identical."""
     active: dict[tuple[str, str], tuple[str, str]] = {}
     for alias, canon in aliases.items():
-        a_path = configs_by_key.get((scheme, weakening, metric, *alias))
-        c_path = configs_by_key.get((scheme, weakening, metric, *canon))
+        a_path = configs_by_key.get((scheme, weakening, metric, repair, *alias))
+        c_path = configs_by_key.get((scheme, weakening, metric, repair, *canon))
         if a_path is None:
             continue  # alias config not generated; nothing to alias
         if c_path is None or a_path.read_bytes() != c_path.read_bytes():
-            print(f"WARN: {scheme}/{weakening}/{metric}/{a_path.name} is not "
-                  f"byte-identical to canonical sweep_{canon[0]}_{canon[1]}.toml "
-                  f"— treating as distinct")
+            print(f"WARN: {scheme}/{weakening}/{metric}/{repair}/{a_path.name} "
+                  f"is not byte-identical to canonical "
+                  f"sweep_{canon[0]}_{canon[1]}.toml — treating as distinct")
             continue
         active[alias] = canon
     return active
@@ -346,6 +402,11 @@ def weakening_of(config_path: Path) -> str:
 def metric_of(config_path: Path) -> str:
     """Similarity metric (short label) from the config's ancestor directories."""
     return _factor_dir(config_path, METRIC_DIRS) or LEGACY_METRIC
+
+
+def repair_mode_of(config_path: Path) -> str:
+    """Repair mode (short label) from the config's ancestor directories."""
+    return _factor_dir(config_path, REPAIR_DIRS) or LEGACY_REPAIR
 
 
 def extract_metadata(config_path: Path) -> tuple:
@@ -449,6 +510,7 @@ def load_done_set(csv_path: Path) -> set:
                       row.get("selection") or LEGACY_SELECTION,
                       row.get("weakening") or LEGACY_WEAKENING,
                       row.get("metric") or LEGACY_METRIC,
+                      row.get("repair_mode") or LEGACY_REPAIR,
                       row["spec"], int(row["seed"])))
     return done
 
@@ -638,25 +700,28 @@ def main() -> None:
     def _config_sort_key(p: Path):
         sweep, _, level_value = extract_metadata(p)
         numeric = isinstance(level_value, (int, float))
-        return (scheme_of(p), weakening_of(p), metric_of(p), sweep,
-                0 if numeric else 1, level_value if numeric else 0, str(p))
+        return (scheme_of(p), weakening_of(p), metric_of(p), repair_mode_of(p),
+                sweep, 0 if numeric else 1, level_value if numeric else 0,
+                str(p))
 
     wanted_schemes = profile["schemes"]
     wanted_weakenings = profile["weakenings"]
     wanted_metrics = profile["metrics"]
+    wanted_repairs = profile["repair_modes"]
     # Build the directory list by nesting each crossed factor a level deeper:
-    # <scheme>/[<weakening>/][<metric>/]. A None factor means the profile
-    # predates it and its segment is skipped, keeping the flat layout readable.
+    # <scheme>/[<weakening>/][<metric>/][<repair>/]. A None factor means the
+    # profile predates it and its segment is skipped, keeping the flat layout
+    # readable.
     config_dirs = []
     for s in wanted_schemes:
         for w in (wanted_weakenings or [None]):
             for m in (wanted_metrics or [None]):
-                d = configs_dir / s
-                if w is not None:
-                    d = d / w
-                if m is not None:
-                    d = d / m
-                config_dirs.append(d)
+                for r in (wanted_repairs or [None]):
+                    d = configs_dir / s
+                    for seg in (w, m, r):
+                        if seg is not None:
+                            d = d / seg
+                    config_dirs.append(d)
     all_configs = sorted(
         (c for d in config_dirs for c in d.glob("sweep_*.toml")),
         key=_config_sort_key)
@@ -666,7 +731,7 @@ def main() -> None:
             f"{', '.join(wanted_schemes)}\nRun: python scripts/gen_configs.py"
         )
     configs_by_key = {
-        (scheme_of(c), weakening_of(c), metric_of(c),
+        (scheme_of(c), weakening_of(c), metric_of(c), repair_mode_of(c),
          *extract_metadata(c)[:2]): c
         for c in all_configs}
 
@@ -688,17 +753,18 @@ def main() -> None:
     if not selected_configs:
         sys.exit("No matching config files found.")
 
-    # Aliasing holds within one (scheme, weakening, metric) cell: wkoff/log's
-    # D/ptrig0.5 aliases onto wkoff/log's C/default, never onto another cell's.
-    # The byte-identity check enforces it, since the configs differ on the
-    # factor keys.
-    factor_cells = [(s, w, m) for s in wanted_schemes
+    # Aliasing holds within one (scheme, weakening, metric, repair) cell:
+    # wkoff/log's D/ptrig0.5 aliases onto wkoff/log's C/default, never onto
+    # another cell's. The byte-identity check enforces it, since the configs
+    # differ on the factor keys.
+    factor_cells = [(s, w, m, r) for s in wanted_schemes
                     for w in (wanted_weakenings or [LEGACY_WEAKENING])
-                    for m in (wanted_metrics or [LEGACY_METRIC])]
+                    for m in (wanted_metrics or [LEGACY_METRIC])
+                    for r in (wanted_repairs or [LEGACY_REPAIR])]
     active_aliases = {
-        (s, w, m): verify_aliases(configs_by_key, s, w, m,
-                                  profile["baseline_aliases"])
-        for s, w, m in factor_cells}
+        (s, w, m, r): verify_aliases(configs_by_key, s, w, m, r,
+                                     profile["baseline_aliases"])
+        for s, w, m, r in factor_cells}
 
     done = set() if args.no_resume else load_done_set(results_csv)
 
@@ -708,23 +774,25 @@ def main() -> None:
     runs: dict[tuple, list] = {}
     n_rows = n_aliased = 0
     for cfg in selected_configs:
-        scheme, weakening, metric = (scheme_of(cfg), weakening_of(cfg),
-                                     metric_of(cfg))
+        scheme, weakening, metric, repair = (
+            scheme_of(cfg), weakening_of(cfg), metric_of(cfg),
+            repair_mode_of(cfg))
         sweep, level_name, _ = extract_metadata(cfg)
-        canon = active_aliases[(scheme, weakening, metric)].get(
+        canon = active_aliases[(scheme, weakening, metric, repair)].get(
             (sweep, level_name), (sweep, level_name))
         for spec_name in specs:
             for seed in seeds:
                 n_rows += 1
                 if canon != (sweep, level_name):
                     n_aliased += 1
-                key = (scheme, weakening, metric, canon[0], canon[1],
+                key = (scheme, weakening, metric, repair, canon[0], canon[1],
                        spec_name, seed)
                 runs.setdefault(key, []).append((sweep, level_name))
 
     def row_key(key: tuple, sweep: str, level_name: str) -> tuple:
-        scheme, weakening, metric, _, _, spec_name, seed = key
-        return (sweep, level_name, scheme, weakening, metric, spec_name, seed)
+        scheme, weakening, metric, repair, _, _, spec_name, seed = key
+        return (sweep, level_name, scheme, weakening, metric, repair,
+                spec_name, seed)
 
     n_done = sum(
         1
@@ -739,14 +807,15 @@ def main() -> None:
     to_execute = sorted(
         (key for key, row_list in runs.items()
          if any(row_key(key, s, l) not in done for s, l in row_list)),
-        key=lambda k: (k[6], k[5], k[0], k[1], k[2], k[3], k[4]),
+        key=lambda k: (k[7], k[6], k[0], k[1], k[2], k[3], k[4], k[5]),
     )
     print(f"Plan: {n_rows} result rows ({n_aliased} via aliasing), "
           f"{n_done} already done; {len(to_execute)} runs to execute")
 
     if args.dry_run:
         for key, row_list in runs.items():
-            scheme, weakening, metric, c_sweep, c_level, spec_name, seed = key
+            (scheme, weakening, metric, repair, c_sweep, c_level,
+             spec_name, seed) = key
             for sweep, level_name in row_list:
                 tags = []
                 if (sweep, level_name) != (c_sweep, c_level):
@@ -758,7 +827,8 @@ def main() -> None:
                 cfg_dir = "/".join(
                     p for p in (scheme,
                                 None if wanted_weakenings is None else weakening,
-                                None if wanted_metrics is None else metric)
+                                None if wanted_metrics is None else metric,
+                                None if wanted_repairs is None else repair)
                     if p is not None)
                 print(f"  {cfg_dir}/sweep_{sweep}_{level_name}"
                       f"  spec={spec_name}  seed={seed:02d}"
@@ -769,7 +839,7 @@ def main() -> None:
     results_csv.parent.mkdir(parents=True, exist_ok=True)
 
     fieldnames = existing_fieldnames(results_csv) or CSV_FIELDS
-    for column in ["timed_out", "weakening", "metric"]:
+    for column in ["timed_out", "weakening", "metric", "repair_mode"]:
         if column not in fieldnames:
             print(f"Note: {results_csv.name} predates the {column} column; "
                   f"appending without it")
@@ -785,8 +855,10 @@ def main() -> None:
     t0 = time.monotonic()
 
     def execute(key: tuple) -> None:
-        scheme, weakening, metric, c_sweep, c_level, spec_name, seed = key
-        cfg = configs_by_key[(scheme, weakening, metric, c_sweep, c_level)]
+        (scheme, weakening, metric, repair, c_sweep, c_level,
+         spec_name, seed) = key
+        cfg = configs_by_key[
+            (scheme, weakening, metric, repair, c_sweep, c_level)]
         caps = profile["timeout_caps"]
         timeout = (caps[spec_name] if caps
                    else counter_timeout(c_level, level_value_of(c_level)))
@@ -795,7 +867,8 @@ def main() -> None:
         # profiles that predate the factor, orphaning their results.
         wk_tag = "" if wanted_weakenings is None else f"_{weakening}"
         mx_tag = "" if wanted_metrics is None else f"_{metric}"
-        run_id = (f"sweep_{c_sweep}_{c_level}_{scheme}{wk_tag}{mx_tag}"
+        rp_tag = "" if wanted_repairs is None else f"_{repair}"
+        run_id = (f"sweep_{c_sweep}_{c_level}_{scheme}{wk_tag}{mx_tag}{rp_tag}"
                   f"_{spec_name}_seed{seed:02d}")
         with lock:
             print(f"[start]      {run_id}  (timeout {timeout}s)", flush=True)
@@ -819,7 +892,7 @@ def main() -> None:
                 row = {**result, "sweep": sweep, "level_name": level_name,
                        "level_value": level_value_of(level_name),
                        "selection": scheme, "weakening": weakening,
-                       "metric": metric}
+                       "metric": metric, "repair_mode": repair}
                 append_row(results_csv, row, fieldnames)
                 done.add(row_key(key, sweep, level_name))
                 state["rows_written"] += 1

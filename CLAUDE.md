@@ -133,6 +133,20 @@ ltl <spec.json> [<spec.json> ...]
 
 One file: prints assumptions and guarantees with their LTL formulae. Multiple files: prefixes each block with the file path. Each requirement prints as `[assumption]`/`[guarantee] <string>` followed by `LTL: <formula>` if one is present.
 
+**`mucs`** — extract a minimal unrealizable core from a TLSF spec
+
+```
+mucs <spec.tlsf>
+```
+
+| Flag | Description |
+|---|---|
+| `-h`, `--help` | Show help |
+
+Prints the smallest subset of the guarantee-side sections (PRESET, ASSERT, GUARANTEE) that stays unrealizable against the full, unchanged environment side (INITIALLY, REQUIRE, ASSUME) — the culprit formulae behind unrealizability. Uses QuickXplain over `ltlsynt`. Prints `REALIZABLE (no core)` if the input is already realizable. TLSF-only (FRETISH JSON is not supported).
+
+The same core extraction drives an alternative TLSF **repair mode**. `Config::repair_mode` (TOML `[tlsf] repair_mode = "monolithic" | "muc"`, default `monolithic`) selects between evolving the whole spec at once and the MUC-guided loop in `run_muc` (`src/tlsf/pipeline.cpp`): extract a core, evolve only that sub-spec, reintegrate the repaired core with the untouched non-core guarantees (`tlsf::reintegrate`), and repeat until the whole spec is realizable or `muc_max_iterations` trips. FRETISH ignores it. `scripts/gen_configs.py --repair both` and the `muc` profile in `run_experiments.py` cross the two modes as an experiment factor over the TLSF spec corpus.
+
 ## External tools
 
 - `ltl2tgba`, `ltlsynt` — from SPOT, built from source via `cmake/spot.cmake`; located via the `SPOT_BIN_DIR` compile macro.

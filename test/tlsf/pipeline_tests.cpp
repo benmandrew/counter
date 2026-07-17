@@ -137,9 +137,61 @@ void test_run_repair_end_to_end() {
     std::filesystem::remove_all(dir, err_code);
 }
 
+// MUC-mode repair on the same unrealizable arbiter: the iterative
+// extract-repair-reintegrate loop must converge to a written, realizable
+// repair. gen5/pop50/bound3 at seed 0 is the smallest budget observed to
+// repair this fixture reliably across seeds.
+void test_muc_repair_end_to_end() {
+    const std::filesystem::path dir =
+        std::filesystem::temp_directory_path() /
+        ("tlsf_muc_test_" +
+         std::to_string(std::hash<std::string>{}(std::string(k_unrealizable))));
+    std::error_code err_code;
+    std::filesystem::remove_all(dir, err_code);
+    expect(std::filesystem::create_directories(dir, err_code),
+           "muc: temp directory is created");
+
+    const std::filesystem::path input_path = dir / "spec.tlsf";
+    {
+        std::ofstream input(input_path);
+        input << k_unrealizable;
+    }
+
+    Config cfg;
+    cfg.generations = 5;
+    cfg.population_size = 50;
+    cfg.parallel = 1;
+    cfg.default_model_counting_bound = 3;
+    cfg.repair_mode = RepairMode::Muc;
+
+    const RandomSource random_source = make_random_source_from_seed(0);
+    const int status =
+        tlsf::run_repair(input_path.string(), dir.string(), cfg, random_source);
+    expect(status == 0, "muc: run_repair returns 0");
+
+    std::size_t n_repairs = 0;
+    for (const auto& entry : std::filesystem::directory_iterator(dir)) {
+        if (entry.path().extension() != ".tlsf" ||
+            entry.path().filename() == "spec.tlsf") {
+            continue;
+        }
+        std::ifstream repair(entry.path());
+        std::ostringstream contents;
+        contents << repair.rdbuf();
+        const tlsf::Specification spec = tlsf::parse(contents.str());
+        expect(is_realizable(spec),
+               "muc: each written repair re-parses and is realizable");
+        ++n_repairs;
+    }
+    expect(n_repairs >= 1, "muc: repair produced at least one realizable spec");
+
+    std::filesystem::remove_all(dir, err_code);
+}
+
 }  // namespace
 
 void run_tlsf_pipeline_tests() {
     test_arbiter_realizability();
+    test_muc_repair_end_to_end();
     test_run_repair_end_to_end();
 }

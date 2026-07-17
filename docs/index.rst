@@ -86,6 +86,7 @@ functions, and anonymous namespaces, with source browsing and call graphs.
    api/tlsf/parser
    api/tlsf/writer
    api/tlsf/fitness
+   api/tlsf/mucs
    api/tlsf/mutation
    api/tlsf/crossover
    api/tlsf/operators

@@ -56,6 +56,38 @@ for layout, want in CASES:
 check(factors(BASE.format("nsga2/log/wkoff")), ("nsga2", "wkoff", "log"),
       "swapped metric/weakening nesting")
 
+
+def repair(path_str):
+    return R.repair_mode_of(Path(path_str))
+
+
+# repair_mode nests deepest; its presence must not disturb the other factors,
+# and scheme_of must still skip a repair segment to find the scheme.
+REPAIR_CASES = [
+    ("nsga2", R.LEGACY_REPAIR),                     # flat: predates the factor
+    ("nsga2/mono", "mono"),
+    ("nsga2/muc", "muc"),
+    ("nsga2/wkon/direct/muc", "muc"),               # four deep, canonical order
+    ("nsga2/muc/wkon", "muc"),                       # order-independent scan
+]
+for layout, want in REPAIR_CASES:
+    check(repair(BASE.format(layout)), want, f"repair_mode of <{layout}>")
+
+# A repair segment must not be mistaken for the scheme or any other factor.
+check(factors(BASE.format("nsga2/wkon/direct/muc")),
+      ("nsga2", "wkon", "direct"), "factors ignore the repair segment")
+check(repair(BASE.format("nsga2/wkon/direct")), R.LEGACY_REPAIR,
+      "repair_mode falls back to LEGACY_REPAIR when absent")
+
+# gen_configs REPAIRS maps the short dir label to the TOML value the C++ parser
+# accepts; repair_mode_of must key on the label, not the value.
+check([lbl for lbl, _ in G.REPAIRS["both"]], ["mono", "muc"],
+      "REPAIRS both dir labels")
+check([val for _, val in G.REPAIRS["both"]], ["monolithic", "muc"],
+      "REPAIRS both toml values")
+for lbl, _ in G.REPAIRS["both"]:
+    assert lbl in R.REPAIR_DIRS, f"{lbl} not in REPAIR_DIRS"
+
 # extract_metadata is unaffected by the extra depth.
 p = Path(BASE.format("nsga2/wkon/direct"))
 check(R.extract_metadata(p)[:2], ("C", "default"), "extract_metadata three-deep")
@@ -71,7 +103,7 @@ for lbl, _ in G.METRICS["both"]:
 
 # The merge key must carry every crossed factor, or crossed rows collapse.
 import merge_experiments as M  # noqa: E402
-for f in ("selection", "weakening", "metric"):
+for f in ("selection", "weakening", "metric", "repair_mode"):
     assert f in M.KEY_FIELDS, f"{f} missing from merge KEY_FIELDS"
     assert f in R.CSV_FIELDS, f"{f} missing from CSV_FIELDS"
 

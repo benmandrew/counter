@@ -24,6 +24,14 @@ enum class SelectionScheme : std::uint8_t { WeightedAverage, Nsga2 };
 /// log campaign (overall implies-ideal 68.8% vs 61.5%, decisively on fsm).
 enum class SimilarityMetric : std::uint8_t { Direct, Logarithmic };
 
+/// How TLSF repair searches. Monolithic (the default) evolves the whole
+/// specification at once. Muc repairs iteratively: it extracts a minimal
+/// unrealizable core, evolves only that sub-specification, reintegrates the
+/// repaired core with the untouched non-core guarantees, and repeats on the
+/// recombined spec until it is realizable (or the iteration cap trips). The
+/// mode is TLSF-only; the FRETISH path ignores it.
+enum class RepairMode : std::uint8_t { Monolithic, Muc };
+
 struct Config {
     std::size_t generations = 10;
     std::size_t population_size = 200;
@@ -81,6 +89,12 @@ struct Config {
     // rather than the skeleton-preserving propositional rewrite. At 0 the
     // temporal skeleton of existing formulae is never altered.
     double tlsf_p_temporal = 0.2;
+    // TLSF repair strategy (see RepairMode). Muc mode caps its outer
+    // extract-repair-reintegrate loop at muc_max_iterations, so a spec whose
+    // core never becomes realizable ends the run without a repair rather than
+    // looping forever.
+    RepairMode repair_mode = RepairMode::Monolithic;
+    std::size_t muc_max_iterations = 32;
     std::size_t parallel = std::thread::hardware_concurrency();
     // A fitness function that throws (in practice an external tool failing on
     // one evolved formula) costs that individual rather than the whole run:

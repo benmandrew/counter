@@ -46,6 +46,20 @@ p_timing   = 0.1    # per-requirement probability of mutating the timing
 # unrealizable GR(1) spec).
 p_add_assumption = 0.05
 
+[tlsf]
+# Applies only in TLSF mode (a .tlsf input or --format tlsf).
+# Repair strategy:
+#   "monolithic" (default) evolves the whole specification at once.
+#   "muc" repairs iteratively — extract a minimal unrealizable core, evolve only
+#   that sub-specification, reintegrate the repaired core with the untouched
+#   non-core guarantees, and repeat until the whole spec is realizable. Focuses
+#   the search (and the per-candidate ltlsynt cost) on the culprit formulae.
+repair_mode = "monolithic"
+# muc mode only: cap on the outer extract-repair-reintegrate loop. A spec whose
+# core never becomes realizable ends the run without a repair rather than
+# looping forever.
+muc_max_iterations = 32
+
 [tlsf.mutation]
 # Applies only in TLSF mode (a .tlsf input or --format tlsf). Probability of
 # mutating an assumption-side section (INITIALLY/REQUIRE/ASSUME) versus a

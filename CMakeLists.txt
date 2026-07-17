@@ -133,6 +133,9 @@ target_link_libraries(realize PRIVATE counter_fitness)
 add_executable(ltl src/ltl.cpp)
 target_link_libraries(ltl PRIVATE counter_fitness)
 
+add_executable(mucs src/mucs.cpp)
+target_link_libraries(mucs PRIVATE counter_fitness)
+
 add_custom_target(ganak_binary ALL DEPENDS "${GANAK_EXECUTABLE}")
 add_custom_target(black_binary ALL DEPENDS "${BLACK_EXECUTABLE}")
 if(DEFINED BLACK_EXTERNAL_TARGET)

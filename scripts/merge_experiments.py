@@ -50,6 +50,7 @@ PROFILE_CSVS: dict[str, str] = {
     "cj-large": "results-cj-large.csv",
     "metric": "results-metric.csv",
     "muc": "results-muc.csv",
+    "tlsf": "results-tlsf.csv",
 }
 
 # Per-run output directory each profile writes under experiments/. Most profiles
@@ -61,6 +62,7 @@ PROFILE_RESULT_DIRS: dict[str, str] = {
     "cj-large": "results-cj-large",
     "metric": "results-metric",
     "muc": "results-muc",
+    "tlsf": "results-tlsf",
 }
 
 # Natural key of a results row: one run per (sweep, level_name, selection,

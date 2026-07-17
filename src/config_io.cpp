@@ -233,11 +233,25 @@ void apply_runtime(const toml::table& tbl, Config& cfg) {
         }
         cfg.black_timeout = std::chrono::milliseconds{*val};
     }
+    if (auto val = tbl["ltlsynt_timeout_ms"].value<int64_t>()) {
+        if (*val < 0) {
+            throw std::runtime_error(
+                "config: runtime.ltlsynt_timeout_ms must be >= 0");
+        }
+        cfg.ltlsynt_timeout = std::chrono::milliseconds{*val};
+    }
     if (auto val = tbl["parallel"].value<int64_t>()) {
         if (*val <= 0) {
             throw std::runtime_error("config: runtime.parallel must be >= 1");
         }
         cfg.parallel = static_cast<std::size_t>(*val);
+    }
+    if (auto val = tbl["max_concurrent_realizability"].value<int64_t>()) {
+        if (*val < 0) {
+            throw std::runtime_error(
+                "config: runtime.max_concurrent_realizability must be >= 0");
+        }
+        cfg.max_concurrent_realizability = static_cast<std::size_t>(*val);
     }
     if (auto val = tbl["report_cpu_timing"].value<bool>()) {
         cfg.report_cpu_timing = *val;

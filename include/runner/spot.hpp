@@ -4,6 +4,7 @@
 /// @brief Wrappers for SPOT tools: ltl2tgba (automaton construction) and
 ///        ltlsynt (realizability checking), with memoising checker classes.
 
+#include <chrono>
 #include <mutex>
 #include <string>
 #include <unordered_map>
@@ -44,6 +45,9 @@ class RealizabilityChecker {
     inline static std::size_t n_cache_hits = 0;
     inline static double total_time_s = 0.0;
     inline static double total_cpu_s = 0.0;
+    // ltlsynt calls abandoned at the per-call timeout (treated as
+    // unrealizable).
+    inline static std::size_t n_timeouts = 0;
 
     /// Checks whether the specification is realizable using ltlsynt. Results
     /// are memoised by the full specification formula, so repeated calls with
@@ -56,6 +60,23 @@ class RealizabilityChecker {
     bool check_realizability_ltl(const std::string& ltl_formula,
                                  const std::vector<std::string>& inputs,
                                  const std::vector<std::string>& outputs);
+
+    /// Caps the number of ltlsynt processes running concurrently across the
+    /// whole program. The gate is process-global (shared by every
+    /// RealizabilityChecker, including test instances) because the memory
+    /// pressure it guards against is process-global: ltlsynt is multi-GB
+    /// resident per call on hard specs, so an uncapped scoring pool can OOM the
+    /// machine. 0 (the default) means unlimited. Set once at startup from
+    /// Config::max_concurrent_realizability.
+    static void set_max_concurrency(std::size_t limit);
+
+    /// Per-call wall-clock budget for the ltlsynt exec (process-global, like
+    /// the concurrency gate). A call exceeding it is killed and reported as
+    /// unrealizable — ltlsynt has no internal timeout, and the genetic search
+    /// occasionally generates synthesis queries that run for minutes. Zero (the
+    /// default) disables the timeout. Set once at startup from
+    /// Config::ltlsynt_timeout.
+    static void set_timeout(std::chrono::milliseconds timeout);
 
    private:
     mutable std::mutex m_cache_mutex;

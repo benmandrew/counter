@@ -90,7 +90,15 @@ bloat           = 1
 
 [runtime]
 black_timeout_ms = 1000  # timeout per black SAT query in milliseconds
+# Per-call ltlsynt realizability timeout in ms. 0 (default) is no timeout;
+# ltlsynt has no internal one, so on hard specs a single synthesis query can run
+# for minutes. A call exceeding this is killed and treated as unrealizable.
+# ltlsynt_timeout_ms = 30000
 # parallel         = 8     # thread pool size (omit to use hardware concurrency)
+# Cap on ltlsynt processes running at once, independent of the thread pool. 0
+# (default) is unlimited; ltlsynt is multi-GB resident per call on hard specs,
+# so a positive value bounds peak RAM (roughly cap * per-call GB) to avoid OOM.
+# max_concurrent_realizability = 6
 # An individual whose fitness scoring throws is dropped from its generation
 # rather than aborting the run. Above this fraction of a generation the tooling
 # is assumed broken rather than the formula, and the run aborts. A single

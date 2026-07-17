@@ -2,13 +2,18 @@
 #include <cstddef>
 #include <cstdint>
 #include <filesystem>
+#include <fstream>
 #include <iomanip>
 #include <iostream>
+#include <optional>
+#include <sstream>
 #include <stdexcept>
 #include <string>
 #include <thread>
 #include <utility>
 #include <vector>
+
+#include <nlohmann/json.hpp>
 
 #include "bounded_async.hpp"
 #include "config.hpp"
@@ -17,6 +22,9 @@
 #include "runner/black.hpp"
 #include "serialisation.hpp"
 #include "thread_pool.hpp"
+#include "tlsf/filter.hpp"
+#include "tlsf/parser.hpp"
+#include "tlsf/specification.hpp"
 
 namespace {
 
@@ -29,11 +37,12 @@ void print_usage(const char* prog) {
     std::cerr
         << "Usage: " << prog << " --repairs <dir> --ideals <dir>\n"
         << "\n"
-        << "Compares each repair JSON in the repairs directory against\n"
-        << "every ideal JSON in the ideals directory and reports whether\n"
-        << "the found repair is equivalent to, strictly stronger than,\n"
-        << "strictly weaker than, or incomparable with the ideal, under\n"
-        << "the assume-guarantee implication order.\n";
+        << "Compares each repair in the repairs directory against every\n"
+        << "ideal in the ideals directory and reports whether the found\n"
+        << "repair is equivalent to, strictly stronger than, strictly\n"
+        << "weaker than, or incomparable with the ideal, under the\n"
+        << "assume-guarantee implication order. Both directories must hold\n"
+        << "the same format: FRETISH JSON (.json) or basic-TLSF (.tlsf).\n";
 }
 
 std::optional<Args> parse_args(int argc, const char* const* argv) {
@@ -62,6 +71,14 @@ std::optional<Args> parse_args(int argc, const char* const* argv) {
     }
     return args;
 }
+
+// A repair's display name and its optional weighted fitness. Both the FRETISH
+// and TLSF paths reduce their loaded repairs to this before reporting, so the
+// report loop is agnostic to which format produced them.
+struct RepairMeta {
+    std::string name;
+    std::optional<double> fitness;
+};
 
 std::vector<std::pair<std::string, serialisation::ScoredSpecification>>
 load_repairs(const std::string& dir) {
@@ -101,6 +118,76 @@ std::vector<std::pair<std::string, Specification>> load_ideals(
     return ideals;
 }
 
+std::string read_file(const std::string& path) {
+    std::ifstream file(path);
+    if (!file) {
+        throw std::runtime_error("cannot open file: " + path);
+    }
+    std::ostringstream contents;
+    contents << file.rdbuf();
+    return contents.str();
+}
+
+// counter writes each TLSF repair as repair_N.tlsf alongside a
+// repair_N.fitness.json carrying its weighted total. The fitness file is
+// optional here: a missing or malformed one just leaves the fitness unset,
+// which sorts the repair as if scored 0 and omits it from the printed line.
+std::optional<double> read_tlsf_fitness(
+    const std::filesystem::path& tlsf_path) {
+    std::filesystem::path fitness_path = tlsf_path;
+    fitness_path.replace_extension(".fitness.json");
+    std::error_code err_code;
+    if (!std::filesystem::exists(fitness_path, err_code)) {
+        return std::nullopt;
+    }
+    try {
+        const nlohmann::json jobj =
+            nlohmann::json::parse(read_file(fitness_path.string()));
+        return jobj.at("total").get<double>();
+    } catch (const std::exception&) {
+        return std::nullopt;
+    }
+}
+
+struct TlsfRepair {
+    std::string name;
+    tlsf::Specification spec;
+    std::optional<double> fitness;
+};
+
+std::vector<TlsfRepair> load_tlsf_repairs(const std::string& dir) {
+    std::vector<TlsfRepair> repairs;
+    for (const auto& entry : std::filesystem::directory_iterator(dir)) {
+        if (entry.path().extension() != ".tlsf") {
+            continue;
+        }
+        repairs.push_back({entry.path().filename().string(),
+                           tlsf::parse(read_file(entry.path().string())),
+                           read_tlsf_fitness(entry.path())});
+    }
+    std::sort(repairs.begin(), repairs.end(),
+              [](const TlsfRepair& lhs, const TlsfRepair& rhs) {
+                  return lhs.fitness.value_or(0.0) > rhs.fitness.value_or(0.0);
+              });
+    return repairs;
+}
+
+std::vector<std::pair<std::string, tlsf::Specification>> load_tlsf_ideals(
+    const std::string& dir) {
+    std::vector<std::pair<std::string, tlsf::Specification>> ideals;
+    for (const auto& entry : std::filesystem::directory_iterator(dir)) {
+        if (entry.path().extension() != ".tlsf") {
+            continue;
+        }
+        ideals.emplace_back(entry.path().filename().string(),
+                            tlsf::parse(read_file(entry.path().string())));
+    }
+    std::sort(
+        ideals.begin(), ideals.end(),
+        [](const auto& lhs, const auto& rhs) { return lhs.first < rhs.first; });
+    return ideals;
+}
+
 // Priority: equivalent > stronger > weaker > incomparable > timeout
 enum class Relation : std::uint8_t {
     Timeout,
@@ -126,37 +213,143 @@ Relation classify(std::optional<bool> fwd, std::optional<bool> rev) {
     return Relation::Timeout;
 }
 
-}  // namespace
+// Runs the n_repairs x n_ideals implication grid and prints, for each repair,
+// its strongest relation to any ideal plus a summary. `spawn(rep, ide)` returns
+// a std::future<Relation> for that pair, so the FRETISH and TLSF paths differ
+// only in which spec type and implication function they close over.
+template <typename Spawn>
+void run_and_report(const std::vector<RepairMeta>& repairs,
+                    const std::vector<std::string>& ideal_names, Spawn spawn) {
+    const std::size_t n_repairs = repairs.size();
+    const std::size_t n_ideals = ideal_names.size();
+    const std::size_t n_tasks = n_repairs * n_ideals;
+    const std::size_t n_hw = std::thread::hardware_concurrency();
+    const std::size_t max_in_flight = n_hw > 0 ? n_hw * 2 : 1;
 
-int main(int argc, const char* const argv[]) {
-    if (argc == 0 || argv == nullptr || argv[0] == nullptr) {
-        std::cerr << "fatal: missing argv[0]\n";
-        return 1;
-    }
-    const auto maybe_args = parse_args(argc, argv);
-    if (!maybe_args.has_value()) {
-        print_usage(argv[0]);
-        return 1;
-    }
-    const Args& args = *maybe_args;
-    const auto has_tlsf_file = [](const std::string& dir) {
-        std::error_code err_code;
-        const std::filesystem::directory_iterator iter(dir, err_code);
-        return std::any_of(std::filesystem::begin(iter),
-                           std::filesystem::end(iter), [](const auto& entry) {
-                               return entry.path().extension() == ".tlsf";
-                           });
+    struct BestResult {
+        Relation rel = Relation::Timeout;
+        std::size_t ideal_idx = 0;
     };
-    if (std::filesystem::path(args.repairs_dir).extension() == ".tlsf" ||
-        std::filesystem::path(args.ideals_dir).extension() == ".tlsf" ||
-        has_tlsf_file(args.repairs_dir) || has_tlsf_file(args.ideals_dir)) {
-        std::cerr << "compare does not yet support TLSF specifications\n";
+    std::vector<BestResult> best_per_repair(n_repairs);
+
+    run_bounded_async(
+        n_tasks, max_in_flight,
+        [&](std::size_t task_idx) {
+            const std::size_t rep = task_idx / n_ideals;
+            const std::size_t ide = task_idx % n_ideals;
+            return spawn(rep, ide);
+        },
+        [&](std::size_t task_idx, Relation rel) {
+            const std::size_t rep = task_idx / n_ideals;
+            const std::size_t ide = task_idx % n_ideals;
+            if (rel > best_per_repair[rep].rel) {
+                best_per_repair[rep] = {rel, ide};
+            }
+        });
+
+    std::size_t n_equivalent = 0;
+    std::size_t n_stronger = 0;
+    std::size_t n_weaker = 0;
+    std::size_t n_incomparable = 0;
+    std::size_t n_timeout = 0;
+    for (std::size_t idx = 0; idx < n_repairs; ++idx) {
+        const Relation best = best_per_repair[idx].rel;
+        const std::string& best_ideal =
+            ideal_names[best_per_repair[idx].ideal_idx];
+        std::cout << std::left << std::setw(24) << repairs[idx].name << " : ";
+        switch (best) {
+            case Relation::Equivalent:
+                std::cout << "equivalent to " << best_ideal;
+                ++n_equivalent;
+                break;
+            case Relation::Stronger:
+                std::cout << "strictly stronger than " << best_ideal;
+                ++n_stronger;
+                break;
+            case Relation::Weaker:
+                std::cout << "strictly weaker than " << best_ideal;
+                ++n_weaker;
+                break;
+            case Relation::Incomparable:
+                std::cout << "incomparable";
+                ++n_incomparable;
+                break;
+            case Relation::Timeout:
+                std::cout << "timeout";
+                ++n_timeout;
+                break;
+        }
+        const std::optional<double>& fitness = repairs[idx].fitness;
+        if (fitness) {
+            std::cout << std::fixed << std::setprecision(4)
+                      << "  [fitness: " << *fitness << "]";
+        }
+        std::cout << "\n";
+    }
+
+    std::cout << "\nSummary: " << n_equivalent << " equivalent, " << n_stronger
+              << " strictly stronger, " << n_weaker << " strictly weaker, "
+              << n_incomparable << " incomparable, " << n_timeout
+              << " timeout\n";
+}
+
+bool dir_has_extension(const std::string& dir, const std::string& ext) {
+    std::error_code err_code;
+    const std::filesystem::directory_iterator iter(dir, err_code);
+    return std::any_of(
+        std::filesystem::begin(iter), std::filesystem::end(iter),
+        [&ext](const auto& entry) { return entry.path().extension() == ext; });
+}
+
+int run_tlsf(const Args& args, SatisfiabilityChecker& checker) {
+    std::vector<TlsfRepair> repairs;
+    try {
+        repairs = load_tlsf_repairs(args.repairs_dir);
+    } catch (const std::exception& exc) {
+        std::cerr << "Error loading repairs: " << exc.what() << "\n";
         return 1;
     }
-    Config cfg;
-    cfg.black_timeout = std::chrono::milliseconds{20'000};
-    global_sat_checker().set_timeout(cfg.black_timeout);
+    if (repairs.empty()) {
+        std::cerr << "No .tlsf files found in: " << args.repairs_dir << "\n";
+        return 1;
+    }
 
+    std::vector<std::pair<std::string, tlsf::Specification>> ideals;
+    try {
+        ideals = load_tlsf_ideals(args.ideals_dir);
+    } catch (const std::exception& exc) {
+        std::cerr << "Error loading ideals: " << exc.what() << "\n";
+        return 1;
+    }
+    if (ideals.empty()) {
+        std::cerr << "No .tlsf files found in: " << args.ideals_dir << "\n";
+        return 1;
+    }
+
+    std::vector<RepairMeta> repair_meta;
+    repair_meta.reserve(repairs.size());
+    for (const TlsfRepair& repair : repairs) {
+        repair_meta.push_back({repair.name, repair.fitness});
+    }
+    std::vector<std::string> ideal_names;
+    ideal_names.reserve(ideals.size());
+    for (const auto& ideal : ideals) {
+        ideal_names.push_back(ideal.first);
+    }
+
+    run_and_report(
+        repair_meta, ideal_names, [&](std::size_t rep, std::size_t ide) {
+            return global_thread_pool().submit([&, rep, ide] {
+                return classify(tlsf_spec_implies(repairs[rep].spec,
+                                                  ideals[ide].second, checker),
+                                tlsf_spec_implies(ideals[ide].second,
+                                                  repairs[rep].spec, checker));
+            });
+        });
+    return 0;
+}
+
+int run_fretish(const Args& args, SatisfiabilityChecker& checker) {
     std::vector<std::pair<std::string, serialisation::ScoredSpecification>>
         repairs;
     try {
@@ -182,86 +375,62 @@ int main(int argc, const char* const argv[]) {
         return 1;
     }
 
-    SatisfiabilityChecker& checker = global_sat_checker();
-    std::size_t n_equivalent = 0;
-    std::size_t n_stronger = 0;
-    std::size_t n_weaker = 0;
-    std::size_t n_incomparable = 0;
-    std::size_t n_timeout = 0;
-
-    const std::size_t n_repairs = repairs.size();
-    const std::size_t n_ideals = ideals.size();
-    const std::size_t n_tasks = n_repairs * n_ideals;
-    const std::size_t n_hw = std::thread::hardware_concurrency();
-    const std::size_t max_in_flight = n_hw > 0 ? n_hw * 2 : 1;
-
-    struct BestResult {
-        Relation rel = Relation::Timeout;
-        std::size_t ideal_idx = 0;
-    };
-    std::vector<BestResult> best_per_repair(n_repairs);
-
-    run_bounded_async(
-        n_tasks, max_in_flight,
-        [&](std::size_t task_idx) {
-            const std::size_t rep = task_idx / n_ideals;
-            const std::size_t ide = task_idx % n_ideals;
-            return global_thread_pool().submit([&, rep, ide] {
-                return classify(
-                    spec_implies(repairs[rep].second.spec, ideals[ide].second,
-                                 checker),
-                    spec_implies(ideals[ide].second, repairs[rep].second.spec,
-                                 checker));
-            });
-        },
-        [&](std::size_t task_idx, Relation rel) {
-            const std::size_t rep = task_idx / n_ideals;
-            const std::size_t ide = task_idx % n_ideals;
-            if (rel > best_per_repair[rep].rel) {
-                best_per_repair[rep] = {rel, ide};
-            }
-        });
-
-    for (std::size_t idx = 0; idx < n_repairs; ++idx) {
-        const auto& [repair_name, repair_scored] = repairs[idx];
-        const Relation best = best_per_repair[idx].rel;
-        const std::string& best_ideal =
-            ideals[best_per_repair[idx].ideal_idx].first;
-        std::cout << std::left << std::setw(24) << repair_name << " : ";
-        switch (best) {
-            case Relation::Equivalent:
-                std::cout << "equivalent to " << best_ideal;
-                ++n_equivalent;
-                break;
-            case Relation::Stronger:
-                std::cout << "strictly stronger than " << best_ideal;
-                ++n_stronger;
-                break;
-            case Relation::Weaker:
-                std::cout << "strictly weaker than " << best_ideal;
-                ++n_weaker;
-                break;
-            case Relation::Incomparable:
-                std::cout << "incomparable";
-                ++n_incomparable;
-                break;
-            case Relation::Timeout:
-                std::cout << "timeout";
-                ++n_timeout;
-                break;
-        }
-        const auto& fitness = repair_scored.fitness;
-        if (fitness) {
-            const double total = fitness->total;
-            std::cout << std::fixed << std::setprecision(4)
-                      << "  [fitness: " << total << "]";
-        }
-        std::cout << "\n";
+    std::vector<RepairMeta> repair_meta;
+    repair_meta.reserve(repairs.size());
+    for (const auto& repair : repairs) {
+        repair_meta.push_back(
+            {repair.first,
+             repair.second.fitness
+                 ? std::optional<double>(repair.second.fitness->total)
+                 : std::nullopt});
+    }
+    std::vector<std::string> ideal_names;
+    ideal_names.reserve(ideals.size());
+    for (const auto& ideal : ideals) {
+        ideal_names.push_back(ideal.first);
     }
 
-    std::cout << "\nSummary: " << n_equivalent << " equivalent, " << n_stronger
-              << " strictly stronger, " << n_weaker << " strictly weaker, "
-              << n_incomparable << " incomparable, " << n_timeout
-              << " timeout\n";
+    run_and_report(repair_meta, ideal_names,
+                   [&](std::size_t rep, std::size_t ide) {
+                       return global_thread_pool().submit([&, rep, ide] {
+                           return classify(
+                               spec_implies(repairs[rep].second.spec,
+                                            ideals[ide].second, checker),
+                               spec_implies(ideals[ide].second,
+                                            repairs[rep].second.spec, checker));
+                       });
+                   });
     return 0;
+}
+
+}  // namespace
+
+int main(int argc, const char* const argv[]) {
+    if (argc == 0 || argv == nullptr || argv[0] == nullptr) {
+        std::cerr << "fatal: missing argv[0]\n";
+        return 1;
+    }
+    const auto maybe_args = parse_args(argc, argv);
+    if (!maybe_args.has_value()) {
+        print_usage(argv[0]);
+        return 1;
+    }
+    const Args& args = *maybe_args;
+
+    Config cfg;
+    cfg.black_timeout = std::chrono::milliseconds{20'000};
+    global_sat_checker().set_timeout(cfg.black_timeout);
+    SatisfiabilityChecker& checker = global_sat_checker();
+
+    // Route by input format. A .tlsf extension on either directory path, or any
+    // .tlsf file in either directory, selects the TLSF path; otherwise FRETISH
+    // JSON. Mixing formats across the two directories is not supported, and the
+    // per-path loaders reject a directory holding none of their extension.
+    const bool tlsf =
+        std::filesystem::path(args.repairs_dir).extension() == ".tlsf" ||
+        std::filesystem::path(args.ideals_dir).extension() == ".tlsf" ||
+        dir_has_extension(args.repairs_dir, ".tlsf") ||
+        dir_has_extension(args.ideals_dir, ".tlsf");
+
+    return tlsf ? run_tlsf(args, checker) : run_fretish(args, checker);
 }

@@ -54,6 +54,13 @@ struct Config {
     std::size_t weakening_filter_interval = 1;
     std::size_t bloat_filter_interval = 1;
     std::chrono::milliseconds black_timeout{1000};
+    // Per-call wall-clock budget for ltlsynt realizability checks. Unlike
+    // black, ltlsynt has no internal timeout, and the genetic search
+    // occasionally generates synthesis queries that run for minutes with no
+    // upper bound, stalling a run on the tail. A call exceeding this is killed
+    // and treated as unrealizable. 0 (the default) disables the timeout,
+    // preserving prior behaviour; the heavy TLSF specs set it.
+    std::chrono::milliseconds ltlsynt_timeout{0};
     // When true, print the CPU-attribution report (your code vs. the external
     // CLI tools, via getrusage + per-tool wait4). Opt-in: off leaves output
     // identical to before.
@@ -96,6 +103,15 @@ struct Config {
     RepairMode repair_mode = RepairMode::Monolithic;
     std::size_t muc_max_iterations = 32;
     std::size_t parallel = std::thread::hardware_concurrency();
+    // Upper bound on ltlsynt processes running concurrently across the whole
+    // program, independent of `parallel`. ltlsynt is by far the heaviest
+    // external tool on hard specs (multi-GB resident per call for the TLSF
+    // examples), so a scoring pool of `parallel` workers each spawning one can
+    // exhaust RAM and OOM the machine. 0 means unlimited (the default, which
+    // preserves prior behaviour); a positive value serialises the surplus while
+    // the other workers keep doing non-ltlsynt work. Size it to fit RAM:
+    // roughly (available_GB / per-call_GB).
+    std::size_t max_concurrent_realizability = 0;
     // A fitness function that throws (in practice an external tool failing on
     // one evolved formula) costs that individual rather than the whole run:
     // the search is stochastic, so one candidate lost out of a population is

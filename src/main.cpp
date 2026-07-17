@@ -134,7 +134,8 @@ void print_timing_report() {
               LtlfiltStats::total_time_s, LtlfiltStats::n_cache_hits);
     print_row("ltlsynt", RealizabilityChecker::n_cache_misses,
               RealizabilityChecker::total_time_s,
-              RealizabilityChecker::n_cache_hits);
+              RealizabilityChecker::n_cache_hits,
+              RealizabilityChecker::n_timeouts);
     print_row("black", SatisfiabilityChecker::n_cache_misses,
               SatisfiabilityChecker::total_time_s,
               SatisfiabilityChecker::n_cache_hits,
@@ -485,6 +486,8 @@ int main(int argc, const char* const argv[]) {
         }
     }
     global_sat_checker().set_timeout(cfg.black_timeout);
+    RealizabilityChecker::set_max_concurrency(cfg.max_concurrent_realizability);
+    RealizabilityChecker::set_timeout(cfg.ltlsynt_timeout);
     if (has_flag(argc, argv, "-h") || has_flag(argc, argv, "--help")) {
         print_help(argv[0]);
         return 0;

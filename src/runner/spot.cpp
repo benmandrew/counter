@@ -1,5 +1,6 @@
 #include "runner/spot.hpp"
 
+#include <poll.h>
 #include <sys/resource.h>
 #include <sys/types.h>
 #include <sys/wait.h>
@@ -7,16 +8,22 @@
 
 #include <algorithm>
 #include <array>
+#include <atomic>
 #include <cassert>
 #include <cerrno>
 #include <chrono>
+#include <condition_variable>
+#include <csignal>
+#include <cstdlib>
 #include <cstring>
+#include <fstream>
 #include <iostream>
 #include <memory>
 #include <mutex>
 #include <stdexcept>
 #include <string>
 #include <unordered_map>
+#include <utility>
 #include <vector>
 
 #include "requirement.hpp"
@@ -24,10 +31,66 @@
 
 namespace {
 
+// Process-global counting gate limiting concurrent ltlsynt executions. C++17
+// has no counting_semaphore, so this is a mutex + condition_variable. A limit
+// of 0 means unlimited, so acquire()/release() are no-ops in that case and the
+// pre-cap behaviour is preserved exactly.
+class ConcurrencyGate {
+   public:
+    void set_limit(std::size_t limit) {
+        {
+            const std::scoped_lock lock(m_mutex);
+            m_limit = limit;
+        }
+        m_cv.notify_all();
+    }
+    void acquire() {
+        std::unique_lock<std::mutex> lock(m_mutex);
+        m_cv.wait(lock, [this] { return m_limit == 0 || m_active < m_limit; });
+        ++m_active;
+    }
+    void release() {
+        {
+            const std::scoped_lock lock(m_mutex);
+            --m_active;
+        }
+        m_cv.notify_one();
+    }
+
+   private:
+    std::mutex m_mutex;
+    std::condition_variable m_cv;
+    std::size_t m_limit = 0;
+    std::size_t m_active = 0;
+};
+
+ConcurrencyGate& ltlsynt_gate() {
+    static ConcurrencyGate gate;
+    return gate;
+}
+
+// Per-call wall-clock budget for the ltlsynt exec, in milliseconds; 0 disables
+// the timeout. Set once at startup from Config::ltlsynt_timeout, read by every
+// worker, hence atomic. ltlsynt normally decides in milliseconds, but hard
+// synthesis queries the genetic search stumbles onto can run for minutes with
+// no upper bound, so an unbounded run stalls on the tail.
+std::atomic<std::int64_t> g_ltlsynt_timeout_ms{0};
+
+// RAII acquire/release around the ltlsynt exec, so a throwing execute call
+// (or parse) never leaks a permit and deadlocks the remaining workers.
+class GateGuard {
+   public:
+    GateGuard() { ltlsynt_gate().acquire(); }
+    ~GateGuard() { ltlsynt_gate().release(); }
+    GateGuard(const GateGuard&) = delete;
+    GateGuard& operator=(const GateGuard&) = delete;
+};
+
 struct ProcessResult {
     int m_exit_code = 0;
     std::string m_output;
     double m_cpu_s = 0.0;
+    bool m_timed_out = false;
 };
 
 double rusage_cpu_seconds(const struct rusage& usage) {
@@ -54,7 +117,8 @@ std::string read_from_fd(int read_fd) {
     std::array<char, 4096> read_buf{};
     while (true) {
         const ssize_t bytes_read =
-            read(read_fd, read_buf.data(), read_buf.size());
+            read(  // NOLINT(clang-analyzer-unix.BlockInCriticalSection)
+                read_fd, read_buf.data(), read_buf.size());
         if (bytes_read > 0) {
             output.append(read_buf.data(),
                           static_cast<std::size_t>(bytes_read));
@@ -70,6 +134,55 @@ std::string read_from_fd(int read_fd) {
         __builtin_unreachable();
     }
     return output;
+}
+
+// Reads from read_fd until the child closes it (EOF) or `timeout` elapses.
+// Returns the bytes read so far and whether the deadline was hit; the caller
+// kills and reaps the child on timeout. A zero timeout never expires, matching
+// the untimed read_from_fd.
+std::pair<std::string, bool> read_from_fd_timed(
+    int read_fd, std::chrono::milliseconds timeout) {
+    std::string output;
+    std::array<char, 4096> read_buf{};
+    const auto deadline = std::chrono::steady_clock::now() + timeout;
+    while (true) {
+        const auto now = std::chrono::steady_clock::now();
+        if (now >= deadline) {
+            return {output, true};
+        }
+        const auto remaining =
+            std::chrono::duration_cast<std::chrono::milliseconds>(deadline -
+                                                                  now)
+                .count();
+        struct pollfd pfd{read_fd, POLLIN, 0};
+        const int poll_result = poll(&pfd, 1, static_cast<int>(remaining));
+        if (poll_result < 0) {
+            if (errno == EINTR) {
+                continue;
+            }
+            assert(false);
+            __builtin_unreachable();
+        }
+        if (poll_result == 0) {
+            return {output, true};
+        }
+        const ssize_t bytes_read =
+            read(  // NOLINT(clang-analyzer-unix.BlockInCriticalSection)
+                read_fd, read_buf.data(), read_buf.size());
+        if (bytes_read > 0) {
+            output.append(read_buf.data(),
+                          static_cast<std::size_t>(bytes_read));
+            continue;
+        }
+        if (bytes_read == 0) {
+            return {output, false};
+        }
+        if (errno == EINTR) {
+            continue;
+        }
+        assert(false);
+        __builtin_unreachable();
+    }
 }
 
 int wait_for_child(pid_t child_pid, double& cpu_s_out) {
@@ -88,7 +201,9 @@ int wait_for_child(pid_t child_pid, double& cpu_s_out) {
     return -1;
 }
 
-ProcessResult execute_and_capture(const std::vector<std::string>& arguments) {
+ProcessResult execute_and_capture(
+    const std::vector<std::string>& arguments,
+    std::chrono::milliseconds timeout = std::chrono::milliseconds::zero()) {
     assert(!arguments.empty());
     // Build argv before forking: heap allocation inside the child between
     // fork() and execv() can deadlock if another thread held the allocator
@@ -113,11 +228,23 @@ ProcessResult execute_and_capture(const std::vector<std::string>& arguments) {
         spawn_child_and_exec(argv.data(), arguments[0].c_str(), pipe_fds[1]);
     }
     close(pipe_fds[1]);
-    std::string output = read_from_fd(pipe_fds[0]);
+    bool timed_out = false;
+    std::string output;
+    if (timeout > std::chrono::milliseconds::zero()) {
+        std::tie(output, timed_out) = read_from_fd_timed(pipe_fds[0], timeout);
+        if (timed_out) {
+            // The child is still running (or its pipe still open); kill it so
+            // wait_for_child reaps immediately instead of blocking on the very
+            // query the timeout exists to abandon.
+            kill(child_pid, SIGKILL);
+        }
+    } else {
+        output = read_from_fd(pipe_fds[0]);
+    }
     close(pipe_fds[0]);
     double cpu_s = 0.0;
     int exit_code = wait_for_child(child_pid, cpu_s);
-    return {exit_code, output, cpu_s};
+    return {exit_code, output, cpu_s, timed_out};
 }
 
 std::string join_comma(const std::vector<std::string>& items) {
@@ -218,6 +345,14 @@ std::string spot_bin_dir() {
 
 std::string ltlsynt_path() { return spot_bin_dir() + "/ltlsynt"; }
 
+void RealizabilityChecker::set_max_concurrency(std::size_t limit) {
+    ltlsynt_gate().set_limit(limit);
+}
+
+void RealizabilityChecker::set_timeout(std::chrono::milliseconds timeout) {
+    g_ltlsynt_timeout_ms.store(timeout.count());
+}
+
 std::string ltl2tgba_path() { return spot_bin_dir() + "/ltl2tgba"; }
 
 std::string run_ltl2tgba_for_counting(const std::string& formula) {
@@ -315,15 +450,43 @@ bool RealizabilityChecker::check_realizability_ltl(
     } else if (!outputs.empty()) {
         command.push_back("--outs=" + join_comma(outputs));
     }
+    const auto timeout = std::chrono::milliseconds(g_ltlsynt_timeout_ms.load());
     const auto start = std::chrono::steady_clock::now();
-    const ProcessResult result = execute_and_capture(command);
+    ProcessResult result;
+    {
+        // Hold a permit only for the exec: the child's multi-GB footprint is
+        // freed once execute_and_capture reaps it, so parsing and cache updates
+        // run outside the gate.
+        const GateGuard gate_guard;
+        result = execute_and_capture(command, timeout);
+    }
     const double elapsed =
         std::chrono::duration<double>(std::chrono::steady_clock::now() - start)
             .count();
-    const bool realizable = parse_realizability_output(result);
+    // A timed-out query is treated as unrealizable: its realizability could not
+    // be decided within budget, so the candidate is not admitted as a repair.
+    // This is conservative (a genuinely realizable but hard-to-synthesise spec
+    // is dropped), which is the point — those are the queries that would
+    // otherwise stall the run for minutes each.
+    const bool realizable =
+        result.m_timed_out ? false : parse_realizability_output(result);
+    // Diagnostic hook (off unless COUNTER_LTLSYNT_LOG names a file): append one
+    // "elapsed_s timed_out n_atoms" line per ltlsynt exec, for studying the
+    // call-duration distribution and tuning ltlsynt_timeout. Zero cost when the
+    // env var is unset.
+    if (const char* log_path = std::getenv("COUNTER_LTLSYNT_LOG")) {
+        static std::mutex log_mutex;
+        const std::scoped_lock log_lock(log_mutex);
+        std::ofstream log_file(log_path, std::ios::app);
+        log_file << elapsed << ' ' << (result.m_timed_out ? 1 : 0) << ' '
+                 << (inputs.size() + outputs.size()) << '\n';
+    }
     std::scoped_lock lock(m_cache_mutex);
     total_time_s += elapsed;
     total_cpu_s += result.m_cpu_s;
+    if (result.m_timed_out) {
+        n_timeouts++;
+    }
     m_cache.emplace(cache_key, realizable);
     return realizable;
 }

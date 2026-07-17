@@ -28,6 +28,7 @@ add_executable(counter_tests
     tlsf/writer_tests.cpp
     tlsf/filter_tests.cpp
     tlsf/fitness_tests.cpp
+    tlsf/mucs_tests.cpp
     tlsf/genetic_tests.cpp
     tlsf/pipeline_tests.cpp
 )
@@ -69,6 +70,7 @@ add_test(NAME counter_tests.tlsf_parser COMMAND counter_tests tlsf_parser)
 add_test(NAME counter_tests.tlsf_writer COMMAND counter_tests tlsf_writer)
 add_test(NAME counter_tests.tlsf_filter COMMAND counter_tests tlsf_filter)
 add_test(NAME counter_tests.tlsf_fitness COMMAND counter_tests tlsf_fitness)
+add_test(NAME counter_tests.tlsf_mucs COMMAND counter_tests tlsf_mucs)
 add_test(NAME counter_tests.tlsf_genetic COMMAND counter_tests tlsf_genetic)
 add_test(NAME counter_tests.tlsf_pipeline COMMAND counter_tests tlsf_pipeline)
 

@@ -78,6 +78,7 @@ target_sources(counter_fitness PRIVATE
     src/tlsf/crossover.cpp
     src/tlsf/operators.cpp
     src/tlsf/filter.cpp
+    src/tlsf/mucs.cpp
     src/tlsf/pipeline.cpp
     src/config_io.cpp
 )

@@ -33,6 +33,9 @@ struct Ltl2tgbaStats {
     // Child-process CPU time (user+sys), from wait4(); unlike total_time_s
     // (wall) it excludes time the parent spends blocked waiting on the child.
     inline static double total_cpu_s = 0.0;
+    // ltl2tgba exit-2-on-tautology results substituted with the universal
+    // automaton (see run_ltl2tgba_for_counting) rather than raised as errors.
+    inline static std::size_t n_tautology_substitutions = 0;
 };
 
 class RealizabilityChecker {

@@ -141,6 +141,11 @@ void print_timing_report() {
               SatisfiabilityChecker::n_timeouts);
     print_row("ganak", GanakStats::n_cache_misses, GanakStats::total_time_s,
               GanakStats::n_cache_hits);
+    if (Ltl2tgbaStats::n_tautology_substitutions > 0) {
+        std::cout << "\nltl2tgba tautology substitutions (SPOT exit-2 bug, "
+                     "treated as trivially true): "
+                  << Ltl2tgbaStats::n_tautology_substitutions << "\n";
+    }
     std::cout << "\nConstant-folded (decided by ltlfilt, no black call): "
               << SatisfiabilityChecker::n_constant_folded << "\n";
     std::cout << "\nFitness cache: "

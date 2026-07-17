@@ -158,6 +158,35 @@ void build_specification_formula(const Specification& specification,
     formula = "(" + conj_a + ") -> (" + conj_g + ")";
 }
 
+// The universal (trivially-true) automaton, in the exact HOA shape ltl2tgba
+// itself emits for the constant `true`: one accepting state over zero atoms
+// with a `[t]` self-loop. Substituted for the exit-2-on-tautology bug below;
+// parses to the same TransferSystem a genuine tautology would.
+constexpr const char* k_universal_hoa =
+    "HOA: v1\n"
+    "name: \"1\"\n"
+    "States: 1\n"
+    "Start: 0\n"
+    "AP: 0\n"
+    "acc-name: all\n"
+    "Acceptance: 0 t\n"
+    "properties: trans-labels explicit-labels state-acc complete\n"
+    "properties: deterministic stutter-invariant weak\n"
+    "--BODY--\n"
+    "State: 0\n"
+    "[t] 0\n"
+    "--END--\n";
+
+// SPOT 2.15.1's ltl2tgba aborts with exit 2 and this stderr line when a formula
+// reduces to a tautology (the printed automaton is universal, hence complete,
+// but its prop_complete() flag was left unset). The signature is stable across
+// the invocation's binary-path prefix.
+bool is_tautology_print_error(const ProcessResult& result) {
+    return result.m_exit_code == 2 &&
+           result.m_output.find("automaton is complete but prop_complete()") !=
+               std::string::npos;
+}
+
 bool parse_realizability_output(const ProcessResult& result) {
     if (result.m_output.find("UNREALIZABLE") != std::string::npos) {
         return false;
@@ -219,6 +248,19 @@ std::string run_ltl2tgba_for_counting(const std::string& formula) {
     const double elapsed =
         std::chrono::duration<double>(std::chrono::steady_clock::now() - start)
             .count();
+    if (is_tautology_print_error(result)) {
+        // The formula is a tautology: it accepts every trace, so the universal
+        // automaton is the correct result, not a scoring failure. Substituting
+        // it (rather than letting the throw drop the individual) keeps a
+        // genuinely-true formula from counting against the run's
+        // max_scoring_failure_rate tolerance.
+        std::scoped_lock lock(cache_mutex);
+        Ltl2tgbaStats::total_time_s += elapsed;
+        Ltl2tgbaStats::total_cpu_s += result.m_cpu_s;
+        Ltl2tgbaStats::n_tautology_substitutions++;
+        cache.emplace(formula, k_universal_hoa);
+        return k_universal_hoa;
+    }
     if (result.m_exit_code != 0) {
         // A non-zero exit here (e.g. a subprocess spawn failure under heavy
         // concurrent forking) must not be cached as a successful result

@@ -133,6 +133,18 @@ ltl <spec.json> [<spec.json> ...]
 
 One file: prints assumptions and guarantees with their LTL formulae. Multiple files: prefixes each block with the file path. Each requirement prints as `[assumption]`/`[guarantee] <string>` followed by `LTL: <formula>` if one is present.
 
+**`mucs`** — extract a minimal unrealizable core from a TLSF spec
+
+```
+mucs <spec.tlsf>
+```
+
+| Flag | Description |
+|---|---|
+| `-h`, `--help` | Show help |
+
+Prints the smallest subset of the guarantee-side sections (PRESET, ASSERT, GUARANTEE) that stays unrealizable against the full, unchanged environment side (INITIALLY, REQUIRE, ASSUME) — the culprit formulae behind unrealizability. Uses QuickXplain over `ltlsynt`. Prints `REALIZABLE (no core)` if the input is already realizable. TLSF-only (FRETISH JSON is not supported).
+
 ## External tools
 
 - `ltl2tgba`, `ltlsynt` — from SPOT, built from source via `cmake/spot.cmake`; located via the `SPOT_BIN_DIR` compile macro.

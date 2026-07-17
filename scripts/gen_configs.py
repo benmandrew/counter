@@ -110,6 +110,12 @@ DEFAULTS: dict = {
     # Emitted only when positive, so the standard grids stay byte-identical. The
     # heavy TLSF specs set it to cut ltlsynt's multi-minute realizability tail.
     "ltlsynt_timeout_ms": 0,
+    # 0 = fall back to config.hpp's 0.05. Emitted only when positive, so the
+    # standard grids stay byte-identical. The TLSF one-hot encodings mutate into
+    # tautological guarantees that SPOT 2.15.1's ltl2tgba rejects (exit 2); the
+    # circuit breaker drops them, but at the smallest population the default 0.05
+    # tolerance floors to 1 and aborts the run, so the campaign raises it.
+    "max_scoring_failure_rate": 0.0,
 }
 
 
@@ -164,7 +170,9 @@ def make_toml(overrides: dict, defaults: dict = DEFAULTS) -> str:
     ] + ([f"max_concurrent_realizability = {d['max_concurrent_realizability']}"]
          if d.get("max_concurrent_realizability") else []) + (
         [f"ltlsynt_timeout_ms = {d['ltlsynt_timeout_ms']}"]
-        if d.get("ltlsynt_timeout_ms") else []) + [
+        if d.get("ltlsynt_timeout_ms") else []) + (
+        [f"max_scoring_failure_rate = {_fmt(d['max_scoring_failure_rate'])}"]
+        if d.get("max_scoring_failure_rate") else []) + [
         "",
         "[tlsf]",
         f'repair_mode = "{d["repair_mode"]}"',
@@ -351,6 +359,16 @@ TLSF_MAX_REALIZABILITY = 0
 # is treated as unrealizable.
 TLSF_LTLSYNT_TIMEOUT_MS = 500
 
+# Scoring-failure tolerance for the TLSF campaign. The one-hot balancer/direction
+# encodings mutate into tautological guarantees (e.g. G((b2 -> !x) | !b0 | b1 | b2)),
+# which SPOT 2.15.1's ltl2tgba rejects with exit 2. score_population's circuit
+# breaker drops those individuals, but its tolerance is max_scoring_failure_rate *
+# population floored at 1, so at the smallest rung (pop50 -> ~25 offspring) the
+# default 0.05 tolerates only 1 and an unlucky seed hitting 2-3 tautologies aborts
+# the whole run. 0.15 absorbs the observed rate while still catching a genuinely
+# broken tool (which fails ~all individuals). Larger populations already clear it.
+TLSF_MAX_SCORING_FAILURE_RATE = 0.15
+
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
@@ -418,6 +436,16 @@ def parse_args() -> argparse.Namespace:
                              "specs occasionally generate multi-minute synthesis "
                              f"queries, so --tlsf defaults to "
                              f"{TLSF_LTLSYNT_TIMEOUT_MS} ms")
+    parser.add_argument("--max-scoring-failure-rate", type=float, default=None,
+                        metavar="RATE",
+                        help="Fraction of a population allowed to fail scoring "
+                             "before the run aborts "
+                             "(runtime.max_scoring_failure_rate). 0 = fall back "
+                             "to the built-in 0.05; the key is omitted from the "
+                             "emitted TOML when 0, keeping the standard grids "
+                             "byte-identical. The TLSF one-hot encodings produce "
+                             "tautologies that ltl2tgba rejects, so --tlsf "
+                             f"defaults to {TLSF_MAX_SCORING_FAILURE_RATE}")
     return parser.parse_args()
 
 
@@ -434,6 +462,7 @@ def main() -> None:
     out_dir = args.out_dir
     max_realizability = args.max_realizability
     ltlsynt_timeout = args.ltlsynt_timeout
+    max_scoring_failure_rate = args.max_scoring_failure_rate
     if args.tlsf:
         sweep_table = TLSF_SWEEPS
         if schemes == SCHEMES:
@@ -444,8 +473,11 @@ def main() -> None:
             max_realizability = TLSF_MAX_REALIZABILITY
         if ltlsynt_timeout is None:
             ltlsynt_timeout = TLSF_LTLSYNT_TIMEOUT_MS
+        if max_scoring_failure_rate is None:
+            max_scoring_failure_rate = TLSF_MAX_SCORING_FAILURE_RATE
     defaults["max_concurrent_realizability"] = max_realizability or 0
     defaults["ltlsynt_timeout_ms"] = ltlsynt_timeout or 0
+    defaults["max_scoring_failure_rate"] = max_scoring_failure_rate or 0.0
     wanted = set(args.sweeps)
     sweeps = [(name, levels) for name, levels in sweep_table if name in wanted]
     # (subdirectory, run_weakening override). The flat case carries no override,

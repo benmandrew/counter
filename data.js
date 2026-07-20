@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1784314600498,
+  "lastUpdate": 1784553582640,
   "repoUrl": "https://github.com/benmandrew/counter",
   "entries": {
     "counter benchmarks": [
@@ -4248,6 +4248,78 @@ window.BENCHMARK_DATA = {
             "value": 3474.0506263593593,
             "unit": "ns/iter",
             "extra": "iterations: 200923\ncpu: 3473.670858985783 ns\nthreads: 1"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "benmandrew@gmail.com",
+            "name": "benmandrew",
+            "username": "benmandrew"
+          },
+          "committer": {
+            "email": "benmandrew@gmail.com",
+            "name": "benmandrew",
+            "username": "benmandrew"
+          },
+          "distinct": true,
+          "id": "62bbc6f1613b9d7a68912b84fa01996aa3cdd670",
+          "message": "fix: bound and reap the ltl2tgba model-counting subprocess\n\nThe model-counting path (run_ltl2tgba_for_counting) had two defects that\ntogether leaked multi-GB processes across long TLSF campaigns.\n\n1. No timeout. It exec'd `ltl2tgba -D -S -H` via execute_and_capture with no\n   timeout, unlike the realizability path which passes ltlsynt_timeout_ms and\n   kills on the deadline. On the deeply nested formulae the search builds, the\n   -D determinization blows up super-exponentially and runs unbounded (observed:\n   40+ GB, hours). Add a Config::ltl2tgba_timeout (runtime.ltl2tgba_timeout_ms,\n   0 = disabled, matching ltlsynt_timeout), thread it into the counting exec, and\n   on timeout drop the individual via the existing max_scoring_failure_rate\n   circuit breaker rather than caching a partial result or stalling the run.\n\n2. No death-linkage. spawn_child_and_exec did only dup2 + execv, so when the\n   parent counter process was killed (e.g. a campaign harness enforcing a\n   wall/RAM budget) while a subprocess was mid-run, the child was reparented to\n   PID 1 and never reaped. Add prctl(PR_SET_PDEATHSIG, SIGKILL) after fork, with\n   a getppid() race guard. This covers every subprocess (ltl2tgba, ltlsynt,\n   black), all of which are short-lived queries that should never outlive the\n   parent.\n\nVerified: unit tests pass; a benign 10s timeout runs normally (9 ltl2tgba calls,\nexit 0) while a 1ms timeout trips the counting-timeout path and the scoring\ncircuit breaker as designed.",
+          "timestamp": "2026-07-20T14:16:07+01:00",
+          "tree_id": "226fd2610d45b0eb3e19f5919cd895663a3867e7",
+          "url": "https://github.com/benmandrew/counter/commit/62bbc6f1613b9d7a68912b84fa01996aa3cdd670"
+        },
+        "date": 1784553582221,
+        "tool": "googlecpp",
+        "benches": [
+          {
+            "name": "Syntactic similarity - small formulas (3 variables)",
+            "value": 542.4290360585136,
+            "unit": "ns/iter",
+            "extra": "iterations: 1297807\ncpu: 542.3433607616541 ns\nthreads: 1"
+          },
+          {
+            "name": "Syntactic similarity - large formulas (11 variables, O(n*m) shared_subformulae)",
+            "value": 2127.1059847984857,
+            "unit": "ns/iter",
+            "extra": "iterations: 328783\ncpu: 2125.9217508204506 ns\nthreads: 1"
+          },
+          {
+            "name": "Spec implication check - warm black cache",
+            "value": 588.1716951302956,
+            "unit": "ns/iter",
+            "extra": "iterations: 1204344\ncpu: 587.7879551025286 ns\nthreads: 1"
+          },
+          {
+            "name": "Trace model counting - matrix exponentiation/steps:5",
+            "value": 202.51635185132267,
+            "unit": "ns/iter",
+            "extra": "iterations: 3456153\ncpu: 202.47840532522721 ns\nthreads: 1"
+          },
+          {
+            "name": "Trace model counting - matrix exponentiation/steps:10",
+            "value": 230.62887756668326,
+            "unit": "ns/iter",
+            "extra": "iterations: 3042791\ncpu: 230.5751673381446 ns\nthreads: 1"
+          },
+          {
+            "name": "Trace model counting - matrix exponentiation/steps:20",
+            "value": 256.29622211235625,
+            "unit": "ns/iter",
+            "extra": "iterations: 2756911\ncpu: 256.2476811910143 ns\nthreads: 1"
+          },
+          {
+            "name": "Trace model counting - matrix exponentiation/steps:50",
+            "value": 307.7511057273905,
+            "unit": "ns/iter",
+            "extra": "iterations: 2286730\ncpu: 307.73408054295845 ns\nthreads: 1"
+          },
+          {
+            "name": "Mutate specification - 3-guarantee takeoff spec",
+            "value": 3301.963572793282,
+            "unit": "ns/iter",
+            "extra": "iterations: 212506\ncpu: 3301.669148165227 ns\nthreads: 1"
           }
         ]
       }

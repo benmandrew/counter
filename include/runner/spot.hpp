@@ -27,6 +27,14 @@ std::string ltl2tgba_path();
 /// Asserts that the binary is accessible and that the process exits cleanly.
 std::string run_ltl2tgba_for_counting(const std::string& formula);
 
+/// Per-call wall-clock budget for the ltl2tgba counting exec (process-global,
+/// like RealizabilityChecker's ltlsynt timeout). A call exceeding it is killed
+/// and raised as an error, so the offending individual is dropped rather than
+/// stalling the run on an unbounded deterministic-automaton blowup. Zero (the
+/// default) disables the timeout. Set once at startup from
+/// Config::ltl2tgba_timeout.
+void set_ltl2tgba_timeout(std::chrono::milliseconds timeout);
+
 struct Ltl2tgbaStats {
     inline static std::size_t n_cache_hits = 0;
     inline static std::size_t n_cache_misses = 0;
@@ -37,6 +45,9 @@ struct Ltl2tgbaStats {
     // ltl2tgba exit-2-on-tautology results substituted with the universal
     // automaton (see run_ltl2tgba_for_counting) rather than raised as errors.
     inline static std::size_t n_tautology_substitutions = 0;
+    // Counting calls abandoned at the per-call timeout (raised as errors, so
+    // the individual is dropped).
+    inline static std::size_t n_timeouts = 0;
 };
 
 class RealizabilityChecker {

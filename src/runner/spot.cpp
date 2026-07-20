@@ -1,6 +1,7 @@
 #include "runner/spot.hpp"
 
 #include <poll.h>
+#include <sys/prctl.h>
 #include <sys/resource.h>
 #include <sys/types.h>
 #include <sys/wait.h>
@@ -76,6 +77,14 @@ ConcurrencyGate& ltlsynt_gate() {
 // no upper bound, so an unbounded run stalls on the tail.
 std::atomic<std::int64_t> g_ltlsynt_timeout_ms{0};
 
+// Per-call wall-clock budget for the ltl2tgba counting exec, in milliseconds; 0
+// disables the timeout. Set once at startup from Config::ltl2tgba_timeout, read
+// by every scoring worker, hence atomic. Mirrors g_ltlsynt_timeout_ms: ltl2tgba
+// has no internal timeout and its -D determinization can run unbounded on the
+// deeply nested formulae the search builds, orphaning a multi-GB process when
+// the run is torn down.
+std::atomic<std::int64_t> g_ltl2tgba_timeout_ms{0};
+
 // RAII acquire/release around the ltlsynt exec, so a throwing execute call
 // (or parse) never leaks a permit and deadlocks the remaining workers.
 class GateGuard {
@@ -108,6 +117,16 @@ void spawn_child_and_exec(char* const* argv, const char* executable,
         _exit(127);
     }
     close(write_fd);
+    // Never outlive the parent: if the counter process is killed (e.g. a
+    // campaign harness enforcing a wall/RAM budget) while this subprocess is
+    // mid-run, deliver SIGKILL instead of leaving a multi-GB ltl2tgba/ltlsynt
+    // orphan reparented to PID 1. getppid() closes the fork/prctl race where
+    // the parent died in the window before the request was registered. Every
+    // exec here is a short-lived query subprocess, so this is always desired.
+    prctl(PR_SET_PDEATHSIG, SIGKILL);
+    if (getppid() == 1) {
+        _exit(127);
+    }
     execv(executable, argv);
     _exit(127);
 }
@@ -353,6 +372,10 @@ void RealizabilityChecker::set_timeout(std::chrono::milliseconds timeout) {
     g_ltlsynt_timeout_ms.store(timeout.count());
 }
 
+void set_ltl2tgba_timeout(std::chrono::milliseconds timeout) {
+    g_ltl2tgba_timeout_ms.store(timeout.count());
+}
+
 std::string ltl2tgba_path() { return spot_bin_dir() + "/ltl2tgba"; }
 
 std::string run_ltl2tgba_for_counting(const std::string& formula) {
@@ -378,11 +401,26 @@ std::string run_ltl2tgba_for_counting(const std::string& formula) {
     const std::string binary = ltl2tgba_path();
     assert(access(binary.c_str(), F_OK) == 0);
     const auto start = std::chrono::steady_clock::now();
+    const auto timeout =
+        std::chrono::milliseconds(g_ltl2tgba_timeout_ms.load());
     const ProcessResult result =
-        execute_and_capture({binary, "-D", "-S", "-H", "-f", formula});
+        execute_and_capture({binary, "-D", "-S", "-H", "-f", formula}, timeout);
     const double elapsed =
         std::chrono::duration<double>(std::chrono::steady_clock::now() - start)
             .count();
+    if (result.m_timed_out) {
+        // The determinization did not finish within budget; drop the individual
+        // (counted against max_scoring_failure_rate) rather than caching a
+        // partial result or stalling the run. execute_and_capture has already
+        // SIGKILLed and reaped the child, so no process is left behind.
+        {
+            std::scoped_lock lock(cache_mutex);
+            Ltl2tgbaStats::total_time_s += elapsed;
+            Ltl2tgbaStats::total_cpu_s += result.m_cpu_s;
+            Ltl2tgbaStats::n_timeouts++;
+        }
+        throw std::runtime_error("ltl2tgba timed out for formula: " + formula);
+    }
     if (is_tautology_print_error(result)) {
         // The formula is a tautology: it accepts every trace, so the universal
         // automaton is the correct result, not a scoring failure. Substituting

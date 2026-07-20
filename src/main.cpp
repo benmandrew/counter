@@ -488,6 +488,7 @@ int main(int argc, const char* const argv[]) {
     global_sat_checker().set_timeout(cfg.black_timeout);
     RealizabilityChecker::set_max_concurrency(cfg.max_concurrent_realizability);
     RealizabilityChecker::set_timeout(cfg.ltlsynt_timeout);
+    set_ltl2tgba_timeout(cfg.ltl2tgba_timeout);
     if (has_flag(argc, argv, "-h") || has_flag(argc, argv, "--help")) {
         print_help(argv[0]);
         return 0;

@@ -61,6 +61,14 @@ struct Config {
     // and treated as unrealizable. 0 (the default) disables the timeout,
     // preserving prior behaviour; the heavy TLSF specs set it.
     std::chrono::milliseconds ltlsynt_timeout{0};
+    // Per-call wall-clock budget for the ltl2tgba model-counting exec. Like
+    // ltlsynt, ltl2tgba has no internal timeout, and the deterministic (-D)
+    // construction blows up super-exponentially on the deeply nested formulae
+    // the search occasionally builds (multi-GB, minutes-to-hours). A call
+    // exceeding this is killed and the individual is dropped (counted against
+    // max_scoring_failure_rate). 0 (the default) disables the timeout,
+    // preserving prior behaviour; the heavy TLSF specs set it.
+    std::chrono::milliseconds ltl2tgba_timeout{0};
     // When true, print the CPU-attribution report (your code vs. the external
     // CLI tools, via getrusage + per-tool wait4). Opt-in: off leaves output
     // identical to before.

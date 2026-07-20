@@ -10,9 +10,30 @@
     flake-utils.lib.eachDefaultSystem (system:
       let
         pkgs = nixpkgs.legacyPackages.${system};
+
+        # ctcache (matus-chochlik/ctcache) — result cache for clang-tidy. Its
+        # client is a single stdlib-only Python script (server-only extras like
+        # flask/redis are lazily imported and unused in local CTCACHE_DIR mode),
+        # so we vendor just that script and expose it on PATH as
+        # `clang-tidy-cache`. The lint path opts in only when CTCACHE_DIR is set
+        # (see cmake/run_clang_tidy.cmake); merely having it on PATH changes
+        # nothing, so local `nix develop` is unaffected.
+        ctcacheSrc = pkgs.fetchFromGitHub {
+          owner = "matus-chochlik";
+          repo = "ctcache";
+          rev = "1.2.0";
+          sha256 = "1h6kj9cycn1a0i4bv1g0pbw53lqwl4vf920vyzyxh5ij8acaff0y";
+        };
+        clang-tidy-cache = pkgs.writeShellScriptBin "clang-tidy-cache" ''
+          exec ${pkgs.python3}/bin/python3 \
+            ${ctcacheSrc}/src/ctcache/clang_tidy_cache.py "$@"
+        '';
       in {
         devShells.default = pkgs.mkShell {
           packages = with pkgs; [
+            # clang-tidy result cache (opt-in via CTCACHE_DIR; see above)
+            clang-tidy-cache
+
             # Core build system
             cmake
             ninja

@@ -28,15 +28,82 @@ jobs:
           # changed files" below).
           fetch-depth: 0
 
+      # Decide up front -- before any Nix work -- whether this run has anything
+      # to do. On pull requests and pushes to main we lint only the C/C++ files
+      # the change touched and build docs only when a docs input changed; when
+      # neither changed there is nothing to check, so every heavy step below is
+      # skipped (via steps.changed.outputs.heavy) and the job finishes in
+      # seconds without installing Nix. The nightly schedule and manual dispatch
+      # skip this step, leaving the allow-list empty so the run lints the whole
+      # tree and always builds docs.
+      - name: Determine changed files
+        id: changed
+        if: github.event_name == 'pull_request' || github.event_name == 'push'
+        run: |
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            base="${{ github.event.pull_request.base.sha }}"
+          else
+            base="${{ github.event.before }}"
+          fi
+          # Fall back to a full sweep when the base ref is unusable (branch
+          # creation, force-push, or a base commit not in local history): lint
+          # everything and build docs rather than silently linting nothing.
+          if [ -z "$base" ] || ! git cat-file -e "$base^{commit}" 2>/dev/null; then
+            echo "full=true" >> "$GITHUB_OUTPUT"
+            echo "docs=true" >> "$GITHUB_OUTPUT"
+            echo "heavy=true" >> "$GITHUB_OUTPUT"
+            echo "No usable base ref ($base); running a full-tree lint + docs build."
+            exit 0
+          fi
+
+          files=$(git diff --name-only --diff-filter=ACMR "$base" HEAD -- \
+                    '*.cpp' '*.hpp' '*.h' \
+                  | sed "s|^|$GITHUB_WORKSPACE/|" | tr '\n' ' ')
+          echo "files=$files" >> "$GITHUB_OUTPUT"
+
+          # Docs are generated from include/ and src/ (Doxygen) and docs/
+          # (Sphinx sources + Doxyfile templates); nothing else affects them.
+          docs_changed=false
+          if git diff --name-only --diff-filter=ACMR "$base" HEAD -- \
+               include src docs | grep -q .; then
+            docs_changed=true
+          fi
+          echo "docs=$docs_changed" >> "$GITHUB_OUTPUT"
+
+          # "heavy" gates the Nix install, the caches, and the configure/lint/
+          # docs step: true when there is a C/C++ file to lint or a docs input
+          # to rebuild. When neither changed, the job skips straight to success.
+          if [ -n "${files// /}" ] || [ "$docs_changed" = "true" ]; then
+            echo "heavy=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "heavy=false" >> "$GITHUB_OUTPUT"
+          fi
+
+          if [ -z "${files// /}" ]; then
+            echo "No C/C++ files changed; clang-tidy/cpplint/cppcheck will be skipped."
+          else
+            echo "Linting changed files:"
+            printf '  %s\n' $files
+          fi
+
       - name: Install Nix
+        if: >-
+          github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+          || steps.changed.outputs.heavy == 'true'
         uses: cachix/install-nix-action@v31
         with:
           github_access_token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Set up sccache
+        if: >-
+          github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+          || steps.changed.outputs.heavy == 'true'
         uses: mozilla-actions/sccache-action@v0.0.10
 
       - name: Cache FetchContent dependencies
+        if: >-
+          github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+          || steps.changed.outputs.heavy == 'true'
         uses: actions/cache@v5
         with:
           path: build/_deps
@@ -54,6 +121,9 @@ jobs:
       # run's results; only changed TUs are re-analysed. This is what keeps the
       # nightly full-tree sweep (and large PRs) cheap.
       - name: Cache clang-tidy results
+        if: >-
+          github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+          || steps.changed.outputs.heavy == 'true'
         uses: actions/cache@v5
         with:
           path: .ctcache
@@ -67,6 +137,9 @@ jobs:
       # prefix means every run restores the previous run's graphs; Doxygen then
       # re-renders only the graphs whose content changed.
       - name: Cache internal docs graph cache
+        if: >-
+          github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+          || steps.changed.outputs.heavy == 'true'
         uses: actions/cache@v5
         with:
           path: build/docs/internal
@@ -74,54 +147,13 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-docs-internal-
 
-      # On pull requests and pushes to main, lint only the C/C++ files the
-      # change touched, and build docs only when a docs input changed. The
-      # nightly schedule and manual dispatch skip this step, leaving the
-      # allow-list empty so the run lints the whole tree and always builds docs.
-      - name: Determine changed files
-        id: changed
-        if: github.event_name == 'pull_request' || github.event_name == 'push'
-        run: |
-          if [ "${{ github.event_name }}" = "pull_request" ]; then
-            base="${{ github.event.pull_request.base.sha }}"
-          else
-            base="${{ github.event.before }}"
-          fi
-          # Fall back to a full sweep when the base ref is unusable (branch
-          # creation, force-push, or a base commit not in local history): lint
-          # everything and build docs rather than silently linting nothing.
-          if [ -z "$base" ] || ! git cat-file -e "$base^{commit}" 2>/dev/null; then
-            echo "full=true" >> "$GITHUB_OUTPUT"
-            echo "docs=true" >> "$GITHUB_OUTPUT"
-            echo "No usable base ref ($base); running a full-tree lint + docs build."
-            exit 0
-          fi
-
-          files=$(git diff --name-only --diff-filter=ACMR "$base" HEAD -- \
-                    '*.cpp' '*.hpp' '*.h' \
-                  | sed "s|^|$GITHUB_WORKSPACE/|" | tr '\n' ' ')
-          echo "files=$files" >> "$GITHUB_OUTPUT"
-
-          # Docs are generated from include/ and src/ (Doxygen) and docs/
-          # (Sphinx sources + Doxyfile templates); nothing else affects them.
-          if git diff --name-only --diff-filter=ACMR "$base" HEAD -- \
-               include src docs | grep -q .; then
-            echo "docs=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "docs=false" >> "$GITHUB_OUTPUT"
-          fi
-
-          if [ -z "${files// /}" ]; then
-            echo "No C/C++ files changed; clang-tidy/cpplint/cppcheck will be skipped."
-          else
-            echo "Linting changed files:"
-            printf '  %s\n' $files
-          fi
-
       # A single dev shell for configure + format + lint + docs, so the Nix
       # flake is evaluated and the shell instantiated once rather than once per
       # step. GitHub log groups keep the per-phase output readable.
       - name: Configure, lint, format-check, build docs
+        if: >-
+          github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+          || steps.changed.outputs.heavy == 'true'
         env:
           CMAKE_C_COMPILER_LAUNCHER: sccache
           CMAKE_CXX_COMPILER_LAUNCHER: sccache

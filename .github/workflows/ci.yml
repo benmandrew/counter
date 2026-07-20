@@ -5,6 +5,12 @@ on:
     branches:
       - main
   pull_request:
+  # Nightly exhaustive pass: full-tree lint sweep (catches header-fan-out that
+  # the changed-file lint on PRs/pushes misses) and the benchmark run. 03:00 UTC.
+  schedule:
+    - cron: "0 3 * * *"
+  # Manual trigger for an on-demand full sweep + benchmark.
+  workflow_dispatch:
 
 env:
   SCCACHE_GHA_ENABLED: "true"
@@ -17,9 +23,9 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@v7
         with:
-          # Full history so pull-request runs can diff against the base commit
-          # to lint only the files the branch changed (see "Determine changed
-          # files" below).
+          # Full history so pull-request and push runs can diff against the base
+          # commit to lint only the files the change touched (see "Determine
+          # changed files" below).
           fetch-depth: 0
 
       - name: Install Nix
@@ -41,6 +47,20 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-check-deps-ninja-
 
+      # clang-tidy result cache (ctcache): keyed on each TU's preprocessed
+      # content + the .clang-tidy config, so unchanged translation units skip
+      # re-analysis across runs. A fresh key each run (immutable caches can't be
+      # overwritten) with a rolling restore-keys prefix restores the previous
+      # run's results; only changed TUs are re-analysed. This is what keeps the
+      # nightly full-tree sweep (and large PRs) cheap.
+      - name: Cache clang-tidy results
+        uses: actions/cache@v5
+        with:
+          path: .ctcache
+          key: ${{ runner.os }}-ctcache-${{ github.sha }}
+          restore-keys: |
+            ${{ runner.os }}-ctcache-
+
       # Persist Doxygen's per-graph .md5/.svg cache for the internal docs so the
       # expensive call-graph render is reused across runs. A fresh key each run
       # (immutable caches can't be overwritten) with a rolling restore-keys
@@ -54,18 +74,43 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-docs-internal-
 
-      # On pull requests, lint only the C/C++ files the branch touched; a
-      # full-tree clang-tidy sweep is the single slowest step in CI. Pushes to
-      # main leave the allow-list empty and lint everything.
+      # On pull requests and pushes to main, lint only the C/C++ files the
+      # change touched, and build docs only when a docs input changed. The
+      # nightly schedule and manual dispatch skip this step, leaving the
+      # allow-list empty so the run lints the whole tree and always builds docs.
       - name: Determine changed files
         id: changed
-        if: github.event_name == 'pull_request'
+        if: github.event_name == 'pull_request' || github.event_name == 'push'
         run: |
-          base="${{ github.event.pull_request.base.sha }}"
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            base="${{ github.event.pull_request.base.sha }}"
+          else
+            base="${{ github.event.before }}"
+          fi
+          # Fall back to a full sweep when the base ref is unusable (branch
+          # creation, force-push, or a base commit not in local history): lint
+          # everything and build docs rather than silently linting nothing.
+          if [ -z "$base" ] || ! git cat-file -e "$base^{commit}" 2>/dev/null; then
+            echo "full=true" >> "$GITHUB_OUTPUT"
+            echo "docs=true" >> "$GITHUB_OUTPUT"
+            echo "No usable base ref ($base); running a full-tree lint + docs build."
+            exit 0
+          fi
+
           files=$(git diff --name-only --diff-filter=ACMR "$base" HEAD -- \
                     '*.cpp' '*.hpp' '*.h' \
                   | sed "s|^|$GITHUB_WORKSPACE/|" | tr '\n' ' ')
           echo "files=$files" >> "$GITHUB_OUTPUT"
+
+          # Docs are generated from include/ and src/ (Doxygen) and docs/
+          # (Sphinx sources + Doxyfile templates); nothing else affects them.
+          if git diff --name-only --diff-filter=ACMR "$base" HEAD -- \
+               include src docs | grep -q .; then
+            echo "docs=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "docs=false" >> "$GITHUB_OUTPUT"
+          fi
+
           if [ -z "${files// /}" ]; then
             echo "No C/C++ files changed; clang-tidy/cpplint/cppcheck will be skipped."
           else
@@ -80,19 +125,37 @@ jobs:
         env:
           CMAKE_C_COMPILER_LAUNCHER: sccache
           CMAKE_CXX_COMPILER_LAUNCHER: sccache
-          IS_PR: ${{ github.event_name == 'pull_request' }}
+          # ctcache stores clang-tidy results here; the lint wiring is a no-op
+          # when this is unset (see cmake/run_clang_tidy.cmake).
+          CTCACHE_DIR: ${{ github.workspace }}/.ctcache
+          EVENT: ${{ github.event_name }}
+          FORCE_FULL: ${{ steps.changed.outputs.full }}
           CHANGED_FILES: ${{ steps.changed.outputs.files }}
+          DOCS_CHANGED: ${{ steps.changed.outputs.docs }}
         run: |
           nix develop --command bash -euo pipefail -c '
+            # A full sweep lints the whole tree and always builds docs: the
+            # nightly schedule, manual dispatch, and the unusable-base fallback.
+            full_sweep=false
+            if [ "$EVENT" = "schedule" ] || [ "$EVENT" = "workflow_dispatch" ] \
+               || [ "$FORCE_FULL" = "true" ]; then
+              full_sweep=true
+            fi
+
             args=(--preset debug)
             run_lint=true
-            if [ "$IS_PR" = "true" ]; then
+            if [ "$full_sweep" != "true" ]; then
               if [ -n "${CHANGED_FILES// /}" ]; then
                 list=$(echo "$CHANGED_FILES" | xargs | tr " " ";")
                 args+=("-DCOUNTER_LINT_FILES_OVERRIDE=$list")
               else
                 run_lint=false
               fi
+            fi
+
+            build_docs=true
+            if [ "$full_sweep" != "true" ] && [ "$DOCS_CHANGED" != "true" ]; then
+              build_docs=false
             fi
 
             echo "::group::Configure"
@@ -111,27 +174,43 @@ jobs:
               echo "No C/C++ files changed; skipping lint."
             fi
 
-            echo "::group::Build docs"
-            cmake --build --preset debug --target docs
-            echo "::endgroup::"
+            if [ "$build_docs" = "true" ]; then
+              echo "::group::Build docs"
+              cmake --build --preset debug --target docs
+              echo "::endgroup::"
+            else
+              echo "No docs inputs changed; skipping docs build."
+            fi
           '
 
+  # Emit the build-and-test matrix as JSON so pull requests run a lean
+  # debug+release pair while pushes to main, the nightly schedule, and manual
+  # dispatch add the gcc (portability) and tsan (data-race) configurations.
+  build-matrix:
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.set.outputs.matrix }}
+    steps:
+      - name: Compute matrix
+        id: set
+        run: |
+          debug='{"preset":"debug","build_dir":"build"}'
+          release='{"preset":"release","build_dir":"build-release"}'
+          gcc='{"preset":"debug","build_dir":"build","compiler":"gcc","cmake_args":"-DCMAKE_C_COMPILER=gcc -DCMAKE_CXX_COMPILER=g++"}'
+          tsan='{"preset":"tsan","build_dir":"build-tsan"}'
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            include="$debug,$release"
+          else
+            include="$debug,$gcc,$release,$tsan"
+          fi
+          echo "matrix={\"include\":[$include]}" >> "$GITHUB_OUTPUT"
+
   build-and-test:
+    needs: build-matrix
     runs-on: ubuntu-latest
 
     strategy:
-      matrix:
-        include:
-          - preset: debug
-            build_dir: build
-          - preset: debug
-            build_dir: build
-            compiler: gcc
-            cmake_args: -DCMAKE_C_COMPILER=gcc -DCMAKE_CXX_COMPILER=g++
-          - preset: release
-            build_dir: build-release
-          - preset: tsan
-            build_dir: build-tsan
+      matrix: ${{ fromJSON(needs.build-matrix.outputs.matrix) }}
 
     steps:
       - name: Check out repository
@@ -176,8 +255,14 @@ jobs:
             echo "::endgroup::"
           '
 
+  # Benchmarks run only on the nightly schedule (and manual dispatch), and only
+  # when new commits landed since the previous run: re-benchmarking an unchanged
+  # tree just adds a runner-noise datapoint to the history. Absolute ns/iter is
+  # compared across runner instances, so this is advisory (fail-on-alert: false)
+  # and was never a merge gate.
   benchmark:
     runs-on: ubuntu-latest
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
     permissions:
       contents: write
       # comment-on-alert posts a PR review, which contents: write does not cover.
@@ -187,15 +272,39 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@v7
 
+      # Skip the run when HEAD is older than the nightly cadence: no new commits
+      # means nothing new to benchmark. Manual dispatch always runs.
+      - name: Check for recent commits
+        id: recent
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          committed=$(git log -1 --format=%ct)
+          now=$(date +%s)
+          age=$(( now - committed ))
+          # 25h of slack over the 24h cron so a slightly-late trigger still runs.
+          if [ "$age" -lt 90000 ]; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+            echo "HEAD committed ${age}s ago; running benchmarks."
+          else
+            echo "run=false" >> "$GITHUB_OUTPUT"
+            echo "No commits in the last 25h; skipping benchmarks."
+          fi
+
       - name: Install Nix
+        if: steps.recent.outputs.run == 'true'
         uses: cachix/install-nix-action@v31
         with:
           github_access_token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Set up sccache
+        if: steps.recent.outputs.run == 'true'
         uses: mozilla-actions/sccache-action@v0.0.10
 
       - name: Cache third-party dependencies
+        if: steps.recent.outputs.run == 'true'
         uses: actions/cache@v5
         with:
           path: |
@@ -206,6 +315,7 @@ jobs:
             ${{ runner.os }}-bench-ninja-
 
       - name: Configure and build
+        if: steps.recent.outputs.run == 'true'
         env:
           CMAKE_C_COMPILER_LAUNCHER: sccache
           CMAKE_CXX_COMPILER_LAUNCHER: sccache
@@ -221,9 +331,11 @@ jobs:
           '
 
       - name: Check regression assertions
+        if: steps.recent.outputs.run == 'true'
         run: ./build-bench/bench/counter_bench --check-assertions
 
       - name: Run benchmarks
+        if: steps.recent.outputs.run == 'true'
         run: |
           ./build-bench/bench/counter_bench \
             --benchmark_format=json \
@@ -231,6 +343,7 @@ jobs:
             --benchmark_time_unit=ns
 
       - name: Store benchmark results
+        if: steps.recent.outputs.run == 'true'
         uses: benchmark-action/github-action-benchmark@v1
         with:
           name: counter benchmarks

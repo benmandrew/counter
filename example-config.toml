@@ -45,6 +45,10 @@ p_timing   = 0.1    # per-requirement probability of mutating the timing
 # strengthening the environment (e.g. adding request fairness to an
 # unrealizable GR(1) spec).
 p_add_assumption = 0.05
+# Mutate assumption timings in the strengthening direction rather than the
+# weakening one: weakening the overall assume-guarantee specification means
+# weakening a guarantee but strengthening an assumption.
+strengthen_assumptions = false
 
 [tlsf]
 # Applies only in TLSF mode (a .tlsf input or --format tlsf).

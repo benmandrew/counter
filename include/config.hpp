@@ -93,6 +93,11 @@ struct Config {
     // a fairness assumption to an unrealizable GR(1) spec), which the
     // rewrite-only operators cannot express.
     double p_add_assumption = 0.05;
+    // Mutate assumption timings in the strengthening direction rather than the
+    // weakening one. Weakening the overall assume-guarantee specification means
+    // weakening a guarantee but strengthening an assumption; off by default so
+    // that existing experiment results stay comparable.
+    bool strengthen_assumptions = false;
     // TLSF-mode mutation: probability of selecting an assumption-side section
     // (INITIALLY/REQUIRE/ASSUME) versus a guarantee-side section
     // (PRESET/ASSERT/GUARANTEE) when mutating a tlsf::Specification.

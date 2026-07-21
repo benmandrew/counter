@@ -150,7 +150,9 @@ Formula mutate_formula(const Formula& formula,
     return mutated;
 }
 
-Timing mutate_for_timing(const timing::ForTicks& for_ticks,
+namespace {
+
+Timing weaken_for_timing(const timing::ForTicks& for_ticks,
                          const RandomSource& random_source) {
     if (for_ticks.m_ticks == 1) {
         return random_source.next_bool() ? timing::next_timepoint()
@@ -160,7 +162,7 @@ Timing mutate_for_timing(const timing::ForTicks& for_ticks,
                                      : timing::for_ticks(for_ticks.m_ticks / 2);
 }
 
-Timing mutate_within_timing(const timing::WithinTicks& within_ticks,
+Timing weaken_within_timing(const timing::WithinTicks& within_ticks,
                             const RandomSource& random_source) {
     std::size_t index = random_source.next_index(3);
     switch (index) {
@@ -176,8 +178,84 @@ Timing mutate_within_timing(const timing::WithinTicks& within_ticks,
     }
 }
 
-Timing mutate_timing(const Timing& timing, const RandomSource& random_source) {
-    assert(random_source);
+Timing strengthen_for_timing(const timing::ForTicks& for_ticks,
+                             const RandomSource& random_source) {
+    std::size_t index = random_source.next_index(3);
+    switch (index) {
+        case 0:
+            return timing::for_ticks(for_ticks.m_ticks + 1);
+        case 1:
+            return timing::for_ticks(for_ticks.m_ticks * 2);
+        case 2:
+            return timing::always();
+        default:
+            assert(false);
+            __builtin_unreachable();
+    }
+}
+
+Timing strengthen_within_timing(const timing::WithinTicks& within_ticks,
+                                const RandomSource& random_source) {
+    if (within_ticks.m_ticks == 1) {
+        return random_source.next_bool() ? timing::next_timepoint()
+                                         : timing::immediately();
+    }
+    std::size_t index = random_source.next_index(3);
+    switch (index) {
+        case 0:
+            return timing::within_ticks(within_ticks.m_ticks - 1);
+        case 1:
+            // Halve rounding up, so the result stays >= 1 and strictly below
+            // m_ticks for every m_ticks > 1.
+            return timing::within_ticks((within_ticks.m_ticks + 1) / 2);
+        case 2:
+            return timing::after_ticks(within_ticks.m_ticks - 1);
+        default:
+            assert(false);
+            __builtin_unreachable();
+    }
+}
+
+// Eventually is the bottom of the timing order, so its strengthenings are the
+// whole `within k ticks` family. Draw a small k: the semantic fitness only
+// counts traces up to a bounded horizon, so a large deadline is indistinguish-
+// able from Eventually there, and successive mutations can grow k anyway.
+constexpr std::size_t k_eventually_strengthen_max_ticks = 10;
+
+Timing strengthen_timing(const Timing& timing,
+                         const RandomSource& random_source) {
+    const auto mutation_function = [&](const auto& value) -> Timing {
+        using T = std::decay_t<decltype(value)>;
+        if constexpr (std::is_same_v<T, timing::Immediately> ||
+                      std::is_same_v<T, timing::NextTimepoint>) {
+            return timing::for_ticks(1);
+        } else if constexpr (std::is_same_v<T, timing::Always>) {
+            // Always is the top of the order and has no strengthening.
+            return timing::always();
+        } else if constexpr (std::is_same_v<T, timing::ForTicks>) {
+            return strengthen_for_timing(value, random_source);
+        } else if constexpr (std::is_same_v<T, timing::AfterTicks>) {
+            // `after n` expands to ¬R at ticks 0..n ∧ R at tick n+1, pinning
+            // the response to a single tick. Nothing in the timing order lies
+            // strictly above it: `after n-1` and `always` both demand R at a
+            // tick where `after n` demands ¬R, so they contradict rather than
+            // strengthen it. AfterTicks therefore has no strengthening.
+            return timing::after_ticks(value.m_ticks);
+        } else if constexpr (std::is_same_v<T, timing::WithinTicks>) {
+            return strengthen_within_timing(value, random_source);
+        } else if constexpr (std::is_same_v<T, timing::Eventually>) {
+            return timing::within_ticks(
+                random_source.next_index(k_eventually_strengthen_max_ticks) +
+                1);
+        } else {
+            assert(false);
+            __builtin_unreachable();
+        }
+    };
+    return std::visit(mutation_function, timing);
+}
+
+Timing weaken_timing(const Timing& timing, const RandomSource& random_source) {
     const auto mutation_function = [&](const auto& value) -> Timing {
         using T = std::decay_t<decltype(value)>;
         if constexpr (std::is_same_v<T, timing::Immediately> ||
@@ -187,11 +265,11 @@ Timing mutate_timing(const Timing& timing, const RandomSource& random_source) {
             // Always must not be weakened.
             return timing::always();
         } else if constexpr (std::is_same_v<T, timing::ForTicks>) {
-            return mutate_for_timing(value, random_source);
+            return weaken_for_timing(value, random_source);
         } else if constexpr (std::is_same_v<T, timing::AfterTicks>) {
             return timing::within_ticks(value.m_ticks + 1);
         } else if constexpr (std::is_same_v<T, timing::WithinTicks>) {
-            return mutate_within_timing(value, random_source);
+            return weaken_within_timing(value, random_source);
         } else if constexpr (std::is_same_v<T, timing::Eventually>) {
             return timing::eventually();
         } else {
@@ -202,12 +280,26 @@ Timing mutate_timing(const Timing& timing, const RandomSource& random_source) {
     return std::visit(mutation_function, timing);
 }
 
+}  // namespace
+
+Timing mutate_timing(const Timing& timing, Direction direction,
+                     const RandomSource& random_source) {
+    assert(random_source);
+    return direction == Direction::Strengthen
+               ? strengthen_timing(timing, random_source)
+               : weaken_timing(timing, random_source);
+}
+
 Requirement mutate_requirement(const Requirement& requirement,
                                const std::vector<std::string>& atoms,
                                const std::vector<std::string>& condition_atoms,
+                               Direction direction,
                                const RandomSource& random_source,
                                const Config& cfg) {
     Requirement mutated = requirement;
+    // Response and condition mutation is still direction-agnostic: it rewrites
+    // the propositional structure freely and relies on the population filters
+    // to discard candidates that moved the wrong way.
     if (random_source.next_real() < cfg.p_response) {
         mutated.m_response =
             mutate_formula(requirement.m_response, atoms, random_source);
@@ -217,7 +309,8 @@ Requirement mutate_requirement(const Requirement& requirement,
                                              condition_atoms, random_source);
     }
     if (random_source.next_real() < cfg.p_timing) {
-        mutated.m_timing = mutate_timing(requirement.m_timing, random_source);
+        mutated.m_timing =
+            mutate_timing(requirement.m_timing, direction, random_source);
     }
     mutated.m_ltl = requirement_to_ltl(mutated);
     return mutated;
@@ -319,16 +412,25 @@ Specification mutate_specification(const Specification& specification,
         weakenable_indices[random_source.next_index(weakenable_indices.size())];
     std::vector<Requirement> assumptions = specification.m_assumptions;
     std::vector<Requirement> guarantees = specification.m_guarantees;
+    // Weakening the assume-guarantee specification means weakening a guarantee
+    // but *strengthening* an assumption: a stricter environment expands the set
+    // of environments under which the guarantees must hold.
+    const Direction direction =
+        (idx < n_assumptions && cfg.strengthen_assumptions)
+            ? Direction::Strengthen
+            : Direction::Weaken;
     if (idx < n_assumptions) {
-        assumptions[idx] = mutate_requirement(
-            assumptions[idx], atoms, condition_atoms, random_source, cfg);
+        assumptions[idx] =
+            mutate_requirement(assumptions[idx], atoms, condition_atoms,
+                               direction, random_source, cfg);
         if (creates_duplicate(assumptions, idx)) {
             return specification;
         }
     } else {
         const std::size_t g_idx = idx - n_assumptions;
-        guarantees[g_idx] = mutate_requirement(
-            guarantees[g_idx], atoms, condition_atoms, random_source, cfg);
+        guarantees[g_idx] =
+            mutate_requirement(guarantees[g_idx], atoms, condition_atoms,
+                               direction, random_source, cfg);
         if (creates_duplicate(guarantees, g_idx)) {
             return specification;
         }

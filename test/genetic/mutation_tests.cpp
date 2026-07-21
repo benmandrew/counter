@@ -1,3 +1,4 @@
+#include <algorithm>
 #include <string>
 #include <utility>
 #include <variant>
@@ -531,8 +532,10 @@ void test_condition_mutation_never_introduces_output_atom() {
 
 void test_add_assumption_appends_environment_assumption() {
     // p_add_assumption forced to 1 with a zero-yielding source: the first
-    // action appends a fairness assumption `G F <first input>` (no negation,
-    // since next_bool() is false), leaving the guarantees untouched.
+    // action appends a fairness assumption over the first input (no negation,
+    // since next_bool() is false). next_real() returns 0, which is below the
+    // default p_conditional_assumption, so the condition is a drawn input atom
+    // rather than `true`. The guarantees are left untouched.
     const Specification spec(
         {},
         {Requirement(Formula("a"), Formula("B"), timing::always(),
@@ -554,8 +557,51 @@ void test_add_assumption_appends_environment_assumption() {
            "add-assumption: fairness assumption uses Eventually timing");
     expect(added.m_response.to_string() == "a",
            "add-assumption: response is drawn from the input atoms");
+    expect(added.m_condition.to_string() == "a",
+           "add-assumption: condition is drawn from the input atoms");
     expect(added.m_ltl.find('B') == std::string::npos,
            "add-assumption: an output atom never enters an added assumption");
+}
+
+// The condition is drawn from the inputs, but `true` stays in the draw so the
+// unconditional fairness assumption G F <input> is still reachable. An output
+// atom must never appear on either side.
+void test_add_assumption_condition_varies_over_inputs_and_true() {
+    const Specification spec(
+        {},
+        {Requirement(Formula("a"), Formula("B"), timing::always(),
+                     ConditionType::Trigger, true)},
+        {"a", "c"}, {"B"});
+    Config cfg;
+    cfg.p_add_assumption = 1.0;
+    cfg.p_conditional_assumption = 0.5;
+    std::vector<std::string> seen_conditions;
+    for (std::size_t seed = 0; seed < 200; ++seed) {
+        const Specification result =
+            mutate_specification(spec, make_random_source_from_seed(seed), cfg);
+        const Requirement& added = result.m_assumptions.front();
+        const std::string condition = added.m_condition.to_string();
+        expect(condition.find('B') == std::string::npos &&
+                   added.m_ltl.find('B') == std::string::npos,
+               "add-assumption: an output atom must never enter the condition");
+        expect(condition != "false",
+               "add-assumption: the condition must never be false, which would "
+               "make the assumption vacuous");
+        if (std::find(seen_conditions.begin(), seen_conditions.end(),
+                      condition) == seen_conditions.end()) {
+            seen_conditions.push_back(condition);
+        }
+    }
+    const auto saw = [&seen_conditions](const std::string& want) {
+        return std::find(seen_conditions.begin(), seen_conditions.end(),
+                         want) != seen_conditions.end();
+    };
+    expect(saw("true"),
+           "add-assumption: unconditional fairness must stay reachable");
+    expect(saw("a") || saw("c"),
+           "add-assumption: a plain input condition should be reachable");
+    expect(saw("!(a)") || saw("!(c)"),
+           "add-assumption: a negated input condition should be reachable");
 }
 
 void test_add_assumption_disabled_by_zero_probability() {
@@ -601,5 +647,6 @@ void run_mutation_tests() {
     test_eventually_assumption_stays_put_without_a_donor();
     test_condition_mutation_never_introduces_output_atom();
     test_add_assumption_appends_environment_assumption();
+    test_add_assumption_condition_varies_over_inputs_and_true();
     test_add_assumption_disabled_by_zero_probability();
 }

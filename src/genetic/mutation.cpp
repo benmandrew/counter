@@ -416,21 +416,48 @@ bool creates_duplicate(const std::vector<Requirement>& requirements,
     return false;
 }
 
+// Draws the condition of a freshly added assumption. Input atoms only, for the
+// same reason mutate_specification restricts trigger atoms: an output denotes
+// the next state, so guarding on one gives the synthesiser a self-referential
+// condition it can discharge vacuously. `true` stays in the draw so the
+// unconditional GR(1) fairness assumption G F <input> remains reachable —
+// nothing else in the operator set can produce it, since mutate_atom_name
+// rewrites a `true` condition to `false` rather than to an atom. The negation
+// flip applies to atoms only: a negated `true` is `false`, and an assumption
+// with a false condition constrains nothing.
+Formula add_assumption_condition(const std::vector<std::string>& inputs,
+                                 const RandomSource& random_source,
+                                 double p_conditional) {
+    if (random_source.next_real() >= p_conditional) {
+        return Formula("true");
+    }
+    Formula condition =
+        Formula::make_atom(inputs[random_source.next_index(inputs.size())]);
+    if (random_source.next_bool()) {
+        condition = Formula::make_unary(Formula::Kind::Not, condition);
+    }
+    return condition;
+}
+
 // Builds a new environment assumption over the specification's input atoms:
-// `whenever true C shall eventually satisfy <input>` — i.e. G F <input>, a
-// fairness assumption (the input is negated on a coin flip). Appending it
-// strengthens the environment, which is how the algorithm repairs
-// unrealizability that the rewrite-only operators cannot reach.
+// `whenever <input|true> C shall eventually satisfy <input>` — i.e.
+// G(c -> F <input>), a conditional fairness assumption (each of condition and
+// response is negated on a coin flip). Appending it strengthens the
+// environment, which is how the algorithm repairs unrealizability that the
+// rewrite-only operators cannot reach.
 Specification add_assumption(const Specification& specification,
-                             const RandomSource& random_source) {
+                             const RandomSource& random_source,
+                             const Config& cfg) {
     const std::string& atom = specification.m_in_atoms[random_source.next_index(
         specification.m_in_atoms.size())];
     Formula response = Formula::make_atom(atom);
     if (random_source.next_bool()) {
         response = Formula::make_unary(Formula::Kind::Not, response);
     }
+    Formula condition = add_assumption_condition(
+        specification.m_in_atoms, random_source, cfg.p_conditional_assumption);
     std::vector<Requirement> assumptions = specification.m_assumptions;
-    assumptions.emplace_back(Formula("true"), std::move(response),
+    assumptions.emplace_back(std::move(condition), std::move(response),
                              timing::eventually(), ConditionType::Continual,
                              /*weakenable=*/true);
     return Specification(std::move(assumptions), specification.m_guarantees,
@@ -450,7 +477,7 @@ Specification mutate_specification(const Specification& specification,
     // assumption is a harmless no-op.
     if (!specification.m_in_atoms.empty() &&
         random_source.next_real() < cfg.p_add_assumption) {
-        return add_assumption(specification, random_source);
+        return add_assumption(specification, random_source, cfg);
     }
     std::vector<std::string> atoms;
     atoms.insert(atoms.end(), specification.m_in_atoms.begin(),

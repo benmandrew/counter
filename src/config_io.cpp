@@ -149,6 +149,10 @@ void apply_mutation(const toml::table& tbl, Config& cfg) {
         require_probability(*val, "mutation.p_add_assumption");
         cfg.p_add_assumption = *val;
     }
+    if (auto val = tbl["p_conditional_assumption"].value<double>()) {
+        require_probability(*val, "mutation.p_conditional_assumption");
+        cfg.p_conditional_assumption = *val;
+    }
     if (auto val = tbl["strengthen_assumptions"].value<bool>()) {
         cfg.strengthen_assumptions = *val;
     }

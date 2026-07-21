@@ -45,6 +45,11 @@ p_timing   = 0.1    # per-requirement probability of mutating the timing
 # strengthening the environment (e.g. adding request fairness to an
 # unrealizable GR(1) spec).
 p_add_assumption = 0.05
+# Of those appended assumptions, the fraction guarded by a random input atom
+# rather than by `true`. G F <input> is strictly stronger than
+# G(c -> F <input>) and so the more powerful repair, which is why the
+# unconditional form keeps the majority of the draw.
+p_conditional_assumption = 0.25
 # Mutate assumption timings in the strengthening direction rather than the
 # weakening one: weakening the overall assume-guarantee specification means
 # weakening a guarantee but strengthening an assumption. Setting this false

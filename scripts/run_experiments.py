@@ -365,6 +365,39 @@ PROFILES: dict[str, dict] = {
         # process keeps the (uncapped, 128 GB) limit machine-wide.
         "default_jobs": 1,
     },
+    # Follow-up to the muc campaign: sweep p_add_assumption (sweep P: 0.05, 0.15,
+    # 0.3, 0.5) crossed with repair_mode {mono, muc}. The muc campaign found that
+    # reaching an assumption-side ideal (e.g. arbiter's G F r0 & G F r1) is
+    # bottlenecked on the fixed 0.05-rate p_add_assumption structural mutation, not
+    # on the assumption/guarantee split; this tests whether raising it shifts
+    # repairs from guarantee-weakening to the ideal. humanoid-531 is dropped: it
+    # never reaches the ideal in either arm (so p_add_assumption cannot inform it)
+    # and it is ~88% of the per-seed cost, so excluding it turns a ~12-seed
+    # overnight run into a ~45-seed one on the specs where the lever operates.
+    # Generate with:
+    #   python scripts/gen_configs.py --tlsf --sweeps P --repair both \
+    #       --out-dir experiments/configs-padd
+    # (--tlsf carries the 60 s ltl2tgba-timeout, 500 ms ltlsynt-timeout and 0.15
+    # scoring tolerance; the ltl2tgba-timeout needs the deployed counting-leak fix.)
+    "padd": {
+        "schemes": ["nsga2"],
+        "weakenings": None,
+        "metrics": None,
+        "repair_modes": ["mono", "muc"],
+        "sweeps": ["P"],
+        "levels": {"P": ["padd0.05", "padd0.15", "padd0.3", "padd0.5"]},
+        "specs": [s for s in TLSF_SPECS if s != "humanoid-531"],
+        # Generous ceiling; a 12 h/machine overnight deadline truncates the
+        # seed-major order to a balanced design at whatever depth it reaches.
+        "seeds": list(range(160)),
+        "timeout_caps": {"arbiter": 120, "gyro-var1": 300, "lift": 600,
+                         "lily02": 120, "minepump": 120},
+        "baseline_aliases": {},
+        "configs_dir": EXPERIMENTS_DIR / "configs-padd",
+        "results_dir": EXPERIMENTS_DIR / "results-padd",
+        "results_csv": EXPERIMENTS_DIR / "results-padd.csv",
+        "default_jobs": 1,
+    },
     # The basic-TLSF examples swept over generations (A) and population (B), the
     # two operating-point parameters, NSGA-II only, default weakening. These
     # specs are much slower than the FRETISH ones — three of them (lift,

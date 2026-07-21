@@ -96,6 +96,11 @@ DEFAULTS: dict = {
     "p_trigger": 0.5,
     "p_response": 0.5,
     "p_timing": 0.15,
+    # Probability a mutation appends a new environment (fairness) assumption
+    # rather than rewriting an existing requirement/section. Emitted into
+    # [mutation] only when a sweep overrides it (see make_toml), so the standard
+    # grids stay byte-identical; the p_add_assumption sweep varies it.
+    "p_add_assumption": 0.05,
     "default_bound": 20,
     "metric": "direct",
     "run_weakening": True,
@@ -118,6 +123,11 @@ DEFAULTS: dict = {
     # Emitted only when positive, so the standard grids stay byte-identical. The
     # heavy TLSF specs set it to cut ltlsynt's multi-minute realizability tail.
     "ltlsynt_timeout_ms": 0,
+    # Per-call ltl2tgba (model-counting) timeout in ms; 0 = no timeout, matching
+    # config.hpp. Emitted only when positive. The counting-path -D determinization
+    # blows up super-exponentially on some deep formulae; the TLSF campaign sets
+    # it to cut the multi-GB, hours-long counting tail (see the ltl2tgba leak fix).
+    "ltl2tgba_timeout_ms": 0,
     # 0 = fall back to config.hpp's 0.05. Emitted only when positive, so the
     # standard grids stay byte-identical. The TLSF one-hot encodings mutate into
     # tautological guarantees that SPOT 2.15.1's ltl2tgba rejects (exit 2); the
@@ -164,6 +174,8 @@ def make_toml(overrides: dict, defaults: dict = DEFAULTS) -> str:
         f"p_trigger  = {_fmt(d['p_trigger'])}",
         f"p_response = {_fmt(d['p_response'])}",
         f"p_timing   = {_fmt(d['p_timing'])}",
+    ] + ([f"p_add_assumption = {_fmt(d['p_add_assumption'])}"]
+         if "p_add_assumption" in overrides else []) + [
         "",
         "[model_counting]",
         f"default_bound = {d['default_bound']}",
@@ -179,6 +191,8 @@ def make_toml(overrides: dict, defaults: dict = DEFAULTS) -> str:
          if d.get("max_concurrent_realizability") else []) + (
         [f"ltlsynt_timeout_ms = {d['ltlsynt_timeout_ms']}"]
         if d.get("ltlsynt_timeout_ms") else []) + (
+        [f"ltl2tgba_timeout_ms = {d['ltl2tgba_timeout_ms']}"]
+        if d.get("ltl2tgba_timeout_ms") else []) + (
         [f"max_scoring_failure_rate = {_fmt(d['max_scoring_failure_rate'])}"]
         if d.get("max_scoring_failure_rate") else []) + [
         "",
@@ -364,10 +378,25 @@ TLSF_SWEEP_M: list[tuple[str, dict]] = [
     ("pg0.9", {"p_assumption": 0.1, "p_guarantee": 0.9}),
 ]
 
+# TLSF sweep P: vary p_add_assumption (TLSF-only campaign use, though the key is
+# shared by both modes). Raising it makes mutation append a fairness assumption
+# more often, the structural move needed to reach assumption-side ideals (e.g.
+# arbiter's G F r0 & G F r1). The 2026-07-21 muc campaign found the ideal-hit rate
+# is bottlenecked on this fixed-rate mutation, not the assumption/guarantee split;
+# this sweep tests whether raising it shifts repairs from guarantee-weakening to
+# the ideal. padd0.05 is the config.hpp baseline. Crossed with tlsf.repair_mode.
+TLSF_SWEEP_P: list[tuple[str, dict]] = [
+    ("padd0.05", {"p_add_assumption": 0.05}),   # baseline
+    ("padd0.15", {"p_add_assumption": 0.15}),
+    ("padd0.3",  {"p_add_assumption": 0.3}),
+    ("padd0.5",  {"p_add_assumption": 0.5}),
+]
+
 TLSF_SWEEPS: list[tuple[str, list]] = [
     ("A", TLSF_SWEEP_A),
     ("B", TLSF_SWEEP_B),
     ("M", TLSF_SWEEP_M),
+    ("P", TLSF_SWEEP_P),
 ]
 
 TLSF_CONFIGS_DIR = Path(__file__).parent.parent / "experiments" / "configs-tlsf"
@@ -390,6 +419,14 @@ TLSF_MAX_REALIZABILITY = 0
 # calls) while 500ms caps the pathological tail far tighter. A timed-out check
 # is treated as unrealizable.
 TLSF_LTLSYNT_TIMEOUT_MS = 500
+
+# Default per-call ltl2tgba (model-counting) timeout (ms) for the TLSF campaign.
+# The counting path has no internal timeout and its -D determinization blows up
+# super-exponentially on some deep formulae (observed multi-GB, hours-long, then
+# orphaned). 60 s is generous — legitimate counts finish in milliseconds to ~20 s
+# — while cutting the pathological tail. A timed-out count drops that individual
+# (absorbed by max_scoring_failure_rate). Needs the ltl2tgba-timeout binary fix.
+TLSF_LTL2TGBA_TIMEOUT_MS = 60000
 
 # Scoring-failure tolerance for the TLSF campaign. The one-hot balancer/direction
 # encodings mutate into tautological guarantees (e.g. G((b2 -> !x) | !b0 | b1 | b2)),
@@ -474,6 +511,14 @@ def parse_args() -> argparse.Namespace:
                              "specs occasionally generate multi-minute synthesis "
                              f"queries, so --tlsf defaults to "
                              f"{TLSF_LTLSYNT_TIMEOUT_MS} ms")
+    parser.add_argument("--ltl2tgba-timeout", type=int, default=None,
+                        metavar="MS",
+                        help="Per-call ltl2tgba model-counting timeout in ms "
+                             "(runtime.ltl2tgba_timeout_ms). 0 = no timeout; the "
+                             "key is omitted from the emitted TOML when 0. The "
+                             "counting-path -D determinization blows up on some "
+                             "deep formulae (multi-GB, hours), so --tlsf defaults "
+                             f"to {TLSF_LTL2TGBA_TIMEOUT_MS} ms")
     parser.add_argument("--max-scoring-failure-rate", type=float, default=None,
                         metavar="RATE",
                         help="Fraction of a population allowed to fail scoring "
@@ -500,6 +545,7 @@ def main() -> None:
     out_dir = args.out_dir
     max_realizability = args.max_realizability
     ltlsynt_timeout = args.ltlsynt_timeout
+    ltl2tgba_timeout = args.ltl2tgba_timeout
     max_scoring_failure_rate = args.max_scoring_failure_rate
     if args.tlsf:
         sweep_table = TLSF_SWEEPS
@@ -511,10 +557,13 @@ def main() -> None:
             max_realizability = TLSF_MAX_REALIZABILITY
         if ltlsynt_timeout is None:
             ltlsynt_timeout = TLSF_LTLSYNT_TIMEOUT_MS
+        if ltl2tgba_timeout is None:
+            ltl2tgba_timeout = TLSF_LTL2TGBA_TIMEOUT_MS
         if max_scoring_failure_rate is None:
             max_scoring_failure_rate = TLSF_MAX_SCORING_FAILURE_RATE
     defaults["max_concurrent_realizability"] = max_realizability or 0
     defaults["ltlsynt_timeout_ms"] = ltlsynt_timeout or 0
+    defaults["ltl2tgba_timeout_ms"] = ltl2tgba_timeout or 0
     defaults["max_scoring_failure_rate"] = max_scoring_failure_rate or 0.0
     wanted = set(args.sweeps)
     sweeps = [(name, levels) for name, levels in sweep_table if name in wanted]

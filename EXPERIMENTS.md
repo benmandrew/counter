@@ -9,6 +9,215 @@ at least one repair *equivalent to* or *stronger than* an ideal.
 
 ---
 
+## 2026-07-21 — Monolithic vs MUC-guided TLSF repair
+
+**What changed.** The first run of the `muc` profile: `tlsf.repair_mode` as a
+crossed factor (`monolithic` vs `muc`) over the six unrealizable TLSF specs,
+crossed in turn with a new TLSF assumption/guarantee *mutation split* (sweep M:
+`p_guarantee` ∈ {0.3, 0.5, 0.7, 0.9}, `p_assumption` its complement). NSGA-II,
+generations=10 / population_size=200. `repair_mode` is a no-op on the FRETISH
+specs, so it is crossed only over the TLSF corpus. **Why:** on the prior TLSF
+sweeps monolithic sat at `implies_ideal`≈0 on five of six specs — finding *a*
+repair but never one equivalent-or-stronger than the ideal — and never repaired
+`arbiter` at all, while `humanoid-531` cost ~13 min per run (768 s mean at this
+operating point). MUC extraction focuses the search and the per-candidate ltlsynt
+cost on the minimal unrealizable core, so the hypothesis was that it would reach
+the ideal where the whole-spec search cannot, and cut the runtime on the heavy
+specs. The two responses — `implies_ideal` and `wall_time_s` — are read co-equally.
+
+**Run.** Launched seed-major across av2 (seeds 0–30) and av3 (31–60), **2,928
+runs** (1,488 + 1,440), completed 2026-07-21 after ~67 h — past the 60 h budget,
+but run to completion, so all 61 seeds are present rather than a truncated design.
+`jobs=1` per machine (one counter process using the full thread pool, keeping the
+per-process ltlsynt RAM cap machine-wide). Timeout caps were sized to the *slow*
+monolithic arm and applied identically to both arms (humanoid 2400 s, lift 600,
+gyro 300, the rest 120), so the fast arm is never the reason a cell is censored.
+Data: `experiments/results-muc.csv`. The design is **paired** — monolithic and
+MUC run at the same seed and the same mutation level — so every comparison below
+is matched: McNemar's exact test for the binary outcomes, Wilcoxon signed-rank
+for wall-time.
+
+### Result: MUC trades ideal-strength for coverage
+
+MUC is not a general improvement. It rescues the one spec monolithic cannot
+repair and degrades a spec monolithic solves perfectly, and does little else.
+
+| Specification | metric | mono | muc | McNemar p |
+|---|---|---|---|---|
+| **arbiter** | `found_repair` | 0.00 | **1.00** | 7e-74 |
+| **arbiter** | `implies_ideal` | 0.00 | **0.14** | 6e-11 |
+| **lily02** | `implies_ideal` | **1.00** | 0.34 | 7e-49 |
+| humanoid-531 | `found_repair` | 0.81 | 0.79 | 0.73 (ns) |
+| humanoid-531 | `implies_ideal` | 0.01 | 0.00 | 0.50 (ns) |
+| gyro-var1 / lift / minepump | `implies_ideal` | 0 | 0 | 1.0 (ns) |
+
+Pooled, `implies_ideal` *falls* under MUC (0.174 → 0.084, driven almost entirely
+by lily02) while `found_repair` *rises* (0.798 → 0.956, driven entirely by
+arbiter). The two headline effects point in opposite directions.
+
+### The metric has no headroom on four of six specs
+
+`implies_ideal` sits at ≈0 for gyro-var1, lift, humanoid-531 and minepump in
+*both* arms. The genetic search reliably finds valid repairs on these specs, but
+they are *incomparable to* or *strictly weaker than* the ideal, never stronger —
+the ideal is out of this search's reach at gen10/pop200, regardless of repair
+mode. The mono-vs-MUC quality question therefore lives only on **arbiter** and
+**lily02**; elsewhere both arms are pinned to the floor and the comparison is
+uninformative.
+
+### The `best_relation` decomposition: MUC's signature is "incomparable"
+
+Breaking each arm's repairs down by their logical relation to the ideal (as a
+fraction of 244 matched pairs) shows the mechanism.
+
+| Spec | arm | stronger | equiv | incomparable | weaker | none/TO |
+|---|---|---|---|---|---|---|
+| arbiter | mono | – | – | – | – | **100%** |
+| | muc | – | 14% | **82%** | 4% | – |
+| lily02 | mono | **100%** | – | – | – | – |
+| | muc | 34% | – | **48%** | 18% | – |
+| lift | mono | – | – | – | 98% | 2% |
+| | muc | – | – | 13% | 83% | 5% |
+| humanoid-531 | mono | 1% | – | 80% | – | 19% |
+| | muc | – | – | 79% | – | 21% |
+| gyro-var1 | mono | – | – | 99% | 1% | – |
+| | muc | – | – | 99% | – | 1% |
+| minepump | mono | – | – | 14% | 86% | – |
+| | muc | – | – | 11% | 89% | – |
+
+Wherever MUC moves the distribution, it moves mass *toward incomparable*: arbiter
+0→82%, lift's strictly-weaker 98%→83% (+13% incomparable), lily02's
+strictly-stronger 100%→34% (+48% incomparable). Core-focused evolution repairs
+the minimal sub-problem and, after `reintegrate`, lands on a structurally
+*different* fix — valid, but off the ideal's logical axis. It is not simply
+weakening guarantees toward triviality: the strictly-weaker share stays modest
+(arbiter 4%, lily02 18%).
+
+### The two real effects are mirror images
+
+**arbiter — a coverage rescue.** Monolithic never finds a repair (0/244): the
+whole-spec search cannot escape the unrealizable region. MUC finds one on every
+seed and level (244/244, p≈7e-74), and 14% are *equivalent* to the ideal
+(p≈6e-11). This is MUC's reason to exist — when monolithic has nothing, MUC's
+focus on the core finds something.
+
+**lily02 — a quality regression.** Monolithic lands strictly-stronger-than-ideal
+on every run (`implies_ideal` = 1.00). MUC still repairs every run
+(`found_repair` = 1.00, unchanged), but scatters: 34% strictly stronger, 48%
+incomparable, 18% weaker (p≈7e-49). The loss is not lost coverage — it is the same
+coverage aimed at a different, off-ideal destination.
+
+Both effects are the same operation (MUC → incomparable); their *value* flips on
+whether monolithic had anything to begin with.
+
+### The incomparable repairs are guarantee-weakenings, not missed valid fixes
+
+A natural hope is that the incomparable repairs are alternative *valid* fixes the
+hand-written ideals missed. They are not. Comparing each incomparable repair's
+guarantees to the original semantically (via `ltlfilt`), **117 of 118 on lily02
+and all 199 on arbiter also mutate a guarantee**, and the mutation is a
+*weakening* — the original guarantee set implies the repaired one. MUC reaches
+realizability by dropping the spec's own obligations: most often the liveness
+guarantees (arbiter's `G F g0`/`G F g1`, replaced by tautologies), sometimes the
+safety `g -> r`. The one apparent "clean fairness assumption" (`G F go` on lily02)
+turned out, on inspection, to sit alongside a weakened guarantee. Pure
+assumption-only incomparable repairs number **1 of 118 on lily02, 0 of 199 on
+arbiter** — there is essentially nothing to mine.
+
+### MUC does add assumptions — the ideal is just a small target
+
+This is not an inability to add assumptions: the environment side is live in the
+MUC core and is used. Of arbiter's 244 MUC repairs, **35 (14%) add both `G F r0`
+and `G F r1` with guarantees intact — reaching the ideal exactly** — and another
+~120 add one of the two. The dominance of guarantee-weakening (199 incomparable vs
+35 equivalent) is a *search-landscape* effect, not a capability limit. Reaching
+the ideal needs the fixed-rate `p_add_assumption` structural mutation (0.05) to
+fire twice and pick both request atoms while nothing weakens a guarantee — a
+narrow target — whereas nudging any guarantee toward a tautology is a large,
+easily-reached basin. The sweep-M split does not move this: arbiter's ideal-hit
+rate is flat across `pg` levels (10/8/6/11 as `p_assumption` falls 0.7→0.1),
+because arbiter starts with no assumptions, so `p_assumption`-weighted rolls fall
+through to the guarantee side and assumption *creation* rests entirely on
+`p_add_assumption`, held at its default here. **The lever for pushing MUC toward
+the ideal is therefore `p_add_assumption`, not the mutation split** — the subject
+of the 2026-07-22 follow-up.
+
+### humanoid-531 is null, once the pairing corrects for censoring
+
+The marginal medians make MUC look slower on humanoid (326 s vs 400 s among
+completed runs), but that is an artefact of differential timeout-censoring. On
+matched pairs there is no significant difference on any response: `found_repair`
+(p=0.73), `implies_ideal` (p=0.50, both ≈0), wall-time (Wilcoxon p=0.45), or
+timeout rate (47 vs 51 of 244, p=0.73). MUC neither helps coverage, reaches the
+ideal, nor changes the runtime on the spec it was most hoped to help.
+
+### Wall-time: MUC is uniformly a little slower, never faster where it matters
+
+On both-completed pairs, MUC's per-call overhead — it re-runs the GA and the
+synthesis check once per extracted core — shows as a small but highly significant
+slowdown on the cheap specs: arbiter +2.2 s, gyro-var1 +3.4 s, lift +9.9 s,
+lily02 +0.9 s (all p < 1e-5), a marginal *speed-up* on minepump (Δ≈0, p=5e-6),
+and no significant difference on humanoid (p=0.45). The hoped-for runtime win on
+the heavy specs did not appear.
+
+### What this campaign cannot answer
+
+- **Four specs have no headroom.** With `implies_ideal`≈0 in both arms on
+  gyro-var1, lift, humanoid-531 and minepump, the campaign cannot say whether MUC
+  would help at an operating point where the ideal is reachable — only that it does
+  not at gen10/pop200. A higher operating point is the obvious follow-up, but it
+  multiplies the already-heavy humanoid cost.
+- **humanoid is ~20% timeout-censored** (the 2400 s cap bit in both arms). The
+  quality comparison filters those false zeros and the paired wall-time test uses
+  both-completed pairs, but the censoring caps how precisely runtime can be read —
+  "no faster", not a clean distribution.
+- **The mutation-split (sweep M) main effect is not analysed here.** `repair_mode`
+  is the reported factor; whether any `p_guarantee` level narrows lily02's loss or
+  lifts arbiter is a separate cut of the same data.
+- **NSGA-II, gen10/pop200 only.**
+
+### Method notes worth keeping
+
+- **The comparison is paired, so use paired tests.** mono and muc share the seed
+  and mutation level, giving 244 matched pairs per spec. McNemar (exact binomial on
+  the discordant pairs) and Wilcoxon signed-rank are correct here; an unpaired
+  Fisher/Mann-Whitney would discard the pairing and lose power. (No SciPy on the
+  analysis box — both tests were implemented by hand.)
+- **Timeouts are false zeros; filter before reading quality.** `implies_ideal` for
+  a timed-out run is 0 by construction. The McNemar on `implies_ideal` excludes any
+  pair where either arm timed out; the Wilcoxon uses both-completed pairs only.
+  humanoid's marginal-median "slowdown" that the pairing dissolves is the
+  cautionary example.
+- **The counting path leaked processes over the multi-day run.** `ltl2tgba` on the
+  model-counting path had no timeout, and its `-D` determinization blows up
+  super-exponentially on the deeply nested formulae the search builds; a hung
+  multi-GB process is then orphaned (reparented to PID 1) when the run is torn
+  down. Over ~3 days av2 accumulated ~93 GB of such orphans, near-OOM. A 2-hourly
+  janitor (`kill` on `ppid==1 && comm==ltl2tgba && etime>1h`) kept it contained.
+  The fix — a counting-path timeout plus `PR_SET_PDEATHSIG` on every subprocess —
+  landed after this campaign (not in the binary it ran), so the humanoid timing
+  carries some leak noise. [[ltlfilt-simplify-blowup]]
+
+### Scripts and launch
+
+```sh
+python scripts/gen_configs.py --tlsf --sweeps M --repair both \
+    --out-dir experiments/configs-muc
+# av2                                              # av3
+… --profile muc --jobs 1 --seeds $(seq 0 30)       … --seeds $(seq 31 60)
+python scripts/merge_experiments.py --profile muc av2 av3   # python3 on av2
+```
+
+**Verdict: MUC is a fallback, not a default.** It converts "no repair" into an
+incomparable repair — rescuing `arbiter`, the one spec monolithic cannot touch —
+and "ideal repair" into an incomparable one — degrading `lily02` — while leaving
+the four specs with no metric headroom (including `humanoid-531`) statistically
+unchanged, at a small, consistent wall-time cost. Reach for MUC-guided repair on
+specifications where monolithic returns nothing; keep monolithic as the default
+everywhere it already finds a repair.
+
+---
+
 ## 2026-07-15 — Weakening filter as a crossed factor
 
 **What changed.** `run_weakening` moved from a one-level sweep (the factorial's

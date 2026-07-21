@@ -50,6 +50,7 @@ PROFILE_CSVS: dict[str, str] = {
     "cj-large": "results-cj-large.csv",
     "metric": "results-metric.csv",
     "muc": "results-muc.csv",
+    "padd": "results-padd.csv",
     "tlsf": "results-tlsf.csv",
 }
 
@@ -62,6 +63,7 @@ PROFILE_RESULT_DIRS: dict[str, str] = {
     "cj-large": "results-cj-large",
     "metric": "results-metric",
     "muc": "results-muc",
+    "padd": "results-padd",
     "tlsf": "results-tlsf",
 }
 

@@ -55,6 +55,7 @@ functions, and anonymous namespaces, with source browsing and call graphs.
    api/filter/bloat
    api/filter/implication
    api/filter/implication_check
+   api/filter/vacuity
 
 .. toctree::
    :maxdepth: 1

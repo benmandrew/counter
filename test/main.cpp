@@ -11,6 +11,20 @@
 
 namespace {
 
+// Handles the population-filter suites. Split out of run_suite for the same
+// reason as run_tlsf_suite below.
+bool run_filter_suite(std::string_view suite_name) {
+    if (suite_name == "implication_filter") {
+        run_implication_filter_tests();
+        return true;
+    }
+    if (suite_name == "vacuity_filter") {
+        run_vacuity_filter_tests();
+        return true;
+    }
+    return false;
+}
+
 // Handles the TLSF-mode suites. Split out of run_suite so the latter stays
 // under the clang-tidy cognitive-complexity threshold.
 bool run_tlsf_suite(std::string_view suite_name) {
@@ -127,8 +141,7 @@ void run_suite(std::string_view suite_name,
         run_status_tests();
         return;
     }
-    if (suite_name == "implication_filter") {
-        run_implication_filter_tests();
+    if (run_filter_suite(suite_name)) {
         return;
     }
     if (suite_name == "requirement") {
@@ -183,6 +196,7 @@ int main(int argc, const char* const argv[]) {
             run_fitness_function_tests();
             run_status_tests();
             run_implication_filter_tests();
+            run_vacuity_filter_tests();
             run_requirement_tests();
             run_serialisation_tests();
             run_config_io_tests();

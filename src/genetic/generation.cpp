@@ -6,6 +6,7 @@
 
 #include "filter/bloat.hpp"
 #include "filter/implication.hpp"
+#include "filter/vacuity.hpp"
 
 FilterFunction make_predicate_filter(
     std::string name, std::function<bool(const Specification&)> predicate) {
@@ -94,6 +95,14 @@ std::vector<FilterFunction> get_filter_functions(
         });
     false_condition.set_interval(cfg.false_condition_filter_interval);
     filters.push_back(std::move(false_condition));
+    if (cfg.run_vacuity_filter) {
+        // Contradictory assumptions make (A) -> (G) a tautology, so the
+        // candidate reads as realizable without repairing anything. Reachable
+        // whenever mutation can strengthen an assumption.
+        FilterFunction vacuity = make_vacuity_filter(checker);
+        vacuity.set_interval(cfg.vacuity_filter_interval);
+        filters.push_back(std::move(vacuity));
+    }
     if (cfg.run_weakening_filter) {
         // NOLINTNEXTLINE(clang-analyzer-cplusplus.NewDeleteLeaks)
         FilterFunction weakening =

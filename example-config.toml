@@ -45,6 +45,17 @@ p_timing   = 0.1    # per-requirement probability of mutating the timing
 # strengthening the environment (e.g. adding request fairness to an
 # unrealizable GR(1) spec).
 p_add_assumption = 0.05
+# Of those appended assumptions, the fraction guarded by a random input atom
+# rather than by `true`. G F <input> is strictly stronger than
+# G(c -> F <input>) and so the more powerful repair, which is why the
+# unconditional form keeps the majority of the draw.
+p_conditional_assumption = 0.25
+# Mutate assumption timings in the strengthening direction rather than the
+# weakening one: weakening the overall assume-guarantee specification means
+# weakening a guarantee but strengthening an assumption. Setting this false
+# weakens both, which makes every assumption mutation a move away from a
+# repair; kept only so the two directions can be compared.
+strengthen_assumptions = true
 
 [tlsf]
 # Applies only in TLSF mode (a .tlsf input or --format tlsf).
@@ -79,6 +90,10 @@ metric        = "logarithmic" # default; "logarithmic" (growth-rate ratio; stays
 [filters]
 run_weakening   = true  # enable per-generation weakening filter
 run_implication = true  # enable final implication maximality filter
+# Drop candidates whose assumptions are jointly unsatisfiable. Those are
+# realizable for free, since a false antecedent makes the assume-guarantee
+# implication a tautology. Costs nothing when there are no assumptions.
+run_vacuity     = true
 
 # How often each per-generation filter runs, in generations (1 = every
 # generation). The final generation always runs every filter.
@@ -87,6 +102,7 @@ dedup           = 1
 false_condition = 1
 weakening       = 3
 bloat           = 1
+vacuity         = 1
 
 [runtime]
 black_timeout_ms = 1000  # timeout per black SAT query in milliseconds

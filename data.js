@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1784553582640,
+  "lastUpdate": 1784612916424,
   "repoUrl": "https://github.com/benmandrew/counter",
   "entries": {
     "counter benchmarks": [
@@ -4320,6 +4320,76 @@ window.BENCHMARK_DATA = {
             "value": 3301.963572793282,
             "unit": "ns/iter",
             "extra": "iterations: 212506\ncpu: 3301.669148165227 ns\nthreads: 1"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "name": "benmandrew",
+            "username": "benmandrew",
+            "email": "benmandrew@gmail.com"
+          },
+          "committer": {
+            "name": "benmandrew",
+            "username": "benmandrew",
+            "email": "benmandrew@gmail.com"
+          },
+          "id": "60d97180a851d4bdd875e20113557f6471d2da88",
+          "message": "ci: skip the check job's Nix work when nothing needs checking\n\nThe check job installed Nix, evaluated the flake, and ran cmake configure\nbefore discovering that a pull request had touched no C/C++ or docs files and\nthere was nothing to lint or build. On such a run that setup was the entire\ncost (~1m30s of install, flake eval, and configure to do nothing).\n\nMove the git-only change detection ahead of the Nix install, and gate the Nix\ninstall, the caches, and the configure/lint/docs step on a new \"heavy\" output:\ntrue only when a C/C++ file changed (there is something to lint) or a docs\ninput changed (there is something to rebuild), and always true on the nightly\nschedule and manual dispatch. When neither changed, every heavy step is skipped\nand the job finishes in seconds without touching Nix. The job still runs and\nreports success, so it remains usable as a required status check.",
+          "timestamp": "2026-07-20T14:25:37Z",
+          "url": "https://github.com/benmandrew/counter/commit/60d97180a851d4bdd875e20113557f6471d2da88"
+        },
+        "date": 1784612915423,
+        "tool": "googlecpp",
+        "benches": [
+          {
+            "name": "Syntactic similarity - small formulas (3 variables)",
+            "value": 467.52742628537527,
+            "unit": "ns/iter",
+            "extra": "iterations: 1349800\ncpu: 467.4280056304639 ns\nthreads: 1"
+          },
+          {
+            "name": "Syntactic similarity - large formulas (11 variables, O(n*m) shared_subformulae)",
+            "value": 1805.6010294829412,
+            "unit": "ns/iter",
+            "extra": "iterations: 392430\ncpu: 1805.0754580434725 ns\nthreads: 1"
+          },
+          {
+            "name": "Spec implication check - warm black cache",
+            "value": 513.5230879999995,
+            "unit": "ns/iter",
+            "extra": "iterations: 1000000\ncpu: 513.4169330000002 ns\nthreads: 1"
+          },
+          {
+            "name": "Trace model counting - matrix exponentiation/steps:5",
+            "value": 159.07485453930732,
+            "unit": "ns/iter",
+            "extra": "iterations: 4333645\ncpu: 159.07434434523356 ns\nthreads: 1"
+          },
+          {
+            "name": "Trace model counting - matrix exponentiation/steps:10",
+            "value": 168.47352792931284,
+            "unit": "ns/iter",
+            "extra": "iterations: 4065209\ncpu: 168.46416629501704 ns\nthreads: 1"
+          },
+          {
+            "name": "Trace model counting - matrix exponentiation/steps:20",
+            "value": 194.89881890369648,
+            "unit": "ns/iter",
+            "extra": "iterations: 3445189\ncpu: 194.89714265313165 ns\nthreads: 1"
+          },
+          {
+            "name": "Trace model counting - matrix exponentiation/steps:50",
+            "value": 230.33668442450343,
+            "unit": "ns/iter",
+            "extra": "iterations: 2783372\ncpu: 230.3363926920297 ns\nthreads: 1"
+          },
+          {
+            "name": "Mutate specification - 3-guarantee takeoff spec",
+            "value": 2926.576308727086,
+            "unit": "ns/iter",
+            "extra": "iterations: 232516\ncpu: 2926.606220647183 ns\nthreads: 1"
           }
         ]
       }

@@ -30,9 +30,13 @@ Formula mutate_formula(const Formula& formula,
 enum class Direction : std::uint8_t { Weaken, Strengthen };
 
 /// Mutates a timing constraint by taking a single step through the timing
-/// partial order in the direction @p direction. Timings at the relevant
-/// extreme of the order (Eventually when weakening, Always when strengthening)
-/// have no successor and are returned unchanged.
+/// partial order in the direction @p direction.
+///
+/// Always and Eventually are fixed points in *both* directions. Always has no
+/// strengthening and Eventually no weakening, since each is already the
+/// extreme of the order; neither is moved in the other direction either,
+/// because stepping off an unquantified timing into the quantified families
+/// would invent a tick count with no basis in the original requirement.
 ///
 /// @param timing        The timing value to mutate
 /// @param direction     Whether to weaken or strengthen the timing

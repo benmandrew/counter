@@ -20,6 +20,7 @@
 #include "config_io.hpp"
 #include "crash/crash_handler.hpp"
 #include "filter/implication.hpp"
+#include "filter/vacuity.hpp"
 #include "fitness/function.hpp"
 #include "fitness/status.hpp"
 #include "genetic/generation.hpp"
@@ -345,7 +346,9 @@ run_evolution(const Config& cfg, std::vector<ScoredSpecification> population,
         for (const ScoredSpecification& cand : population) {
             if (specification_status(cand.specification, global_sat_checker(),
                                      global_real_checker()) == 1.0 &&
-                !specification_has_false_condition(cand.specification)) {
+                !specification_has_false_condition(cand.specification) &&
+                !specification_has_unsatisfiable_assumptions(
+                    cand.specification, global_sat_checker())) {
                 ++n_real;
             }
         }
@@ -362,10 +365,14 @@ std::vector<Specification> collect_realizable_specifications(
     for (const ScoredSpecification& scored : population) {
         // The per-generation filter only screens offspring during evolution,
         // so a false-condition result from the final generation would
-        // otherwise never be re-screened before being reported here.
+        // otherwise never be re-screened before being reported here. The same
+        // applies to vacuously-realizable candidates: elites bypass the
+        // offspring filters entirely, so one can reach the output unscreened.
         if (specification_status(scored.specification, global_sat_checker(),
                                  global_real_checker()) == 1.0 &&
-            !specification_has_false_condition(scored.specification)) {
+            !specification_has_false_condition(scored.specification) &&
+            !specification_has_unsatisfiable_assumptions(
+                scored.specification, global_sat_checker())) {
             realizable_vec.push_back(scored.specification);
         }
     }

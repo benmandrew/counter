@@ -46,6 +46,11 @@ struct Config {
     SimilarityMetric similarity_metric = SimilarityMetric::Logarithmic;
     bool run_weakening_filter = true;
     bool run_implication_filter = true;
+    // Drop candidates whose assumptions are jointly unsatisfiable: they are
+    // realizable for free, since a false antecedent makes
+    // (assumptions) -> (guarantees) a tautology. A no-op for specifications
+    // with no assumptions, which short-circuit before any solver call.
+    bool run_vacuity_filter = true;
     // Per-generation filters run only every Nth generation (1 = every
     // generation). The final generation always runs every filter, so the
     // resulting population is never left un-deduplicated/un-weakened.
@@ -53,6 +58,7 @@ struct Config {
     std::size_t false_condition_filter_interval = 1;
     std::size_t weakening_filter_interval = 1;
     std::size_t bloat_filter_interval = 1;
+    std::size_t vacuity_filter_interval = 1;
     std::chrono::milliseconds black_timeout{1000};
     // Per-call wall-clock budget for ltlsynt realizability checks. Unlike
     // black, ltlsynt has no internal timeout, and the genetic search
@@ -95,9 +101,10 @@ struct Config {
     double p_add_assumption = 0.05;
     // Mutate assumption timings in the strengthening direction rather than the
     // weakening one. Weakening the overall assume-guarantee specification means
-    // weakening a guarantee but strengthening an assumption; off by default so
-    // that existing experiment results stay comparable.
-    bool strengthen_assumptions = false;
+    // weakening a guarantee but strengthening an assumption, so weakening both
+    // makes every assumption mutation a move away from a repair. Retained as a
+    // flag only so the two directions can be crossed as an experiment factor.
+    bool strengthen_assumptions = true;
     // TLSF-mode mutation: probability of selecting an assumption-side section
     // (INITIALLY/REQUIRE/ASSUME) versus a guarantee-side section
     // (PRESET/ASSERT/GUARANTEE) when mutating a tlsf::Specification.

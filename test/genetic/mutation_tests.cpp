@@ -155,15 +155,16 @@ void test_timing_strengthen_always_is_unchanged() {
         "strengthen: always is the top of the order and has no strengthening");
 }
 
-void test_timing_strengthen_eventually_becomes_within_ticks() {
-    // next_index(10) = 4 → within_ticks(4 + 1 = 5)
-    const Timing mutated = mutate_timing(
-        timing::eventually(), Direction::Strengthen, make_source({4}, 0));
-    const auto* within = std::get_if<timing::WithinTicks>(&mutated);
-    expect(within != nullptr,
-           "strengthen: eventually should become within-ticks");
-    expect(within->m_ticks == 5,
-           "strengthen: eventually should take the drawn deadline");
+// Mirrors test_timing_mutation_always_is_unchanged: the two unquantified
+// timings are fixed points in both directions.
+void test_timing_strengthen_eventually_is_unchanged() {
+    for (std::size_t draw = 0; draw < 6; ++draw) {
+        const Timing mutated = mutate_timing(
+            timing::eventually(), Direction::Strengthen, make_source({}, draw));
+        expect(std::holds_alternative<timing::Eventually>(mutated),
+               "strengthen: eventually must not be strengthened and should be "
+               "unchanged");
+    }
 }
 
 void test_timing_strengthen_for_ticks_branches() {
@@ -227,9 +228,10 @@ void test_timing_strengthen_after_ticks_is_unchanged() {
     }
 }
 
-// Strengthening must never produce a timing weaker than its input, and
-// weakening must never produce a stronger one. Sweeping the random source
-// exercises every branch of both directions.
+// Neither direction may cross to the opposite extreme of the order: only a
+// spec that already sits at an extreme may come back out of the mutator still
+// sitting there. Sweeping the random source exercises every branch of both
+// directions.
 void test_timing_mutation_directions_are_monotone() {
     const std::vector<Timing> starts = {
         timing::immediately(),   timing::next_timepoint(),
@@ -241,7 +243,8 @@ void test_timing_mutation_directions_are_monotone() {
         for (std::size_t draw = 0; draw < 12; ++draw) {
             const Timing stronger = mutate_timing(start, Direction::Strengthen,
                                                   make_source({}, draw));
-            expect(!std::holds_alternative<timing::Eventually>(stronger),
+            expect(!std::holds_alternative<timing::Eventually>(stronger) ||
+                       std::holds_alternative<timing::Eventually>(start),
                    "strengthen: no branch may fall to the bottom of the order");
             const Timing weaker =
                 mutate_timing(start, Direction::Weaken, make_source({}, draw));
@@ -293,6 +296,93 @@ void test_mutation_skips_non_weakenable_requirement() {
         std::get_if<timing::WithinTicks>(&result.m_guarantees[1].m_timing);
     expect(within != nullptr && within->m_ticks == 1,
            "mutation: the weakenable requirement must be the one mutated");
+}
+
+// The direction is chosen per requirement list, not per specification: an
+// assumption and a guarantee mutated in the same run must move opposite ways.
+// `within 4 ticks` is the discriminator — weakening only ever grows the
+// deadline or drops to `eventually`, strengthening only ever shrinks it, moves
+// to `after`, or rises to the qualitative timings.
+void test_assumption_and_guarantee_timings_move_opposite_ways() {
+    const Requirement req(Formula("true"), Formula("a"),
+                          timing::within_ticks(4), ConditionType::Continual,
+                          true);
+    Config cfg;
+    cfg.p_response = 0.0;
+    cfg.p_trigger = 0.0;
+    cfg.p_timing = 1.0;
+    cfg.p_add_assumption = 0.0;
+    std::size_t n_assumption_moves = 0;
+    std::size_t n_guarantee_moves = 0;
+    for (std::size_t seed = 0; seed < 200; ++seed) {
+        const RandomSource source = make_random_source_from_seed(seed);
+        const Specification assumption_side({req}, {}, {"a"}, {"b"});
+        const Timing mutated_assumption =
+            mutate_specification(assumption_side, source, cfg)
+                .m_assumptions[0]
+                .m_timing;
+        if (!(mutated_assumption == req.m_timing)) {
+            ++n_assumption_moves;
+            const auto* within =
+                std::get_if<timing::WithinTicks>(&mutated_assumption);
+            expect(
+                within == nullptr || within->m_ticks < 4,
+                "direction split: an assumption's within-ticks deadline must "
+                "only shrink");
+            expect(
+                !std::holds_alternative<timing::Eventually>(mutated_assumption),
+                "direction split: an assumption must never weaken to "
+                "eventually");
+        }
+        const Specification guarantee_side({}, {req}, {"a"}, {"b"});
+        const Timing mutated_guarantee =
+            mutate_specification(guarantee_side, source, cfg)
+                .m_guarantees[0]
+                .m_timing;
+        if (!(mutated_guarantee == req.m_timing)) {
+            ++n_guarantee_moves;
+            const auto* within =
+                std::get_if<timing::WithinTicks>(&mutated_guarantee);
+            expect(within == nullptr || within->m_ticks > 4,
+                   "direction split: a guarantee's within-ticks deadline must "
+                   "only grow");
+            expect(
+                !std::holds_alternative<timing::AfterTicks>(mutated_guarantee),
+                "direction split: a guarantee must never move to after-ticks "
+                "(only strengthening reaches it)");
+        }
+    }
+    expect(n_assumption_moves > 0 && n_guarantee_moves > 0,
+           "direction split: both sides should have been mutated at least once "
+           "across 200 seeds");
+}
+
+// With the flag off both lists weaken, so an assumption can reach `eventually`
+// — the move the split exists to prevent.
+void test_strengthen_assumptions_flag_restores_weakening() {
+    const Requirement req(Formula("true"), Formula("a"),
+                          timing::within_ticks(4), ConditionType::Continual,
+                          true);
+    Config cfg;
+    cfg.p_response = 0.0;
+    cfg.p_trigger = 0.0;
+    cfg.p_timing = 1.0;
+    cfg.p_add_assumption = 0.0;
+    cfg.strengthen_assumptions = false;
+    bool saw_weakening = false;
+    for (std::size_t seed = 0; seed < 200 && !saw_weakening; ++seed) {
+        const Specification spec({req}, {}, {"a"}, {"b"});
+        const Timing mutated =
+            mutate_specification(spec, make_random_source_from_seed(seed), cfg)
+                .m_assumptions[0]
+                .m_timing;
+        const auto* within = std::get_if<timing::WithinTicks>(&mutated);
+        saw_weakening = std::holds_alternative<timing::Eventually>(mutated) ||
+                        (within != nullptr && within->m_ticks > 4);
+    }
+    expect(
+        saw_weakening,
+        "strengthen_assumptions = false should weaken assumptions as before");
 }
 
 void test_condition_mutation_never_introduces_output_atom() {
@@ -376,13 +466,15 @@ void run_mutation_tests() {
     test_timing_mutation_after_ticks_becomes_within_ticks();
     test_timing_strengthen_non_parameterized_becomes_for_one_tick();
     test_timing_strengthen_always_is_unchanged();
-    test_timing_strengthen_eventually_becomes_within_ticks();
+    test_timing_strengthen_eventually_is_unchanged();
     test_timing_strengthen_for_ticks_branches();
     test_timing_strengthen_within_ticks_branches();
     test_timing_strengthen_after_ticks_is_unchanged();
     test_timing_mutation_directions_are_monotone();
     test_mutation_all_locked_is_noop();
     test_mutation_skips_non_weakenable_requirement();
+    test_assumption_and_guarantee_timings_move_opposite_ways();
+    test_strengthen_assumptions_flag_restores_weakening();
     test_condition_mutation_never_introduces_output_atom();
     test_add_assumption_appends_environment_assumption();
     test_add_assumption_disabled_by_zero_probability();

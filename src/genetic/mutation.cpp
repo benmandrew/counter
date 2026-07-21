@@ -216,12 +216,6 @@ Timing strengthen_within_timing(const timing::WithinTicks& within_ticks,
     }
 }
 
-// Eventually is the bottom of the timing order, so its strengthenings are the
-// whole `within k ticks` family. Draw a small k: the semantic fitness only
-// counts traces up to a bounded horizon, so a large deadline is indistinguish-
-// able from Eventually there, and successive mutations can grow k anyway.
-constexpr std::size_t k_eventually_strengthen_max_ticks = 10;
-
 Timing strengthen_timing(const Timing& timing,
                          const RandomSource& random_source) {
     const auto mutation_function = [&](const auto& value) -> Timing {
@@ -244,9 +238,11 @@ Timing strengthen_timing(const Timing& timing,
         } else if constexpr (std::is_same_v<T, timing::WithinTicks>) {
             return strengthen_within_timing(value, random_source);
         } else if constexpr (std::is_same_v<T, timing::Eventually>) {
-            return timing::within_ticks(
-                random_source.next_index(k_eventually_strengthen_max_ticks) +
-                1);
+            // Eventually must not be strengthened, mirroring the rule that
+            // Always must not be weakened. Both are the unquantified extremes
+            // of the order, and stepping off either invents a tick count with
+            // no basis in the original requirement.
+            return timing::eventually();
         } else {
             assert(false);
             __builtin_unreachable();

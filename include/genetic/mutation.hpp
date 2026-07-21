@@ -32,18 +32,30 @@ enum class Direction : std::uint8_t { Weaken, Strengthen };
 /// Mutates a timing constraint by taking a single step through the timing
 /// partial order in the direction @p direction.
 ///
-/// Always and Eventually are fixed points in *both* directions. Always has no
-/// strengthening and Eventually no weakening, since each is already the
-/// extreme of the order; neither is moved in the other direction either,
-/// because stepping off an unquantified timing into the quantified families
-/// would invent a tick count with no basis in the original requirement.
+/// Always has no strengthening and Eventually no weakening: each is already
+/// the extreme of the order in that direction. Always is additionally never
+/// weakened, so it is a fixed point in both directions.
+///
+/// Eventually *is* strengthened, but only into a timing donated by
+/// @p timing_pool, never one conjured from nothing. Each quantified donor
+/// contributes `for n ticks` for its own tick count; a donated Immediately or
+/// NextTimepoint contributes itself. With no usable donor Eventually is
+/// returned unchanged. Timings are the same kind of resource as atom names in
+/// mutate_formula: drawn from the specification, not invented.
 ///
 /// @param timing        The timing value to mutate
 /// @param direction     Whether to weaken or strengthen the timing
+/// @param timing_pool   Timings occurring in the specification, donating the
+///                      tick counts a strengthened Eventually may take
 /// @param random_source Random source for branch and selector choices
 /// @return              A mutated timing value
 Timing mutate_timing(const Timing& timing, Direction direction,
+                     const std::vector<Timing>& timing_pool,
                      const RandomSource& random_source);
+
+/// Collects the distinct timings occurring in @p specification, for use as the
+/// @p timing_pool argument of mutate_timing.
+std::vector<Timing> collect_timing_pool(const Specification& specification);
 
 /// Mutates a requirement. Each of trigger, response, and timing is mutated
 /// independently with probabilities from @p cfg. Response atoms are drawn from
@@ -54,6 +66,7 @@ Timing mutate_timing(const Timing& timing, Direction direction,
 /// @param atoms           Pool of atom names for response mutation
 /// @param condition_atoms Pool of atom names for trigger mutation (inputs only)
 /// @param direction       Direction applied to the timing field
+/// @param timing_pool     Timings donating tick counts to timing mutation
 /// @param random_source   Random source for branch and selector choices
 /// @param cfg             Configuration providing mutation probabilities
 /// @return                A mutated requirement
@@ -61,6 +74,7 @@ Requirement mutate_requirement(const Requirement& requirement,
                                const std::vector<std::string>& atoms,
                                const std::vector<std::string>& condition_atoms,
                                Direction direction,
+                               const std::vector<Timing>& timing_pool,
                                const RandomSource& random_source,
                                const Config& cfg);
 

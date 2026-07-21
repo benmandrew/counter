@@ -1,5 +1,6 @@
 #include "genetic/mutation.hpp"
 
+#include <algorithm>
 #include <cassert>
 #include <cstdlib>
 #include <optional>
@@ -216,7 +217,60 @@ Timing strengthen_within_timing(const timing::WithinTicks& within_ticks,
     }
 }
 
+// Timing is an alias for a std::variant, so ADL from inside <algorithm> finds
+// only std's element-wise variant comparisons, not requirement.hpp's
+// namespace-scope ones. Naming them in a lambda picks up the right overloads.
+void sort_unique_timings(std::vector<Timing>& timings) {
+    std::sort(timings.begin(), timings.end(),
+              [](const Timing& lhs, const Timing& rhs) { return lhs < rhs; });
+    timings.erase(std::unique(timings.begin(), timings.end(),
+                              [](const Timing& lhs, const Timing& rhs) {
+                                  return lhs == rhs;
+                              }),
+                  timings.end());
+}
+
+// The strengthenings Eventually may take, derived from the timings the
+// specification already uses. A quantified donor lends only its tick count,
+// spent as `for n ticks`; Immediately and NextTimepoint lend themselves.
+std::vector<Timing> eventually_candidates(
+    const std::vector<Timing>& timing_pool) {
+    std::vector<Timing> candidates;
+    for (const Timing& donor : timing_pool) {
+        std::visit(
+            [&candidates](const auto& value) {
+                using T = std::decay_t<decltype(value)>;
+                if constexpr (std::is_same_v<T, timing::WithinTicks> ||
+                              std::is_same_v<T, timing::ForTicks> ||
+                              std::is_same_v<T, timing::AfterTicks>) {
+                    // `for 0 ticks` is just Immediately spelled differently,
+                    // and only AfterTicks can carry a zero count.
+                    if (value.m_ticks > 0) {
+                        candidates.push_back(timing::for_ticks(value.m_ticks));
+                    }
+                } else if constexpr (std::is_same_v<T, timing::Immediately>) {
+                    candidates.push_back(timing::immediately());
+                } else if constexpr (std::is_same_v<T, timing::NextTimepoint>) {
+                    candidates.push_back(timing::next_timepoint());
+                }
+            },
+            donor);
+    }
+    sort_unique_timings(candidates);
+    return candidates;
+}
+
+Timing strengthen_eventually(const std::vector<Timing>& timing_pool,
+                             const RandomSource& random_source) {
+    const std::vector<Timing> candidates = eventually_candidates(timing_pool);
+    if (candidates.empty()) {
+        return timing::eventually();
+    }
+    return candidates[random_source.next_index(candidates.size())];
+}
+
 Timing strengthen_timing(const Timing& timing,
+                         const std::vector<Timing>& timing_pool,
                          const RandomSource& random_source) {
     const auto mutation_function = [&](const auto& value) -> Timing {
         using T = std::decay_t<decltype(value)>;
@@ -238,11 +292,7 @@ Timing strengthen_timing(const Timing& timing,
         } else if constexpr (std::is_same_v<T, timing::WithinTicks>) {
             return strengthen_within_timing(value, random_source);
         } else if constexpr (std::is_same_v<T, timing::Eventually>) {
-            // Eventually must not be strengthened, mirroring the rule that
-            // Always must not be weakened. Both are the unquantified extremes
-            // of the order, and stepping off either invents a tick count with
-            // no basis in the original requirement.
-            return timing::eventually();
+            return strengthen_eventually(timing_pool, random_source);
         } else {
             assert(false);
             __builtin_unreachable();
@@ -278,11 +328,26 @@ Timing weaken_timing(const Timing& timing, const RandomSource& random_source) {
 
 }  // namespace
 
+std::vector<Timing> collect_timing_pool(const Specification& specification) {
+    std::vector<Timing> pool;
+    pool.reserve(specification.m_assumptions.size() +
+                 specification.m_guarantees.size());
+    for (const Requirement& req : specification.m_assumptions) {
+        pool.push_back(req.m_timing);
+    }
+    for (const Requirement& req : specification.m_guarantees) {
+        pool.push_back(req.m_timing);
+    }
+    sort_unique_timings(pool);
+    return pool;
+}
+
 Timing mutate_timing(const Timing& timing, Direction direction,
+                     const std::vector<Timing>& timing_pool,
                      const RandomSource& random_source) {
     assert(random_source);
     return direction == Direction::Strengthen
-               ? strengthen_timing(timing, random_source)
+               ? strengthen_timing(timing, timing_pool, random_source)
                : weaken_timing(timing, random_source);
 }
 
@@ -290,6 +355,7 @@ Requirement mutate_requirement(const Requirement& requirement,
                                const std::vector<std::string>& atoms,
                                const std::vector<std::string>& condition_atoms,
                                Direction direction,
+                               const std::vector<Timing>& timing_pool,
                                const RandomSource& random_source,
                                const Config& cfg) {
     Requirement mutated = requirement;
@@ -305,8 +371,8 @@ Requirement mutate_requirement(const Requirement& requirement,
                                              condition_atoms, random_source);
     }
     if (random_source.next_real() < cfg.p_timing) {
-        mutated.m_timing =
-            mutate_timing(requirement.m_timing, direction, random_source);
+        mutated.m_timing = mutate_timing(requirement.m_timing, direction,
+                                         timing_pool, random_source);
     }
     mutated.m_ltl = requirement_to_ltl(mutated);
     return mutated;
@@ -399,6 +465,7 @@ Specification mutate_specification(const Specification& specification,
     // cannot then draw an atom for a trigger at all.
     const std::vector<std::string>& condition_atoms =
         specification.m_in_atoms.empty() ? atoms : specification.m_in_atoms;
+    const std::vector<Timing> timing_pool = collect_timing_pool(specification);
     const std::vector<std::size_t> weakenable_indices =
         collect_weakenable_indices(specification);
     if (weakenable_indices.empty()) {
@@ -418,7 +485,7 @@ Specification mutate_specification(const Specification& specification,
     if (idx < n_assumptions) {
         assumptions[idx] =
             mutate_requirement(assumptions[idx], atoms, condition_atoms,
-                               direction, random_source, cfg);
+                               direction, timing_pool, random_source, cfg);
         if (creates_duplicate(assumptions, idx)) {
             return specification;
         }
@@ -426,7 +493,7 @@ Specification mutate_specification(const Specification& specification,
         const std::size_t g_idx = idx - n_assumptions;
         guarantees[g_idx] =
             mutate_requirement(guarantees[g_idx], atoms, condition_atoms,
-                               direction, random_source, cfg);
+                               direction, timing_pool, random_source, cfg);
         if (creates_duplicate(guarantees, g_idx)) {
             return specification;
         }

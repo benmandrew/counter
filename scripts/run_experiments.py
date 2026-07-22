@@ -438,7 +438,11 @@ PROFILES: dict[str, dict] = {
         # 0-30%. Caps are ~6-20x that max: generous enough never to censor a
         # slow-but-progressing run, tight enough to kill a true runaway in
         # minutes (ltlsynt_timeout_ms=500 already bounds each query).
-        "timeout_caps": {"arbiter": 60, "gyro-var1": 120, "lift": 180,
+        # lift has a heavy runtime tail the 3-seed calibration missed (hard
+        # seeds run 100-600s+ across all arms, intrinsic to the spec, not the
+        # well-sep/output-assumption feature), so it gets the muc/padd 600s cap
+        # rather than the calibrated 180s; the rest keep their calibrated caps.
+        "timeout_caps": {"arbiter": 60, "gyro-var1": 120, "lift": 600,
                          "lily02": 60, "minepump": 60},
         "baseline_aliases": {},
         "configs_dir": EXPERIMENTS_DIR / "configs-wellsep",

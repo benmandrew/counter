@@ -604,6 +604,56 @@ void test_add_assumption_condition_varies_over_inputs_and_true() {
            "add-assumption: a negated input condition should be reachable");
 }
 
+// With allow_output_assumptions set, the atom pool includes outputs, so an
+// added assumption can reference an output atom on either side. The well-
+// separation filter (not a syntactic ban) is what keeps such assumptions
+// honest.
+void test_add_assumption_can_reference_output_when_allowed() {
+    const Specification spec(
+        {},
+        {Requirement(Formula("a"), Formula("B"), timing::always(),
+                     ConditionType::Trigger, true)},
+        {"a", "c"}, {"B", "D"});
+    Config cfg;
+    cfg.p_add_assumption = 1.0;
+    cfg.p_conditional_assumption = 0.5;
+    cfg.allow_output_assumptions = true;
+    bool saw_output = false;
+    for (std::size_t seed = 0; seed < 200 && !saw_output; ++seed) {
+        const Specification result =
+            mutate_specification(spec, make_random_source_from_seed(seed), cfg);
+        const std::string ltl = result.m_assumptions.front().m_ltl;
+        saw_output = ltl.find('B') != std::string::npos ||
+                     ltl.find('D') != std::string::npos;
+    }
+    expect(saw_output,
+           "add-assumption: with allow_output_assumptions an added assumption "
+           "can reference an output atom");
+}
+
+// The default keeps assumptions input-only: no output atom may enter an added
+// assumption, matching the pre-flag behaviour exactly.
+void test_add_assumption_never_references_output_by_default() {
+    const Specification spec(
+        {},
+        {Requirement(Formula("a"), Formula("B"), timing::always(),
+                     ConditionType::Trigger, true)},
+        {"a", "c"}, {"B", "D"});
+    Config cfg;
+    cfg.p_add_assumption = 1.0;
+    cfg.p_conditional_assumption = 0.5;
+    cfg.allow_output_assumptions = false;
+    for (std::size_t seed = 0; seed < 200; ++seed) {
+        const Specification result =
+            mutate_specification(spec, make_random_source_from_seed(seed), cfg);
+        const std::string ltl = result.m_assumptions.front().m_ltl;
+        expect(ltl.find('B') == std::string::npos &&
+                   ltl.find('D') == std::string::npos,
+               "add-assumption: with the flag off an added assumption never "
+               "references an output atom");
+    }
+}
+
 void test_add_assumption_disabled_by_zero_probability() {
     const Specification spec(
         {}, {Requirement(Formula("a"), Formula("b"), timing::immediately())},
@@ -648,5 +698,7 @@ void run_mutation_tests() {
     test_condition_mutation_never_introduces_output_atom();
     test_add_assumption_appends_environment_assumption();
     test_add_assumption_condition_varies_over_inputs_and_true();
+    test_add_assumption_can_reference_output_when_allowed();
+    test_add_assumption_never_references_output_by_default();
     test_add_assumption_disabled_by_zero_probability();
 }

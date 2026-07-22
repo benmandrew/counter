@@ -97,7 +97,8 @@ std::string flip_or_replace_atom(const std::string& atom,
 // one rewrite rule is drawn uniformly and applied, recursing into children; the
 // three top-level cases mirror the paper's (1) atom/constant, (2) unary
 // operator, (3) binary operator. @p atoms is the side-appropriate atom pool
-// (inputs only on the assumption side; inputs ∪ outputs on the guarantee side),
+// (inputs on the assumption side — or inputs ∪ outputs there too under
+// allow_output_assumptions — and inputs ∪ outputs on the guarantee side),
 // assumed non-empty.
 Formula mutate_temporal(const Formula& formula,
                         const std::vector<std::string>& atoms,
@@ -246,22 +247,52 @@ Formula mutate_propositional_parts(const Formula& formula,
     }
 }
 
-// Appends a fairness assumption `G F <input>` (input negated on a coin flip)
-// to the ASSUME section. Strengthening the environment this way is how the
-// algorithm can repair unrealizability that the rewrite-only mutation cannot
-// reach (e.g. the missing request-fairness of an unrealizable GR(1) arbiter).
+// Appends a new environment assumption to the ASSUME section. Strengthening the
+// environment this way is how the algorithm repairs unrealizability the
+// rewrite-only mutation cannot reach (e.g. the missing request-fairness of an
+// unrealizable GR(1) arbiter). By default the assumption is an unconditional
+// fairness property `G F <input>` (input negated on a coin flip), drawn from
+// the inputs only. With allow_output_assumptions the atom pool widens to inputs
+// ∪ outputs and a conditional form `G(c -> F r)` becomes reachable (guarded by
+// p_conditional_assumption), so the search can express reactive-environment
+// assumptions that reference outputs — e.g. `G(<output> -> F <input>)`, an
+// environment obligation conditioned on a system output. The syntactic
+// input-only ban is then replaced by the well-separation filter, which prunes
+// any assumption the system could force to fail (such as the `G F <output>` the
+// wider draw can also produce). With the flag off the draw is byte-for-byte
+// identical to before.
 tlsf::Specification tlsf_add_assumption(const tlsf::Specification& spec,
-                                        const RandomSource& random_source) {
-    const std::string& signal =
-        spec.m_inputs[random_source.next_index(spec.m_inputs.size())];
-    Formula atom = Formula::make_atom(signal);
-    if (random_source.next_bool()) {
-        atom = Formula::make_unary(Formula::Kind::Not, atom);
-    }
+                                        const RandomSource& random_source,
+                                        const Config& cfg) {
     tlsf::Specification mutated = spec;
-    mutated.m_assume.push_back(Formula::make_unary(
-        Formula::Kind::Globally,
-        Formula::make_unary(Formula::Kind::Eventually, atom)));
+    if (!cfg.allow_output_assumptions) {
+        const std::string& signal =
+            spec.m_inputs[random_source.next_index(spec.m_inputs.size())];
+        Formula atom = Formula::make_atom(signal);
+        if (random_source.next_bool()) {
+            atom = Formula::make_unary(Formula::Kind::Not, atom);
+        }
+        mutated.m_assume.push_back(Formula::make_unary(
+            Formula::Kind::Globally,
+            Formula::make_unary(Formula::Kind::Eventually, atom)));
+        return mutated;
+    }
+    std::vector<std::string> pool = spec.m_inputs;
+    pool.insert(pool.end(), spec.m_outputs.begin(), spec.m_outputs.end());
+    const auto draw = [&pool, &random_source]() {
+        Formula atom =
+            Formula::make_atom(pool[random_source.next_index(pool.size())]);
+        if (random_source.next_bool()) {
+            atom = Formula::make_unary(Formula::Kind::Not, atom);
+        }
+        return atom;
+    };
+    Formula body = Formula::make_unary(Formula::Kind::Eventually, draw());
+    if (random_source.next_real() < cfg.p_conditional_assumption) {
+        body = Formula::make_binary(Formula::Kind::Implies, draw(), body);
+    }
+    mutated.m_assume.push_back(
+        Formula::make_unary(Formula::Kind::Globally, body));
     return mutated;
 }
 
@@ -271,9 +302,15 @@ tlsf::Specification tlsf_mutate(const tlsf::Specification& spec,
                                 const RandomSource& random_source,
                                 const Config& cfg) {
     // Low-probability structural action: add a new environment assumption.
-    if (!spec.m_inputs.empty() &&
+    // Available whenever the assumption atom pool is non-empty: inputs, plus
+    // outputs when allow_output_assumptions is set (so a spec with outputs but
+    // no inputs can still gain an assumption).
+    const bool have_assumption_pool =
+        !spec.m_inputs.empty() ||
+        (cfg.allow_output_assumptions && !spec.m_outputs.empty());
+    if (have_assumption_pool &&
         random_source.next_real() < cfg.p_add_assumption) {
-        return tlsf_add_assumption(spec, random_source);
+        return tlsf_add_assumption(spec, random_source, cfg);
     }
     tlsf::Specification mutated = spec;
 
@@ -289,9 +326,15 @@ tlsf::Specification tlsf_mutate(const tlsf::Specification& spec,
         return spec;
     }
 
-    // Guarantee-side atom pool is inputs ∪ outputs; assumption-side is inputs.
+    // Guarantee-side atom pool is inputs ∪ outputs; assumption-side is inputs,
+    // widened to inputs ∪ outputs under allow_output_assumptions so a rewrite
+    // can keep or introduce an output atom (letting an output-referencing
+    // assumption from tlsf_add_assumption be reshaped — e.g. its F grown into a
+    // W hold-until form — rather than having the output overwritten). The
+    // syntactic ban is then replaced by the well-separation filter, which
+    // prunes any assumption the system could force to fail.
     std::vector<std::string> pool = mutated.m_inputs;
-    if (!assumption_side) {
+    if (!assumption_side || cfg.allow_output_assumptions) {
         pool.insert(pool.end(), mutated.m_outputs.begin(),
                     mutated.m_outputs.end());
     }

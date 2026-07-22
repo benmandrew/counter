@@ -175,7 +175,8 @@ std::vector<Scored<Specification>> evolve_population(
     std::vector<FilterRunStats>& filter_stats_out) {
     // Per-generation filters, the TLSF counterparts of the FRETISH set
     // (dedup, bloat cap, assumption-satisfiability = false-condition, and the
-    // optional weakening filter), each with its configured interval.
+    // optional weakening and well-separation filters), each with its configured
+    // interval.
     std::vector<FilterFunctionT<Specification>> per_gen_filters;
     {
         FilterFunctionT<Specification> dedup = tlsf_make_dedup_filter();
@@ -193,6 +194,12 @@ std::vector<Scored<Specification>> evolve_population(
                 tlsf_make_weakening_filter(spec, global_sat_checker());
             weakening.set_interval(cfg.weakening_filter_interval);
             per_gen_filters.push_back(std::move(weakening));
+        }
+        if (cfg.run_well_separation_filter) {
+            FilterFunctionT<Specification> well_separation =
+                tlsf_make_well_separation_filter(global_real_checker());
+            well_separation.set_interval(cfg.well_separation_filter_interval);
+            per_gen_filters.push_back(std::move(well_separation));
         }
     }
 

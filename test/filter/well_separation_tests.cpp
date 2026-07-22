@@ -85,6 +85,40 @@ void test_output_atom_the_system_cannot_force_is_well_separated() {
            "well-separated when the environment can keep it satisfied");
 }
 
+// Arbiter atom partition: inputs r0,r1 (environment); outputs g0,g1 (system).
+// The guarantees are illustrative only -- the well-separation check ignores
+// them, deciding purely on the assumptions.
+Specification with_arbiter_assumptions(std::vector<Requirement> assumptions) {
+    return Specification(std::move(assumptions),
+                         {continual("g0", timing::immediately())}, {"r0", "r1"},
+                         {"g0", "g1"});
+}
+
+// `G F g0` (grant liveness) over the output g0: the system controls g0, so it
+// can simply never grant, making `F G !g0` realizable. Not well-separated.
+void test_grant_liveness_assumption_is_not_well_separated() {
+    RealizabilityChecker checker;
+    const Specification spec =
+        with_arbiter_assumptions({continual("g0", timing::eventually())});
+    expect(specification_is_not_well_separated(spec, checker),
+           "well-separation: a grant-liveness assumption G F g0 is forcible by "
+           "the system and so not well-separated");
+}
+
+// `G(r0 -> F g0)` mentions the output g0, yet falsifying it needs the input r0,
+// which the environment can withhold forever. Well-separated despite the output
+// reference -- exercises the output-atom fast path taking the solver route and
+// still returning well-separated.
+void test_request_response_assumption_is_well_separated() {
+    RealizabilityChecker checker;
+    const Specification spec = with_arbiter_assumptions(
+        {continual_when("r0", "g0", timing::eventually())});
+    expect(
+        !specification_is_not_well_separated(spec, checker),
+        "well-separation: G(r0 -> F g0) is well-separated because falsifying "
+        "it needs an input the environment controls");
+}
+
 void test_filter_drops_only_the_non_well_separated_spec() {
     RealizabilityChecker checker;
     FilterFunction filter = make_well_separation_filter(checker);
@@ -109,5 +143,7 @@ void run_well_separation_filter_tests() {
     test_assumption_over_output_is_not_well_separated();
     test_conjunction_with_a_forcible_conjunct_is_not_well_separated();
     test_output_atom_the_system_cannot_force_is_well_separated();
+    test_grant_liveness_assumption_is_not_well_separated();
+    test_request_response_assumption_is_well_separated();
     test_filter_drops_only_the_non_well_separated_spec();
 }

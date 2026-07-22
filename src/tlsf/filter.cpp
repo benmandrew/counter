@@ -16,10 +16,70 @@
 #include "bounded_async.hpp"
 #include "prop_formula.hpp"
 #include "runner/black.hpp"
+#include "runner/spot.hpp"
 #include "thread_pool.hpp"
 #include "tlsf/specification.hpp"
 
 namespace {
+
+// Collects the atom names appearing in a (possibly temporal) formula.
+void collect_atoms(const Formula& formula,
+                   std::unordered_set<std::string>& out) {
+    switch (formula.kind()) {
+        case Formula::Kind::Atom:
+            if (const std::optional<std::string> name = formula.atom_name()) {
+                out.insert(*name);
+            }
+            return;
+        case Formula::Kind::Not:
+        case Formula::Kind::Next:
+        case Formula::Kind::Eventually:
+        case Formula::Kind::Globally:
+            if (const std::optional<Formula> child = formula.unary_child()) {
+                collect_atoms(*child, out);
+            }
+            return;
+        case Formula::Kind::And:
+        case Formula::Kind::Or:
+        case Formula::Kind::Implies:
+        case Formula::Kind::Iff:
+        case Formula::Kind::Until:
+        case Formula::Kind::Release:
+        case Formula::Kind::WeakUntil:
+            if (const std::optional<std::pair<Formula, Formula>> children =
+                    formula.binary_children()) {
+                collect_atoms(children->first, out);
+                collect_atoms(children->second, out);
+            }
+            return;
+    }
+}
+
+// True if any assumption-side formula (INITIALLY, REQUIRE, ASSUME) references
+// an output atom. Only then can the system force the assumptions to fail, so
+// only then is the well-separation ltlsynt query worth running; an assumption
+// over inputs alone is well-separated by construction.
+bool assumptions_reference_output(const tlsf::Specification& spec) {
+    const std::unordered_set<std::string> outputs(spec.m_outputs.begin(),
+                                                  spec.m_outputs.end());
+    if (outputs.empty()) {
+        return false;
+    }
+    const std::array<const std::vector<Formula>*, 3> assumption_sections = {
+        &spec.m_initially, &spec.m_require, &spec.m_assume};
+    for (const std::vector<Formula>* section : assumption_sections) {
+        for (const Formula& formula : *section) {
+            std::unordered_set<std::string> atoms;
+            collect_atoms(formula, atoms);
+            for (const std::string& atom : atoms) {
+                if (outputs.count(atom) != 0) {
+                    return true;
+                }
+            }
+        }
+    }
+    return false;
+}
 
 // All six section vectors of a specification, in a stable order, so bloat and
 // other whole-spec scans can iterate every formula uniformly.
@@ -168,6 +228,36 @@ FilterFunctionT<tlsf::Specification> tlsf_make_assumption_sat_filter() {
                         global_sat_checker()
                             .check_satisfiability(spec.assumption_ltl())
                             .value_or(true)) {
+                        survivors.push_back(spec);
+                    }
+                }
+                return survivors;
+            }};
+}
+
+FilterFunctionT<tlsf::Specification> tlsf_make_well_separation_filter(
+    RealizabilityChecker& checker) {
+    return {"not-well-separated",
+            [&checker](const std::vector<tlsf::Specification>& pop) {
+                std::vector<tlsf::Specification> survivors;
+                survivors.reserve(pop.size());
+                for (const tlsf::Specification& spec : pop) {
+                    // Input-only assumptions are well-separated by
+                    // construction; only an output-referencing one can be
+                    // forced to fail, so only then run the (expensive)
+                    // realizability query.
+                    if (!assumptions_reference_output(spec)) {
+                        survivors.push_back(spec);
+                        continue;
+                    }
+                    // Not well-separated exactly when (assumptions) -> false is
+                    // realizable: the system has a strategy forcing its own
+                    // assumptions to fail. A timed-out query returns false
+                    // (unrealizable), keeping the candidate.
+                    const std::string formula =
+                        "(" + spec.assumption_ltl() + ") -> (false)";
+                    if (!checker.check_realizability_ltl(formula, spec.m_inputs,
+                                                         spec.m_outputs)) {
                         survivors.push_back(spec);
                     }
                 }

@@ -3,6 +3,7 @@
 #include <vector>
 
 #include "runner/black.hpp"
+#include "runner/spot.hpp"
 #include "test_suite.hpp"
 #include "test_support.hpp"
 #include "tlsf/filter.hpp"
@@ -103,6 +104,59 @@ void test_implication_filter_keeps_maximal() {
            "implication: only the dominating (stronger) spec is kept");
 }
 
+// `ASSUME { G F g }` over the output g: the system controls g and can simply
+// never assert it, forcing the assumption to fail. `(G F g) -> false` is
+// realizable, so the spec is vacuously satisfiable and not well-separated.
+tlsf::Specification output_liveness_assumption_spec() {
+    return parse_spec(
+        "INPUTS { r; } OUTPUTS { g; } ASSUME { G F g; } "
+        "GUARANTEE { G (r -> g); }");
+}
+
+// `ASSUME { G (g -> F r) }` mentions the output g, yet the system cannot force
+// it to fail: falsifying needs `F(g & G !r)`, and r is an input the environment
+// can hold false forever. A reactive-environment assumption that is still
+// well-separated.
+tlsf::Specification reactive_output_assumption_spec() {
+    return parse_spec(
+        "INPUTS { r; } OUTPUTS { g; } ASSUME { G (g -> F r); } "
+        "GUARANTEE { G (r -> g); }");
+}
+
+void test_well_separation_drops_output_liveness_assumption() {
+    RealizabilityChecker checker;
+    const FilterFunctionT<tlsf::Specification> filter =
+        tlsf_make_well_separation_filter(checker);
+    const std::vector<tlsf::Specification> kept =
+        filter({output_liveness_assumption_spec()});
+    expect(kept.empty(),
+           "well-separation: a spec whose assumption the system can force to "
+           "fail (G F <output>) is dropped");
+}
+
+void test_well_separation_keeps_reactive_output_assumption() {
+    RealizabilityChecker checker;
+    const FilterFunctionT<tlsf::Specification> filter =
+        tlsf_make_well_separation_filter(checker);
+    const tlsf::Specification spec = reactive_output_assumption_spec();
+    const std::vector<tlsf::Specification> kept = filter({spec});
+    expect(kept.size() == 1 && kept.front() == spec,
+           "well-separation: an output-referencing assumption the system "
+           "cannot force to fail (G(<output> -> F <input>)) is kept");
+}
+
+void test_well_separation_keeps_input_only_assumption() {
+    RealizabilityChecker checker;
+    const FilterFunctionT<tlsf::Specification> filter =
+        tlsf_make_well_separation_filter(checker);
+    // Input-only assumption: well-separated by construction, kept without a
+    // realizability query.
+    const tlsf::Specification spec = weaker_spec();
+    const std::vector<tlsf::Specification> kept = filter({spec});
+    expect(kept.size() == 1 && kept.front() == spec,
+           "well-separation: an input-only assumption is kept");
+}
+
 }  // namespace
 
 void run_tlsf_filter_tests() {
@@ -111,4 +165,7 @@ void run_tlsf_filter_tests() {
     test_weakening_filter_keeps_only_weakenings();
     test_bloat_cap_filter_drops_oversized();
     test_implication_filter_keeps_maximal();
+    test_well_separation_drops_output_liveness_assumption();
+    test_well_separation_keeps_reactive_output_assumption();
+    test_well_separation_keeps_input_only_assumption();
 }

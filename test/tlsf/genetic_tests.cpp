@@ -207,6 +207,104 @@ void test_add_assumption_appends_fairness() {
     }
 }
 
+void test_assumption_rewrite_can_reference_output_when_allowed() {
+    // The companion to test_mutation_assumption_atoms_from_inputs_only: with
+    // allow_output_assumptions set, an assumption-side *rewrite* (not just the
+    // add-assumption action) may draw an output atom, so an output-referencing
+    // assumption can be reshaped instead of having its output overwritten. This
+    // is what lets a G F <output> or G(c -> F <output>) grow a weak-until
+    // hold-until form over successive generations.
+    Config cfg;
+    cfg.p_add_assumption = 0.0;  // isolate the rewrite path
+    cfg.allow_output_assumptions = true;
+    tlsf::Specification spec;
+    spec.m_inputs = {"a", "c"};
+    spec.m_outputs = {"bout"};
+    spec.m_assume = {Formula("a")};
+    // No guarantee-side formulae, so every mutation falls to the assumption
+    // side; with the flag set its atom pool now includes the outputs.
+    bool saw_output = false;
+    for (std::size_t seed = 0; seed < 60; ++seed) {
+        const RandomSource rng = make_random_source_from_seed(seed);
+        const tlsf::Specification mutated = tlsf_mutate(spec, rng, cfg);
+        if (mutated.m_assume.front().to_string().find("bout") !=
+            std::string::npos) {
+            saw_output = true;
+        }
+    }
+    expect(saw_output,
+           "mutation: an assumption-side rewrite can introduce an output atom "
+           "when allow_output_assumptions is set");
+}
+
+void test_weak_until_over_output_is_reachable() {
+    // A weak-until (hold-until) assumption over an output does not need a
+    // dedicated new operator: the temporal mutation already emits W, and with
+    // allow_output_assumptions the assumption-side pool keeps the output atom
+    // through a rewrite. Starting from the kind of fairness assumption
+    // tlsf_add_assumption creates (G(r -> F g)), a temporal rewrite can yield
+    // an assumption with a `... W ...` node referencing the output g.
+    Config cfg;
+    cfg.p_add_assumption = 0.0;   // isolate the rewrite path
+    cfg.tlsf_p_assumption = 1.0;  // always mutate the assumption side
+    cfg.tlsf_p_temporal = 1.0;    // always the temporal (skeleton) rewrite
+    cfg.allow_output_assumptions = true;
+    tlsf::Specification seed_spec;
+    seed_spec.m_inputs = {"r"};
+    seed_spec.m_outputs = {"g"};
+    seed_spec.m_assume = {parse("INPUTS { r; } OUTPUTS { g; } "
+                                "ASSUME { G (r -> F g); }")
+                              .m_assume.front()};
+    bool reached = false;
+    for (std::size_t seed = 0; seed < 200 && !reached; ++seed) {
+        const RandomSource rng = make_random_source_from_seed(seed);
+        tlsf::Specification current = seed_spec;
+        for (int step = 0; step < 6 && !reached; ++step) {
+            current = tlsf_mutate(current, rng, cfg);
+            for (const Formula& formula : current.m_assume) {
+                const std::string text = formula.to_string();
+                if (text.find(") W (") != std::string::npos &&
+                    text.find('g') != std::string::npos) {
+                    reached = true;
+                }
+            }
+        }
+    }
+    expect(reached,
+           "mutation: a weak-until assumption over an output is reachable by "
+           "temporal mutation of a fairness assumption");
+}
+
+void test_add_assumption_can_reference_output_when_allowed() {
+    // With allow_output_assumptions set, the appended assumption draws from
+    // inputs ∪ outputs, so the output atom is reachable over a range of seeds.
+    // The well-separation filter, not a syntactic ban, is what then prunes any
+    // not-well-separated result.
+    tlsf::Specification spec;
+    spec.m_inputs = {"req"};
+    spec.m_outputs = {"grant"};
+    spec.m_guarantee = {parse("INPUTS { req; } OUTPUTS { grant; } "
+                              "GUARANTEE { G (req -> F grant); }")
+                            .m_guarantee.front()};
+    Config cfg;
+    cfg.p_add_assumption = 1.0;
+    cfg.allow_output_assumptions = true;
+    bool saw_output = false;
+    for (std::size_t seed = 0; seed < 60; ++seed) {
+        const RandomSource rng = make_random_source_from_seed(seed);
+        const tlsf::Specification mutated = tlsf_mutate(spec, rng, cfg);
+        expect(mutated.m_assume.size() == 1,
+               "add-assumption(output): exactly one assumption is appended");
+        if (mutated.m_assume.front().to_string().find("grant") !=
+            std::string::npos) {
+            saw_output = true;
+        }
+    }
+    expect(saw_output,
+           "add-assumption(output): the output atom is reachable in an "
+           "assumption when allow_output_assumptions is set");
+}
+
 void test_crossover_positional_matching_shape() {
     tlsf::Specification parent_a;
     parent_a.m_inputs = {"r"};
@@ -291,6 +389,9 @@ void run_tlsf_genetic_tests() {
     test_temporal_mutation_changes_skeleton();
     test_temporal_mutation_atoms_from_inputs_only();
     test_add_assumption_appends_fairness();
+    test_add_assumption_can_reference_output_when_allowed();
+    test_assumption_rewrite_can_reference_output_when_allowed();
+    test_weak_until_over_output_is_reachable();
     test_crossover_positional_matching_shape();
     test_crossover_mismatched_shape_returns_first();
     test_end_to_end_evolution();

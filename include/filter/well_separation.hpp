@@ -21,12 +21,19 @@
 /// so the assumptions break, satisfying the original specification without
 /// repairing anything.
 ///
-/// This is strictly stronger than the vacuity filter's satisfiability check:
+/// This is complementary to the vacuity filter's satisfiability check:
 /// assumptions can be perfectly satisfiable yet still forcibly falsifiable by
 /// the system, because satisfiability treats every atom symmetrically whereas
-/// realizability respects the input/output partition. A specification whose
-/// assumptions constrain only input atoms is always well-separated -- the
-/// system controls no atom it could use to break them.
+/// realizability respects the input/output partition. Joint unsatisfiability of
+/// the assumptions is the vacuity filter's concern, not this one; it runs
+/// first. A specification whose assumptions constrain only input atoms is
+/// always well-separated -- the system controls no atom it could use to break
+/// them.
+///
+/// The ltlsynt query runs only when an assumption references an output atom.
+/// Input-only assumptions are well-separated by construction and answered
+/// without a solver call, since the system controls nothing it could use to
+/// break them.
 ///
 /// Conservative under uncertainty: a specification with no assumptions has
 /// nothing to falsify and is reported well-separated without a solver call, and

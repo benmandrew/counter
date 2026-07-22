@@ -156,6 +156,9 @@ void apply_mutation(const toml::table& tbl, Config& cfg) {
     if (auto val = tbl["strengthen_assumptions"].value<bool>()) {
         cfg.strengthen_assumptions = *val;
     }
+    if (auto val = tbl["allow_output_assumptions"].value<bool>()) {
+        cfg.allow_output_assumptions = *val;
+    }
 }
 
 void apply_tlsf(const toml::table& tbl, Config& cfg) {

@@ -1,0 +1,24 @@
+INFO {
+  TITLE:       "Handshake arbiter";
+  DESCRIPTION: "Two-client mutual-exclusion arbiter with transient requests; unrealizable without a hold-until-grant assumption over the grant outputs";
+  SEMANTICS:   Mealy;
+  TARGET:      Mealy;
+}
+
+MAIN {
+  INPUTS {
+    r0;
+    r1;
+  }
+  OUTPUTS {
+    g0;
+    g1;
+  }
+  GUARANTEE {
+    G !(g0 & g1);
+    G (g0 -> r0);
+    G (g1 -> r1);
+    G (r0 -> F g0);
+    G (r1 -> F g1);
+  }
+}

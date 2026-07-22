@@ -56,6 +56,11 @@ p_conditional_assumption = 0.25
 # weakens both, which makes every assumption mutation a move away from a
 # repair; kept only so the two directions can be compared.
 strengthen_assumptions = true
+# When true, freshly added environment assumptions may reference output atoms as
+# well as inputs; false (the default) keeps them input-only and so well-separated
+# by construction. Pair with filters.run_well_separation, which prunes any
+# not-well-separated assumption the wider draw produces.
+allow_output_assumptions = false
 
 [tlsf]
 # Applies only in TLSF mode (a .tlsf input or --format tlsf).

@@ -55,10 +55,11 @@ struct Config {
     // vacuously by forcing its own assumptions to fail. Realizability is
     // decided on (assumptions) -> (guarantees), so replacing the guarantees
     // with false and finding (assumptions) -> false realizable means the system
-    // has a strategy that breaks the assumptions on its own. Strictly stronger
-    // than the vacuity check, but each test is a full ltlsynt query, so off by
-    // default; the interval throttles it when enabled. A no-op for specs with
-    // no assumptions, which short-circuit before any solver call.
+    // has a strategy that breaks the assumptions on its own. Complementary to
+    // the vacuity check, but each test is a full ltlsynt query (run only when
+    // an assumption references an output atom), so off by default; the interval
+    // throttles it when enabled. A no-op for specs with no assumptions, which
+    // short-circuit before any solver call.
     bool run_well_separation_filter = false;
     // Per-generation filters run only every Nth generation (1 = every
     // generation). The final generation always runs every filter, so the
@@ -114,6 +115,12 @@ struct Config {
     // than G(c -> F <input>) and so the more powerful repair, which is why the
     // unconditional form keeps the majority of the draw.
     double p_conditional_assumption = 0.25;
+    // When true, freshly added environment assumptions may reference output
+    // atoms as well as inputs; when false (the default) they stay input-only
+    // and so are well-separated by construction. Should be paired with
+    // run_well_separation_filter enabled, which prunes any not-well-separated
+    // assumption the wider draw produces.
+    bool allow_output_assumptions = false;
     // Mutate assumption timings in the strengthening direction rather than the
     // weakening one. Weakening the overall assume-guarantee specification means
     // weakening a guarantee but strengthening an assumption, so weakening both

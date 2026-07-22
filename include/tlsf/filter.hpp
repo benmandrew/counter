@@ -9,6 +9,7 @@
 
 #include "genetic/generation.hpp"
 #include "runner/black.hpp"
+#include "runner/spot.hpp"
 #include "tlsf/specification.hpp"
 
 /// Returns a filter keeping one representative per equal specification (using
@@ -21,6 +22,18 @@ FilterFunctionT<tlsf::Specification> tlsf_make_dedup_filter();
 /// with no assumption formulae is kept; an uncertain (timed-out) satisfiability
 /// result is treated as satisfiable and the spec is kept.
 FilterFunctionT<tlsf::Specification> tlsf_make_assumption_sat_filter();
+
+/// Returns a filter dropping specifications that are not well-separated: ones
+/// where the system can vacuously satisfy the spec by forcing its own
+/// assumptions to fail, i.e. `(assumption-side) -> false` is realizable. The
+/// TLSF counterpart of make_well_separation_filter. The ltlsynt query runs only
+/// when an assumption-side formula (INITIALLY/REQUIRE/ASSUME) references an
+/// output atom; assumptions over inputs alone are well-separated by
+/// construction and skip the solver. A timed-out query is treated as
+/// unrealizable (well-separated), so a slow check never silently drops a
+/// candidate. @p checker is captured by reference and must outlive the filter.
+FilterFunctionT<tlsf::Specification> tlsf_make_well_separation_filter(
+    RealizabilityChecker& checker);
 
 /// Whether spec @p from logically implies spec @p dest: true when
 /// `(from.to_ltl()) & !(dest.to_ltl())` is unsatisfiable, false when

@@ -19,9 +19,16 @@
 /// re-implementation of Brizzio et al.'s operator, which may insert, drop, or
 /// swap X/F/G/U/R/W nodes); otherwise only its propositional subtrees are
 /// rewritten and the temporal operator skeleton is preserved. Assumption-side
-/// mutations draw atoms from the inputs; guarantee-side mutations draw from
+/// mutations draw atoms from the inputs (or inputs ∪ outputs when
+/// `cfg.allow_output_assumptions` is set); guarantee-side mutations draw from
 /// inputs and outputs. If no mutable formula exists the specification is
 /// returned unchanged.
+///
+/// With probability `cfg.p_add_assumption` the operator instead appends a new
+/// environment assumption to the ASSUME section (an unconditional `G F <input>`
+/// fairness property by default; a conditional `G(c -> F r)` over inputs ∪
+/// outputs when `cfg.allow_output_assumptions` is set — see tlsf_add_assumption
+/// in the .cpp).
 tlsf::Specification tlsf_mutate(const tlsf::Specification& spec,
                                 const RandomSource& random_source,
                                 const Config& cfg);

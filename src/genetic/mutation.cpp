@@ -416,46 +416,67 @@ bool creates_duplicate(const std::vector<Requirement>& requirements,
     return false;
 }
 
-// Draws the condition of a freshly added assumption. Input atoms only, for the
-// same reason mutate_specification restricts trigger atoms: an output denotes
-// the next state, so guarding on one gives the synthesiser a self-referential
-// condition it can discharge vacuously. `true` stays in the draw so the
-// unconditional GR(1) fairness assumption G F <input> remains reachable —
-// nothing else in the operator set can produce it, since mutate_atom_name
-// rewrites a `true` condition to `false` rather than to an atom. The negation
-// flip applies to atoms only: a negated `true` is `false`, and an assumption
-// with a false condition constrains nothing.
-Formula add_assumption_condition(const std::vector<std::string>& inputs,
+// The atom pool a freshly added assumption draws its condition and response
+// from. Inputs only by default; with allow_output_assumptions the outputs join
+// the draw as well. Historically outputs were excluded on the same reasoning as
+// the trigger restriction (an output denotes the next state, so guarding on one
+// gives the synthesiser a self-referential condition it can discharge
+// vacuously), but under the flag that syntactic ban is lifted and well-
+// separation is delegated to the well-separation filter, which prunes any
+// assumption the system can force to fail. The draw order and count are
+// identical whether or not outputs are admitted, so the flag never perturbs a
+// run that leaves it off.
+std::vector<std::string> assumption_atom_pool(
+    const Specification& specification, const Config& cfg) {
+    std::vector<std::string> pool = specification.m_in_atoms;
+    if (cfg.allow_output_assumptions) {
+        pool.insert(pool.end(), specification.m_out_atoms.begin(),
+                    specification.m_out_atoms.end());
+    }
+    return pool;
+}
+
+// Draws the condition of a freshly added assumption from @p pool. `true` stays
+// in the draw so the unconditional GR(1) fairness assumption G F <atom> remains
+// reachable — nothing else in the operator set can produce it, since
+// mutate_atom_name rewrites a `true` condition to `false` rather than to an
+// atom. The negation flip applies to atoms only: a negated `true` is `false`,
+// and an assumption with a false condition constrains nothing.
+Formula add_assumption_condition(const std::vector<std::string>& pool,
                                  const RandomSource& random_source,
                                  double p_conditional) {
     if (random_source.next_real() >= p_conditional) {
         return Formula("true");
     }
     Formula condition =
-        Formula::make_atom(inputs[random_source.next_index(inputs.size())]);
+        Formula::make_atom(pool[random_source.next_index(pool.size())]);
     if (random_source.next_bool()) {
         condition = Formula::make_unary(Formula::Kind::Not, condition);
     }
     return condition;
 }
 
-// Builds a new environment assumption over the specification's input atoms:
-// `whenever <input|true> C shall eventually satisfy <input>` — i.e.
-// G(c -> F <input>), a conditional fairness assumption (each of condition and
-// response is negated on a coin flip). Appending it strengthens the
-// environment, which is how the algorithm repairs unrealizability that the
+// Builds a new environment assumption over the specification's atom pool:
+// `whenever <atom|true> C shall eventually satisfy <atom>` — i.e.
+// G(c -> F <atom>), a conditional fairness assumption (each of condition and
+// response is negated on a coin flip). By default the pool is the input atoms;
+// with allow_output_assumptions it also includes outputs, in which case the
+// well-separation filter (rather than a syntactic ban) is what keeps the system
+// from producing a vacuously-satisfiable assumption. Appending it strengthens
+// the environment, which is how the algorithm repairs unrealizability that the
 // rewrite-only operators cannot reach.
 Specification add_assumption(const Specification& specification,
                              const RandomSource& random_source,
                              const Config& cfg) {
-    const std::string& atom = specification.m_in_atoms[random_source.next_index(
-        specification.m_in_atoms.size())];
-    Formula response = Formula::make_atom(atom);
+    const std::vector<std::string> pool =
+        assumption_atom_pool(specification, cfg);
+    Formula response =
+        Formula::make_atom(pool[random_source.next_index(pool.size())]);
     if (random_source.next_bool()) {
         response = Formula::make_unary(Formula::Kind::Not, response);
     }
-    Formula condition = add_assumption_condition(
-        specification.m_in_atoms, random_source, cfg.p_conditional_assumption);
+    Formula condition = add_assumption_condition(pool, random_source,
+                                                 cfg.p_conditional_assumption);
     std::vector<Requirement> assumptions = specification.m_assumptions;
     assumptions.emplace_back(std::move(condition), std::move(response),
                              timing::eventually(), ConditionType::Continual,
@@ -474,8 +495,13 @@ Specification mutate_specification(const Specification& specification,
     assert(n_assumptions + specification.m_guarantees.size() > 0);
     // Low-probability structural action: add a new environment assumption. The
     // Specification constructor deduplicates, so re-adding an existing
-    // assumption is a harmless no-op.
-    if (!specification.m_in_atoms.empty() &&
+    // assumption is a harmless no-op. Available whenever the assumption atom
+    // pool is non-empty: inputs, plus outputs when allow_output_assumptions is
+    // set (so a spec with outputs but no inputs can still gain an assumption).
+    const bool have_assumption_pool =
+        !specification.m_in_atoms.empty() ||
+        (cfg.allow_output_assumptions && !specification.m_out_atoms.empty());
+    if (have_assumption_pool &&
         random_source.next_real() < cfg.p_add_assumption) {
         return add_assumption(specification, random_source, cfg);
     }

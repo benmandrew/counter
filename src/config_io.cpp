@@ -217,6 +217,9 @@ void apply_filters(const toml::table& tbl, Config& cfg) {
     if (auto val = tbl["run_vacuity"].value<bool>()) {
         cfg.run_vacuity_filter = *val;
     }
+    if (auto val = tbl["run_well_separation"].value<bool>()) {
+        cfg.run_well_separation_filter = *val;
+    }
     if (const auto* intervals = tbl["intervals"].as_table()) {
         const auto parse_interval = [&](const char* key, const char* name,
                                         std::size_t& field) {
@@ -234,6 +237,8 @@ void apply_filters(const toml::table& tbl, Config& cfg) {
                        cfg.bloat_filter_interval);
         parse_interval("vacuity", "filters.intervals.vacuity",
                        cfg.vacuity_filter_interval);
+        parse_interval("well_separation", "filters.intervals.well_separation",
+                       cfg.well_separation_filter_interval);
     }
 }
 

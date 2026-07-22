@@ -64,6 +64,7 @@ target_sources(counter_fitness PRIVATE
     src/filter/implication.cpp
     src/filter/implication_check.cpp
     src/filter/vacuity.cpp
+    src/filter/well_separation.cpp
     src/fitness/halstead.cpp
     src/fitness/model_counter.cpp
     src/fitness/semantic_similarity.cpp

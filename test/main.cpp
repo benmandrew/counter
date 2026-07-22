@@ -22,6 +22,10 @@ bool run_filter_suite(std::string_view suite_name) {
         run_vacuity_filter_tests();
         return true;
     }
+    if (suite_name == "well_separation_filter") {
+        run_well_separation_filter_tests();
+        return true;
+    }
     return false;
 }
 
@@ -197,6 +201,7 @@ int main(int argc, const char* const argv[]) {
             run_status_tests();
             run_implication_filter_tests();
             run_vacuity_filter_tests();
+            run_well_separation_filter_tests();
             run_requirement_tests();
             run_serialisation_tests();
             run_config_io_tests();

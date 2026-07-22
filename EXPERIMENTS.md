@@ -9,6 +9,137 @@ at least one repair *equivalent to* or *stronger than* an ideal.
 
 ---
 
+## 2026-07-22 — `p_add_assumption`: the lever for MUC's ideal-hit rate
+
+**What changed.** Sweep P: `p_add_assumption` ∈ {0.05, 0.15, 0.3, 0.5} — the
+fixed-rate structural mutation that *creates* an assumption — crossed with
+`repair_mode` (monolithic vs muc) over five TLSF specs. humanoid-531 was dropped:
+it has no metric headroom in either arm and costs ~13 min per run. NSGA-II,
+generations=10 / population_size=200. **Why:** the 2026-07-21 muc campaign traced
+MUC's ideal-*misses* to guarantee-weakening dominating the search landscape, and
+singled out `p_add_assumption` — held at its default 0.05 throughout that run — as
+the one lever that could push MUC toward the ideal, since arbiter's ideal is
+reachable only by *adding* the two fairness assumptions `G F r0` and `G F r1`. The
+question here is direct: does raising the rate lift the ideal-hit rate, and what
+does it cost?
+
+**Run.** Seed-major across av2 (seeds 0–79) and av3 (seeds 80–159), **6,399 runs**
+(3,200 + 3,199), completed 2026-07-22 in ~13 h — inside a 20 h cap that never
+fired. `jobs=1` per machine; timeout caps per spec (lift 600 s, gyro-var1 300, the
+rest 120). The counting-path leak fix — an `ltl2tgba` timeout plus
+`PR_SET_PDEATHSIG` on every subprocess (62bbc6f) — was deployed for this run:
+**zero orphaned `ltl2tgba` across the whole campaign**, free memory steady at
+~121 GB per box, versus the ~93 GB of orphans the prior multi-day run accumulated.
+One run dropped (gyro-var1 seed 142 at muc/padd0.3, a spec pinned to zero anyway).
+Data: `experiments/results-padd.csv`. The design is **paired** — both repair modes
+and all four levels share the seed — so the tests below are matched: McNemar's
+exact test on the extreme levels, Cochran-Armitage for the dose trend.
+
+### Result: a real but weak lever, and a spec-dependent tradeoff
+
+Raising `p_add_assumption` does what the muc campaign predicted — it lifts arbiter
+toward the ideal — but the gain is modest, never becomes the dominant outcome, and
+degrades the one spec monolithic solves cleanly.
+
+| metric | padd0.05 | padd0.15 | padd0.3 | padd0.5 |
+|---|---|---|---|---|
+| **arbiter** muc `implies_ideal` | 15/160 | 25/160 | 26/160 | **31/160** |
+| **lily02** muc `implies_ideal` | 48/160 | 41/160 | 44/160 | **32/160** |
+| **lily02** mono `implies_ideal` | 160/160 | 154/160 | 150/160 | **141/160** |
+
+arbiter's muc ideal-hit rate climbs monotonically, 9.4% → 19.4%, a 2.1× rise. The
+trend is significant (Cochran-Armitage z=2.31, p=0.021; extreme-level McNemar
+0.05-vs-0.5 p=0.011, 26 seeds gained against 10 lost). But 0.5 still leaves 80% of
+arbiter's runs short of the ideal, and pushing the rate higher trades against every
+spec whose ideal is already met by weaker mutation.
+
+### The mechanism is exactly incomparable → equivalent
+
+The muc campaign's diagnosis was that MUC reaches realizability by weakening a
+guarantee (an easily-reached basin) far more often than by adding the assumptions
+the ideal needs (a narrow target). If `p_add_assumption` is the lever, raising it
+should convert *incomparable* repairs (guarantee-weakenings) into *equivalent* ones
+(the ideal) and nothing else. That is exactly what the `best_relation` decomposition
+shows on arbiter muc:
+
+| level | incomparable | equivalent | strictly weaker |
+|---|---|---|---|
+| padd0.05 | 139 | 15 | 6 |
+| padd0.15 | 134 | 25 | 1 |
+| padd0.3 | 132 | 26 | 2 |
+| padd0.5 | **122** | **31** | 7 |
+
+Equivalent rises as incomparable falls, roughly one for one; strictly-stronger never
+appears (the ideal is the ceiling). The lever acts on the mechanism the earlier
+campaign named — assumption *creation* competing with guarantee weakening — not on
+some unrelated path.
+
+### The cost is lily02, and it is lost coverage
+
+More assumption-adding hurts lily02 in both arms. On monolithic — where every found
+repair is otherwise ideal — the ideal-hit rate falls 100% → 88% (160 → 141, McNemar
+p=3.8e-6), and the loss is **entirely lost coverage**: the `found_repair`
+discordance is identical (+0/-19), so the spurious assumptions do not redirect
+repairs off-ideal, they make ~12% of runs find no realizable repair at all. On muc,
+lily02's ideal-hit drifts 30% → 20% (+25/-41, p=0.064 — a decline, not quite
+significant against muc's already-scattered baseline). arbiter and lily02 pull in
+opposite directions under the same knob.
+
+### Coverage otherwise holds; four specs stay floored
+
+MUC's `found_repair` sits at ~100% across every spec and level (arbiter 160/160
+throughout, the rest ≥ 156/160), so the knob breaks coverage nowhere except mono
+lily02. gyro-var1, lift and minepump remain at `implies_ideal` = 0 in both arms at
+every level: their unrealizability is not addressable by adding assumptions at this
+operating point, and `p_add_assumption` moves them not at all. The lever is real
+but it acts on exactly one spec in the corpus.
+
+### What this campaign cannot answer
+
+- **There is no global optimum.** arbiter wants the rate high, lily02 wants it low,
+  three specs do not care. ~0.15 captures most of arbiter's gain (→16%) at little
+  lily02 cost (mono →96%); 0.5 buys the rest of arbiter (→19%) but bleeds lily02
+  (mono →88%). The right value is per-spec, which a single global parameter cannot
+  express.
+- **Still gen10/pop200.** The four floored specs have no headroom here; whether the
+  lever matters at an operating point where their ideal is reachable is unknown.
+- **arbiter tops out at ~19%.** Even at 0.5 the guarantee-weakening basin dominates;
+  reaching the ideal reliably would need more than nudging this one rate.
+
+### Method notes worth keeping
+
+- **Paired trend, not just extremes.** With all four levels sharing the seed, the
+  Cochran-Armitage linear-trend test reads the monotone dose-response across levels
+  (z=2.31), and McNemar the matched extreme pair; both avoid the power loss of
+  treating the levels as independent groups. (No SciPy on the box — both by hand.)
+- **Identical discordance is the tell.** mono lily02's `implies_ideal` and
+  `found_repair` McNemar tables are the same (+0/-19), which is what pins the loss to
+  coverage rather than an off-ideal redirection — worth checking whenever a quality
+  metric and its coverage metric move together.
+- **The leak fix held in production.** Zero orphaned `ltl2tgba` over ~13 h on both
+  boxes with the counting-path timeout and `PR_SET_PDEATHSIG` in the binary
+  (62bbc6f) — the mitigation janitor from the muc campaign was not needed.
+  [[ltlfilt-simplify-blowup]]
+
+### Scripts and launch
+
+```sh
+python scripts/gen_configs.py --tlsf --sweeps P --repair both \
+    --out-dir experiments/configs-padd
+# av2                                              # av3
+… --profile padd --jobs 1 --seeds $(seq 0 79)      … --seeds $(seq 80 159)
+python scripts/merge_experiments.py --profile padd av2 av3   # python3 on av2
+```
+
+**Verdict: `p_add_assumption` is arbiter's lever and lily02's tax.** Raising it
+converts MUC's guarantee-weakenings into ideal repairs on `arbiter` — the mechanism
+the muc campaign predicted, confirmed as a monotone incomparable→equivalent shift —
+but only to ~19%, at a measurable coverage cost to `lily02` and no effect on the
+rest. Keep the default (0.05) as the global value; treat a higher rate as a per-spec
+knob for specs like `arbiter` whose ideal is assumption-shaped.
+
+---
+
 ## 2026-07-21 — Monolithic vs MUC-guided TLSF repair
 
 **What changed.** The first run of the `muc` profile: `tlsf.repair_mode` as a

@@ -37,14 +37,16 @@ p_timing   = 0.1
 default_bound = 10
 
 [filters]
-run_weakening   = false
-run_implication = false
+run_weakening       = false
+run_implication     = false
+run_well_separation = true
 
 [filters.intervals]
 dedup           = 1
 false_condition = 2
 weakening       = 3
 bloat           = 4
+well_separation = 5
 
 [runtime]
 black_timeout_ms = 500
@@ -94,6 +96,11 @@ parallel         = 4
            "config_io: filters.intervals.weakening should be parsed from TOML");
     expect(cfg.bloat_filter_interval == 4,
            "config_io: filters.intervals.bloat should be parsed from TOML");
+    expect(cfg.run_well_separation_filter,
+           "config_io: filters run_well_separation should be true");
+    expect(cfg.well_separation_filter_interval == 5,
+           "config_io: filters.intervals.well_separation should be parsed from "
+           "TOML");
     expect(cfg.black_timeout == std::chrono::milliseconds{500},
            "config_io: runtime black_timeout_ms should be parsed from TOML");
     expect(cfg.parallel == 4,

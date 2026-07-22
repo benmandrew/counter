@@ -56,6 +56,7 @@ functions, and anonymous namespaces, with source browsing and call graphs.
    api/filter/implication
    api/filter/implication_check
    api/filter/vacuity
+   api/filter/well_separation
 
 .. toctree::
    :maxdepth: 1

@@ -24,6 +24,7 @@ void run_fitness_function_tests();
 void run_status_tests();
 void run_implication_filter_tests();
 void run_vacuity_filter_tests();
+void run_well_separation_filter_tests();
 void run_requirement_tests();
 void run_serialisation_tests();
 void run_config_io_tests();

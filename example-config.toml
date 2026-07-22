@@ -94,6 +94,11 @@ run_implication = true  # enable final implication maximality filter
 # realizable for free, since a false antecedent makes the assume-guarantee
 # implication a tautology. Costs nothing when there are no assumptions.
 run_vacuity     = true
+# Drop candidates that are not well-separated: ones the system can satisfy
+# vacuously by forcing its own assumptions to fail (i.e. (assumptions) -> false
+# is realizable). Strictly stronger than run_vacuity, but each test is a full
+# ltlsynt query, so it is off by default and the interval below throttles it.
+run_well_separation = false
 
 # How often each per-generation filter runs, in generations (1 = every
 # generation). The final generation always runs every filter.
@@ -103,6 +108,7 @@ false_condition = 1
 weakening       = 3
 bloat           = 1
 vacuity         = 1
+well_separation = 1
 
 [runtime]
 black_timeout_ms = 1000  # timeout per black SAT query in milliseconds

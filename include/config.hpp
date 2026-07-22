@@ -51,6 +51,15 @@ struct Config {
     // (assumptions) -> (guarantees) a tautology. A no-op for specifications
     // with no assumptions, which short-circuit before any solver call.
     bool run_vacuity_filter = true;
+    // Drop candidates that are not well-separated: ones the system can satisfy
+    // vacuously by forcing its own assumptions to fail. Realizability is
+    // decided on (assumptions) -> (guarantees), so replacing the guarantees
+    // with false and finding (assumptions) -> false realizable means the system
+    // has a strategy that breaks the assumptions on its own. Strictly stronger
+    // than the vacuity check, but each test is a full ltlsynt query, so off by
+    // default; the interval throttles it when enabled. A no-op for specs with
+    // no assumptions, which short-circuit before any solver call.
+    bool run_well_separation_filter = false;
     // Per-generation filters run only every Nth generation (1 = every
     // generation). The final generation always runs every filter, so the
     // resulting population is never left un-deduplicated/un-weakened.
@@ -59,6 +68,7 @@ struct Config {
     std::size_t weakening_filter_interval = 1;
     std::size_t bloat_filter_interval = 1;
     std::size_t vacuity_filter_interval = 1;
+    std::size_t well_separation_filter_interval = 1;
     std::chrono::milliseconds black_timeout{1000};
     // Per-call wall-clock budget for ltlsynt realizability checks. Unlike
     // black, ltlsynt has no internal timeout, and the genetic search

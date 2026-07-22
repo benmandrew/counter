@@ -7,6 +7,8 @@
 #include "filter/bloat.hpp"
 #include "filter/implication.hpp"
 #include "filter/vacuity.hpp"
+#include "filter/well_separation.hpp"
+#include "runner/spot.hpp"
 
 FilterFunction make_predicate_filter(
     std::string name, std::function<bool(const Specification&)> predicate) {
@@ -102,6 +104,17 @@ std::vector<FilterFunction> get_filter_functions(
         FilterFunction vacuity = make_vacuity_filter(checker);
         vacuity.set_interval(cfg.vacuity_filter_interval);
         filters.push_back(std::move(vacuity));
+    }
+    if (cfg.run_well_separation_filter) {
+        // A non-well-separated candidate satisfies (A) -> (G) for free because
+        // the system can force A to fail; the vacuity filter above misses it
+        // when A is satisfiable but forcibly falsifiable. Uses the shared
+        // global realizability checker so its ltlsynt results are memoised
+        // alongside the survivor re-checks.
+        FilterFunction well_separation =
+            make_well_separation_filter(global_real_checker());
+        well_separation.set_interval(cfg.well_separation_filter_interval);
+        filters.push_back(std::move(well_separation));
     }
     if (cfg.run_weakening_filter) {
         // NOLINTNEXTLINE(clang-analyzer-cplusplus.NewDeleteLeaks)

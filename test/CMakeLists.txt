@@ -6,6 +6,7 @@ add_executable(counter_tests
     runner/spot_tests.cpp
     filter/implication_tests.cpp
     filter/vacuity_tests.cpp
+    filter/well_separation_tests.cpp
     genetic/crossover_tests.cpp
     genetic/generation_tests.cpp
     genetic/mutation_tests.cpp
@@ -65,6 +66,7 @@ add_test(NAME counter_tests.fitness_function COMMAND counter_tests fitness_funct
 add_test(NAME counter_tests.status COMMAND counter_tests status)
 add_test(NAME counter_tests.implication_filter COMMAND counter_tests implication_filter)
 add_test(NAME counter_tests.vacuity_filter COMMAND counter_tests vacuity_filter)
+add_test(NAME counter_tests.well_separation_filter COMMAND counter_tests well_separation_filter)
 add_test(NAME counter_tests.requirement COMMAND counter_tests requirement)
 add_test(NAME counter_tests.serialisation COMMAND counter_tests serialisation)
 add_test(NAME counter_tests.config_io COMMAND counter_tests config_io)

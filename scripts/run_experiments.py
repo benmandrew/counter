@@ -423,17 +423,23 @@ PROFILES: dict[str, dict] = {
         "levels": {"W": ["wsoff-oaoff", "wsoff-oaon",
                          "wson-oaoff", "wson-oaon"]},
         "specs": [s for s in TLSF_SPECS if s != "humanoid-531"],
-        # Generous ceiling; a 12 h/machine overnight deadline truncates the
-        # seed-major order to a balanced design at whatever depth it reaches.
-        # Split 0-79 / 80-159 across av2/av3 (pass --seeds on launch).
-        "seeds": list(range(160)),
-        # Provisional, mirroring padd. The wson arms add a per-generation ltlsynt
-        # query per output-referencing candidate, so validate these against the
-        # wson-oaon arm with a short calibration run before the full launch — a
-        # cap that bites records implies_ideal = 0 and truncates wall_time_s for a
-        # run that merely ran long, corrupting both responses.
-        "timeout_caps": {"arbiter": 120, "gyro-var1": 300, "lift": 600,
-                         "lily02": 120, "minepump": 120},
+        # Ceiling, not a target: seed-major so a wall-clock kill leaves a
+        # balanced design. Calibration (2026-07-22) measured ~204 s per seed
+        # (4 arms x 5 specs, jobs=1), so ~160 seeds/machine fits a 12 h budget
+        # with margin and 320 total is a strong paired design; the original
+        # 160-total design finishes in ~6 h. Split 0-159 / 160-319 across
+        # av2/av3 (pass --seeds on launch).
+        "seeds": list(range(320)),
+        # Sized from a calibration on av2/av3 (2026-07-22): the heaviest arm
+        # (wson-oaon) at gen10/pop200 maxed at arbiter 3s, gyro-var1 16s, lift
+        # 27s, lily02 4s, minepump 8s over three seeds — the well-separation
+        # query rarely fires (few candidates carry an output-referencing
+        # assumption at p_add_assumption=0.05), so the overhead over baseline is
+        # 0-30%. Caps are ~6-20x that max: generous enough never to censor a
+        # slow-but-progressing run, tight enough to kill a true runaway in
+        # minutes (ltlsynt_timeout_ms=500 already bounds each query).
+        "timeout_caps": {"arbiter": 60, "gyro-var1": 120, "lift": 180,
+                         "lily02": 60, "minepump": 60},
         "baseline_aliases": {},
         "configs_dir": EXPERIMENTS_DIR / "configs-wellsep",
         "results_dir": EXPERIMENTS_DIR / "results-wellsep",

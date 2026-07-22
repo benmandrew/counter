@@ -398,6 +398,48 @@ PROFILES: dict[str, dict] = {
         "results_csv": EXPERIMENTS_DIR / "results-padd.csv",
         "default_jobs": 1,
     },
+    # Well-separation / output-assumption 2x2 (PR #34). The four arms are carried
+    # as the levels of TLSF sweep W (gen_configs.TLSF_SWEEP_W), exactly as sweep
+    # J carries the weakening ablation — so the arm lands in the level_name CSV
+    # column and needs no crossed-factor plumbing. wsoff-oaoff is the
+    # current-default control; wson-oaon the proposed configuration (output
+    # assumptions admitted, the filter pruning the not-well-separated ones);
+    # wsoff-oaon isolates output assumptions with no filter (the vacuous-repair
+    # regression the filter is meant to prevent); wson-oaoff is a negative control
+    # where the filter is inert without output-referencing assumptions to catch.
+    # Runs the TLSF corpus, where an assumption can reference an output the system
+    # controls so the filter actually fires (23.8% drop measured on arbiter),
+    # unlike the FRETISH corpus where input-only assumptions leave it inert.
+    # humanoid-531 is dropped as in padd (~88% of per-seed cost, no headroom).
+    # Operating point gen10/pop200 (the TLSF config default). Generate with:
+    #   python scripts/gen_configs.py --tlsf --sweeps W \
+    #       --out-dir experiments/configs-wellsep
+    "wellsep": {
+        "schemes": ["nsga2"],
+        "weakenings": None,
+        "metrics": None,
+        "repair_modes": None,
+        "sweeps": ["W"],
+        "levels": {"W": ["wsoff-oaoff", "wsoff-oaon",
+                         "wson-oaoff", "wson-oaon"]},
+        "specs": [s for s in TLSF_SPECS if s != "humanoid-531"],
+        # Generous ceiling; a 12 h/machine overnight deadline truncates the
+        # seed-major order to a balanced design at whatever depth it reaches.
+        # Split 0-79 / 80-159 across av2/av3 (pass --seeds on launch).
+        "seeds": list(range(160)),
+        # Provisional, mirroring padd. The wson arms add a per-generation ltlsynt
+        # query per output-referencing candidate, so validate these against the
+        # wson-oaon arm with a short calibration run before the full launch — a
+        # cap that bites records implies_ideal = 0 and truncates wall_time_s for a
+        # run that merely ran long, corrupting both responses.
+        "timeout_caps": {"arbiter": 120, "gyro-var1": 300, "lift": 600,
+                         "lily02": 120, "minepump": 120},
+        "baseline_aliases": {},
+        "configs_dir": EXPERIMENTS_DIR / "configs-wellsep",
+        "results_dir": EXPERIMENTS_DIR / "results-wellsep",
+        "results_csv": EXPERIMENTS_DIR / "results-wellsep.csv",
+        "default_jobs": 1,
+    },
     # The basic-TLSF examples swept over generations (A) and population (B), the
     # two operating-point parameters, NSGA-II only, default weakening. These
     # specs are much slower than the FRETISH ones — three of them (lift,

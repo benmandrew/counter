@@ -105,6 +105,12 @@ DEFAULTS: dict = {
     "metric": "direct",
     "run_weakening": True,
     "run_implication": True,
+    # Well-separation filter and output-atom assumptions (PR #34). Both off by
+    # default and emitted into the TOML only when a sweep overrides them (see
+    # make_toml), so every existing grid stays byte-identical; the wellsep sweep
+    # (W) crosses them as a 2x2.
+    "run_well_separation": False,
+    "allow_output_assumptions": False,
     "black_timeout_ms": 1000,
     "repair_mode": "monolithic",
     # TLSF-only [tlsf.mutation] split (see config.hpp). Emitted only when a sweep
@@ -175,7 +181,9 @@ def make_toml(overrides: dict, defaults: dict = DEFAULTS) -> str:
         f"p_response = {_fmt(d['p_response'])}",
         f"p_timing   = {_fmt(d['p_timing'])}",
     ] + ([f"p_add_assumption = {_fmt(d['p_add_assumption'])}"]
-         if "p_add_assumption" in overrides else []) + [
+         if "p_add_assumption" in overrides else []) + (
+        [f"allow_output_assumptions = {_fmt(d['allow_output_assumptions'])}"]
+        if "allow_output_assumptions" in overrides else []) + [
         "",
         "[model_counting]",
         f"default_bound = {d['default_bound']}",
@@ -184,6 +192,8 @@ def make_toml(overrides: dict, defaults: dict = DEFAULTS) -> str:
         "[filters]",
         f"run_weakening   = {_fmt(d['run_weakening'])}",
         f"run_implication = {_fmt(d['run_implication'])}",
+    ] + ([f"run_well_separation = {_fmt(d['run_well_separation'])}"]
+         if "run_well_separation" in overrides else []) + [
         "",
         "[runtime]",
         f"black_timeout_ms = {d['black_timeout_ms']}",
@@ -392,11 +402,31 @@ TLSF_SWEEP_P: list[tuple[str, dict]] = [
     ("padd0.5",  {"p_add_assumption": 0.5}),
 ]
 
+# TLSF sweep W: the well-separation / output-assumption 2x2 (PR #34). Each level
+# sets the (run_well_separation, allow_output_assumptions) pair, so the four arms
+# ride the sweep/level machinery exactly as sweep J's weakening ablation does —
+# no crossed-factor plumbing, and the arm lands in the level_name CSV column.
+# wsoff-oaoff is the current-default control; wson-oaon is the proposed
+# configuration (output assumptions admitted, the filter pruning the
+# not-well-separated ones); wson-oaoff is a negative control, where the filter is
+# inert because nothing produces an output-referencing assumption to catch.
+TLSF_SWEEP_W: list[tuple[str, dict]] = [
+    ("wsoff-oaoff", {"run_well_separation": False,
+                     "allow_output_assumptions": False}),   # control
+    ("wsoff-oaon",  {"run_well_separation": False,
+                     "allow_output_assumptions": True}),
+    ("wson-oaoff",  {"run_well_separation": True,
+                     "allow_output_assumptions": False}),
+    ("wson-oaon",   {"run_well_separation": True,
+                     "allow_output_assumptions": True}),
+]
+
 TLSF_SWEEPS: list[tuple[str, list]] = [
     ("A", TLSF_SWEEP_A),
     ("B", TLSF_SWEEP_B),
     ("M", TLSF_SWEEP_M),
     ("P", TLSF_SWEEP_P),
+    ("W", TLSF_SWEEP_W),
 ]
 
 TLSF_CONFIGS_DIR = Path(__file__).parent.parent / "experiments" / "configs-tlsf"

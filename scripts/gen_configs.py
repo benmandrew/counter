@@ -421,12 +421,43 @@ TLSF_SWEEP_W: list[tuple[str, dict]] = [
                      "allow_output_assumptions": True}),
 ]
 
+# TLSF sweep Q: arbiter p_add_assumption spread x the two wson output-assumption
+# arms — the follow-up to arbiter-hp. That pop10000/gen100 run left
+# p_add_assumption at the config.hpp default 0.05 and never reached arbiter's
+# genuine fix, the *pair* G F r0 & G F r1: adding one fairness assumption leaves
+# the spec unrealizable, so under the binary realizable/not signal there is no
+# selection gradient assembling the pair, and 0.05 makes even the blind
+# double-draw vanishingly rare. This spreads seeds across higher rates to locate
+# the p_add_assumption at which the pair assembles. The sweep machinery is a
+# single named-level dimension (no crossed-factor plumbing), so the padd x arm
+# cross is pre-expanded here into 10 levels and the combined arm name lands in
+# the level_name CSV column. Both arms keep run_well_separation=True (the filter
+# rejects vacuous output-assumption cheats); oaon vs oaoff isolates whether
+# admitting output atoms helps or just dilutes the population with
+# filter-rejected cheats. Generate at the arbiter-hp operating point:
+#   python scripts/gen_configs.py --tlsf --sweeps Q \
+#       --generations 100 --population-size 10000 \
+#       --out-dir experiments/configs-arbiter-padd
+_ARBITER_PADD_SPREAD = [0.1, 0.2, 0.4, 0.6, 0.8]
+_ARBITER_WSON_ARMS: list[tuple[str, dict]] = [
+    ("wson-oaoff", {"run_well_separation": True,
+                    "allow_output_assumptions": False}),
+    ("wson-oaon",  {"run_well_separation": True,
+                    "allow_output_assumptions": True}),
+]
+TLSF_SWEEP_Q: list[tuple[str, dict]] = [
+    (f"padd{padd}-{arm_name}", {"p_add_assumption": padd, **arm_overrides})
+    for padd in _ARBITER_PADD_SPREAD
+    for arm_name, arm_overrides in _ARBITER_WSON_ARMS
+]
+
 TLSF_SWEEPS: list[tuple[str, list]] = [
     ("A", TLSF_SWEEP_A),
     ("B", TLSF_SWEEP_B),
     ("M", TLSF_SWEEP_M),
     ("P", TLSF_SWEEP_P),
     ("W", TLSF_SWEEP_W),
+    ("Q", TLSF_SWEEP_Q),
 ]
 
 TLSF_CONFIGS_DIR = Path(__file__).parent.parent / "experiments" / "configs-tlsf"

@@ -9,6 +9,131 @@ at least one repair *equivalent to* or *stronger than* an ideal.
 
 ---
 
+## 2026-07-23 — Well-separation × output assumptions on TLSF
+
+**What changed.** Sweep W crosses two new switches — `run_well_separation` (the
+*well-separation* filter, which drops any candidate whose assumptions the system
+can force false) and `allow_output_assumptions` (admitting output atoms into the
+assumption-mutation pool, previously input-only) — each on and off, a 2×2 over
+five unrealizable TLSF specs. NSGA-II, generations=10 / population_size=200.
+humanoid-531 dropped (~13 min per run, no metric headroom). **Why:** a
+specification is *not* well-separated exactly when `(assumptions) → false` is
+realizable — the system can drive its own assumptions false and satisfy the spec
+vacuously. The filter (`fe9c636`) was found inert on the FRETISH corpus: FRETISH
+assumptions are input-only, hence well-separated by construction, so nothing is
+ever dropped ([[well-separation-inert-on-fretish]]). The filter only *does*
+anything once output atoms can appear in assumptions (`c968211`), and the two
+switches are coupled — output assumptions without the filter admit the vacuous
+self-falsifying repairs the filter exists to reject. `arbiter`, a two-client
+mutex with transient requests and no `ASSUME` section, was built as the
+discriminating case: guarantee-only repair cannot make it realizable, an
+output-referencing assumption can, and only *some* such assumptions are
+well-separated. The question is whether the filter cleanly separates the genuine
+reactive-environment repairs from the vacuous ones.
+
+**Run.** Seed-major across av2 (seeds 0–159) and av3 (160–319), **6,399 runs**
+(3,200 + 3,199), completed 2026-07-23. Against a 12 h-per-box budget both ran
+slightly over — av2 745 min, av3 811 min — but to completion, so all 320 seeds
+are present rather than a truncated design. `jobs=1` per machine; timeout caps
+per spec (lift 600 s, gyro-var1 120, the rest 60). The lift cap was raised
+mid-campaign from 180 s (6f0dfbe) after a 3-seed calibration missed lift's heavy
+tail; even at 600 s a handful of extreme lift seeds still censor. Yield: **17
+timeouts** (0.27%, all lift's tail) and **one crash** — gyro-var1 seed 180, an
+uncaught-exception abort, one run in 6,400, leaving 6,399 rows. Data:
+`experiments/results-wellsep.csv`. The design is **paired** — all four arms share
+the (spec, seed) — so every test below is matched McNemar.
+
+### Result: a precise guard, inert until output assumptions fire
+
+The four arms are nearly identical on `found_repair` except for one that jumps to
+100%, and the entire difference sits on a single spec.
+
+| arm (well-sep / output-assum) | `found_repair` | `arbiter` `found_repair` |
+|---|---|---|
+| off / off (baseline) | 0.799 | **0.00** |
+| off / **on** | **1.000** | **1.00** |
+| **on** / off | 0.799 | 0.00 |
+| **on** / **on** | 0.799 | 0.00 |
+
+Every other spec is `found_repair` = 1.00 in all four arms; only `arbiter` moves.
+Admitting output assumptions makes `arbiter` repairable on *every* run (0/320 →
+320/320, McNemar p≈9e-97) — and turning the well-separation filter on removes
+*every one* of those repairs again (320/320 → 0/320, p≈9e-97, all 320 discordant
+one way). The filter's `n_dropped` averages 0.04 across the corpus and its
+wall-time cost is ~1 s at the median (6.2 s → 7.7 s): it touches nothing except
+the output-assumption candidates it was built to reject, and on `arbiter` it
+rejects all of them. Not one of the 320 output-assumption repairs `arbiter` finds
+at this operating point is well-separated — each is the system forcing its own
+assumption false.
+
+### The filter also repays the tax output assumptions levy on lily02
+
+`implies_ideal` is carried entirely by **lily02** (every other spec sits at 0 in
+all four arms — the ideal is out of reach at gen10/pop200 regardless). There,
+admitting output assumptions is a small quality *loss*, and the filter reverses
+it.
+
+| arm | lily02 `implies_ideal` |
+|---|---|
+| off / off (baseline) | 319/320 |
+| off / **on** | 301/320 |
+| **on** / off | 319/320 |
+| **on** / **on** | 316/320 |
+
+Output-assumptions-on drops lily02 by 18 net (319 → 301, discordance +1/−19,
+p=4e-5): the extra vacuous variants dilute the population and cost coverage.
+Turning the filter on recovers 15 of them (301 → 316, +18/−3, p=0.0015), leaving
+the full configuration statistically indistinguishable from baseline (319 vs 316,
++4/−1, p=0.38, ns). The filter makes output assumptions *safe* — it neutralises
+both effects they introduce, the false-positive inflation on `arbiter` and the
+coverage tax on `lily02`.
+
+### What this campaign cannot answer
+
+- **The genuine repair was never reached.** `arbiter`'s well-separated repair
+  (`G(r → F g)`, a reactive-environment assumption the filter would *keep*) does
+  not appear at gen10/pop200 — the search only ever finds the vacuous cheats. So
+  the campaign shows the filter correctly rejecting bad repairs, not yet keeping a
+  good one. A higher-budget `arbiter` run is the follow-up.
+- **No corpus headroom for the upside.** None of the five specs' ideals require an
+  output-referencing assumption, so output assumptions unlock no `implies_ideal`
+  here; their value would show only on a spec whose ideal is reactive-shaped.
+- **NSGA-II, gen10/pop200 only.**
+
+### Method notes worth keeping
+
+- **The two switches must be read as a pair.** `allow_output_assumptions` on its
+  own is a false-positive machine (`found_repair` 0.80 → 1.00 with junk repairs);
+  it is only sound with the well-separation filter on. Never ship the first
+  without the second.
+- **A filter inert on one input class is not inert on another.** Well-separation
+  drops nothing on FRETISH (input-only assumptions) and is decisive on TLSF once
+  output assumptions are admitted — the same code, opposite verdicts, decided by
+  whether assumptions can reference an output ([[well-separation-inert-on-fretish]]).
+- **Calibrate the timeout on the slow spec's tail, not its median.** lift's 3-seed
+  calibration set a 180 s cap that then censored the heavy tail; 600 s cut it to
+  0.27% but did not eliminate it ([[calibration-saturation-bias]]).
+
+### Scripts and launch
+
+```sh
+python scripts/gen_configs.py --tlsf --sweeps W \
+    --out-dir experiments/configs-wellsep
+# av2                                                # av3
+… --profile wellsep --jobs 1 --seeds $(seq 0 159)   … --seeds $(seq 160 319)
+python scripts/merge_experiments.py --profile wellsep av2 av3   # python3 on av2
+```
+
+**Verdict: the well-separation filter is a correct, targeted safeguard, and
+output assumptions are unsafe without it.** On the current corpus it is pure
+insurance — it rejects the vacuous repairs output assumptions open up (all 320 on
+`arbiter`) and repays their coverage tax (`lily02` back to baseline), while
+touching nothing else. Enable both together or neither; whether the filter ever
+*keeps* a genuine reactive-environment repair is the higher-budget `arbiter`
+question, not one this operating point can reach.
+
+---
+
 ## 2026-07-22 — `p_add_assumption`: the lever for MUC's ideal-hit rate
 
 **What changed.** Sweep P: `p_add_assumption` ∈ {0.05, 0.15, 0.3, 0.5} — the

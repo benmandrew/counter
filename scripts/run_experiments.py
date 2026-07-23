@@ -450,6 +450,44 @@ PROFILES: dict[str, dict] = {
         "results_csv": EXPERIMENTS_DIR / "results-wellsep.csv",
         "default_jobs": 1,
     },
+    # Focused arbiter follow-up to the 2026-07-23 wellsep campaign. That run
+    # showed the well-separation filter rejects *every* output-assumption repair
+    # arbiter finds at gen10/pop200 (320/320 dropped) — all vacuous — but the
+    # genuine well-separated repair (G(r -> F g), which the filter would KEEP)
+    # was never reached at that budget. This asks whether a much larger operating
+    # point (generations=40, population_size=2000; ~40x the work) lets the GA
+    # find a well-separated output-assumption repair the filter keeps, i.e.
+    # arbiter's wson-oaon found_repair rising above 0. Only two arms: wson-oaon
+    # (treatment) and wson-oaoff (control — guarantee-only, isolates whether the
+    # gain is the output-assumption path rather than higher-budget guarantee
+    # weakening). arbiter only. Generate the pop2000/gen40 grid with:
+    #   python scripts/gen_configs.py --tlsf --sweeps W \
+    #       --generations 40 --population-size 2000 \
+    #       --out-dir experiments/configs-arbiter-hp
+    "arbiter-hp": {
+        "schemes": ["nsga2"],
+        "weakenings": None,
+        "metrics": None,
+        "repair_modes": None,
+        "sweeps": ["W"],
+        "levels": {"W": ["wson-oaoff", "wson-oaon"]},
+        "specs": ["arbiter"],
+        # Ceiling, not a target: seed-major so a 20 h/box kill leaves a balanced
+        # two-arm design at whatever seed depth it reached. Split 0-199 / 200-399
+        # across av2/av3 (pass --seeds on launch); the ceiling is sized past what
+        # 20 h can reach so neither box runs dry.
+        "seeds": list(range(400)),
+        # Placeholder cap for the 3-seed calibration; retune from the measured
+        # per-run wall time before the full launch (pop2000/gen40 with the
+        # per-candidate ltlsynt well-separation query is far heavier than the
+        # gen10/pop200 baseline). ltlsynt_timeout_ms=500 bounds each query.
+        "timeout_caps": {"arbiter": 1800},
+        "baseline_aliases": {},
+        "configs_dir": EXPERIMENTS_DIR / "configs-arbiter-hp",
+        "results_dir": EXPERIMENTS_DIR / "results-arbiter-hp",
+        "results_csv": EXPERIMENTS_DIR / "results-arbiter-hp.csv",
+        "default_jobs": 1,
+    },
     # The basic-TLSF examples swept over generations (A) and population (B), the
     # two operating-point parameters, NSGA-II only, default weakening. These
     # specs are much slower than the FRETISH ones — three of them (lift,

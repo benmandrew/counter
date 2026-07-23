@@ -53,6 +53,7 @@ PROFILE_CSVS: dict[str, str] = {
     "padd": "results-padd.csv",
     "tlsf": "results-tlsf.csv",
     "wellsep": "results-wellsep.csv",
+    "arbiter-hp": "results-arbiter-hp.csv",
 }
 
 # Per-run output directory each profile writes under experiments/. Most profiles
@@ -67,6 +68,7 @@ PROFILE_RESULT_DIRS: dict[str, str] = {
     "padd": "results-padd",
     "tlsf": "results-tlsf",
     "wellsep": "results-wellsep",
+    "arbiter-hp": "results-arbiter-hp",
 }
 
 # Natural key of a results row: one run per (sweep, level_name, selection,

@@ -473,15 +473,17 @@ PROFILES: dict[str, dict] = {
         "levels": {"W": ["wson-oaoff", "wson-oaon"]},
         "specs": ["arbiter"],
         # Ceiling, not a target: seed-major so a 20 h/box kill leaves a balanced
-        # two-arm design at whatever seed depth it reached. Split 0-199 / 200-399
-        # across av2/av3 (pass --seeds on launch); the ceiling is sized past what
-        # 20 h can reach so neither box runs dry.
+        # two-arm design at whatever seed depth it reached. Operating point is
+        # pop10000/gen100 (configs generated with --generations 100
+        # --population-size 10000); calibration on av2 (2026-07-23) measured
+        # ~171 s/run control, ~190 s treatment (~360 s/seed), so 20 h/box reaches
+        # ~200 seeds. Split 0-199 / 200-399 across av2/av3 (pass --seeds).
         "seeds": list(range(400)),
-        # Placeholder cap for the 3-seed calibration; retune from the measured
-        # per-run wall time before the full launch (pop2000/gen40 with the
-        # per-candidate ltlsynt well-separation query is far heavier than the
-        # gen10/pop200 baseline). ltlsynt_timeout_ms=500 bounds each query.
-        "timeout_caps": {"arbiter": 1800},
+        # Calibrated to ~600 s ≈ 3x the ~190 s/run wall time: arbiter has no heavy
+        # runtime tail (unlike lift), so a run exceeding 600 s is a true ltlsynt
+        # hang, not a slow-but-progressing seed. ltlsynt_timeout_ms=500 bounds
+        # each per-candidate well-separation query.
+        "timeout_caps": {"arbiter": 600},
         "baseline_aliases": {},
         "configs_dir": EXPERIMENTS_DIR / "configs-arbiter-hp",
         "results_dir": EXPERIMENTS_DIR / "results-arbiter-hp",

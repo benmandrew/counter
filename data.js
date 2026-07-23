@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1784699265720,
+  "lastUpdate": 1784785957081,
   "repoUrl": "https://github.com/benmandrew/counter",
   "entries": {
     "counter benchmarks": [
@@ -4460,6 +4460,76 @@ window.BENCHMARK_DATA = {
             "value": 2815.553878423627,
             "unit": "ns/iter",
             "extra": "iterations: 247910\ncpu: 2815.5432334314864 ns\nthreads: 1"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "name": "benmandrew",
+            "username": "benmandrew",
+            "email": "benmandrew@gmail.com"
+          },
+          "committer": {
+            "name": "benmandrew",
+            "username": "benmandrew",
+            "email": "benmandrew@gmail.com"
+          },
+          "id": "6f0dfbe31ccd4e817ac3f1aa7f53b41c143fec55",
+          "message": "fix: raise wellsep lift timeout cap to 600s\n\nThe 3-seed calibration put lift at ~27s, but the live run showed a heavy\ntail — hard seeds run 100-600s+ across all four arms, intrinsic to lift's\nrealizability cost, not the well-sep/output-assumption feature. At the\n180s cap those seeds censored (false implies_ideal=0, truncated\nwall_time) in every arm. Raised to the muc/padd 600s; the other four\nspecs keep their calibrated caps (all <20s, no censoring).",
+          "timestamp": "2026-07-22T19:23:03Z",
+          "url": "https://github.com/benmandrew/counter/commit/6f0dfbe31ccd4e817ac3f1aa7f53b41c143fec55"
+        },
+        "date": 1784785956164,
+        "tool": "googlecpp",
+        "benches": [
+          {
+            "name": "Syntactic similarity - small formulas (3 variables)",
+            "value": 431.63944993897917,
+            "unit": "ns/iter",
+            "extra": "iterations: 1626365\ncpu: 431.4723078767682 ns\nthreads: 1"
+          },
+          {
+            "name": "Syntactic similarity - large formulas (11 variables, O(n*m) shared_subformulae)",
+            "value": 1692.7598088289378,
+            "unit": "ns/iter",
+            "extra": "iterations: 415544\ncpu: 1692.1540270103765 ns\nthreads: 1"
+          },
+          {
+            "name": "Spec implication check - warm black cache",
+            "value": 434.29265281450756,
+            "unit": "ns/iter",
+            "extra": "iterations: 1594842\ncpu: 434.2087749131261 ns\nthreads: 1"
+          },
+          {
+            "name": "Trace model counting - matrix exponentiation/steps:5",
+            "value": 159.09577945476477,
+            "unit": "ns/iter",
+            "extra": "iterations: 4523444\ncpu: 159.05702358645323 ns\nthreads: 1"
+          },
+          {
+            "name": "Trace model counting - matrix exponentiation/steps:10",
+            "value": 190.18354115291046,
+            "unit": "ns/iter",
+            "extra": "iterations: 3971153\ncpu: 190.13071921429375 ns\nthreads: 1"
+          },
+          {
+            "name": "Trace model counting - matrix exponentiation/steps:20",
+            "value": 197.4906778074604,
+            "unit": "ns/iter",
+            "extra": "iterations: 3589928\ncpu: 197.4251269106233 ns\nthreads: 1"
+          },
+          {
+            "name": "Trace model counting - matrix exponentiation/steps:50",
+            "value": 248.49274761343887,
+            "unit": "ns/iter",
+            "extra": "iterations: 2971022\ncpu: 248.40528175153196 ns\nthreads: 1"
+          },
+          {
+            "name": "Mutate specification - 3-guarantee takeoff spec",
+            "value": 2692.1633746959224,
+            "unit": "ns/iter",
+            "extra": "iterations: 258204\ncpu: 2690.814150826483 ns\nthreads: 1"
           }
         ]
       }

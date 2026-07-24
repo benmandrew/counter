@@ -86,6 +86,16 @@ TLSF_SPECS: dict[str, dict[str, Path]] = {
     "rg2": _spec("rg2", "tlsf"),
     "takeoff-tlsf": _spec("takeoff-tlsf", "tlsf"),
     "arbiter-aurus": _spec("arbiter-aurus", "tlsf"),
+    # SYNTCOMP arbiter family, imported without ideals in 9e5fc08 and promoted
+    # into the ablation corpus on 2026-07-24 when hand-written ideal repairs
+    # landed (system-weakening fixes, realize-validated; see EXPERIMENTS.md).
+    "arbiter-handshake": _spec("arbiter-handshake", "tlsf"),
+    "detector": _spec("detector", "tlsf"),
+    "full-arbiter": _spec("full-arbiter", "tlsf"),
+    "load-balancer": _spec("load-balancer", "tlsf"),
+    "prioritized-arbiter": _spec("prioritized-arbiter", "tlsf"),
+    "round-robin-arbiter": _spec("round-robin-arbiter", "tlsf"),
+    "simple-arbiter": _spec("simple-arbiter", "tlsf"),
 }
 
 # The original six-family TLSF corpus. The pre-ablation TLSF profiles (tlsf,
@@ -96,11 +106,15 @@ TLSF_CORE_SPECS: list[str] = [
     "arbiter", "gyro-var1", "humanoid-531", "lift", "lily02", "minepump",
 ]
 
-# The 13 fixes-backed TLSF families of the ablation campaign (PLAN §2).
+# The 20 fixes-backed TLSF families of the ablation campaign (PLAN §2): the
+# original 13, plus the 7 SYNTCOMP arbiter families promoted on 2026-07-24
+# after hand-written ideals landed for them.
 TLSF_ABLATION_SPECS: list[str] = [
     "arbiter", "gyro-var1", "gyro-var2", "humanoid-458", "humanoid-531",
     "lift", "lily02", "minepump", "amba", "codesample-un1", "codesample-un2",
     "rg1", "rg2",
+    "arbiter-handshake", "detector", "full-arbiter", "load-balancer",
+    "prioritized-arbiter", "round-robin-arbiter", "simple-arbiter",
 ]
 
 # The 12-family AuRUS head-to-head corpus: the 11 ablation families with an
@@ -111,10 +125,15 @@ TLSF_ABLATION_SPECS: list[str] = [
 # takeoff-tlsf was imported for the head-to-head but is excluded: both of its
 # upstream "genuine" fixes are invalid (one truncated, one unsatisfiable), so
 # the family has no ideals to score implies_ideal against — see EXPERIMENTS.md
-# 2026-07-24.
+# 2026-07-24. The list is explicit rather than derived from
+# TLSF_ABLATION_SPECS so growing the ablation corpus (e.g. the 2026-07-24
+# SYNTCOMP promotion, whose ideals are hand-written, not AuRUS-genuine) cannot
+# silently widen the head-to-head.
 H2H_TLSF_SPECS: list[str] = [
-    s for s in TLSF_ABLATION_SPECS if s not in ("arbiter", "amba")
-] + ["arbiter-aurus"]
+    "gyro-var1", "gyro-var2", "humanoid-458", "humanoid-531", "lift",
+    "lily02", "minepump", "codesample-un1", "codesample-un2", "rg1", "rg2",
+    "arbiter-aurus",
+]
 
 # Unified lookup for run_one()/--specs; each profile picks its own subset.
 SPECS: dict[str, dict[str, Path]] = {**FRETISH_SPECS, **TLSF_SPECS}

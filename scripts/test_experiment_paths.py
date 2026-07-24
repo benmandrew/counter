@@ -124,7 +124,7 @@ for name in ("padd", "wellsep"):
 
 # The two ablation arms are the same 8-cell factorial: 2 schemes x 2 metrics x
 # 2 sweep-C levels (default = Halstead 0.1, no-halstead = 0.0).
-check(len(R.TLSF_ABLATION_SPECS), 13, "ablation TLSF corpus size")
+check(len(R.TLSF_ABLATION_SPECS), 20, "ablation TLSF corpus size")
 for name in ("ablate-fret", "ablate-tlsf"):
     check(sorted(P[name]["schemes"]), ["nsga2", "weighted"],
           f"{name} schemes")
@@ -153,7 +153,13 @@ check(P["h2h-tlsf"]["specs"], R.H2H_TLSF_SPECS, "h2h-tlsf corpus")
 # AuRUS's), amba (no AuRUS case study) and takeoff-tlsf (no valid ideals —
 # see EXPERIMENTS.md 2026-07-24) stay out.
 check(len(R.H2H_TLSF_SPECS), 12, "h2h TLSF corpus size")
-for excluded in ("arbiter", "amba", "takeoff-tlsf"):
+# The 2026-07-24 SYNTCOMP promotion grew the ablation corpus to 20, but those
+# ideals are hand-written, not AuRUS-genuine, so the head-to-head must not
+# widen with them.
+for excluded in ("arbiter", "amba", "takeoff-tlsf", "arbiter-handshake",
+                 "detector", "full-arbiter", "load-balancer",
+                 "prioritized-arbiter", "round-robin-arbiter",
+                 "simple-arbiter"):
     assert excluded not in R.H2H_TLSF_SPECS, \
         f"{excluded} must not be in the head-to-head corpus"
 assert "arbiter-aurus" in R.H2H_TLSF_SPECS, \

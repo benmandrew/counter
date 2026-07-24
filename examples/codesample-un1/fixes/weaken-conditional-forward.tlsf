@@ -1,0 +1,31 @@
+INFO {
+  TITLE:       "Forklift (conditional forward liveness)"
+  DESCRIPTION: "Guarantee-weakening repair: relax unconditional forward liveness to conditional (only drive forward infinitely often if obstacles recur infinitely often)"
+  SEMANTICS:   Mealy,Strict
+  TARGET:   Mealy
+}
+
+MAIN {
+  INPUTS {
+    obstacle;
+  }
+  OUTPUTS {
+    lmot_0;lmot_1;rmot_0;rmot_1;
+  }
+
+  PRESET {
+    (!lmot_0 && !lmot_1 && !rmot_0 && !rmot_1);
+  }
+
+  ASSERT {
+     G ((obstacle || !lmot_0 || lmot_1 || !rmot_0 || rmot_1));
+  }
+
+  ASSUMPTIONS{
+     G ((lmot_0 || lmot_1 || rmot_0 || rmot_1 || (obstacle &&  X (obstacle)) || (!obstacle &&  X (!obstacle))));
+  }
+
+  GUARANTEES {
+     G (( F (obstacle) ->  F ((lmot_0 && !lmot_1 && rmot_0 && !rmot_1))));
+  }
+}

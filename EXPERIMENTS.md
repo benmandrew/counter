@@ -9,6 +9,26 @@ at least one repair *equivalent to* or *stronger than* an ideal.
 
 ---
 
+## 2026-07-24 — Ideals expansion and SYNTCOMP promotion (mid-campaign)
+
+**What.** 15 hand-written ideal repairs landed while the TLSF calibration seed
+was running, every one re-validated independently with
+`timeout 180 build-release/realize <fix>` (all REALIZABLE): new alternates for
+arbiter (`weaken-liveness-gr1`), codesample-un1, lift, rg2, fsm, fsm-timing
+and takeoff (FRETISH), plus first-ever ideals for the 7 SYNTCOMP arbiter
+families — arbiter-handshake, detector, full-arbiter, load-balancer,
+prioritized-arbiter, round-robin-arbiter, simple-arbiter (system-weakening
+repairs; fairness-style fixes do not realise these). Those 7 were promoted
+into `TLSF_ABLATION_SPECS` (13 → 20 families, 2,400 planned rows at 15
+seeds); the head-to-head corpus stays at 12 — the new ideals are hand-written,
+not AuRUS-genuine, so they must not widen the AuRUS comparison.
+
+**Consistency rule.** TLSF calibration rows recorded before this landing
+(arbiter, codesample-un1, lift, rg2) were scored against the pre-expansion
+ideals; a full `scripts/recompare.py` pass over every results CSV runs at
+campaign end so all rows score against this final, frozen ideals set. No fix
+files may change after this entry without repeating that pass.
+
 ## 2026-07-24 — Ablation campaign provenance
 
 **What.** Input verification for the AuRUS head-to-head (the ablation-campaign

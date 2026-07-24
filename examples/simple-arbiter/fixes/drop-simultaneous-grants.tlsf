@@ -1,0 +1,27 @@
+INFO {
+  TITLE:       "Simple Arbiter (repaired, no simultaneous grants)"
+  DESCRIPTION: "Simultaneous-grant asserts removed; at-most-one mutex and per-request response guarantees retained"
+  SEMANTICS:   Mealy
+  TARGET:      Mealy
+}
+
+MAIN {
+  INPUTS {
+    r_0;
+    r_1;
+    r_2;
+  }
+  OUTPUTS {
+    g_0;
+    g_1;
+    g_2;
+  }
+  ASSERT {
+    (((! (g_0)) && (! (g_1))) || (((! (g_0)) || (! (g_1))) && (! (g_2))));
+  }
+  GUARANTEE {
+    (G ((r_0) -> (F (g_0))));
+    (G ((r_1) -> (F (g_1))));
+    (G ((r_2) -> (F (g_2))));
+  }
+}

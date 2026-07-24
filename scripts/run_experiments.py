@@ -490,6 +490,34 @@ PROFILES: dict[str, dict] = {
         "results_csv": EXPERIMENTS_DIR / "results-arbiter-hp.csv",
         "default_jobs": 1,
     },
+    # Redistribution of the arbiter-hp budget after that run finished 0/~350 at
+    # the fixed p_add_assumption=0.05. arbiter's only fix is the assumption pair
+    # G F r0 & G F r1, and a single assumption yields no realizability payoff to
+    # select on, so 0.05 leaves the pair unreachable. Sweep Q spreads seeds over
+    # p_add_assumption in {0.1, 0.2, 0.4, 0.6, 0.8}, crossed with the two wson
+    # arms (10 levels), at the same pop10000/gen100 operating point. The ~800-run
+    # arbiter-hp budget is conserved: 80 seeds x 10 levels = 800 runs, split
+    # 0-39 / 40-79 across av2/av3 (~400 runs/box, matching arbiter-hp's per-box
+    # load), so each (padd, arm) cell gets 80 seed replications. Generate with:
+    #   python scripts/gen_configs.py --tlsf --sweeps Q \
+    #       --generations 100 --population-size 10000 \
+    #       --out-dir experiments/configs-arbiter-padd
+    "arbiter-padd": {
+        "schemes": ["nsga2"],
+        "weakenings": None,
+        "metrics": None,
+        "repair_modes": None,
+        "sweeps": ["Q"],
+        "levels": {},  # every generated Q level (all 10 padd x arm combos)
+        "specs": ["arbiter"],
+        "seeds": list(range(80)),
+        "timeout_caps": {"arbiter": 600},
+        "baseline_aliases": {},
+        "configs_dir": EXPERIMENTS_DIR / "configs-arbiter-padd",
+        "results_dir": EXPERIMENTS_DIR / "results-arbiter-padd",
+        "results_csv": EXPERIMENTS_DIR / "results-arbiter-padd.csv",
+        "default_jobs": 1,
+    },
     # The basic-TLSF examples swept over generations (A) and population (B), the
     # two operating-point parameters, NSGA-II only, default weakening. These
     # specs are much slower than the FRETISH ones — three of them (lift,

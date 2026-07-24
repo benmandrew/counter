@@ -106,9 +106,9 @@ def parse_out_txt(out_txt: Path) -> dict:
     except OSError:
         return row
     if m := N_SOLUTIONS_RE.search(text):
-        row["n_solutions"] = int(m.group(1))
+        row["n_solutions"] = str(int(m.group(1)))
     if m := TIME_RE.search(text):
-        row["aurus_time_s"] = int(m.group(1))
+        row["aurus_time_s"] = str(int(m.group(1)))
     if m := SETTINGS_RE.search(text):
         row["settings"] = m.group(1)
     return row

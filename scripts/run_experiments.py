@@ -65,9 +65,11 @@ FRETISH_SPECS: dict[str, dict[str, Path]] = {
 # Basic-TLSF specs with ideal fixes. counter infers the TLSF format from the
 # .tlsf extension, and compare reads the .tlsf ideals the same way. The first
 # six are the original mono-vs-muc corpus; the rest were imported from the
-# aurus tree (9e5fc08 and the takeoff-tlsf follow-up) for the ablation
-# campaign. takeoff-tlsf is the AuRUS takeoff case study as TLSF — a separate
-# family from the FRETISH examples/takeoff/ that FRETISH_SPECS names.
+# aurus tree (9e5fc08 and the takeoff-tlsf/arbiter-aurus follow-ups) for the
+# ablation campaign. takeoff-tlsf is the AuRUS takeoff case study as TLSF — a
+# separate family from the FRETISH examples/takeoff/ that FRETISH_SPECS names.
+# It is inert: no profile runs it, since both upstream "genuine" fixes proved
+# invalid (see EXPERIMENTS.md 2026-07-24), leaving it without ideals.
 TLSF_SPECS: dict[str, dict[str, Path]] = {
     "arbiter": _spec("arbiter", "tlsf"),
     "gyro-var1": _spec("gyro-var1", "tlsf"),
@@ -95,24 +97,24 @@ TLSF_CORE_SPECS: list[str] = [
 ]
 
 # The 13 fixes-backed TLSF families of the ablation campaign (PLAN §2).
-# takeoff-tlsf is not among them: it exists for the AuRUS head-to-head, which
-# the h2h-tlsf profile tops up on top of this list.
 TLSF_ABLATION_SPECS: list[str] = [
     "arbiter", "gyro-var1", "gyro-var2", "humanoid-458", "humanoid-531",
     "lift", "lily02", "minepump", "amba", "codesample-un1", "codesample-un2",
     "rg1", "rg2",
 ]
 
-# The 13-family AuRUS head-to-head corpus: the 11 ablation families with an
-# AuRUS case-studies match, plus the two families imported from the AuRUS
-# tree for the head-to-head (takeoff-tlsf, arbiter-aurus). amba has no AuRUS
-# case study; counter's own arbiter is a hand-written GR(1) mutex, a
-# different problem from AuRUS's request-response arbiter (imported here as
-# arbiter-aurus so both tools solve the same spec — see EXPERIMENTS.md
-# 2026-07-24), so it stays in the ablation corpus only.
+# The 12-family AuRUS head-to-head corpus: the 11 ablation families with an
+# AuRUS case-studies match, plus arbiter-aurus (imported from the AuRUS tree
+# so both tools solve the same spec — counter's own arbiter is a hand-written
+# GR(1) mutex, a different problem from AuRUS's request-response arbiter, and
+# stays in the ablation corpus only). amba has no AuRUS case study.
+# takeoff-tlsf was imported for the head-to-head but is excluded: both of its
+# upstream "genuine" fixes are invalid (one truncated, one unsatisfiable), so
+# the family has no ideals to score implies_ideal against — see EXPERIMENTS.md
+# 2026-07-24.
 H2H_TLSF_SPECS: list[str] = [
     s for s in TLSF_ABLATION_SPECS if s not in ("arbiter", "amba")
-] + ["takeoff-tlsf", "arbiter-aurus"]
+] + ["arbiter-aurus"]
 
 # Unified lookup for run_one()/--specs; each profile picks its own subset.
 SPECS: dict[str, dict[str, Path]] = {**FRETISH_SPECS, **TLSF_SPECS}
@@ -677,10 +679,10 @@ PROFILES: dict[str, dict] = {
     # configs dir, results dir, and results CSV, and the resume key (sweep,
     # level, selection, weakening, metric, repair_mode, spec, seed) fully
     # identifies a control-cell row — so the (spec, seed) rows ablate-tlsf
-    # already completed are skipped and only the top-up executes: takeoff-tlsf
-    # and arbiter-aurus at seeds 0-19 plus the 11 shared families at seeds
-    # 15-19. The same sharing means the two profiles must not run concurrently
-    # on one machine (interleaved CSV appends and run dirs).
+    # already completed are skipped and only the top-up executes:
+    # arbiter-aurus at seeds 0-19 plus the 11 shared families at seeds 15-19.
+    # The same sharing means the two profiles must not run concurrently on
+    # one machine (interleaved CSV appends and run dirs).
     "h2h-tlsf": {
         "schemes": ["nsga2"],
         "weakenings": None,

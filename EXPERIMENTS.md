@@ -48,9 +48,9 @@ AuRUS's `examples/arbiter.tlsf`, which *is* byte-identical in content to
 counter's.) The two tools would solve different arbiter problems, so the
 head-to-head runs the AuRUS formulation on both sides: it is imported
 verbatim as a separate family `examples/arbiter-aurus/` (spec + the four
-`genuine/` fixes), keyed `arbiter-aurus` in `h2h-tlsf` and
-`aurus_campaign.py`. counter's own `arbiter` is untouched and stays in the
-ablation corpus only.
+`genuine/` fixes, one of which the realize gate below excludes), keyed
+`arbiter-aurus` in `h2h-tlsf` and `aurus_campaign.py`. counter's own
+`arbiter` is untouched and stays in the ablation corpus only.
 
 **Notes.**
 
@@ -68,12 +68,12 @@ ablation corpus only.
 |---|---|
 | takeoff-tlsf/spec.tlsf | UNREALIZABLE (expected: repair subject) |
 | takeoff-tlsf/fixes/takeoff-1.tlsf | **parse error** — excluded (deleted) |
-| takeoff-tlsf/fixes/takeoff-2.tlsf | **UNREALIZABLE** — kept, flagged |
+| takeoff-tlsf/fixes/takeoff-2.tlsf | **UNREALIZABLE** (unsatisfiable) — excluded (deleted) |
 | arbiter-aurus/spec.tlsf | UNREALIZABLE (expected: repair subject) |
 | arbiter-aurus/fixes/arbiter_fixed0.tlsf | REALIZABLE |
 | arbiter-aurus/fixes/arbiter_fixed1.tlsf | REALIZABLE |
 | arbiter-aurus/fixes/arbiter_fixed2.tlsf | REALIZABLE |
-| arbiter-aurus/fixes/arbiter_fixed3.tlsf | **UNREALIZABLE** — kept, flagged |
+| arbiter-aurus/fixes/arbiter_fixed3.tlsf | **UNREALIZABLE** — excluded (deleted) |
 
 - **takeoff-1 excluded.** Its truncated guarantee (`tr && X (tr && X (tr
   &&))`, dangling `&&`, exactly as upstream) fails counter's TLSF parser
@@ -87,13 +87,17 @@ ablation corpus only.
   upstream's "genuine" solution as-is, imported byte-identical.
 - **arbiter_fixed3 is UNREALIZABLE.** `G (r1 <-> F g1)` lets the environment
   play `r1` false at t=0 (forbidding `g1` forever) then `r1` true at t=1
-  (demanding `F g1`) — the environment wins.
-- Both UNREALIZABLE "fixes" are kept on disk for now (they still define
-  formulae `compare` can test implication against) but takeoff-tlsf's only
-  surviving fix and arbiter-aurus's fixed3 are **not** trustworthy
-  known-good repairs — treat `implies_ideal` on these families with
-  suspicion, and decide before the campaign whether to drop them from the
-  ideals set.
+  (demanding `F g1`) — the environment wins. Excluded (deleted);
+  arbiter_fixed0–2 remain as the family's ideals.
+- **takeoff is excluded from the head-to-head entirely.** With takeoff-1
+  truncated and takeoff-2 unsatisfiable, *both* upstream "genuine" fixes are
+  invalid and the family has zero valid ideals — nothing to score
+  `implies_ideal` against on the counter side, and nothing for AuRUS's
+  solutions to be judged genuine by. This is a finding about the upstream
+  corpus, not a workaround: takeoff-tlsf is removed from `H2H_TLSF_SPECS`
+  and from `aurus_campaign.py`'s default mapping, leaving a symmetric
+  12-family head-to-head (11 matched + arbiter-aurus).
+  `examples/takeoff-tlsf/spec.tlsf` stays as inert imported data.
 
 ---
 

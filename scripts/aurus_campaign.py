@@ -46,10 +46,12 @@ from pathlib import Path
 # counter family name -> TLSF path relative to <aurus-root>/case-studies/.
 # Keys are the counter examples/ names so the CSV joins directly against
 # run_experiments.py's h2h-tlsf rows; values are AuRUS's own layout. This is
-# the 13-family head-to-head set (H2H_TLSF_SPECS): the fixes-backed TLSF
+# the 12-family head-to-head set (H2H_TLSF_SPECS): the fixes-backed TLSF
 # corpus minus amba (no AuRUS case study) and minus counter's own arbiter (a
-# different problem from AuRUS's — see EXPERIMENTS.md 2026-07-24), plus the
-# two AuRUS imports takeoff-tlsf and arbiter-aurus.
+# different problem from AuRUS's), plus the AuRUS import arbiter-aurus.
+# takeoff is excluded on both sides: its upstream "genuine" fixes are both
+# invalid, so counter has no ideals to compare against — see EXPERIMENTS.md
+# 2026-07-24.
 SPEC_TLSF: dict[str, str] = {
     "arbiter-aurus": "arbiter/arbiter.tlsf",
     "codesample-un1":
@@ -71,7 +73,6 @@ SPEC_TLSF: dict[str, str] = {
     "minepump": "minepump/minepump.tlsf",
     "rg1": "RG1/RG1.tlsf",
     "rg2": "RG2/RG2.tlsf",
-    "takeoff-tlsf": "takeoff/takeoff.tlsf",
 }
 
 # Fixed GA parameters of the campaign (PLAN §5); only GATO is a knob, since
@@ -160,7 +161,7 @@ def main() -> None:
     parser.add_argument("--specs", nargs="+", choices=list(SPEC_TLSF),
                         default=list(SPEC_TLSF), metavar="SPEC",
                         help="Specs to run, by counter family name "
-                             "(default: the 13-family head-to-head set)")
+                             "(default: the 12-family head-to-head set)")
     parser.add_argument("--repeats", type=int, default=20, metavar="N",
                         help="Independent repeats per spec (default: 20); "
                              "AuRUS is not seedable, so repeats stand in for "

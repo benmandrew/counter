@@ -149,15 +149,15 @@ check(P["h2h-tlsf"]["levels"], {"C": ["default"]}, "h2h-tlsf control level")
 check(P["h2h-tlsf"]["specs"], R.H2H_TLSF_SPECS, "h2h-tlsf corpus")
 
 # The head-to-head corpus is the 11 AuRUS-matched ablation families plus the
-# two AuRUS imports. counter's own arbiter (a different problem from AuRUS's,
-# see EXPERIMENTS.md 2026-07-24) and amba (no AuRUS case study) stay out.
-check(len(R.H2H_TLSF_SPECS), 13, "h2h TLSF corpus size")
-for excluded in ("arbiter", "amba"):
+# arbiter-aurus import. counter's own arbiter (a different problem from
+# AuRUS's), amba (no AuRUS case study) and takeoff-tlsf (no valid ideals —
+# see EXPERIMENTS.md 2026-07-24) stay out.
+check(len(R.H2H_TLSF_SPECS), 12, "h2h TLSF corpus size")
+for excluded in ("arbiter", "amba", "takeoff-tlsf"):
     assert excluded not in R.H2H_TLSF_SPECS, \
         f"{excluded} must not be in the head-to-head corpus"
-for imported in ("takeoff-tlsf", "arbiter-aurus"):
-    assert imported in R.H2H_TLSF_SPECS, \
-        f"{imported} missing from the head-to-head corpus"
+assert "arbiter-aurus" in R.H2H_TLSF_SPECS, \
+    "arbiter-aurus missing from the head-to-head corpus"
 
 # aurus_campaign runs AuRUS on exactly the head-to-head corpus, keyed by
 # counter family name so its CSV joins against the h2h-tlsf rows.
@@ -166,8 +166,6 @@ check(sorted(A.SPEC_TLSF), sorted(R.H2H_TLSF_SPECS),
       "aurus_campaign covers the head-to-head corpus")
 check(A.SPEC_TLSF["arbiter-aurus"], "arbiter/arbiter.tlsf",
       "arbiter-aurus maps to AuRUS's arbiter case study")
-check(A.SPEC_TLSF["takeoff-tlsf"], "takeoff/takeoff.tlsf",
-      "takeoff-tlsf maps to AuRUS's takeoff case study")
 
 # merge_experiments mirrors the per-profile CSV names; the ablation profiles
 # must be present there, with h2h-tlsf pointing at ablate-tlsf's CSV.

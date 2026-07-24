@@ -149,6 +149,14 @@ check(P["h2h-tlsf"]["levels"], {"C": ["default"]}, "h2h-tlsf control level")
 check(P["h2h-tlsf"]["specs"], R.TLSF_ABLATION_SPECS + ["takeoff-tlsf"],
       "h2h-tlsf corpus")
 
+# merge_experiments mirrors the per-profile CSV names; the ablation profiles
+# must be present there, with h2h-tlsf pointing at ablate-tlsf's CSV.
+for name in ("ablate-fret", "ablate-tlsf", "h2h-tlsf"):
+    check(M.PROFILE_CSVS[name], P[name]["results_csv"].name,
+          f"merge CSV for {name}")
+    check(M.PROFILE_RESULT_DIRS[name], P[name]["results_dir"].name,
+          f"merge result dir for {name}")
+
 # Every spec a profile names must resolve to an on-disk input, and every
 # capped profile must cap every spec it runs (run_one indexes caps[spec]).
 for name, prof in P.items():

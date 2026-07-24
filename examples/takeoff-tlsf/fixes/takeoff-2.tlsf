@@ -1,0 +1,25 @@
+INFO {
+  TITLE:       "TLSF - Test Specification"
+  DESCRIPTION: "Test Test Test"
+  SEMANTICS:   Mealy
+  TARGET:   Mealy
+}
+
+MAIN {
+  INPUTS {
+  }
+
+  OUTPUTS {
+	  tr;lo;
+  }
+
+  ASSUMPTIONS {
+  	true;
+  }
+
+  GUARANTEES {
+    tr && X (tr && X (tr && X (tr && X (tr && X (tr)))));
+    ((!tr) && lo) || X (((!tr) && lo) || X (((!tr) && lo) || X (((!tr) && lo) || X (((!tr) && lo) || X (((!tr) && lo) || X (((!tr) && lo) || X (((!tr) && lo) || X (((!tr) && lo)))))))));
+    G (tr -> (!lo && X (!lo && X (lo))));
+  }
+}

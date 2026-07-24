@@ -146,8 +146,28 @@ for field in ("configs_dir", "results_dir", "results_csv"):
 check(P["h2h-tlsf"]["schemes"], ["nsga2"], "h2h-tlsf control scheme")
 check(P["h2h-tlsf"]["metrics"], ["log"], "h2h-tlsf control metric")
 check(P["h2h-tlsf"]["levels"], {"C": ["default"]}, "h2h-tlsf control level")
-check(P["h2h-tlsf"]["specs"], R.TLSF_ABLATION_SPECS + ["takeoff-tlsf"],
-      "h2h-tlsf corpus")
+check(P["h2h-tlsf"]["specs"], R.H2H_TLSF_SPECS, "h2h-tlsf corpus")
+
+# The head-to-head corpus is the 11 AuRUS-matched ablation families plus the
+# two AuRUS imports. counter's own arbiter (a different problem from AuRUS's,
+# see EXPERIMENTS.md 2026-07-24) and amba (no AuRUS case study) stay out.
+check(len(R.H2H_TLSF_SPECS), 13, "h2h TLSF corpus size")
+for excluded in ("arbiter", "amba"):
+    assert excluded not in R.H2H_TLSF_SPECS, \
+        f"{excluded} must not be in the head-to-head corpus"
+for imported in ("takeoff-tlsf", "arbiter-aurus"):
+    assert imported in R.H2H_TLSF_SPECS, \
+        f"{imported} missing from the head-to-head corpus"
+
+# aurus_campaign runs AuRUS on exactly the head-to-head corpus, keyed by
+# counter family name so its CSV joins against the h2h-tlsf rows.
+import aurus_campaign as A  # noqa: E402
+check(sorted(A.SPEC_TLSF), sorted(R.H2H_TLSF_SPECS),
+      "aurus_campaign covers the head-to-head corpus")
+check(A.SPEC_TLSF["arbiter-aurus"], "arbiter/arbiter.tlsf",
+      "arbiter-aurus maps to AuRUS's arbiter case study")
+check(A.SPEC_TLSF["takeoff-tlsf"], "takeoff/takeoff.tlsf",
+      "takeoff-tlsf maps to AuRUS's takeoff case study")
 
 # merge_experiments mirrors the per-profile CSV names; the ablation profiles
 # must be present there, with h2h-tlsf pointing at ablate-tlsf's CSV.

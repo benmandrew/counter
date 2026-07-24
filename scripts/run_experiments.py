@@ -83,6 +83,7 @@ TLSF_SPECS: dict[str, dict[str, Path]] = {
     "rg1": _spec("rg1", "tlsf"),
     "rg2": _spec("rg2", "tlsf"),
     "takeoff-tlsf": _spec("takeoff-tlsf", "tlsf"),
+    "arbiter-aurus": _spec("arbiter-aurus", "tlsf"),
 }
 
 # The original six-family TLSF corpus. The pre-ablation TLSF profiles (tlsf,
@@ -101,6 +102,17 @@ TLSF_ABLATION_SPECS: list[str] = [
     "lift", "lily02", "minepump", "amba", "codesample-un1", "codesample-un2",
     "rg1", "rg2",
 ]
+
+# The 13-family AuRUS head-to-head corpus: the 11 ablation families with an
+# AuRUS case-studies match, plus the two families imported from the AuRUS
+# tree for the head-to-head (takeoff-tlsf, arbiter-aurus). amba has no AuRUS
+# case study; counter's own arbiter is a hand-written GR(1) mutex, a
+# different problem from AuRUS's request-response arbiter (imported here as
+# arbiter-aurus so both tools solve the same spec — see EXPERIMENTS.md
+# 2026-07-24), so it stays in the ablation corpus only.
+H2H_TLSF_SPECS: list[str] = [
+    s for s in TLSF_ABLATION_SPECS if s not in ("arbiter", "amba")
+] + ["takeoff-tlsf", "arbiter-aurus"]
 
 # Unified lookup for run_one()/--specs; each profile picks its own subset.
 SPECS: dict[str, dict[str, Path]] = {**FRETISH_SPECS, **TLSF_SPECS}
@@ -659,15 +671,16 @@ PROFILES: dict[str, dict] = {
     },
     # Head-to-head top-up against the AuRUS baseline (scripts/aurus_campaign.py):
     # the control cell only (nsga2 / log metric / C-default weights), extended
-    # to seeds 0-19 and to takeoff-tlsf, so every family AuRUS runs has 20
-    # counter control runs to compare against. Dedup with ablate-tlsf is by
-    # construction: this profile shares ablate-tlsf's configs dir, results dir,
-    # and results CSV, and the resume key (sweep, level, selection, weakening,
-    # metric, repair_mode, spec, seed) fully identifies a control-cell row — so
-    # the (spec, seed) rows ablate-tlsf already completed are skipped and only
-    # the top-up executes: takeoff-tlsf at seeds 0-19 plus the 13 families at
-    # seeds 15-19. The same sharing means the two profiles must not run
-    # concurrently on one machine (interleaved CSV appends and run dirs).
+    # to seeds 0-19 and to the H2H_TLSF_SPECS corpus, so every family AuRUS
+    # runs has 20 counter control runs to compare against. Dedup with
+    # ablate-tlsf is by construction: this profile shares ablate-tlsf's
+    # configs dir, results dir, and results CSV, and the resume key (sweep,
+    # level, selection, weakening, metric, repair_mode, spec, seed) fully
+    # identifies a control-cell row — so the (spec, seed) rows ablate-tlsf
+    # already completed are skipped and only the top-up executes: takeoff-tlsf
+    # and arbiter-aurus at seeds 0-19 plus the 11 shared families at seeds
+    # 15-19. The same sharing means the two profiles must not run concurrently
+    # on one machine (interleaved CSV appends and run dirs).
     "h2h-tlsf": {
         "schemes": ["nsga2"],
         "weakenings": None,
@@ -678,10 +691,9 @@ PROFILES: dict[str, dict] = {
         "repair_modes": None,
         "sweeps": ["C"],
         "levels": {"C": ["default"]},
-        "specs": TLSF_ABLATION_SPECS + ["takeoff-tlsf"],
+        "specs": H2H_TLSF_SPECS,
         "seeds": list(range(20)),
-        "timeout_caps": {s: 600
-                         for s in TLSF_ABLATION_SPECS + ["takeoff-tlsf"]},
+        "timeout_caps": {s: 600 for s in H2H_TLSF_SPECS},
         "baseline_aliases": {},
         "configs_dir": EXPERIMENTS_DIR / "configs-ablate-tlsf",
         "results_dir": EXPERIMENTS_DIR / "results-ablate-tlsf",

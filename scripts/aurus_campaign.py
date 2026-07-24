@@ -46,11 +46,12 @@ from pathlib import Path
 # counter family name -> TLSF path relative to <aurus-root>/case-studies/.
 # Keys are the counter examples/ names so the CSV joins directly against
 # run_experiments.py's h2h-tlsf rows; values are AuRUS's own layout. This is
-# the 13-family head-to-head set: the fixes-backed TLSF corpus minus amba
-# (which has no AuRUS case study) plus takeoff (imported into counter as
-# takeoff-tlsf).
+# the 13-family head-to-head set (H2H_TLSF_SPECS): the fixes-backed TLSF
+# corpus minus amba (no AuRUS case study) and minus counter's own arbiter (a
+# different problem from AuRUS's — see EXPERIMENTS.md 2026-07-24), plus the
+# two AuRUS imports takeoff-tlsf and arbiter-aurus.
 SPEC_TLSF: dict[str, str] = {
-    "arbiter": "arbiter/arbiter.tlsf",
+    "arbiter-aurus": "arbiter/arbiter.tlsf",
     "codesample-un1":
         "codeSampleV3un1/codeSamples_v3un1simple_Forklift_unrealizable.tlsf",
     "codesample-un2":

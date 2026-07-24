@@ -260,6 +260,19 @@ RandomSource init_random_source(int argc, const char* const* argv) {
     return make_random_source_from_seed(seed);
 }
 
+// A specification counts as a realizable repair only if it is realizable and
+// neither vacuously satisfied by a false condition nor built on unsatisfiable
+// assumptions. Elites and final-generation offspring can reach these checks
+// unscreened, so both the live "real" counter and the final collection apply
+// the same predicate.
+bool is_realizable_repair(const Specification& spec) {
+    return specification_status(spec, global_sat_checker(),
+                                global_real_checker()) == 1.0 &&
+           !specification_has_false_condition(spec) &&
+           !specification_has_unsatisfiable_assumptions(spec,
+                                                        global_sat_checker());
+}
+
 std::pair<std::vector<ScoredSpecification>, std::vector<FilterRunStats>>
 run_evolution(const Config& cfg, std::vector<ScoredSpecification> population,
               const AggregateWeightedFitnessFunction& fitness_function,
@@ -344,11 +357,7 @@ run_evolution(const Config& cfg, std::vector<ScoredSpecification> population,
         }
         std::size_t n_real = 0;
         for (const ScoredSpecification& cand : population) {
-            if (specification_status(cand.specification, global_sat_checker(),
-                                     global_real_checker()) == 1.0 &&
-                !specification_has_false_condition(cand.specification) &&
-                !specification_has_unsatisfiable_assumptions(
-                    cand.specification, global_sat_checker())) {
+            if (is_realizable_repair(cand.specification)) {
                 ++n_real;
             }
         }
@@ -368,11 +377,7 @@ std::vector<Specification> collect_realizable_specifications(
         // otherwise never be re-screened before being reported here. The same
         // applies to vacuously-realizable candidates: elites bypass the
         // offspring filters entirely, so one can reach the output unscreened.
-        if (specification_status(scored.specification, global_sat_checker(),
-                                 global_real_checker()) == 1.0 &&
-            !specification_has_false_condition(scored.specification) &&
-            !specification_has_unsatisfiable_assumptions(
-                scored.specification, global_sat_checker())) {
+        if (is_realizable_repair(scored.specification)) {
             realizable_vec.push_back(scored.specification);
         }
     }

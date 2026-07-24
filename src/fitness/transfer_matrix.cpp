@@ -1,5 +1,6 @@
 #include "fitness/transfer_matrix.hpp"
 
+#include <algorithm>
 #include <cassert>
 #include <cctype>
 #include <cstddef>
@@ -100,6 +101,44 @@ std::string hoa_label_to_formula(const std::string& label,
     return result;
 }
 
+// Returns base * 2^exponent, asserting the multiplication does not overflow.
+Count mul_pow2(Count base, std::size_t exponent) {
+    Count acc = base;
+    for (std::size_t i = 0; i < exponent; ++i) {
+        Count product = 0;
+        [[maybe_unused]] const bool overflow =
+            count_mul_overflow(acc, 2, product);
+        assert(!overflow);
+        acc = product;
+    }
+    return acc;
+}
+
+// Counts how many distinct AP indices (< n_aps) appear in a HOA guard label,
+// e.g. "!0&1" mentions indices 0 and 1.
+std::size_t count_mentioned_aps(const std::string& label, std::size_t n_aps) {
+    std::vector<bool> mentioned(n_aps, false);
+    for (std::size_t scan = 0; scan < label.size();) {
+        if (std::isdigit(static_cast<unsigned char>(label[scan])) == 0) {
+            ++scan;
+            continue;
+        }
+        std::size_t end_pos = scan;
+        while (
+            end_pos < label.size() &&
+            (std::isdigit(static_cast<unsigned char>(label[end_pos])) != 0)) {
+            ++end_pos;
+        }
+        const std::size_t idx = std::stoul(label.substr(scan, end_pos - scan));
+        if (idx < n_aps) {
+            mentioned[idx] = true;
+        }
+        scan = end_pos;
+    }
+    return static_cast<std::size_t>(
+        std::count(mentioned.begin(), mentioned.end(), true));
+}
+
 // Counts models of a HOA guard over n_total_atoms variables. SPOT may
 // produce automata with fewer APs than the requirement has atoms (e.g., when
 // the formula simplifies to a tautology). Ganak only counts over variables
@@ -111,57 +150,15 @@ Count count_guard_models(const std::string& label,
         return 0;
     }
     if (label == "t") {
-        Count acc = 1;
-        for (std::size_t atom_idx = 0; atom_idx < n_total_atoms; ++atom_idx) {
-            Count product = 0;
-            [[maybe_unused]] const bool overflow =
-                count_mul_overflow(acc, 2, product);
-            assert(!overflow);
-            acc = product;
-        }
-        return acc;
+        return mul_pow2(1, n_total_atoms);
     }
 
-    // Detect which AP indices appear in the label
-    std::vector<bool> mentioned(aps.size(), false);
-    for (std::size_t scan = 0; scan < label.size();) {
-        if (std::isdigit(static_cast<unsigned char>(label[scan])) != 0) {
-            std::size_t end_pos = scan;
-            while (end_pos < label.size() &&
-                   (std::isdigit(static_cast<unsigned char>(label[end_pos])) !=
-                    0)) {
-                ++end_pos;
-            }
-            const std::size_t idx =
-                std::stoul(label.substr(scan, end_pos - scan));
-            if (idx < aps.size()) {
-                mentioned[idx] = true;
-            }
-            scan = end_pos;
-        } else {
-            ++scan;
-        }
-    }
-
-    std::size_t n_mentioned = 0;
-    for (const bool is_mentioned : mentioned) {
-        if (is_mentioned) {
-            ++n_mentioned;
-        }
-    }
-
-    // Ganak counts over the n_mentioned vars in the formula; we multiply by
+    // Ganak counts over the mentioned vars in the formula; we multiply by
     // 2^(n_total_atoms - n_mentioned) for all remaining free variables.
+    const std::size_t n_mentioned = count_mentioned_aps(label, aps.size());
     const std::size_t free_count = n_total_atoms - n_mentioned;
-    Count count = run_ganak_on_formula(hoa_label_to_formula(label, aps));
-    for (std::size_t free_idx = 0; free_idx < free_count; ++free_idx) {
-        Count product = 0;
-        [[maybe_unused]] const bool overflow =
-            count_mul_overflow(count, 2, product);
-        assert(!overflow);
-        count = product;
-    }
-    return count;
+    const Count count = run_ganak_on_formula(hoa_label_to_formula(label, aps));
+    return mul_pow2(count, free_count);
 }
 
 struct HoaTransition {

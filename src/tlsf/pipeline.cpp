@@ -165,6 +165,62 @@ bool is_realizable(const Specification& spec) {
         spec.to_ltl(), spec.m_inputs, spec.m_outputs);
 }
 
+// Builds the per-generation filters, the TLSF counterparts of the FRETISH set
+// (dedup, bloat cap, assumption-satisfiability = false-condition, and the
+// optional weakening and well-separation filters), each with its configured
+// interval.
+std::vector<FilterFunctionT<Specification>> build_per_gen_filters(
+    const Specification& spec, const Config& cfg) {
+    std::vector<FilterFunctionT<Specification>> filters;
+    FilterFunctionT<Specification> dedup = tlsf_make_dedup_filter();
+    dedup.set_interval(cfg.dedup_filter_interval);
+    filters.push_back(std::move(dedup));
+    FilterFunctionT<Specification> bloat = tlsf_make_bloat_cap_filter(spec);
+    bloat.set_interval(cfg.bloat_filter_interval);
+    filters.push_back(std::move(bloat));
+    FilterFunctionT<Specification> assumption_sat =
+        tlsf_make_assumption_sat_filter();
+    assumption_sat.set_interval(cfg.false_condition_filter_interval);
+    filters.push_back(std::move(assumption_sat));
+    if (cfg.run_weakening_filter) {
+        FilterFunctionT<Specification> weakening =
+            tlsf_make_weakening_filter(spec, global_sat_checker());
+        weakening.set_interval(cfg.weakening_filter_interval);
+        filters.push_back(std::move(weakening));
+    }
+    if (cfg.run_well_separation_filter) {
+        FilterFunctionT<Specification> well_separation =
+            tlsf_make_well_separation_filter(global_real_checker());
+        well_separation.set_interval(cfg.well_separation_filter_interval);
+        filters.push_back(std::move(well_separation));
+    }
+    return filters;
+}
+
+// The subset of `filters` that runs this generation (every filter fires on the
+// last generation; otherwise only those whose interval divides gen+1), paired
+// with each active filter's index into `filters` so its stats fold back
+// positionally.
+struct ActiveFilters {
+    std::vector<FilterFunctionT<Specification>> filters;
+    std::vector<std::size_t> indices;
+};
+
+ActiveFilters select_active_filters(
+    const std::vector<FilterFunctionT<Specification>>& filters, std::size_t gen,
+    bool is_last) {
+    ActiveFilters active;
+    active.filters.reserve(filters.size());
+    active.indices.reserve(filters.size());
+    for (std::size_t k = 0; k < filters.size(); ++k) {
+        if (is_last || (gen + 1) % filters[k].interval() == 0) {
+            active.filters.push_back(filters[k]);
+            active.indices.push_back(k);
+        }
+    }
+    return active;
+}
+
 // Evolves `spec` under `cfg` against `fitness`, returning the final scored
 // population and, via `filter_stats_out`, this run's per-filter in/out totals.
 // Shared by both repair modes; in MUC mode `spec` is a core sub-specification.
@@ -173,35 +229,8 @@ std::vector<Scored<Specification>> evolve_population(
     const RandomSource& random_source,
     const AggregateWeightedFitnessFunctionT<Specification>& fitness,
     std::vector<FilterRunStats>& filter_stats_out) {
-    // Per-generation filters, the TLSF counterparts of the FRETISH set
-    // (dedup, bloat cap, assumption-satisfiability = false-condition, and the
-    // optional weakening and well-separation filters), each with its configured
-    // interval.
-    std::vector<FilterFunctionT<Specification>> per_gen_filters;
-    {
-        FilterFunctionT<Specification> dedup = tlsf_make_dedup_filter();
-        dedup.set_interval(cfg.dedup_filter_interval);
-        per_gen_filters.push_back(std::move(dedup));
-        FilterFunctionT<Specification> bloat = tlsf_make_bloat_cap_filter(spec);
-        bloat.set_interval(cfg.bloat_filter_interval);
-        per_gen_filters.push_back(std::move(bloat));
-        FilterFunctionT<Specification> assumption_sat =
-            tlsf_make_assumption_sat_filter();
-        assumption_sat.set_interval(cfg.false_condition_filter_interval);
-        per_gen_filters.push_back(std::move(assumption_sat));
-        if (cfg.run_weakening_filter) {
-            FilterFunctionT<Specification> weakening =
-                tlsf_make_weakening_filter(spec, global_sat_checker());
-            weakening.set_interval(cfg.weakening_filter_interval);
-            per_gen_filters.push_back(std::move(weakening));
-        }
-        if (cfg.run_well_separation_filter) {
-            FilterFunctionT<Specification> well_separation =
-                tlsf_make_well_separation_filter(global_real_checker());
-            well_separation.set_interval(cfg.well_separation_filter_interval);
-            per_gen_filters.push_back(std::move(well_separation));
-        }
-    }
+    const std::vector<FilterFunctionT<Specification>> per_gen_filters =
+        build_per_gen_filters(spec, cfg);
 
     const std::vector<Specification> seed_population(cfg.population_size, spec);
     std::vector<Scored<Specification>> population =
@@ -226,25 +255,18 @@ std::vector<Scored<Specification>> evolve_population(
 
     for (std::size_t gen = 0; gen < cfg.generations; ++gen) {
         const bool is_last = gen + 1 == cfg.generations;
-        std::vector<FilterFunctionT<Specification>> active;
-        std::vector<std::size_t> active_index;
-        active.reserve(per_gen_filters.size());
-        active_index.reserve(per_gen_filters.size());
-        for (std::size_t k = 0; k < per_gen_filters.size(); ++k) {
-            const FilterFunctionT<Specification>& filter = per_gen_filters[k];
-            if (is_last || (gen + 1) % filter.interval() == 0) {
-                active.push_back(filter);
-                active_index.push_back(k);
-            }
-        }
-        population = evolve_generation_generic(cfg, population, selection_size,
-                                               elitism_size, fitness, active,
-                                               tlsf_operators(), random_source);
+        ActiveFilters active =
+            select_active_filters(per_gen_filters, gen, is_last);
+        population = evolve_generation_generic(
+            cfg, population, selection_size, elitism_size, fitness,
+            active.filters, tlsf_operators(), random_source);
         // The active copies hold this generation's in/out sizes; fold them into
         // the running per-filter totals for the end-of-run report.
-        for (std::size_t k = 0; k < active.size(); ++k) {
-            filter_stats_out[active_index[k]].total_in += active[k].n_in();
-            filter_stats_out[active_index[k]].total_out += active[k].n_out();
+        for (std::size_t k = 0; k < active.filters.size(); ++k) {
+            filter_stats_out[active.indices[k]].total_in +=
+                active.filters[k].n_in();
+            filter_stats_out[active.indices[k]].total_out +=
+                active.filters[k].n_out();
         }
         const double best =
             population.empty() ? 0.0 : population.front().fitness;

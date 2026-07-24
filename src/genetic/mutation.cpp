@@ -531,25 +531,22 @@ Specification mutate_specification(const Specification& specification,
     // Weakening the assume-guarantee specification means weakening a guarantee
     // but *strengthening* an assumption: a stricter environment expands the set
     // of environments under which the guarantees must hold.
-    const Direction direction =
-        (idx < n_assumptions && cfg.strengthen_assumptions)
-            ? Direction::Strengthen
-            : Direction::Weaken;
-    if (idx < n_assumptions) {
-        assumptions[idx] =
-            mutate_requirement(assumptions[idx], atoms, condition_atoms,
-                               direction, timing_pool, random_source, cfg);
-        if (creates_duplicate(assumptions, idx)) {
-            return specification;
-        }
-    } else {
-        const std::size_t g_idx = idx - n_assumptions;
-        guarantees[g_idx] =
-            mutate_requirement(guarantees[g_idx], atoms, condition_atoms,
-                               direction, timing_pool, random_source, cfg);
-        if (creates_duplicate(guarantees, g_idx)) {
-            return specification;
-        }
+    const bool is_assumption = idx < n_assumptions;
+    const Direction direction = (is_assumption && cfg.strengthen_assumptions)
+                                    ? Direction::Strengthen
+                                    : Direction::Weaken;
+    // Both requirement lists live behind the same mutate-then-dedup-check
+    // logic; pick the target and its local index so that logic appears once.
+    // Exactly one mutate_requirement call happens either way, keeping the RNG
+    // draw sequence (and thus seed reproducibility) identical to the two-arm
+    // form.
+    std::vector<Requirement>& target = is_assumption ? assumptions : guarantees;
+    const std::size_t local_idx = is_assumption ? idx : idx - n_assumptions;
+    target[local_idx] =
+        mutate_requirement(target[local_idx], atoms, condition_atoms, direction,
+                           timing_pool, random_source, cfg);
+    if (creates_duplicate(target, local_idx)) {
+        return specification;
     }
     return Specification(std::move(assumptions), std::move(guarantees),
                          specification.m_in_atoms, specification.m_out_atoms);

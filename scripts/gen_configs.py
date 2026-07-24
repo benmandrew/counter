@@ -13,6 +13,8 @@ Usage:
     python scripts/gen_configs.py                       # the standard grid
     python scripts/gen_configs.py --schemes nsga2       # one scheme only
     python scripts/gen_configs.py --sweeps C D E        # specific sweeps
+    python scripts/gen_configs.py --sweeps C --levels default,no-halstead
+                                                        # specific levels only
     python scripts/gen_configs.py --generations 40 --population-size 1000 \\
         --out-dir experiments/configs-cj-large          # a larger operating point
     python scripts/gen_configs.py --weakening both      # cross run_weakening in
@@ -527,6 +529,14 @@ def parse_args() -> argparse.Namespace:
                         default=[n for n, _ in SWEEPS], metavar="SWEEP",
                         help="Sweeps to emit (default: all FRETISH sweeps; "
                              f"TLSF-only: {' '.join(tlsf_only_sweeps)})")
+    parser.add_argument("--levels", default=None, metavar="NAMES",
+                        help="Comma-separated level names; each selected sweep "
+                             "emits only its matching levels (e.g. --levels "
+                             "default,no-halstead restricts sweep C to the "
+                             "ablation pair). A name matching no level of the "
+                             "selected sweeps is an error — a typo would "
+                             "otherwise silently shrink the grid. Omit to emit "
+                             "every level")
     parser.add_argument("--weakening", choices=list(WEAKENINGS), default=None,
                         metavar="STATE",
                         help="Cross run_weakening in as a factor, writing "
@@ -628,6 +638,20 @@ def main() -> None:
     defaults["max_scoring_failure_rate"] = max_scoring_failure_rate or 0.0
     wanted = set(args.sweeps)
     sweeps = [(name, levels) for name, levels in sweep_table if name in wanted]
+    # --levels restricts every selected sweep to the named levels (a sweep left
+    # with none is dropped). Unknown names abort rather than warn: the flag
+    # exists to keep a grid's cell count exact, so a typo silently emitting a
+    # smaller grid is precisely the failure mode to prevent.
+    if args.levels is not None:
+        wanted_levels = set(args.levels.split(","))
+        sweeps = [(name, [lv for lv in levels if lv[0] in wanted_levels])
+                  for name, levels in sweeps]
+        sweeps = [(name, levels) for name, levels in sweeps if levels]
+        found = {name for _, levels in sweeps for name, _ in levels}
+        missing = wanted_levels - found
+        if missing:
+            raise SystemExit(f"--levels: no such level(s) in the selected "
+                             f"sweeps: {', '.join(sorted(missing))}")
     # (subdirectory, run_weakening override). The flat case carries no override,
     # so sweep J's per-level run_weakening still reaches the emitted TOML.
     weakenings: list[tuple[str | None, dict]] = (

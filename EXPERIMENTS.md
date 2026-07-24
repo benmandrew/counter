@@ -9,6 +9,61 @@ at least one repair *equivalent to* or *stronger than* an ideal.
 
 ---
 
+## 2026-07-24 — Ablation campaign provenance
+
+**What.** Input verification for the AuRUS head-to-head (the ablation-campaign
+plan's precondition): for each head-to-head family,
+`examples/<family>/spec.tlsf` was diffed whitespace-insensitively against the
+AuRUS `case-studies/` TLSF the AuRUS baseline (`scripts/aurus_campaign.py`)
+will run. The comparison is meaningless if the two tools receive different
+specifications, so a mismatch here disqualifies the family from the
+head-to-head rather than being patched over.
+
+| counter family | AuRUS case-studies source | outcome |
+|---|---|---|
+| arbiter | `arbiter/arbiter.tlsf` | **MISMATCH** (see below) |
+| codesample-un1 | `codeSampleV3un1/codeSamples_v3un1simple_Forklift_unrealizable.tlsf` | match |
+| codesample-un2 | `codeSampleV3un2/codeSamples_v3un2_Forklift_unrealizable.tlsf` | match |
+| gyro-var1 | `GyroUnrealizable_Var1/GyroUnrealizable_Var1_710_GyroAspect_unrealizable.tlsf` | match |
+| gyro-var2 | `GyroUnrealizable_Var2/GyroUnrealizable_Var2_710_GyroAspect_unrealizable.tlsf` | match |
+| humanoid-458 | `HumanoidLTL_458/HumanoidLTL_458_Humanoid_fixed_unrealizable.tlsf` | match |
+| humanoid-531 | `HumanoidLTL_531/HumanoidLTL_531_Humanoid_unrealizable.tlsf` | match |
+| lift | `lift/Lift.tlsf` | match |
+| lily02 | `lily02/lilydemo02.tlsf` | match |
+| minepump | `minepump/minepump.tlsf` | match |
+| rg1 | `RG1/RG1.tlsf` | match |
+| rg2 | `RG2/RG2.tlsf` | match |
+| takeoff-tlsf | `takeoff/takeoff.tlsf` | match (imported verbatim this campaign) |
+
+**arbiter mismatch.** `examples/arbiter/spec.tlsf` is counter's own
+hand-written GR(1) two-client arbiter (d9ae0ea, originally `arbiter-gr1`):
+inputs `r0, r1`, outputs `g0, g1`, guarantees
+`G (g0 -> r0); G (g1 -> r1); G !(g0 & g1); G F g0; G F g1`. AuRUS's
+`case-studies/arbiter/arbiter.tlsf` is a different specification entirely:
+inputs `a, r1, r2`, outputs `g1, g2`, guarantees
+`G (!r1 || F g1); G (!r2 || F g2); G (a || (!g1 && !g2))` — a request-response
+arbiter gated by a master-enable input, not a mutex. (It also differs from
+AuRUS's `examples/arbiter.tlsf`, which *is* byte-identical in content to
+counter's.) Left as-is per the protocol: the two tools would solve different
+arbiter problems, so the arbiter head-to-head row must either use the AuRUS
+formulation on both sides or be excluded — flagged for a decision before the
+campaign launches, not silently "fixed".
+
+**Notes.**
+
+- **amba** is not in the head-to-head: it has no AuRUS `case-studies/` entry
+  or `genuine/` solutions. Its `examples/amba/spec.tlsf` matches the AuRUS
+  `examples/amba/amba_ahb_wo_ass_fairness_amba_ahb_1.tlsf` it was imported
+  from (9e5fc08), so its provenance is clean; it simply stays counter-only.
+- **takeoff-tlsf** was imported this campaign (spec + the two `genuine/`
+  fixes). Unlike the 9e5fc08 batch it has not been through the
+  `build-release/realize` validation gate yet, and `fixes/takeoff-1.tlsf`
+  carries a suspicious truncated guarantee (`tr && X (tr && X (tr &&))`,
+  dangling `&&`) exactly as it appears upstream — validate both fixes with
+  `realize`/`compare` before trusting implies-ideal on this family.
+
+---
+
 ## 2026-07-23 — Well-separation × output assumptions on TLSF
 
 **What changed.** Sweep W crosses two new switches — `run_well_separation` (the

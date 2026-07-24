@@ -62,9 +62,12 @@ FRETISH_SPECS: dict[str, dict[str, Path]] = {
     "fsm-combined": _spec("fsm-combined", "json"),
 }
 
-# Basic-TLSF specs with ideal fixes: the corpus the mono-vs-muc comparison runs
-# on. counter infers the TLSF format from the .tlsf extension, and compare reads
-# the .tlsf ideals the same way.
+# Basic-TLSF specs with ideal fixes. counter infers the TLSF format from the
+# .tlsf extension, and compare reads the .tlsf ideals the same way. The first
+# six are the original mono-vs-muc corpus; the rest were imported from the
+# aurus tree (9e5fc08 and the takeoff-tlsf follow-up) for the ablation
+# campaign. takeoff-tlsf is the AuRUS takeoff case study as TLSF — a separate
+# family from the FRETISH examples/takeoff/ that FRETISH_SPECS names.
 TLSF_SPECS: dict[str, dict[str, Path]] = {
     "arbiter": _spec("arbiter", "tlsf"),
     "gyro-var1": _spec("gyro-var1", "tlsf"),
@@ -72,7 +75,32 @@ TLSF_SPECS: dict[str, dict[str, Path]] = {
     "lift": _spec("lift", "tlsf"),
     "lily02": _spec("lily02", "tlsf"),
     "minepump": _spec("minepump", "tlsf"),
+    "gyro-var2": _spec("gyro-var2", "tlsf"),
+    "humanoid-458": _spec("humanoid-458", "tlsf"),
+    "amba": _spec("amba", "tlsf"),
+    "codesample-un1": _spec("codesample-un1", "tlsf"),
+    "codesample-un2": _spec("codesample-un2", "tlsf"),
+    "rg1": _spec("rg1", "tlsf"),
+    "rg2": _spec("rg2", "tlsf"),
+    "takeoff-tlsf": _spec("takeoff-tlsf", "tlsf"),
 }
+
+# The original six-family TLSF corpus. The pre-ablation TLSF profiles (tlsf,
+# muc, padd, wellsep) pin this list rather than list(TLSF_SPECS), so extending
+# the table above does not silently grow what they run — their results CSVs
+# are already recorded against exactly these six.
+TLSF_CORE_SPECS: list[str] = [
+    "arbiter", "gyro-var1", "humanoid-531", "lift", "lily02", "minepump",
+]
+
+# The 13 fixes-backed TLSF families of the ablation campaign (PLAN §2).
+# takeoff-tlsf is not among them: it exists for the AuRUS head-to-head, which
+# the h2h-tlsf profile tops up on top of this list.
+TLSF_ABLATION_SPECS: list[str] = [
+    "arbiter", "gyro-var1", "gyro-var2", "humanoid-458", "humanoid-531",
+    "lift", "lily02", "minepump", "amba", "codesample-un1", "codesample-un2",
+    "rg1", "rg2",
+]
 
 # Unified lookup for run_one()/--specs; each profile picks its own subset.
 SPECS: dict[str, dict[str, Path]] = {**FRETISH_SPECS, **TLSF_SPECS}
@@ -342,7 +370,7 @@ PROFILES: dict[str, dict] = {
         "repair_modes": ["mono", "muc"],
         "sweeps": ["M"],
         "levels": {"M": ["pg0.3", "pg0.5", "pg0.7", "pg0.9"]},
-        "specs": list(TLSF_SPECS),
+        "specs": list(TLSF_CORE_SPECS),
         # Seed-major disjoint ranges across av2/av3 (pass --seeds on launch); the
         # list is the ceiling a 60 h/machine deadline kill truncates to a
         # balanced design.
@@ -386,7 +414,7 @@ PROFILES: dict[str, dict] = {
         "repair_modes": ["mono", "muc"],
         "sweeps": ["P"],
         "levels": {"P": ["padd0.05", "padd0.15", "padd0.3", "padd0.5"]},
-        "specs": [s for s in TLSF_SPECS if s != "humanoid-531"],
+        "specs": [s for s in TLSF_CORE_SPECS if s != "humanoid-531"],
         # Generous ceiling; a 12 h/machine overnight deadline truncates the
         # seed-major order to a balanced design at whatever depth it reaches.
         "seeds": list(range(160)),
@@ -422,7 +450,7 @@ PROFILES: dict[str, dict] = {
         "sweeps": ["W"],
         "levels": {"W": ["wsoff-oaoff", "wsoff-oaon",
                          "wson-oaoff", "wson-oaon"]},
-        "specs": [s for s in TLSF_SPECS if s != "humanoid-531"],
+        "specs": [s for s in TLSF_CORE_SPECS if s != "humanoid-531"],
         # Ceiling, not a target: seed-major so a wall-clock kill leaves a
         # balanced design. Calibration (2026-07-22) measured ~204 s per seed
         # (4 arms x 5 specs, jobs=1), so ~160 seeds/machine fits a 12 h budget
@@ -534,7 +562,7 @@ PROFILES: dict[str, dict] = {
         "repair_modes": None,
         "sweeps": ["A", "B"],
         "levels": {},
-        "specs": list(TLSF_SPECS),
+        "specs": list(TLSF_CORE_SPECS),
         # A generous ceiling, not a commitment. Ordering is seed-major, so a
         # machine killed at the wall-clock deadline leaves a balanced design at
         # whatever seed depth it reached; splitting 0-29/30-59 across av2/av3
@@ -560,6 +588,104 @@ PROFILES: dict[str, dict] = {
         # per-process, so a single process keeps it the machine-wide limit —
         # running several counter processes at once (jobs>1) would multiply the
         # ltlsynt count by jobs and risk the OOM the cap exists to prevent.
+        "default_jobs": 1,
+    },
+    # FRETISH arm of the ablation campaign (PLAN §1): a full 2x2x2 factorial of
+    # selection scheme (nsga2/weighted) x similarity metric (log/direct) x
+    # Halstead weight (C/default's 0.1 vs C/no-halstead's 0.0) — 8 cells, so
+    # interactions (does Halstead only matter under weighted?) are measurable,
+    # not just main effects. Operating point generations=40/population_size=1000,
+    # the metric-campaign scale where repairs are strong enough for the factors
+    # to move outcomes. Control cell: nsga2 / log / C-default. Generate with
+    #   python scripts/gen_configs.py --sweeps C --levels default,no-halstead \
+    #       --schemes nsga2 weighted --metric both \
+    #       --generations 40 --population-size 1000 \
+    #       --out-dir experiments/configs-ablate-fret
+    # (--levels keeps sweep C's other three levels out of the grid — they would
+    # silently inflate the 8 cells to 20.)
+    "ablate-fret": {
+        "schemes": ["nsga2", "weighted"],
+        "weakenings": None,
+        "metrics": ["direct", "log"],
+        "repair_modes": None,
+        "sweeps": ["C"],
+        "levels": {"C": ["default", "no-halstead"]},
+        "specs": list(FRETISH_SPECS),
+        "seeds": list(range(30)),
+        # The cj-large/metric caps for the same operating point: measured worst
+        # case there was ~41s, so these are 15-20x margin — a cap that bites
+        # records implies_ideal = 0 for a run that was merely slow.
+        "timeout_caps": {"takeoff": 600, "fsm": 600, "fsm-timing": 600,
+                         "fsm-combined": 900},
+        # Only sweep C runs, so there is no A/gen baseline to alias onto.
+        "baseline_aliases": {},
+        "configs_dir": EXPERIMENTS_DIR / "configs-ablate-fret",
+        "results_dir": EXPERIMENTS_DIR / "results-ablate-fret",
+        "results_csv": EXPERIMENTS_DIR / "results-ablate-fret.csv",
+        "default_jobs": 4,
+    },
+    # TLSF arm of the same 8-cell factorial, over the 13 fixes-backed TLSF
+    # families at the TLSF operating point (gen10/pop200, the config defaults).
+    # A flat 600 s per-run cap (the arbiter-hp precedent) bounds the heavy tail
+    # — humanoid means 768 s uncapped with a 1739 s p90, and the corpus mean of
+    # ~150 s/run is what makes 8 x 13 x 15 fit the campaign window; the
+    # censoring it introduces is deliberate and applied identically to every
+    # cell. The configs also need the tlsf-profile runtime settings (500 ms
+    # ltlsynt timeout, 60 s ltl2tgba timeout, 0.15 scoring-failure tolerance),
+    # passed explicitly because --tlsf swaps in the TLSF sweep table, which has
+    # no sweep C. Generate with
+    #   python scripts/gen_configs.py --sweeps C --levels default,no-halstead \
+    #       --schemes nsga2 weighted --metric both \
+    #       --ltlsynt-timeout 500 --ltl2tgba-timeout 60000 \
+    #       --max-scoring-failure-rate 0.15 \
+    #       --out-dir experiments/configs-ablate-tlsf
+    "ablate-tlsf": {
+        "schemes": ["nsga2", "weighted"],
+        "weakenings": None,
+        "metrics": ["direct", "log"],
+        "repair_modes": None,
+        "sweeps": ["C"],
+        "levels": {"C": ["default", "no-halstead"]},
+        "specs": list(TLSF_ABLATION_SPECS),
+        "seeds": list(range(15)),
+        "timeout_caps": {s: 600 for s in TLSF_ABLATION_SPECS},
+        "baseline_aliases": {},
+        "configs_dir": EXPERIMENTS_DIR / "configs-ablate-tlsf",
+        "results_dir": EXPERIMENTS_DIR / "results-ablate-tlsf",
+        "results_csv": EXPERIMENTS_DIR / "results-ablate-tlsf.csv",
+        # jobs=1 for the same RAM reason as the tlsf profile: ltlsynt is
+        # multi-GB resident and its concurrency cap is per counter process.
+        "default_jobs": 1,
+    },
+    # Head-to-head top-up against the AuRUS baseline (scripts/aurus_campaign.py):
+    # the control cell only (nsga2 / log metric / C-default weights), extended
+    # to seeds 0-19 and to takeoff-tlsf, so every family AuRUS runs has 20
+    # counter control runs to compare against. Dedup with ablate-tlsf is by
+    # construction: this profile shares ablate-tlsf's configs dir, results dir,
+    # and results CSV, and the resume key (sweep, level, selection, weakening,
+    # metric, repair_mode, spec, seed) fully identifies a control-cell row — so
+    # the (spec, seed) rows ablate-tlsf already completed are skipped and only
+    # the top-up executes: takeoff-tlsf at seeds 0-19 plus the 13 families at
+    # seeds 15-19. The same sharing means the two profiles must not run
+    # concurrently on one machine (interleaved CSV appends and run dirs).
+    "h2h-tlsf": {
+        "schemes": ["nsga2"],
+        "weakenings": None,
+        # ["log"] (not None): keeps the factor-cell key, run_id and CSV metric
+        # column identical to ablate-tlsf's log cell, which is what makes the
+        # shared-CSV dedup hold.
+        "metrics": ["log"],
+        "repair_modes": None,
+        "sweeps": ["C"],
+        "levels": {"C": ["default"]},
+        "specs": TLSF_ABLATION_SPECS + ["takeoff-tlsf"],
+        "seeds": list(range(20)),
+        "timeout_caps": {s: 600
+                         for s in TLSF_ABLATION_SPECS + ["takeoff-tlsf"]},
+        "baseline_aliases": {},
+        "configs_dir": EXPERIMENTS_DIR / "configs-ablate-tlsf",
+        "results_dir": EXPERIMENTS_DIR / "results-ablate-tlsf",
+        "results_csv": EXPERIMENTS_DIR / "results-ablate-tlsf.csv",
         "default_jobs": 1,
     },
 }

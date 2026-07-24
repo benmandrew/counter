@@ -107,4 +107,55 @@ for f in ("selection", "weakening", "metric", "repair_mode"):
     assert f in M.KEY_FIELDS, f"{f} missing from merge KEY_FIELDS"
     assert f in R.CSV_FIELDS, f"{f} missing from CSV_FIELDS"
 
+
+# ── Ablation-campaign profile invariants ─────────────────────────────────────
+
+P = R.PROFILES
+
+# Extending TLSF_SPECS for the ablation campaign must not grow the corpora of
+# the profiles whose results CSVs are already recorded against the original
+# six families.
+check(P["tlsf"]["specs"], R.TLSF_CORE_SPECS, "tlsf profile corpus")
+check(P["muc"]["specs"], R.TLSF_CORE_SPECS, "muc profile corpus")
+for name in ("padd", "wellsep"):
+    check(P[name]["specs"],
+          [s for s in R.TLSF_CORE_SPECS if s != "humanoid-531"],
+          f"{name} profile corpus")
+
+# The two ablation arms are the same 8-cell factorial: 2 schemes x 2 metrics x
+# 2 sweep-C levels (default = Halstead 0.1, no-halstead = 0.0).
+check(len(R.TLSF_ABLATION_SPECS), 13, "ablation TLSF corpus size")
+for name in ("ablate-fret", "ablate-tlsf"):
+    check(sorted(P[name]["schemes"]), ["nsga2", "weighted"],
+          f"{name} schemes")
+    check(P[name]["metrics"], ["direct", "log"], f"{name} metrics")
+    check(P[name]["levels"], {"C": ["default", "no-halstead"]},
+          f"{name} sweep-C levels")
+    check(P[name]["baseline_aliases"], {}, f"{name} has no aliases")
+check(P["ablate-tlsf"]["specs"], R.TLSF_ABLATION_SPECS, "ablate-tlsf corpus")
+
+# h2h-tlsf dedups against ablate-tlsf by sharing its configs dir, results dir
+# and results CSV: the resume key carries every factor, so the control-cell
+# rows ablate-tlsf completed are skipped rather than re-run. If any of these
+# three diverge the dedup silently breaks and the top-up re-runs 195 rows.
+for field in ("configs_dir", "results_dir", "results_csv"):
+    check(P["h2h-tlsf"][field], P["ablate-tlsf"][field],
+          f"h2h-tlsf shares ablate-tlsf {field}")
+# ... and it must stay inside the control cell, with the metric crossed (not
+# None/legacy) so its run_id and CSV metric column match ablate-tlsf's log cell.
+check(P["h2h-tlsf"]["schemes"], ["nsga2"], "h2h-tlsf control scheme")
+check(P["h2h-tlsf"]["metrics"], ["log"], "h2h-tlsf control metric")
+check(P["h2h-tlsf"]["levels"], {"C": ["default"]}, "h2h-tlsf control level")
+check(P["h2h-tlsf"]["specs"], R.TLSF_ABLATION_SPECS + ["takeoff-tlsf"],
+      "h2h-tlsf corpus")
+
+# Every spec a profile names must resolve to an on-disk input, and every
+# capped profile must cap every spec it runs (run_one indexes caps[spec]).
+for name, prof in P.items():
+    for s in prof["specs"]:
+        assert R.SPECS[s]["input"].exists(), \
+            f"{name}: missing input for spec {s}"
+        if prof["timeout_caps"] is not None:
+            assert s in prof["timeout_caps"], f"{name}: no timeout cap for {s}"
+
 print("ok: all factor-path round-trips pass")

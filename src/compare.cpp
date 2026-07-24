@@ -1,4 +1,5 @@
 #include <algorithm>
+#include <array>
 #include <cstddef>
 #include <cstdint>
 #include <filesystem>
@@ -197,6 +198,25 @@ enum class Relation : std::uint8_t {
     Equivalent
 };
 
+struct RelationInfo {
+    const char* detail;   // printed after the repair name
+    bool names_ideal;     // whether `detail` is followed by the ideal name
+    const char* summary;  // label used in the summary line
+};
+
+// Indexed by the numeric value of Relation.
+constexpr std::array<RelationInfo, 5> k_relation_info = {{
+    {"timeout", false, "timeout"},
+    {"incomparable", false, "incomparable"},
+    {"strictly weaker than ", true, "strictly weaker"},
+    {"strictly stronger than ", true, "strictly stronger"},
+    {"equivalent to ", true, "equivalent"},
+}};
+
+const RelationInfo& relation_info(Relation rel) {
+    return k_relation_info[static_cast<std::size_t>(rel)];
+}
+
 Relation classify(std::optional<bool> fwd, std::optional<bool> rev) {
     if (fwd.value_or(false) && rev.value_or(false)) {
         return Relation::Equivalent;
@@ -247,38 +267,16 @@ void run_and_report(const std::vector<RepairMeta>& repairs,
             }
         });
 
-    std::size_t n_equivalent = 0;
-    std::size_t n_stronger = 0;
-    std::size_t n_weaker = 0;
-    std::size_t n_incomparable = 0;
-    std::size_t n_timeout = 0;
+    std::array<std::size_t, k_relation_info.size()> counts{};
     for (std::size_t idx = 0; idx < n_repairs; ++idx) {
         const Relation best = best_per_repair[idx].rel;
-        const std::string& best_ideal =
-            ideal_names[best_per_repair[idx].ideal_idx];
+        const RelationInfo& info = relation_info(best);
         std::cout << std::left << std::setw(24) << repairs[idx].name << " : ";
-        switch (best) {
-            case Relation::Equivalent:
-                std::cout << "equivalent to " << best_ideal;
-                ++n_equivalent;
-                break;
-            case Relation::Stronger:
-                std::cout << "strictly stronger than " << best_ideal;
-                ++n_stronger;
-                break;
-            case Relation::Weaker:
-                std::cout << "strictly weaker than " << best_ideal;
-                ++n_weaker;
-                break;
-            case Relation::Incomparable:
-                std::cout << "incomparable";
-                ++n_incomparable;
-                break;
-            case Relation::Timeout:
-                std::cout << "timeout";
-                ++n_timeout;
-                break;
+        std::cout << info.detail;
+        if (info.names_ideal) {
+            std::cout << ideal_names[best_per_repair[idx].ideal_idx];
         }
+        ++counts[static_cast<std::size_t>(best)];
         const std::optional<double>& fitness = repairs[idx].fitness;
         if (fitness) {
             std::cout << std::fixed << std::setprecision(4)
@@ -287,10 +285,19 @@ void run_and_report(const std::vector<RepairMeta>& repairs,
         std::cout << "\n";
     }
 
-    std::cout << "\nSummary: " << n_equivalent << " equivalent, " << n_stronger
-              << " strictly stronger, " << n_weaker << " strictly weaker, "
-              << n_incomparable << " incomparable, " << n_timeout
-              << " timeout\n";
+    // Summary lists relations best-first, unlike the enum's timeout-first
+    // order.
+    constexpr std::array<Relation, k_relation_info.size()> summary_order = {
+        Relation::Equivalent, Relation::Stronger, Relation::Weaker,
+        Relation::Incomparable, Relation::Timeout};
+    std::cout << "\nSummary:";
+    for (std::size_t i = 0; i < summary_order.size(); ++i) {
+        const Relation rel = summary_order[i];
+        std::cout << (i == 0 ? " " : ", ")
+                  << counts[static_cast<std::size_t>(rel)] << ' '
+                  << relation_info(rel).summary;
+    }
+    std::cout << "\n";
 }
 
 bool dir_has_extension(const std::string& dir, const std::string& ext) {

@@ -415,8 +415,7 @@ std::string run_ltl2tgba_for_counting(const std::string& formula) {
         // SIGKILLed and reaped the child, so no process is left behind.
         {
             std::scoped_lock lock(cache_mutex);
-            Ltl2tgbaStats::total_time_s += elapsed;
-            Ltl2tgbaStats::total_cpu_s += result.m_cpu_s;
+            Ltl2tgbaStats::record_time(elapsed, result.m_cpu_s);
             Ltl2tgbaStats::n_timeouts++;
         }
         throw std::runtime_error("ltl2tgba timed out for formula: " + formula);
@@ -428,8 +427,7 @@ std::string run_ltl2tgba_for_counting(const std::string& formula) {
         // genuinely-true formula from counting against the run's
         // max_scoring_failure_rate tolerance.
         std::scoped_lock lock(cache_mutex);
-        Ltl2tgbaStats::total_time_s += elapsed;
-        Ltl2tgbaStats::total_cpu_s += result.m_cpu_s;
+        Ltl2tgbaStats::record_time(elapsed, result.m_cpu_s);
         Ltl2tgbaStats::n_tautology_substitutions++;
         cache.emplace(formula, k_universal_hoa);
         return k_universal_hoa;
@@ -442,8 +440,7 @@ std::string run_ltl2tgba_for_counting(const std::string& formula) {
                                  " for formula: " + formula);
     }
     std::scoped_lock lock(cache_mutex);
-    Ltl2tgbaStats::total_time_s += elapsed;
-    Ltl2tgbaStats::total_cpu_s += result.m_cpu_s;
+    Ltl2tgbaStats::record_time(elapsed, result.m_cpu_s);
     cache.emplace(formula, result.m_output);
     return result.m_output;
 }

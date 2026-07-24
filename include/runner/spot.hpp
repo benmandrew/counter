@@ -48,6 +48,13 @@ struct Ltl2tgbaStats {
     // Counting calls abandoned at the per-call timeout (raised as errors, so
     // the individual is dropped).
     inline static std::size_t n_timeouts = 0;
+
+    // Folds one exec's wall and child-CPU time into the totals. The caller must
+    // hold the stats/cache mutex, matching the other accumulators here.
+    static void record_time(double wall_s, double cpu_s) {
+        total_time_s += wall_s;
+        total_cpu_s += cpu_s;
+    }
 };
 
 class RealizabilityChecker {

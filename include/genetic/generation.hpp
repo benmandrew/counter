@@ -331,6 +331,48 @@ inline bool probability_check(double rate, const RandomSource& random_source) {
                                     static_cast<double>(k_rate_granularity));
 }
 
+/// Breeds @p offspring_n new specifications from the fittest parents. Each slot
+/// starts as parent i, is crossed with a random parent drawn from the top
+/// @p top_n with probability crossover_rate, mutated with probability
+/// mutation_rate, then simplified if the operator set provides a simplifier.
+/// The per-slot RNG draw sequence is fixed so a seed reproduces the generation.
+template <typename Spec>
+std::vector<Spec> breed_offspring(const Config& cfg,
+                                  const std::vector<Scored<Spec>>& sorted_pop,
+                                  std::size_t offspring_n, std::size_t top_n,
+                                  const GeneticOperators<Spec>& ops,
+                                  const RandomSource& random_source) {
+    std::vector<Spec> offspring_pop;
+    offspring_pop.reserve(offspring_n);
+    for (std::size_t i = 0; i < offspring_n; ++i) {
+        Spec offspring = sorted_pop[i].specification;
+        if (probability_check(cfg.crossover_rate, random_source)) {
+            const std::size_t partner = random_source.next_index(top_n);
+            offspring = ops.crossover(
+                offspring, sorted_pop[partner].specification, random_source);
+        }
+        if (probability_check(cfg.mutation_rate, random_source)) {
+            offspring = ops.mutate(offspring, random_source, cfg);
+        }
+        offspring_pop.push_back(ops.simplify
+                                    ? ops.simplify(std::move(offspring))
+                                    : std::move(offspring));
+    }
+    return offspring_pop;
+}
+
+/// Cycles through the existing survivors to pad the population back up to
+/// @p target_size. Padding duplicates carry zero crowding distance, so later
+/// selection sheds them first. Requires a non-empty @p survivors.
+template <typename Spec>
+void pad_to_size(std::vector<Spec>& survivors, std::size_t target_size) {
+    const std::size_t survivor_count = survivors.size();
+    survivors.reserve(target_size);
+    while (survivors.size() < target_size) {
+        survivors.push_back(survivors[survivors.size() % survivor_count]);
+    }
+}
+
 }  // namespace generation_detail
 
 /// Orders a scored population best-first according to @p cfg's selection
@@ -380,24 +422,8 @@ std::vector<Scored<Spec>> evolve_generation_generic(
     // the remaining slots are bred from the top offspring_n parents.
     const std::size_t elite_n = std::min(elitism_size, top_n);
     const std::size_t offspring_n = top_n - elite_n;
-    std::vector<Spec> next_generation;
-    next_generation.reserve(offspring_n);
-    for (std::size_t i = 0; i < offspring_n; ++i) {
-        Spec offspring = sorted_pop[i].specification;
-        if (generation_detail::probability_check(cfg.crossover_rate,
-                                                 random_source)) {
-            const std::size_t partner = random_source.next_index(top_n);
-            offspring = ops.crossover(
-                offspring, sorted_pop[partner].specification, random_source);
-        }
-        if (generation_detail::probability_check(cfg.mutation_rate,
-                                                 random_source)) {
-            offspring = ops.mutate(offspring, random_source, cfg);
-        }
-        next_generation.push_back(ops.simplify
-                                      ? ops.simplify(std::move(offspring))
-                                      : std::move(offspring));
-    }
+    std::vector<Spec> next_generation = generation_detail::breed_offspring(
+        cfg, sorted_pop, offspring_n, top_n, ops, random_source);
 
     std::vector<Spec> survivors =
         filter_population(next_generation, filter_functions);
@@ -411,11 +437,7 @@ std::vector<Scored<Spec>> evolve_generation_generic(
         survivors.push_back(sorted_pop[i].specification);
     }
     assert(!survivors.empty());
-    const std::size_t survivor_count = survivors.size();
-    survivors.reserve(target_size);
-    while (survivors.size() < target_size) {
-        survivors.push_back(survivors[survivors.size() % survivor_count]);
-    }
+    generation_detail::pad_to_size(survivors, target_size);
 
     std::vector<Scored<Spec>> scored =
         score_population(cfg, survivors, fitness_functions, on_progress);

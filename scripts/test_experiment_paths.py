@@ -173,6 +173,18 @@ check(sorted(A.SPEC_TLSF), sorted(R.H2H_TLSF_SPECS),
 check(A.SPEC_TLSF["arbiter-aurus"], "arbiter/arbiter.tlsf",
       "arbiter-aurus maps to AuRUS's arbiter case study")
 
+# aurus_validate scores implies_genuine against examples/<spec>/fixes for
+# every campaign family, so each must exist and hold .tlsf ideals — a missing
+# or empty fixes dir silently records "unknown" for the whole family. And its
+# compare parsing must stay the shared run_experiments function (imported, not
+# copied), or implies_genuine drifts from implies_ideal.
+import aurus_validate as V  # noqa: E402
+for spec in A.SPEC_TLSF:
+    fixes = R.EXAMPLES_DIR / spec / "fixes"
+    assert any(fixes.glob("*.tlsf")), f"no .tlsf ideals in {fixes}"
+assert V.parse_compare_output is R.parse_compare_output, \
+    "aurus_validate must reuse run_experiments.parse_compare_output"
+
 # merge_experiments mirrors the per-profile CSV names; the ablation profiles
 # must be present there, with h2h-tlsf pointing at ablate-tlsf's CSV.
 for name in ("ablate-fret", "ablate-tlsf", "h2h-tlsf"):

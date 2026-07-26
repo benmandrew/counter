@@ -155,7 +155,11 @@ def main() -> None:
                         metavar="PATH",
                         help="AuRUS checkout (default: %(default)s); must be "
                              "built (bin/ populated by ant compile)")
-    parser.add_argument("--out-root", type=Path, required=True, metavar="PATH",
+    # Absolutised because AuRUS resolves a relative -out against its own repo
+    # root (its scripts cd there), scattering outputs under the aurus tree
+    # while the parser reads the harness-side path — bitten 2026-07-26.
+    parser.add_argument("--out-root", type=lambda p: Path(p).resolve(),
+                        required=True, metavar="PATH",
                         help="Directory for <spec>/repeat-NN/ run dirs and "
                              "aurus_results.csv")
     parser.add_argument("--specs", nargs="+", choices=list(SPEC_TLSF),

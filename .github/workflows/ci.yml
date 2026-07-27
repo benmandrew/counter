@@ -16,7 +16,40 @@ env:
   SCCACHE_GHA_ENABLED: "true"
 
 jobs:
+  # Staleness gate for the nightly schedule. The toolchain is pinned by the Nix
+  # flake, so a scheduled run over a tree that has not moved since the previous
+  # night re-derives the same lint, docs, test, and benchmark results from the
+  # same inputs -- pure runner minutes for no signal. Pushes, pull requests, and
+  # manual dispatch always run.
+  gate:
+    runs-on: ubuntu-latest
+    outputs:
+      run: ${{ steps.decide.outputs.run }}
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Decide whether this run has anything to do
+        id: decide
+        run: |
+          if [ "${{ github.event_name }}" != "schedule" ]; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          committed=$(git log -1 --format=%ct)
+          age=$(( $(date +%s) - committed ))
+          # 25h of slack over the 24h cron so a slightly-late trigger still runs.
+          if [ "$age" -lt 90000 ]; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+            echo "HEAD committed ${age}s ago; running the nightly sweep."
+          else
+            echo "run=false" >> "$GITHUB_OUTPUT"
+            echo "No commits in the last 25h; skipping the nightly sweep."
+          fi
+
   check:
+    needs: gate
+    if: needs.gate.outputs.run == 'true'
     runs-on: ubuntu-latest
 
     steps:
@@ -218,7 +251,12 @@ jobs:
   # Emit the build-and-test matrix as JSON so pull requests run a lean
   # debug+release pair while pushes to main, the nightly schedule, and manual
   # dispatch add the gcc (portability) and tsan (data-race) configurations.
+  # Gating this job also gates build-and-test, which is skipped when a job it
+  # needs is skipped -- so the four-configuration matrix never starts on a
+  # scheduled run the gate rejected.
   build-matrix:
+    needs: gate
+    if: needs.gate.outputs.run == 'true'
     runs-on: ubuntu-latest
     outputs:
       matrix: ${{ steps.set.outputs.matrix }}
@@ -287,14 +325,17 @@ jobs:
             echo "::endgroup::"
           '
 
-  # Benchmarks run only on the nightly schedule (and manual dispatch), and only
-  # when new commits landed since the previous run: re-benchmarking an unchanged
-  # tree just adds a runner-noise datapoint to the history. Absolute ns/iter is
-  # compared across runner instances, so this is advisory (fail-on-alert: false)
-  # and was never a merge gate.
+  # Benchmarks run only on the nightly schedule (and manual dispatch); the gate
+  # additionally skips a scheduled run over an unchanged tree, which would just
+  # add a runner-noise datapoint to the history. Absolute ns/iter is compared
+  # across runner instances, so this is advisory (fail-on-alert: false) and was
+  # never a merge gate.
   benchmark:
+    needs: gate
     runs-on: ubuntu-latest
-    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    if: >-
+      needs.gate.outputs.run == 'true'
+      && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch')
     permissions:
       contents: write
       # comment-on-alert posts a PR review, which contents: write does not cover.
@@ -304,39 +345,15 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@v7
 
-      # Skip the run when HEAD is older than the nightly cadence: no new commits
-      # means nothing new to benchmark. Manual dispatch always runs.
-      - name: Check for recent commits
-        id: recent
-        run: |
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            echo "run=true" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-          committed=$(git log -1 --format=%ct)
-          now=$(date +%s)
-          age=$(( now - committed ))
-          # 25h of slack over the 24h cron so a slightly-late trigger still runs.
-          if [ "$age" -lt 90000 ]; then
-            echo "run=true" >> "$GITHUB_OUTPUT"
-            echo "HEAD committed ${age}s ago; running benchmarks."
-          else
-            echo "run=false" >> "$GITHUB_OUTPUT"
-            echo "No commits in the last 25h; skipping benchmarks."
-          fi
-
       - name: Install Nix
-        if: steps.recent.outputs.run == 'true'
         uses: cachix/install-nix-action@v31
         with:
           github_access_token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Set up sccache
-        if: steps.recent.outputs.run == 'true'
         uses: mozilla-actions/sccache-action@v0.0.10
 
       - name: Cache third-party dependencies
-        if: steps.recent.outputs.run == 'true'
         uses: actions/cache@v5
         with:
           path: |
@@ -347,7 +364,6 @@ jobs:
             ${{ runner.os }}-bench-ninja-
 
       - name: Configure and build
-        if: steps.recent.outputs.run == 'true'
         env:
           CMAKE_C_COMPILER_LAUNCHER: sccache
           CMAKE_CXX_COMPILER_LAUNCHER: sccache
@@ -363,11 +379,9 @@ jobs:
           '
 
       - name: Check regression assertions
-        if: steps.recent.outputs.run == 'true'
         run: ./build-bench/bench/counter_bench --check-assertions
 
       - name: Run benchmarks
-        if: steps.recent.outputs.run == 'true'
         run: |
           ./build-bench/bench/counter_bench \
             --benchmark_format=json \
@@ -375,7 +389,6 @@ jobs:
             --benchmark_time_unit=ns
 
       - name: Store benchmark results
-        if: steps.recent.outputs.run == 'true'
         uses: benchmark-action/github-action-benchmark@v1
         with:
           name: counter benchmarks

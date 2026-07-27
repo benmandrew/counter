@@ -107,4 +107,99 @@ for f in ("selection", "weakening", "metric", "repair_mode"):
     assert f in M.KEY_FIELDS, f"{f} missing from merge KEY_FIELDS"
     assert f in R.CSV_FIELDS, f"{f} missing from CSV_FIELDS"
 
+
+# ── Ablation-campaign profile invariants ─────────────────────────────────────
+
+P = R.PROFILES
+
+# Extending TLSF_SPECS for the ablation campaign must not grow the corpora of
+# the profiles whose results CSVs are already recorded against the original
+# six families.
+check(P["tlsf"]["specs"], R.TLSF_CORE_SPECS, "tlsf profile corpus")
+check(P["muc"]["specs"], R.TLSF_CORE_SPECS, "muc profile corpus")
+for name in ("padd", "wellsep"):
+    check(P[name]["specs"],
+          [s for s in R.TLSF_CORE_SPECS if s != "humanoid-531"],
+          f"{name} profile corpus")
+
+# The two ablation arms are the same 8-cell factorial: 2 schemes x 2 metrics x
+# 2 sweep-C levels (default = Halstead 0.1, no-halstead = 0.0).
+check(len(R.TLSF_ABLATION_SPECS), 20, "ablation TLSF corpus size")
+for name in ("ablate-fret", "ablate-tlsf"):
+    check(sorted(P[name]["schemes"]), ["nsga2", "weighted"],
+          f"{name} schemes")
+    check(P[name]["metrics"], ["direct", "log"], f"{name} metrics")
+    check(P[name]["levels"], {"C": ["default", "no-halstead"]},
+          f"{name} sweep-C levels")
+    check(P[name]["baseline_aliases"], {}, f"{name} has no aliases")
+check(P["ablate-tlsf"]["specs"], R.TLSF_ABLATION_SPECS, "ablate-tlsf corpus")
+
+# h2h-tlsf dedups against ablate-tlsf by sharing its configs dir, results dir
+# and results CSV: the resume key carries every factor, so the control-cell
+# rows ablate-tlsf completed are skipped rather than re-run. If any of these
+# three diverge the dedup silently breaks and the top-up re-runs 195 rows.
+for field in ("configs_dir", "results_dir", "results_csv"):
+    check(P["h2h-tlsf"][field], P["ablate-tlsf"][field],
+          f"h2h-tlsf shares ablate-tlsf {field}")
+# ... and it must stay inside the control cell, with the metric crossed (not
+# None/legacy) so its run_id and CSV metric column match ablate-tlsf's log cell.
+check(P["h2h-tlsf"]["schemes"], ["nsga2"], "h2h-tlsf control scheme")
+check(P["h2h-tlsf"]["metrics"], ["log"], "h2h-tlsf control metric")
+check(P["h2h-tlsf"]["levels"], {"C": ["default"]}, "h2h-tlsf control level")
+check(P["h2h-tlsf"]["specs"], R.H2H_TLSF_SPECS, "h2h-tlsf corpus")
+
+# The head-to-head corpus is the 11 AuRUS-matched ablation families plus the
+# arbiter-aurus import. counter's own arbiter (a different problem from
+# AuRUS's), amba (no AuRUS case study) and takeoff-tlsf (no valid ideals —
+# see EXPERIMENTS.md 2026-07-24) stay out.
+check(len(R.H2H_TLSF_SPECS), 12, "h2h TLSF corpus size")
+# The 2026-07-24 SYNTCOMP promotion grew the ablation corpus to 20, but those
+# ideals are hand-written, not AuRUS-genuine, so the head-to-head must not
+# widen with them.
+for excluded in ("arbiter", "amba", "takeoff-tlsf", "arbiter-handshake",
+                 "detector", "full-arbiter", "load-balancer",
+                 "prioritized-arbiter", "round-robin-arbiter",
+                 "simple-arbiter"):
+    assert excluded not in R.H2H_TLSF_SPECS, \
+        f"{excluded} must not be in the head-to-head corpus"
+assert "arbiter-aurus" in R.H2H_TLSF_SPECS, \
+    "arbiter-aurus missing from the head-to-head corpus"
+
+# aurus_campaign runs AuRUS on exactly the head-to-head corpus, keyed by
+# counter family name so its CSV joins against the h2h-tlsf rows.
+import aurus_campaign as A  # noqa: E402
+check(sorted(A.SPEC_TLSF), sorted(R.H2H_TLSF_SPECS),
+      "aurus_campaign covers the head-to-head corpus")
+check(A.SPEC_TLSF["arbiter-aurus"], "arbiter/arbiter.tlsf",
+      "arbiter-aurus maps to AuRUS's arbiter case study")
+
+# aurus_validate scores implies_genuine against examples/<spec>/fixes for
+# every campaign family, so each must exist and hold .tlsf ideals — a missing
+# or empty fixes dir silently records "unknown" for the whole family. And its
+# compare parsing must stay the shared run_experiments function (imported, not
+# copied), or implies_genuine drifts from implies_ideal.
+import aurus_validate as V  # noqa: E402
+for spec in A.SPEC_TLSF:
+    fixes = R.EXAMPLES_DIR / spec / "fixes"
+    assert any(fixes.glob("*.tlsf")), f"no .tlsf ideals in {fixes}"
+assert V.parse_compare_output is R.parse_compare_output, \
+    "aurus_validate must reuse run_experiments.parse_compare_output"
+
+# merge_experiments mirrors the per-profile CSV names; the ablation profiles
+# must be present there, with h2h-tlsf pointing at ablate-tlsf's CSV.
+for name in ("ablate-fret", "ablate-tlsf", "h2h-tlsf"):
+    check(M.PROFILE_CSVS[name], P[name]["results_csv"].name,
+          f"merge CSV for {name}")
+    check(M.PROFILE_RESULT_DIRS[name], P[name]["results_dir"].name,
+          f"merge result dir for {name}")
+
+# Every spec a profile names must resolve to an on-disk input, and every
+# capped profile must cap every spec it runs (run_one indexes caps[spec]).
+for name, prof in P.items():
+    for s in prof["specs"]:
+        assert R.SPECS[s]["input"].exists(), \
+            f"{name}: missing input for spec {s}"
+        if prof["timeout_caps"] is not None:
+            assert s in prof["timeout_caps"], f"{name}: no timeout cap for {s}"
+
 print("ok: all factor-path round-trips pass")

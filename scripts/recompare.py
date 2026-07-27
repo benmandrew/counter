@@ -75,7 +75,14 @@ def main() -> None:
     args = parser.parse_args()
 
     results_csv = args.results or args.base / "results.csv"
-    results_dir = args.base / "results"
+    # Per-profile CSVs (results-ablate-tlsf.csv) keep their run dirs in a
+    # sibling dir of the same stem (results-ablate-tlsf/); the legacy layout
+    # is results.csv + results/. Resolving from the CSV path keeps a
+    # --results invocation from silently scanning the wrong profile's dirs.
+    if args.results is not None:
+        results_dir = results_csv.parent / results_csv.stem
+    else:
+        results_dir = args.base / "results"
 
     if not COMPARE_BIN.exists():
         sys.exit(f"compare binary not found: {COMPARE_BIN}")
@@ -96,13 +103,35 @@ def main() -> None:
             continue
         targets.append(i)
 
+    def find_run_dir(row):
+        """Resolve the row's run dir under results_dir.
+
+        run_experiments appends a factor tag to run_id only where the profile
+        crosses that factor, and the CSV row alone cannot say which were
+        crossed — so try the tag layouts from most to least specific and take
+        the first dir that exists. Dir names are unique within a results dir,
+        so a hit is unambiguous.
+        """
+        base = f"sweep_{row['sweep']}_{row['level_name']}"
+        tail = f"{row['spec']}_seed{int(row['seed']):02d}"
+        sel, wk = row["selection"], row["weakening"]
+        met, rep = row["metric"], row["repair_mode"]
+        for mid in (f"{sel}_{wk}_{met}_{rep}", f"{sel}_{wk}_{met}",
+                    f"{sel}_{met}_{rep}", f"{sel}_{met}", f"{sel}_{wk}",
+                    f"{sel}_{rep}", f"{sel}", ""):
+            d = results_dir / (f"{base}_{mid}_{tail}" if mid
+                               else f"{base}_{tail}")
+            if d.is_dir():
+                return d
+        return None
+
     print(f"{len(targets)} rows to recompute (of {len(rows)} total)")
     if args.dry_run:
         for i in targets:
             r = rows[i]
-            print(f"  sweep_{r['sweep']}_{r['level_name']}_{r['spec']}"
-                  f"_seed{int(r['seed']):02d}  ({r['n_repairs']} repairs, "
-                  f"now={r['best_relation']})")
+            d = find_run_dir(r)
+            print(f"  {d.name if d else '<NO RUN DIR>'}  "
+                  f"({r['n_repairs']} repairs, now={r['best_relation']})")
         return
 
     updated = failed = missing = 0
@@ -112,16 +141,17 @@ def main() -> None:
         if spec not in SPECS:
             print(f"  [{n}/{len(targets)}] skip: spec '{spec}' not in SPECS")
             continue
-        run_id = (f"sweep_{row['sweep']}_{row['level_name']}_{spec}"
-                  f"_seed{int(row['seed']):02d}")
-        output_dir = results_dir / run_id
-        if not list(output_dir.glob("repair_*.json")):
-            print(f"  [{n}/{len(targets)}] {run_id}: no repair files, skipping")
+        output_dir = find_run_dir(row)
+        if output_dir is None or not (
+                list(output_dir.glob("repair_*.json"))
+                + list(output_dir.glob("repair_*.tlsf"))):
+            name = output_dir.name if output_dir else "<no run dir>"
+            print(f"  [{n}/{len(targets)}] {name}: no repair files, skipping")
             missing += 1
             continue
 
-        print(f"  [{n}/{len(targets)}] {run_id}  ({row['n_repairs']} repairs)",
-              flush=True)
+        print(f"  [{n}/{len(targets)}] {output_dir.name}  "
+              f"({row['n_repairs']} repairs)", flush=True)
         res = recompare_dir(output_dir, SPECS[spec]["ideals_dir"])
         if res is None:
             failed += 1

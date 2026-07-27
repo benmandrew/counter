@@ -54,6 +54,11 @@ PROFILE_CSVS: dict[str, str] = {
     "tlsf": "results-tlsf.csv",
     "wellsep": "results-wellsep.csv",
     "arbiter-hp": "results-arbiter-hp.csv",
+    "ablate-fret": "results-ablate-fret.csv",
+    # h2h-tlsf shares ablate-tlsf's CSV (that sharing is its dedup mechanism),
+    # so merging under either profile name merges the same rows.
+    "ablate-tlsf": "results-ablate-tlsf.csv",
+    "h2h-tlsf": "results-ablate-tlsf.csv",
 }
 
 # Per-run output directory each profile writes under experiments/. Most profiles
@@ -69,6 +74,9 @@ PROFILE_RESULT_DIRS: dict[str, str] = {
     "tlsf": "results-tlsf",
     "wellsep": "results-wellsep",
     "arbiter-hp": "results-arbiter-hp",
+    "ablate-fret": "results-ablate-fret",
+    "ablate-tlsf": "results-ablate-tlsf",
+    "h2h-tlsf": "results-ablate-tlsf",
 }
 
 # Natural key of a results row: one run per (sweep, level_name, selection,

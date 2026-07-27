@@ -1,0 +1,36 @@
+INFO {
+  TITLE:       "Prioritized Arbiter (repaired, no simultaneous grants)"
+  DESCRIPTION: "Simultaneous-grant asserts removed; at-most-one mutex, master-exclusion asserts, response guarantees, and master-priority guarantee retained"
+  SEMANTICS:   Mealy
+  TARGET:      Mealy
+}
+
+MAIN {
+  INPUTS {
+    r_m;
+    r_0;
+    r_1;
+    r_2;
+  }
+  OUTPUTS {
+    g_m;
+    g_0;
+    g_1;
+    g_2;
+  }
+  ASSUME {
+    (G (F (! (r_m))));
+  }
+  ASSERT {
+    (((! (g_0)) && (! (g_1))) || (((! (g_0)) || (! (g_1))) && (! (g_2))));
+    (! ((g_m) && (g_0)));
+    (! ((g_m) && (g_1)));
+    (! ((g_m) && (g_2)));
+  }
+  GUARANTEE {
+    (G ((r_0) -> (F (g_0))));
+    (G ((r_1) -> (F (g_1))));
+    (G ((r_2) -> (F (g_2))));
+    (G ((r_m) -> (X ((((! (g_0)) && (! (g_1))) && (! (g_2))) U (g_m)))));
+  }
+}

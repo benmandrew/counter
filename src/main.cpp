@@ -533,18 +533,23 @@ int main(int argc, const char* const argv[]) {
             register_crash_metadata(
                 format_crash_metadata(*tlsf_seed, *input_path, cfg));
         }
-        const int tlsf_result =
-            tlsf::run_repair(*input_path, *output_dir, cfg, tlsf_random_source);
-        print_scoring_report();
-        print_timing_report();
-        if (cfg.report_cpu_timing) {
-            const double wall_s =
-                std::chrono::duration<double>(std::chrono::steady_clock::now() -
-                                              tlsf_wall_start)
-                    .count();
-            print_cpu_report(wall_s);
+        try {
+            const int tlsf_result = tlsf::run_repair(*input_path, *output_dir,
+                                                     cfg, tlsf_random_source);
+            print_scoring_report();
+            print_timing_report();
+            if (cfg.report_cpu_timing) {
+                const double wall_s =
+                    std::chrono::duration<double>(
+                        std::chrono::steady_clock::now() - tlsf_wall_start)
+                        .count();
+                print_cpu_report(wall_s);
+            }
+            return tlsf_result;
+        } catch (const std::exception& exc) {
+            std::cerr << "fatal: " << exc.what() << "\n";
+            return 1;
         }
-        return tlsf_result;
     }
     Specification original_spec;
     try {

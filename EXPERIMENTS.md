@@ -9,6 +9,118 @@ at least one repair *equivalent to* or *stronger than* an ideal.
 
 ---
 
+## 2026-07-24 — Ideals expansion and SYNTCOMP promotion (mid-campaign)
+
+**What.** 15 hand-written ideal repairs landed while the TLSF calibration seed
+was running, every one re-validated independently with
+`timeout 180 build-release/realize <fix>` (all REALIZABLE): new alternates for
+arbiter (`weaken-liveness-gr1`), codesample-un1, lift, rg2, fsm, fsm-timing
+and takeoff (FRETISH), plus first-ever ideals for the 7 SYNTCOMP arbiter
+families — arbiter-handshake, detector, full-arbiter, load-balancer,
+prioritized-arbiter, round-robin-arbiter, simple-arbiter (system-weakening
+repairs; fairness-style fixes do not realise these). Those 7 were promoted
+into `TLSF_ABLATION_SPECS` (13 → 20 families, 2,400 planned rows at 15
+seeds); the head-to-head corpus stays at 12 — the new ideals are hand-written,
+not AuRUS-genuine, so they must not widen the AuRUS comparison.
+
+**Consistency rule.** TLSF calibration rows recorded before this landing
+(arbiter, codesample-un1, lift, rg2) were scored against the pre-expansion
+ideals; a full `scripts/recompare.py` pass over every results CSV runs at
+campaign end so all rows score against this final, frozen ideals set. No fix
+files may change after this entry without repeating that pass.
+
+## 2026-07-24 — Ablation campaign provenance
+
+**What.** Input verification for the AuRUS head-to-head (the ablation-campaign
+plan's precondition): for each head-to-head family,
+`examples/<family>/spec.tlsf` was diffed whitespace-insensitively against the
+AuRUS `case-studies/` TLSF the AuRUS baseline (`scripts/aurus_campaign.py`)
+will run. The comparison is meaningless if the two tools receive different
+specifications, so a mismatch here disqualifies the family from the
+head-to-head rather than being patched over.
+
+| counter family | AuRUS case-studies source | outcome |
+|---|---|---|
+| arbiter | `arbiter/arbiter.tlsf` | **MISMATCH** (see below) |
+| codesample-un1 | `codeSampleV3un1/codeSamples_v3un1simple_Forklift_unrealizable.tlsf` | match |
+| codesample-un2 | `codeSampleV3un2/codeSamples_v3un2_Forklift_unrealizable.tlsf` | match |
+| gyro-var1 | `GyroUnrealizable_Var1/GyroUnrealizable_Var1_710_GyroAspect_unrealizable.tlsf` | match |
+| gyro-var2 | `GyroUnrealizable_Var2/GyroUnrealizable_Var2_710_GyroAspect_unrealizable.tlsf` | match |
+| humanoid-458 | `HumanoidLTL_458/HumanoidLTL_458_Humanoid_fixed_unrealizable.tlsf` | match |
+| humanoid-531 | `HumanoidLTL_531/HumanoidLTL_531_Humanoid_unrealizable.tlsf` | match |
+| lift | `lift/Lift.tlsf` | match |
+| lily02 | `lily02/lilydemo02.tlsf` | match |
+| minepump | `minepump/minepump.tlsf` | match |
+| rg1 | `RG1/RG1.tlsf` | match |
+| rg2 | `RG2/RG2.tlsf` | match |
+| takeoff-tlsf | `takeoff/takeoff.tlsf` | match (imported verbatim this campaign) |
+| arbiter-aurus | `arbiter/arbiter.tlsf` | match (imported verbatim this campaign) |
+
+**arbiter mismatch.** `examples/arbiter/spec.tlsf` is counter's own
+hand-written GR(1) two-client arbiter (d9ae0ea, originally `arbiter-gr1`):
+inputs `r0, r1`, outputs `g0, g1`, guarantees
+`G (g0 -> r0); G (g1 -> r1); G !(g0 & g1); G F g0; G F g1`. AuRUS's
+`case-studies/arbiter/arbiter.tlsf` is a different specification entirely:
+inputs `a, r1, r2`, outputs `g1, g2`, guarantees
+`G (!r1 || F g1); G (!r2 || F g2); G (a || (!g1 && !g2))` — a request-response
+arbiter gated by a master-enable input, not a mutex. (It also differs from
+AuRUS's `examples/arbiter.tlsf`, which *is* byte-identical in content to
+counter's.) The two tools would solve different arbiter problems, so the
+head-to-head runs the AuRUS formulation on both sides: it is imported
+verbatim as a separate family `examples/arbiter-aurus/` (spec + the four
+`genuine/` fixes, one of which the realize gate below excludes), keyed
+`arbiter-aurus` in `h2h-tlsf` and `aurus_campaign.py`. counter's own
+`arbiter` is untouched and stays in the ablation corpus only.
+
+**Notes.**
+
+- **amba** is not in the head-to-head: it has no AuRUS `case-studies/` entry
+  or `genuine/` solutions. Its `examples/amba/spec.tlsf` matches the AuRUS
+  `examples/amba/amba_ahb_wo_ass_fairness_amba_ahb_1.tlsf` it was imported
+  from (9e5fc08), so its provenance is clean; it simply stays counter-only.
+- **takeoff-tlsf** and **arbiter-aurus** were imported this campaign
+  (spec + `genuine/` fixes, verbatim). Validation results below.
+
+**`realize` validation of the imports** (main-repo `build-release/realize`,
+2026-07-22 binary, no engine changes since; 120 s timeout each):
+
+| file | result |
+|---|---|
+| takeoff-tlsf/spec.tlsf | UNREALIZABLE (expected: repair subject) |
+| takeoff-tlsf/fixes/takeoff-1.tlsf | **parse error** — excluded (deleted) |
+| takeoff-tlsf/fixes/takeoff-2.tlsf | **UNREALIZABLE** (unsatisfiable) — excluded (deleted) |
+| arbiter-aurus/spec.tlsf | UNREALIZABLE (expected: repair subject) |
+| arbiter-aurus/fixes/arbiter_fixed0.tlsf | REALIZABLE |
+| arbiter-aurus/fixes/arbiter_fixed1.tlsf | REALIZABLE |
+| arbiter-aurus/fixes/arbiter_fixed2.tlsf | REALIZABLE |
+| arbiter-aurus/fixes/arbiter_fixed3.tlsf | **UNREALIZABLE** — excluded (deleted) |
+
+- **takeoff-1 excluded.** Its truncated guarantee (`tr && X (tr && X (tr
+  &&))`, dangling `&&`, exactly as upstream) fails counter's TLSF parser
+  (`unexpected token ')'`). Per the import protocol upstream content is not
+  hand-repaired, so the fix is dropped from `examples/takeoff-tlsf/fixes/`
+  rather than patched.
+- **takeoff-2 is UNREALIZABLE — in fact unsatisfiable.** Guarantee 1 forces
+  `tr` at t=0..5 while guarantee 3 (`G (tr -> (!lo && X (!lo && X lo)))`)
+  makes `tr` at t=0 demand `lo` at t=2 and `tr` at t=2 demand `!lo` at t=2;
+  SPOT's `ltlfilt --satisfiable` confirms the conjunction is UNSAT. This is
+  upstream's "genuine" solution as-is, imported byte-identical.
+- **arbiter_fixed3 is UNREALIZABLE.** `G (r1 <-> F g1)` lets the environment
+  play `r1` false at t=0 (forbidding `g1` forever) then `r1` true at t=1
+  (demanding `F g1`) — the environment wins. Excluded (deleted);
+  arbiter_fixed0–2 remain as the family's ideals.
+- **takeoff is excluded from the head-to-head entirely.** With takeoff-1
+  truncated and takeoff-2 unsatisfiable, *both* upstream "genuine" fixes are
+  invalid and the family has zero valid ideals — nothing to score
+  `implies_ideal` against on the counter side, and nothing for AuRUS's
+  solutions to be judged genuine by. This is a finding about the upstream
+  corpus, not a workaround: takeoff-tlsf is removed from `H2H_TLSF_SPECS`
+  and from `aurus_campaign.py`'s default mapping, leaving a symmetric
+  12-family head-to-head (11 matched + arbiter-aurus).
+  `examples/takeoff-tlsf/spec.tlsf` stays as inert imported data.
+
+---
+
 ## 2026-07-23 — Well-separation × output assumptions on TLSF
 
 **What changed.** Sweep W crosses two new switches — `run_well_separation` (the

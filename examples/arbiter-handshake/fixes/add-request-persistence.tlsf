@@ -1,0 +1,28 @@
+INFO {
+  TITLE:       "Handshake arbiter (repaired)";
+  DESCRIPTION: "Adds a request-persistence environment assumption: an ungranted request is held until it is served, so transient one-tick requests can no longer starve the arbiter";
+  SEMANTICS:   Mealy;
+  TARGET:      Mealy;
+}
+
+MAIN {
+  INPUTS {
+    r0;
+    r1;
+  }
+  OUTPUTS {
+    g0;
+    g1;
+  }
+  ASSUME {
+    G ((r0 & !g0) -> X r0);
+    G ((r1 & !g1) -> X r1);
+  }
+  GUARANTEE {
+    G !(g0 & g1);
+    G (g0 -> r0);
+    G (g1 -> r1);
+    G (r0 -> F g0);
+    G (r1 -> F g1);
+  }
+}

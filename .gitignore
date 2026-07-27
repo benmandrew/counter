@@ -45,7 +45,8 @@ Temporary/
 .direnv/
 crashes/
 results*/
-.claude/
+.claude/*
+!.claude/skills/
 .venv/
 
 # FRET semantics reference paper (large binary / copyright)

@@ -46,28 +46,7 @@ cmake --build build --target format-ci     # dry-run (fails if unformatted)
 
 ## Docs
 
-```sh
-cmake --build build --target docs   # Doxygen + Sphinx (requires both installed)
-```
-
-The `docs` target builds two things: the **curated public site** (`docs/Doxyfile.in` → XML → Breathe → Sphinx/furo, from `include/` only) and, nested under `internal/`, a **full internal reference** (`docs/Doxyfile.internal.in` → native Doxygen HTML, from `include/` + `src/`, with `EXTRACT_PRIVATE`/`EXTRACT_STATIC`/`EXTRACT_ALL`, source browsing and — when graphviz `dot` is present — call graphs). The public landing page links to it at `internal/index.html`. The internal build targets a persistent dir (`build/docs/internal`) and is copied into the site, so Doxygen's per-graph `.md5` cache survives across runs: the first/clean (CI) build renders every call graph and takes minutes, warm rebuilds take seconds.
-
 Every header file in `include/` must have a corresponding `.rst` page under `docs/api/` and be listed in `docs/index.rst`. When adding a new header, add the page and toctree entry before committing. The internal reference needs no per-file upkeep — it scans `src/` automatically, so nothing extra is required there.
-
-## Fuzzing
-
-`fuzz/ltl_equivalence_fuzzer` differentially tests the hand-rolled `requirement_to_ltl()` translator against the real FRET formaliser CLI: it generates random `Requirement`s, checks that the two LTL formulae are logically equivalent (via `ltlfilt --equivalent-to`), and aborts on a mismatch so libFuzzer captures a repro. It does not replace `requirement_to_ltl()` at runtime — the hand-rolled translator stays the source of truth used by fitness scoring, model counting, and `black`/`ltlsynt` (which don't all accept the CLI's bounded-interval LTL syntax); the CLI is cross-validation only.
-
-Requires a clang++ with libFuzzer support on `PATH` (declared in `flake.nix`'s devShell) — GCC has no `-fsanitize=fuzzer` equivalent, so this target is built via a raw `clang++` invocation in `fuzz/CMakeLists.txt`, linked against the same `counter_core`/`counter_fitness` static libraries the active preset already built (verified safe to mix with GCC+ASAN/UBSAN in practice).
-
-```sh
-cmake --preset debug -DCOUNTER_FUZZ=ON
-cmake --build build --target ltl_equivalence_fuzzer
-./build/fuzz/ltl_equivalence_fuzzer -max_total_time=60 corpus_dir/   # fuzz for 60s
-./build/fuzz/ltl_equivalence_fuzzer crash-<hash>                    # replay a repro
-```
-
-Each input spawns an `ltlfilt` subprocess (the formaliser CLI's own process is persistent and reused across inputs), so this runs orders of magnitude slower than a typical libFuzzer target — expected for differential testing against external tools, not a bug.
 
 ## Code style
 
@@ -89,61 +68,11 @@ Each input spawns an `ltlfilt` subprocess (the formaliser CLI's own process is p
 6. Apply final filters: dedup, then optional implication filter to keep only maximal specs.
 7. Score, sort, and write each maximal spec to `<output-dir>/repair_N.json`.
 
-## CLI reference
+## TLSF repair modes
 
-**`counter`** — genetic repair
+Binaries: `counter` (genetic repair), `realize`, `compare`, `ltl`, `mucs` — run each with `--help` for flags.
 
-| Flag | Description |
-|---|---|
-| `--input <spec.json>` | Input specification (required) |
-| `--output-dir <dir>` | Directory for `repair_N.json` outputs (required, must exist) |
-| `--config <file.toml>` | TOML file overriding algorithm parameters (optional; see `example-config.toml`) |
-| `--seed <n>` | RNG seed for reproducible runs |
-| `-h`, `--help` | Show help |
-
-**`realize`** — realizability check
-
-```
-realize <spec.json> [<spec.json> ...]
-```
-
-| Flag | Description |
-|---|---|
-| `-h`, `--help` | Show help |
-
-One file: prints `REALIZABLE` or `UNREALIZABLE`. Multiple files: prints `<path>: REALIZABLE` (or `UNREALIZABLE`) per line.
-
-**`compare`** — implication comparison of repairs vs ideals
-
-| Flag | Description |
-|---|---|
-| `--repairs <dir>` | Directory of repair JSON files (required) |
-| `--ideals <dir>` | Directory of ideal repair JSON files to compare against (required) |
-| `-h`, `--help` | Show help |
-
-**`ltl`** — print LTL formulae for specification requirements
-
-```
-ltl <spec.json> [<spec.json> ...]
-```
-
-| Flag | Description |
-|---|---|
-| `-h`, `--help` | Show help |
-
-One file: prints assumptions and guarantees with their LTL formulae. Multiple files: prefixes each block with the file path. Each requirement prints as `[assumption]`/`[guarantee] <string>` followed by `LTL: <formula>` if one is present.
-
-**`mucs`** — extract a minimal unrealizable core from a TLSF spec
-
-```
-mucs <spec.tlsf>
-```
-
-| Flag | Description |
-|---|---|
-| `-h`, `--help` | Show help |
-
-Prints the smallest subset of the guarantee-side sections (PRESET, ASSERT, GUARANTEE) that stays unrealizable against the full, unchanged environment side (INITIALLY, REQUIRE, ASSUME) — the culprit formulae behind unrealizability. Uses QuickXplain over `ltlsynt`. Prints `REALIZABLE (no core)` if the input is already realizable. TLSF-only (FRETISH JSON is not supported).
+`mucs` extracts a minimal unrealizable core. Prints the smallest subset of the guarantee-side sections (PRESET, ASSERT, GUARANTEE) that stays unrealizable against the full, unchanged environment side (INITIALLY, REQUIRE, ASSUME) — the culprit formulae behind unrealizability. Uses QuickXplain over `ltlsynt`. Prints `REALIZABLE (no core)` if the input is already realizable. TLSF-only (FRETISH JSON is not supported).
 
 The same core extraction drives an alternative TLSF **repair mode**. `Config::repair_mode` (TOML `[tlsf] repair_mode = "monolithic" | "muc"`, default `monolithic`) selects between evolving the whole spec at once and the MUC-guided loop in `run_muc` (`src/tlsf/pipeline.cpp`): extract a core, evolve only that sub-spec, reintegrate the repaired core with the untouched non-core guarantees (`tlsf::reintegrate`), and repeat until the whole spec is realizable or `muc_max_iterations` trips. FRETISH ignores it. `scripts/gen_configs.py --repair both` and the `muc` profile in `run_experiments.py` cross the two modes as an experiment factor over the TLSF spec corpus.
 
@@ -153,78 +82,6 @@ The same core extraction drives an alternative TLSF **repair mode**. `Config::re
 - `black` — LTL satisfiability checker (`black-sat`); found on `PATH` or downloaded/built via `cmake/black.cmake`; path passed as `BLACK_EXECUTABLE_PATH`. **Always run with a timeout**: `black -t <seconds> ...`.
 - `ganak` — model counter; downloaded as a release binary via `cmake/ganak.cmake`; path passed as `GANAK_EXECUTABLE_PATH`.
 - `node` — runs the vendored FRET formaliser CLI (`vendor/fretCLI.main.js formalize --logic ft-inf --batch`, see `runner/formaliser.hpp`); looked up on `PATH` at run time, not built or fetched by CMake, so it must be installed separately (`nodejs` in `flake.nix`).
-
-## Project layout
-
-```
-include/
-  crash/          — crash_handler.hpp
-  filter/         — bloat.hpp, implication.hpp, implication_check.hpp
-  fitness/        — syntactic_similarity, semantic_similarity, model_counter, transfer_matrix
-  genetic/        — mutation, crossover, generation
-  prop_formula.hpp
-  requirement.hpp — Requirement, Specification, Timing variants, requirement_to_ltl
-src/
-  crash/          — crash_handler.cpp (SIGSEGV/SIGABRT/SIGFPE handler), signal_tracer.cpp
-  fitness/
-  genetic/
-  prop_formula/   — core, parser, cnf, similarity, transform, dimacs_api
-  runner/         — spot.cpp, ganak.cpp, black.cpp (external tool wrappers)
-test/
-  fitness/
-  genetic/
-  prop_formula/
-  runner/
-```
-
-## Debugging crashes from `crashes/`
-
-`crash_handler.cpp` installs a SIGSEGV/SIGABRT/SIGFPE handler that forks
-`signal_tracer` (cpptrace) and writes `crashes/crash_<pid>_<timestamp>.log`,
-including the `--seed` and full `Config` values needed to reproduce. Both the
-`release` and `relwithdebinfo` presets build with `-DNDEBUG` (CMake's default
-for those build types), so:
-
-- `assert()` is a no-op in these binaries — a failure path guarded only by
-  `assert` (e.g. a non-zero subprocess exit code, a parse precondition) does
-  *not* abort; it silently continues with whatever garbage/default value
-  resulted. When chasing a crash, treat every `assert` between the crash site
-  and the actual root cause as a place where bad data could have been let
-  through instead of being caught loudly.
-- `build-release/` has no debug info, so its crash logs only show raw
-  addresses (`at .../counter`, no function/line). Don't try to reverse the
-  PIE load offset by hand — rebuild `relwithdebinfo` instead (it keeps
-  `-DNDEBUG`, so timing/behavior stays close to release, but adds `-g`):
-
-  ```sh
-  cmake --workflow --preset relwithdebinfo
-  ```
-
-- Reproduce with the exact seed from the crash log's `Config:` block:
-
-  ```sh
-  ./build-relwithdebinfo/counter --seed <seed from log>
-  ```
-
-  This is usually deterministic even though the crash often surfaces inside a
-  worker thread (`score_population`'s `std::async` pool) — the RNG seed
-  drives which specifications get generated, and the bug is typically a data
-  bug (an unhandled edge case), not a true data race.
-- If it reproduces, the new `crashes/` log from the `relwithdebinfo` binary is
-  now fully symbolized (function + file:line per frame, including inlined
-  frames) — read that first.
-- To inspect the actual values at the fault (not just the stack shape), run
-  under `gdb -batch`, since the program crashes itself before you'd get a
-  chance to attach:
-
-  ```sh
-  gdb -q -batch -ex "run --seed <seed>" -ex "print <expr>" -ex bt \
-      --args ./build-relwithdebinfo/counter --seed <seed>
-  ```
-
-  Inspecting the live locals (e.g. an empty `std::vector` where the code
-  assumed at least one element) pinpoints the precondition that was violated,
-  which is usually faster than reasoning from the call chain alone.
 
 ## Key types
 

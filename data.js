@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1784958129635,
+  "lastUpdate": 1785217526893,
   "repoUrl": "https://github.com/benmandrew/counter",
   "entries": {
     "counter benchmarks": [
@@ -4670,6 +4670,76 @@ window.BENCHMARK_DATA = {
             "value": 3547.3554058087398,
             "unit": "ns/iter",
             "extra": "iterations: 197667\ncpu: 3546.6080327014643 ns\nthreads: 1"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "name": "benmandrew",
+            "username": "benmandrew",
+            "email": "benmandrew@gmail.com"
+          },
+          "committer": {
+            "name": "benmandrew",
+            "username": "benmandrew",
+            "email": "benmandrew@gmail.com"
+          },
+          "id": "eb362fb4b0f9dc8a60df518901cba1f69468bbd5",
+          "message": "ci: gate the whole nightly run on new commits\n\nOnly the benchmark job checked whether commits had landed since the\nprevious nightly. The check job (full-tree lint plus docs) and the\nfour-configuration build-and-test matrix ran unconditionally, re-deriving\nthe same results from an unchanged tree and a flake-pinned toolchain.\nFive heavy runners for no signal.\n\nA cheap gate job now runs the 25h staleness check once and exports the\nverdict. check and build-matrix consume it; build-and-test inherits the\nskip, since a job whose dependency is skipped is itself skipped. The\nbenchmark job drops its inline check and the seven step conditions that\nhung off it.\n\nNon-schedule events are unaffected: the gate short-circuits to run=true\nfor pushes, pull requests, and manual dispatch, so the existing\nchanged-file lint scoping and matrix trimming still decide those runs.",
+          "timestamp": "2026-07-27T16:01:54Z",
+          "url": "https://github.com/benmandrew/counter/commit/eb362fb4b0f9dc8a60df518901cba1f69468bbd5"
+        },
+        "date": 1785217525958,
+        "tool": "googlecpp",
+        "benches": [
+          {
+            "name": "Syntactic similarity - small formulas (3 variables)",
+            "value": 533.1750032901185,
+            "unit": "ns/iter",
+            "extra": "iterations: 1314541\ncpu: 533.1170887785166 ns\nthreads: 1"
+          },
+          {
+            "name": "Syntactic similarity - large formulas (11 variables, O(n*m) shared_subformulae)",
+            "value": 2219.269629418225,
+            "unit": "ns/iter",
+            "extra": "iterations: 315585\ncpu: 2218.972099434384 ns\nthreads: 1"
+          },
+          {
+            "name": "Spec implication check - warm black cache",
+            "value": 600.5853074169632,
+            "unit": "ns/iter",
+            "extra": "iterations: 1162818\ncpu: 600.5486206783863 ns\nthreads: 1"
+          },
+          {
+            "name": "Trace model counting - matrix exponentiation/steps:5",
+            "value": 210.9394238116121,
+            "unit": "ns/iter",
+            "extra": "iterations: 3558593\ncpu: 210.91373669312557 ns\nthreads: 1"
+          },
+          {
+            "name": "Trace model counting - matrix exponentiation/steps:10",
+            "value": 224.19184791961487,
+            "unit": "ns/iter",
+            "extra": "iterations: 3155489\ncpu: 224.18146347523296 ns\nthreads: 1"
+          },
+          {
+            "name": "Trace model counting - matrix exponentiation/steps:20",
+            "value": 249.09445465713785,
+            "unit": "ns/iter",
+            "extra": "iterations: 2824911\ncpu: 249.058995132944 ns\nthreads: 1"
+          },
+          {
+            "name": "Trace model counting - matrix exponentiation/steps:50",
+            "value": 297.6175653261173,
+            "unit": "ns/iter",
+            "extra": "iterations: 2351280\ncpu: 297.6072713585793 ns\nthreads: 1"
+          },
+          {
+            "name": "Mutate specification - 3-guarantee takeoff spec",
+            "value": 3519.867682607525,
+            "unit": "ns/iter",
+            "extra": "iterations: 198568\ncpu: 3519.127004351155 ns\nthreads: 1"
           }
         ]
       }

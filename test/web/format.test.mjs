@@ -4,8 +4,8 @@ import assert from "node:assert/strict";
 import { loadDashboard } from "./harness.mjs";
 
 const {
-  pollMs, fmtPollRate, fmt2, fmt3, fmtInt, fmtDuration, signed, truncate,
-  niceStep, niceTicks, barPath
+  pollMs, fmtPollRate, fmt2, fmt3, fmtInt, fmtDuration, fmtStageTime, signed,
+  truncate, niceStep, niceTicks, barPath
 } = loadDashboard();
 
 const DASH = "—";
@@ -82,6 +82,27 @@ test("durations pick a unit by magnitude", () => {
 
 test("a negative duration is not a duration", () => {
   assert.equal(fmtDuration(-1), DASH);
+});
+
+/* Stage times run from tens of microseconds to seconds within one chart, so
+   the column would be all "0.0s" on the general duration formatter. */
+test("sub-second stage times are reported in milliseconds", () => {
+  assert.equal(fmtStageTime(0.016129113), "16ms");
+  assert.equal(fmtStageTime(0.0042), "4.2ms");
+  assert.equal(fmtStageTime(0.9994), "999ms");
+  assert.equal(fmtStageTime(0.0001), "0.1ms");
+  assert.equal(fmtStageTime(0), "0ms");
+});
+
+test("stage times of a second or more read as durations", () => {
+  assert.equal(fmtStageTime(1), "1.0s");
+  assert.equal(fmtStageTime(12.4), "12s");
+  assert.equal(fmtStageTime(90), "1m 30s");
+});
+
+test("a stage time that was never recorded is a dash", () => {
+  assert.equal(fmtStageTime(undefined), DASH);
+  assert.equal(fmtStageTime(-1), DASH);
 });
 
 test("signed deltas carry a typographic minus, and zero carries neither sign", () => {

@@ -535,6 +535,17 @@
     return h + "h " + String(Math.round((s - h * 3600) / 60)) + "m";
   }
 
+  /* Stage times span four orders of magnitude in one chart — a dedup pass runs
+     in tens of microseconds while scoring takes seconds — so the unit is picked
+     per stage rather than fixed for the column. */
+  function fmtStageTime(s) {
+    if (typeof s !== "number" || !isFinite(s) || s < 0) { return "—"; }
+    if (s >= 1) { return fmtDuration(s); }
+    var ms = s * 1000;
+    if (ms < 1) { return (Math.round(ms * 100) / 100) + "ms"; }
+    return (ms < 10 ? ms.toFixed(1) : String(Math.round(ms))) + "ms";
+  }
+
   function signed(v) {
     if (typeof v !== "number" || !isFinite(v)) { return "—"; }
     if (v === 0) { return "\u00b10"; }
@@ -692,6 +703,10 @@
   var NAME_RIGHT = 168;
   var BAR_X0 = 176;
   var TIP_RESERVE = 122;
+  /* Stage times sit in their own right-hand column rather than flowing after
+     the count labels, so they line up down the chart and can be read against
+     each other -- which stage costs the generation is the question they answer. */
+  var TIME_COL = 78;
 
   function barPath(x0, y, len, h, r) {
     var rr = Math.min(r, len / 2, h / 2);
@@ -778,7 +793,8 @@
     });
     if (maxOut <= 0) { maxOut = 1; }
 
-    var plotW = STAGE_VB_W - BAR_X0 - TIP_RESERVE;
+    var plotW = STAGE_VB_W - BAR_X0 - TIP_RESERVE - TIME_COL;
+    var timeX = STAGE_VB_W - 8;
     var topPad = 34;
     var H = topPad + rows.length * BAR_PITCH + 12;
 
@@ -802,6 +818,9 @@
       svg.appendChild(el("text", { "class": "tick", x: sx(t), y: topPad - 18, "text-anchor": "middle" }, fmtInt(t)));
     });
     svg.appendChild(el("text", { "class": "axis-title", x: BAR_X0, y: topPad - 18, "text-anchor": "start" }, "specs out"));
+    svg.appendChild(el("text", {
+      "class": "axis-title", x: timeX, y: topPad - 18, "text-anchor": "end"
+    }, "stage time"));
 
     /* baseline the bars grow from */
     svg.appendChild(el("line", { "class": "axis", x1: BAR_X0, y1: topPad - 12, x2: BAR_X0, y2: H - 8 }));
@@ -854,12 +873,16 @@
       svg.appendChild(el("text", {
         "class": "dlabel-2", x: lx + countText.length * 7.6 + 7, y: y + BAR_H / 2 + 4
       }, signed(delta)));
+      svg.appendChild(el("text", {
+        "class": "dlabel-2", x: timeX, y: y + BAR_H / 2 + 4, "text-anchor": "end"
+      }, fmtStageTime(st.elapsed_s)));
 
       /* hit area: full row incl. the 2px gap, ~24px tall */
       var hit = el("rect", {
         "class": "hitarea", x: 0, y: y - 2, width: STAGE_VB_W, height: BAR_PITCH + 2,
         tabindex: "0", role: "img",
-        "aria-label": st.name + ": " + nIn + " in, " + nOut + " out, delta " + signed(delta)
+        "aria-label": st.name + ": " + nIn + " in, " + nOut + " out, delta " +
+          signed(delta) + ", took " + fmtStageTime(st.elapsed_s)
       });
       var lift = el("path", {
         "class": "lift", d: d || "M0 0", opacity: 0, "pointer-events": "none"
@@ -884,7 +907,7 @@
           t.appendChild(nameRow);
           tipRow(t, "s1", fmtInt(nOut), "out (of " + fmtInt(nIn) + " in)");
           tipRow(t, null, signed(delta), "change");
-          if (typeof st.elapsed_s === "number") { tipRow(t, null, fmtDuration(st.elapsed_s), "stage time"); }
+          if (typeof st.elapsed_s === "number") { tipRow(t, null, fmtStageTime(st.elapsed_s), "stage time"); }
         });
       }
       function leave() { lift.setAttribute("opacity", "0"); hideTip(tip); }
@@ -1325,6 +1348,7 @@
       fmt3: fmt3,
       fmtInt: fmtInt,
       fmtDuration: fmtDuration,
+      fmtStageTime: fmtStageTime,
       signed: signed,
       truncate: truncate,
       niceStep: niceStep,

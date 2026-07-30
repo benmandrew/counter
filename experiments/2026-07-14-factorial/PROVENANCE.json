@@ -1,0 +1,33 @@
+{
+  "campaign": "2026-07-14-factorial",
+  "attribution": "inferred",
+  "generated_on": "2026-07-30",
+  "method": "Reconstructed after the fact, not recorded at run time. Each campaign is a uniquely-named profile introduced by exactly one commit; the configs-<profile>/ files were written locally by gen_configs.py on the same clock as git commit, so their mtimes anchor the campaign to that commit. Corroborated where possible by config content, run.log feature fingerprints, and EXPERIMENTS.md prose.",
+  "profile_commit": {
+    "sha": "f51adebfaed79fd103ffb874783b95c570509f15",
+    "subject": "feat: add the factorial profile sweeping mutation, crossover and bound",
+    "author_date": "2026-07-14 19:40",
+    "commit_date": "2026-07-14 19:40"
+  },
+  "profile_commit_confidence": "strong",
+  "profile_commit_evidence": "Configs written 3 seconds before the commit. Ambiguity resolved: 1,440 of 44,640 run.logs predate f51adeb and every one is a sweep_C_* dir, a fitness-weight sweep that predates the factorial profile; the other 43,200 postdate it. Matches experiments/README.md describing those rows as aliased copies of rescored default-config runs.",
+  "binary_commit": null,
+  "binary_commit_note": "Not inferable. Binaries on av2/av3 lag main by an unbounded, undocumented amount, so a commit falling inside a run window may be absent from the binary that ran. 62bbc6f is the standing proof: committed 2026-07-20 14:16, squarely inside the muc run window, yet EXPERIMENTS.md records it as not in that campaign's binary. Do not derive binary attribution from window containment. Campaigns run after the --version change carry a recorded binary commit in their manifest instead.",
+  "run_window": {
+    "earliest": "2026-07-14 18:18",
+    "latest": "2026-07-15 04:00",
+    "note": "Run-window mtimes come from two hosts with unsynced clocks; av3 runs ~17 min fast. Seeds partition by host (av2 low, av3 high), so the run dir name identifies which clock a timestamp came from."
+  },
+  "recorded_binary_facts": [
+    {
+      "sha": "4ba4c91acb07d16ca710eaab278247a0c8f7aebb",
+      "subject": "fix: raise the model-counting bound to the timing horizon",
+      "date": "2026-07-15 17:35",
+      "polarity": "absent",
+      "fact": "EXPERIMENTS.md (cj-large entry): \"The 2026-07-14 factorial, at gen10/pop200 and a *different* model-counting engine (before `4ba4c91`), showed the same sign on `fsm`\". Establishes this campaign ran before 4ba4c91, consistent with the window closing 07-15 04:00."
+    }
+  ],
+  "caveats": [
+    "Not single-vintage: sweeps A/B/D-J are f51adeb; sweep C rows come from an earlier, unattributed binary."
+  ]
+}

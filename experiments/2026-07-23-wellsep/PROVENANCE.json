@@ -1,0 +1,47 @@
+{
+  "campaign": "2026-07-23-wellsep",
+  "attribution": "inferred",
+  "generated_on": "2026-07-30",
+  "method": "Reconstructed after the fact, not recorded at run time. Each campaign is a uniquely-named profile introduced by exactly one commit; the configs-<profile>/ files were written locally by gen_configs.py on the same clock as git commit, so their mtimes anchor the campaign to that commit. Corroborated where possible by config content, run.log feature fingerprints, and EXPERIMENTS.md prose.",
+  "profile_commit": {
+    "sha": "92073573596c8c811f290a0f1df337c0b278b8ad",
+    "subject": "feat: add the well-separation / output-assumption experiment profile",
+    "author_date": "2026-07-22 19:17",
+    "commit_date": "2026-07-22 19:17"
+  },
+  "profile_commit_confidence": "strong",
+  "profile_commit_evidence": "Two-minute delta, runs begin 21 minutes later. Independently corroborated by binary fingerprint: this is the first campaign whose run.log filter report contains a not-well-separated row, emitted only by dae6a74.",
+  "binary_commit": null,
+  "binary_commit_note": "Not inferable. Binaries on av2/av3 lag main by an unbounded, undocumented amount, so a commit falling inside a run window may be absent from the binary that ran. 62bbc6f is the standing proof: committed 2026-07-20 14:16, squarely inside the muc run window, yet EXPERIMENTS.md records it as not in that campaign's binary. Do not derive binary attribution from window containment. Campaigns run after the --version change carry a recorded binary commit in their manifest instead.",
+  "run_window": {
+    "earliest": "2026-07-22 19:38",
+    "latest": "2026-07-23 09:56",
+    "note": "Run-window mtimes come from two hosts with unsynced clocks; av3 runs ~17 min fast. Seeds partition by host (av2 low, av3 high), so the run dir name identifies which clock a timestamp came from."
+  },
+  "recorded_binary_facts": [
+    {
+      "sha": "fe9c636daa722dfbc3898e08aa473afedce70c51",
+      "subject": "Merge pull request #33 from benmandrew/feat/well-separation-filter",
+      "date": "2026-07-22 17:23",
+      "polarity": "present",
+      "fact": "EXPERIMENTS.md: \"The filter (`fe9c636`) was found inert on the FRETISH corpus\"."
+    },
+    {
+      "sha": "c968211b17a36f4523555ccc3b703191aeda22c8",
+      "subject": "feat: admit output atoms in assumptions, guarded by well-separation",
+      "date": "2026-07-22 19:00",
+      "polarity": "present",
+      "fact": "EXPERIMENTS.md: \"The filter only *does* anything once output atoms can appear in assumptions (`c968211`)\"."
+    },
+    {
+      "sha": "6f0dfbe31ccd4e817ac3f1aa7f53b41c143fec55",
+      "subject": "fix: raise wellsep lift timeout cap to 600s",
+      "date": "2026-07-22 20:23",
+      "polarity": "mid-campaign",
+      "fact": "EXPERIMENTS.md: \"The lift cap was raised mid-campaign from 180s (6f0dfbe) after a 3-seed calibration missed lift's heavy tail\". Landed 45 minutes into a 14-hour run."
+    }
+  ],
+  "caveats": [
+    "Not single-revision: the run configuration changed 45 minutes into the campaign (6f0dfbe)."
+  ]
+}

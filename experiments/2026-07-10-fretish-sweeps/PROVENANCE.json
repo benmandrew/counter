@@ -1,0 +1,26 @@
+{
+  "campaign": "2026-07-10-fretish-sweeps",
+  "attribution": "inferred",
+  "generated_on": "2026-07-30",
+  "method": "Reconstructed after the fact, not recorded at run time. Each campaign is a uniquely-named profile introduced by exactly one commit; the configs-<profile>/ files were written locally by gen_configs.py on the same clock as git commit, so their mtimes anchor the campaign to that commit. Corroborated where possible by config content, run.log feature fingerprints, and EXPERIMENTS.md prose.",
+  "profile_commit": null,
+  "profile_commit_confidence": "weak",
+  "profile_commit_evidence": "The profile mechanism did not exist yet, so there is no profile commit to anchor to. Only a hard lower bound: run.log files cannot predate cacd979, which created them. The 43h window spans ~12 commits including the entire TLSF-mode series a3d7cfa..82e64ac. No configs dir, no per-run config.toml, no EXPERIMENTS.md entry. The directory name is not even the run date.",
+  "binary_commit": null,
+  "binary_commit_note": "Not inferable. Binaries on av2/av3 lag main by an unbounded, undocumented amount, so a commit falling inside a run window may be absent from the binary that ran. 62bbc6f is the standing proof: committed 2026-07-20 14:16, squarely inside the muc run window, yet EXPERIMENTS.md records it as not in that campaign's binary. Do not derive binary attribution from window containment. Campaigns run after the --version change carry a recorded binary commit in their manifest instead.",
+  "run_window": {
+    "earliest": "2026-07-09 14:29",
+    "latest": "2026-07-11 08:59",
+    "note": "Run-window mtimes come from two hosts with unsynced clocks; av3 runs ~17 min fast. Seeds partition by host (av2 low, av3 high), so the run dir name identifies which clock a timestamp came from."
+  },
+  "recorded_binary_facts": [],
+  "caveats": [
+    "Directory name (07-10) is not the run date; runs begin 2026-07-09.",
+    "No attribution beyond a lower bound is defensible here."
+  ],
+  "lower_bound": {
+    "sha": "cacd979ed8ac20ac52581b3616b75728d37cced1",
+    "subject": "feat: write per-run counter logs in run_experiments",
+    "author_date": "2026-07-09 14:28"
+  }
+}

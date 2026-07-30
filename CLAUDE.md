@@ -64,6 +64,8 @@ Every binary answers `--version` with `commit=`, `commit_short=` and `dirty=` li
 
 `scripts/run_experiments.py` shells `counter --version` once at startup — never `git rev-parse`, which reports the source rather than the binary — and stamps `commit` (abbreviated) and `dirty` onto every CSV row, plus a per-host `<stem>-manifest-<host>.json` beside the CSV. It refuses to launch when a binary's commit differs from the working tree's HEAD, was built dirty, or cannot be read at all; `--allow-stale-binary` downgrades that to a warning. Neither column may join the resume key in `run_experiments.py` or `KEY_FIELDS` in `merge_experiments.py`: archived rows have no commit, so keying on it would make every one of them miss and re-run finished campaigns.
 
+Campaigns closed before this existed carry a reconstructed `PROVENANCE.json` in their archive directory (`"attribution": "inferred"`), covering the profile commit only; `binary_commit` is `null` there and must stay that way. `experiments/README.md` documents the method and why a commit landing inside a run window proves nothing. Those two paths are the only tracked files under `experiments/`, via negations in `.gitignore` that need the directory to be ignored by content rather than by name.
+
 ## Docs
 
 Every header file in `include/` must have a corresponding `.rst` page under `docs/api/` and be listed in `docs/index.rst`. When adding a new header, add the page and toctree entry before committing. The internal reference needs no per-file upkeep — it scans `src/` automatically, so nothing extra is required there.

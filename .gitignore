@@ -53,8 +53,15 @@ results*/
 semantics.pdf
 semantics.txt
 
-# Experiment outputs (generated at runtime)
-/experiments*/
+# Experiment outputs (generated at runtime). Ignored by content rather than by
+# directory: git will not re-include a file whose parent directory is excluded,
+# so `/experiments*/` would make the negations below dead letters. Descent stops
+# at the campaign subdirectory — run dirs and CSVs are never walked.
+/experiments*/*
+!/experiments/README.md
+!/experiments/*/
+/experiments/*/*
+!/experiments/*/PROVENANCE.json
 # scripts/merge_experiments.py scratch dir + per-run results (also covered by
 # /experiments/, but kept explicit so they stay ignored if that's relaxed).
 .merge_tmp/

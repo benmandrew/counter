@@ -80,7 +80,7 @@ const KeySpec& config_key_spec() {
           section({"black_timeout_ms", "ltlsynt_timeout_ms",
                    "ltl2tgba_timeout_ms", "parallel",
                    "max_concurrent_realizability", "report_cpu_timing",
-                   "max_scoring_failure_rate"})}});
+                   "max_scoring_failure_rate", "dashboard"})}});
     return spec;
 }
 

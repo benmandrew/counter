@@ -35,4 +35,10 @@ All five binaries answer the flag — ``counter``, ``realize``, ``compare``,
 ``compare`` together, and knowing which built one of them is worth little
 without the other.
 
+``scripts/run_experiments.py`` shells the flag once at startup, records
+``commit`` and ``dirty`` on every CSV row and in the per-host launch manifest,
+and refuses to start when a binary's commit differs from the working tree's
+HEAD or the binary was built dirty. ``--allow-stale-binary`` downgrades that to
+a warning.
+
 .. doxygenfile:: version.hpp

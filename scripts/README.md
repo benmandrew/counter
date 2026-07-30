@@ -254,6 +254,40 @@ timeout-censored runs from genuine failures to find a repair. When appending
 to a CSV written before this column existed, the runner keeps the file's
 original header and drops the column, so legacy files stay consistent.
 
+### The `commit` and `dirty` columns
+
+Each row records the git commit the `counter` binary was built from, read once
+at startup from `counter --version` — not from the working tree. The two
+diverge every time a fix lands without a rebuild, and the binary is what
+produced the numbers. The column holds the abbreviated hash; the manifest below
+keeps the full one. `dirty` is 1 when that binary was built from a modified
+tracked tree, which means its commit does not identify the code that ran.
+
+`commit` is deliberately absent from the resume key and from
+`merge_experiments.py`'s `KEY_FIELDS`. Two rows differing only in the binary
+that produced them are the same design cell, and keying on the commit would
+make every archived row miss on resume and re-run campaigns that are already
+finished. Rows written before the column existed read back as `unknown`, the
+same way `selection` and `metric` fall back to their legacy defaults.
+
+### The launch manifest and the staleness check
+
+Alongside the results CSV each launch writes
+`<stem>-manifest-<host>.json`: branch, `git describe`, the working tree's HEAD,
+the commit and dirty state of both binaries with their paths, and the sweep the
+launch asked for (schemes, factors, sweeps, levels, specs, seeds, jobs,
+directories). One per host, because av2 and av3 run the same campaign into one
+merged CSV and a shared name would have them overwrite each other.
+
+Before any run starts, the runner compares the binaries' embedded commits
+against the working tree's HEAD and refuses to launch when they differ, when a
+binary was built dirty, or when a binary is too old to answer `--version` at
+all. A campaign run against a binary that predates a fix produces numbers that
+look valid and are not, and the PROVENANCE.json files under `experiments/`
+record how little of that is recoverable afterwards. `--allow-stale-binary`
+downgrades the refusal to a warning for the cases where the mismatch is
+deliberate.
+
 ### Useful flags
 
 ```sh
@@ -271,6 +305,9 @@ python scripts/run_experiments.py --seeds 0 1 2
 
 # Re-run even if results already exist in the CSV
 python scripts/run_experiments.py --no-resume
+
+# Launch anyway when the binaries do not match the working tree's HEAD
+python scripts/run_experiments.py --allow-stale-binary
 
 # Combine flags
 python scripts/run_experiments.py --sweeps A --specs takeoff --seeds 0 1 2

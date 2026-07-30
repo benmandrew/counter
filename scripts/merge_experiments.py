@@ -87,12 +87,18 @@ PROFILE_RESULT_DIRS: dict[str, str] = {
 # onto one key and half are silently dropped. Rows written before any of these
 # columns existed carry the legacy defaults below (see run_experiments.py's
 # LEGACY_* constants).
+#
+# `commit` is deliberately NOT a key field. It is not a factor of the design —
+# two rows differing only in the binary that produced them are the same cell,
+# not two cells — and adding it would make every archived row (which has no
+# commit at all) miss on resume and silently re-run whole campaigns.
 KEY_FIELDS = ("sweep", "level_name", "selection", "weakening", "metric",
               "repair_mode", "spec", "seed")
 LEGACY_SELECTION = "nsga2"
 LEGACY_WEAKENING = "wkon"
 LEGACY_METRIC = "direct"
 LEGACY_REPAIR = "mono"
+LEGACY_COMMIT = "unknown"
 
 
 def resolve_source(name: str) -> tuple[str, str]:
@@ -180,7 +186,20 @@ def read_rows(path: Path) -> tuple[list[str], list[dict]]:
 
 
 FIELD_DEFAULTS = {"selection": LEGACY_SELECTION, "weakening": LEGACY_WEAKENING,
-                  "metric": LEGACY_METRIC, "repair_mode": LEGACY_REPAIR}
+                  "metric": LEGACY_METRIC, "repair_mode": LEGACY_REPAIR,
+                  "commit": LEGACY_COMMIT}
+
+
+def fill_defaults(row: dict, fieldnames: list[str]) -> dict:
+    """Give a row every column of the merged header.
+
+    A CSV predating a column has rows without it. Merged against one that has
+    it, those rows would otherwise be written blank; the LEGACY_* value says
+    what they actually were (or, for `commit`, that nobody recorded it). `dirty`
+    has no legacy value and stays empty, which is honest: a row whose commit was
+    never recorded has no known clean-or-dirty state either.
+    """
+    return {f: row.get(f, FIELD_DEFAULTS.get(f, "")) for f in fieldnames}
 
 
 def key_of(row: dict) -> tuple:
@@ -208,6 +227,10 @@ def merge_csv(pulled: list[Path], results_csv: Path) -> None:
         remote_header, remote_rows = read_rows(csv_path)
         if not header:
             header = remote_header
+        # Union rather than "local wins": a remote running a newer script
+        # records columns the local CSV predates, and dropping them here would
+        # throw away exactly the provenance they were added to keep.
+        header = list(header) + [f for f in remote_header if f not in header]
         for row in remote_rows:
             k = key_of(row)
             if k not in merged:
@@ -235,7 +258,7 @@ def merge_csv(pulled: list[Path], results_csv: Path) -> None:
         writer = csv.DictWriter(f, fieldnames=header)
         writer.writeheader()
         for k in sorted(merged, key=sort_key):
-            writer.writerow(merged[k])
+            writer.writerow(fill_defaults(merged[k], header))
 
     print(
         f"\nMerged CSV: {len(merged)} rows total "

@@ -108,6 +108,12 @@ interleave per offspring slot, so splitting them reorders every RNG draw after
 the first and breaks seed reproducibility. The `determinism` test suite pins the
 draw stream against exactly that.
 
+Two calls that both draw from the `RandomSource` must never be arguments of the
+same call: argument evaluation order is unspecified, and gcc and clang pick
+opposite orders, so a seed stops reproducing across compilers. Sequence each
+draw into its own local (as `rewrite_post_order` does). The CI matrix's gcc job
+is what catches this, since the goldens are pinned under clang.
+
 ## TLSF repair modes
 
 Binaries: `counter` (genetic repair), `realize`, `compare`, `ltl`, `mucs` — run each with `--help` for flags.

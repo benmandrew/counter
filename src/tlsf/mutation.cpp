@@ -165,21 +165,31 @@ Formula mutate_temporal(const Formula& formula,
                                                 : children->second;
                     return mutate_temporal(chosen, atoms, random_source);
                 }
-                case 1:  // (b) mutate both children under a new binary op.
-                    return Formula::make_binary(
-                        pick_binary_kind(random_source),
-                        mutate_temporal(children->first, atoms, random_source),
-                        mutate_temporal(children->second, atoms,
-                                        random_source));
-                case 2:  // (c) as (b), then wrap in a unary op.
+                // The kind draw and both child mutations draw, and arguments of
+                // one call are evaluated in an unspecified order, so each draw
+                // is sequenced into a local to keep a seed reproducible across
+                // compilers.
+                case 1: {  // (b) mutate both children under a new binary op.
+                    const Formula::Kind kind = pick_binary_kind(random_source);
+                    const Formula left =
+                        mutate_temporal(children->first, atoms, random_source);
+                    const Formula right =
+                        mutate_temporal(children->second, atoms, random_source);
+                    return Formula::make_binary(kind, left, right);
+                }
+                case 2: {  // (c) as (b), then wrap in a unary op.
+                    const Formula::Kind outer_kind =
+                        pick_unary_kind(random_source);
+                    const Formula::Kind inner_kind =
+                        pick_binary_kind(random_source);
+                    const Formula left =
+                        mutate_temporal(children->first, atoms, random_source);
+                    const Formula right =
+                        mutate_temporal(children->second, atoms, random_source);
                     return Formula::make_unary(
-                        pick_unary_kind(random_source),
-                        Formula::make_binary(
-                            pick_binary_kind(random_source),
-                            mutate_temporal(children->first, atoms,
-                                            random_source),
-                            mutate_temporal(children->second, atoms,
-                                            random_source)));
+                        outer_kind,
+                        Formula::make_binary(inner_kind, left, right));
+                }
                 default:
                     assert(false);
                     __builtin_unreachable();
@@ -237,12 +247,13 @@ Formula mutate_propositional_parts(const Formula& formula,
             if (!children.has_value()) {
                 return formula;
             }
-            return Formula::make_binary(
-                formula.kind(),
-                mutate_propositional_parts(children->first, atoms,
-                                           random_source),
-                mutate_propositional_parts(children->second, atoms,
-                                           random_source));
+            // Sequenced into locals: both calls draw, and argument evaluation
+            // order is unspecified.
+            const Formula left = mutate_propositional_parts(
+                children->first, atoms, random_source);
+            const Formula right = mutate_propositional_parts(
+                children->second, atoms, random_source);
+            return Formula::make_binary(formula.kind(), left, right);
         }
     }
 }

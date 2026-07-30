@@ -256,12 +256,16 @@ Specification crossover_specifications(const Specification& first_parent,
         first_parent.m_out_atoms != second_parent.m_out_atoms) {
         return first_parent;
     }
-    Specification offspring(
-        crossover_req_lists(first_parent.m_assumptions,
-                            second_parent.m_assumptions, random_source),
-        crossover_req_lists(first_parent.m_guarantees,
-                            second_parent.m_guarantees, random_source),
-        first_parent.m_in_atoms, first_parent.m_out_atoms);
+    // Both calls draw, and the order in which arguments of one call are
+    // evaluated is unspecified -- gcc runs them right to left, clang left to
+    // right -- so passing them directly hands the two lists each other's draws
+    // depending on the compiler. Sequence them to keep a seed reproducible.
+    std::vector<Requirement> assumptions = crossover_req_lists(
+        first_parent.m_assumptions, second_parent.m_assumptions, random_source);
+    std::vector<Requirement> guarantees = crossover_req_lists(
+        first_parent.m_guarantees, second_parent.m_guarantees, random_source);
+    Specification offspring(std::move(assumptions), std::move(guarantees),
+                            first_parent.m_in_atoms, first_parent.m_out_atoms);
     // Specification constructor deduplicates; if dedup reduced the count the
     // offspring has a different structure than the parents and cannot safely
     // participate in future crossovers — fall back to first_parent.

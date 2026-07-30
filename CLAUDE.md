@@ -32,6 +32,13 @@ ctest --preset debug -R syntactic     # run tests matching a regex
 
 Test binaries land at `build/test/counter_tests`. The test framework uses `expect(bool, message)` and `fail(message)` from `test/test_support.hpp`; each test suite is a free function declared in `test/test_suite.hpp`.
 
+The dashboard page's script is tested separately, under node's built-in runner
+(`test/web/*.test.mjs`, registered with ctest as `dashboard_page`; run directly
+with `node --test "test/web/*.test.mjs"`). `test/web/harness.mjs` extracts the
+`<script>` block from `web/dashboard.html` and evaluates it, so the tests run
+against the page that actually ships rather than a copy of it. CMake skips them
+when `node` is absent.
+
 ## Lint & Format
 
 ```sh
@@ -84,6 +91,12 @@ to `<output-dir>/progress.jsonl` (one JSON object per line, flushed as written)
 and copy `web/dashboard.html` there as `index.html`. To watch a run:
 `python3 -m http.server -d <output-dir> 8000`. The page polls once a second;
 `?poll=<seconds>` overrides that (`?poll=0` loads once and stops polling).
+
+The page's script keeps everything above its `boot()` call free of DOM access at
+load time: `boot()` runs only when `document` exists, and otherwise the script
+exports its functions for `test/web/` to test under node. Adding a top-level
+`document.getElementById` (rather than one inside a function) breaks that and
+takes the JS tests with it.
 
 The page derives its stage list from the `stage` records of the latest
 generation, so a new filter or pipeline stage shows up with no change to either

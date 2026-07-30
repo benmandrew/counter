@@ -441,14 +441,16 @@
      reparses the whole log, which grows with the run, so a very fast interval
      costs more the longer the run goes on. An unparseable value falls back to
      the default rather than stopping the page from working. */
-  var POLL_MS = (function () {
-    var match = /[?&]poll=([^&]*)/.exec(window.location.search);
+  function pollMs(search) {
+    var match = /[?&]poll=([^&]*)/.exec(search || "");
     if (!match) { return 1000; }
     var secs = parseFloat(decodeURIComponent(match[1]));
     if (!isFinite(secs) || secs < 0) { return 1000; }
     if (secs === 0) { return 0; }
     return Math.min(Math.max(secs, 0.25), 300) * 1000;
-  })();
+  }
+
+  var POLL_MS = 1000;
 
   function fmtPollRate(ms) {
     var secs = ms / 1000;
@@ -458,8 +460,8 @@
   }
 
   /* ------------------------------------------------------------------ theme */
-  var root = document.documentElement;
-  var toggle = document.getElementById("theme-toggle");
+  var root = null;
+  var toggle = null;
 
   function storedTheme() {
     try { return window.localStorage.getItem("counter-dash-theme"); } catch (e) { return null; }
@@ -478,18 +480,22 @@
     toggle.textContent = dark ? "Light" : "Dark";
     toggle.setAttribute("aria-label", dark ? "Switch to light theme" : "Switch to dark theme");
   }
-  var saved = storedTheme();
-  if (saved === "dark" || saved === "light") { root.setAttribute("data-theme", saved); }
-  syncToggle();
-  toggle.addEventListener("click", function () {
-    var next = effectiveDark() ? "light" : "dark";
-    root.setAttribute("data-theme", next);
-    storeTheme(next);
+  function initTheme() {
+    root = document.documentElement;
+    toggle = document.getElementById("theme-toggle");
+    var saved = storedTheme();
+    if (saved === "dark" || saved === "light") { root.setAttribute("data-theme", saved); }
     syncToggle();
-  });
-  if (window.matchMedia) {
-    var mq = window.matchMedia("(prefers-color-scheme: dark)");
-    if (mq.addEventListener) { mq.addEventListener("change", syncToggle); }
+    toggle.addEventListener("click", function () {
+      var next = effectiveDark() ? "light" : "dark";
+      root.setAttribute("data-theme", next);
+      storeTheme(next);
+      syncToggle();
+    });
+    if (window.matchMedia) {
+      var mq = window.matchMedia("(prefers-color-scheme: dark)");
+      if (mq.addEventListener) { mq.addEventListener("change", syncToggle); }
+    }
   }
 
   /* ------------------------------------------------------------- svg helpers */
@@ -702,6 +708,39 @@
       " H" + x0 + " Z";
   }
 
+  /* One row per stage the run can execute, not just per stage this generation
+     ran. Filters run on intervals, so the active set shrinks and grows; laying
+     the chart out from the full roster keeps its height fixed and each stage on
+     the same row, which is what makes it followable against the charts below.
+     A row whose rec is null did not run this generation, and is drawn struck
+     through.
+
+     run_start declares the roster; a log without one falls back to every stage
+     name seen so far. Rows are keyed by name, which production guarantees is
+     unique per stage. */
+  function stageRows(s, stages) {
+    var roster = (s.runStart && Array.isArray(s.runStart.stages) &&
+                  s.runStart.stages.length)
+      ? s.runStart.stages.slice()
+      : s.stageRoster.slice();
+
+    var ran = {};
+    stages.forEach(function (st) {
+      if (st.name !== undefined) { ran[st.name] = st; }
+    });
+    var rows = roster.map(function (name) {
+      return { name: name, rec: ran[name] || null };
+    });
+    /* A stage the roster does not mention still gets a row rather than
+       vanishing. */
+    stages.forEach(function (st) {
+      if (st.name !== undefined && roster.indexOf(st.name) === -1) {
+        rows.push({ name: st.name, rec: st });
+      }
+    });
+    return rows;
+  }
+
   function renderStages(s) {
     var scroll = document.getElementById("stage-scroll");
     var wrap = document.getElementById("stage-wrap");
@@ -723,33 +762,7 @@
       return;
     }
 
-    /* Every stage the run can execute, not just this generation's. Filters run
-       on intervals, so the active set shrinks and grows; laying the chart out
-       from the full roster keeps its height fixed and each stage on the same
-       row, which is what makes it followable against the charts below.
-       run_start declares the roster; a log without one falls back to every
-       stage name seen so far. Rows are keyed by name, which production
-       guarantees is unique per stage. */
-    var roster = (s.runStart && Array.isArray(s.runStart.stages) &&
-                  s.runStart.stages.length)
-      ? s.runStart.stages.slice()
-      : s.stageRoster.slice();
-
-    var ran = {};
-    stages.forEach(function (st) {
-      if (st.name !== undefined) { ran[st.name] = st; }
-    });
-    var rows = roster.map(function (name) {
-      return { name: name, rec: ran[name] || null };
-    });
-    /* A stage the roster does not mention still gets a row rather than
-       vanishing. */
-    stages.forEach(function (st) {
-      if (st.name !== undefined && roster.indexOf(st.name) === -1) {
-        rows.push({ name: st.name, rec: st });
-      }
-    });
-
+    var rows = stageRows(s, stages);
     var nRan = rows.filter(function (r) { return r.rec !== null; }).length;
     title.textContent = "Stage flow — generation " + s.latestStageGen;
     sub.textContent = nRan + " of " + rows.length + " stage" +
@@ -1290,9 +1303,37 @@
     });
   }
 
-  renderAll(state);
-  poll();
-  if (POLL_MS > 0) { timer = window.setInterval(poll, POLL_MS); }
+  function boot() {
+    POLL_MS = pollMs(window.location.search);
+    initTheme();
+    renderAll(state);
+    poll();
+    if (POLL_MS > 0) { timer = window.setInterval(poll, POLL_MS); }
+  }
+
+  /* Nothing above this line touches the DOM until called, so the script can be
+     evaluated outside a browser to test the logic that does not need one. The
+     tests (test/web/) extract this block from the shipped page and run it under
+     node, so what they check is the file that is actually served. */
+  if (typeof document !== "undefined") {
+    boot();
+  } else if (typeof module === "object" && module && module.exports) {
+    module.exports = {
+      pollMs: pollMs,
+      fmtPollRate: fmtPollRate,
+      fmt2: fmt2,
+      fmt3: fmt3,
+      fmtInt: fmtInt,
+      fmtDuration: fmtDuration,
+      signed: signed,
+      truncate: truncate,
+      niceStep: niceStep,
+      niceTicks: niceTicks,
+      barPath: barPath,
+      parse: parse,
+      stageRows: stageRows
+    };
+  }
 })();
 </script>
 </body>

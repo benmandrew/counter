@@ -84,6 +84,20 @@ add_test(NAME counter_tests.tlsf_mucs COMMAND counter_tests tlsf_mucs)
 add_test(NAME counter_tests.tlsf_genetic COMMAND counter_tests tlsf_genetic)
 add_test(NAME counter_tests.tlsf_pipeline COMMAND counter_tests tlsf_pipeline)
 
+# The dashboard page ships as one self-contained HTML file, so its script is
+# tested by extracting it from the page and running it under node -- the same
+# node the FRET formaliser already needs at run time. It is not a build
+# dependency, so a missing one skips these rather than failing configuration.
+find_program(NODE_EXECUTABLE node)
+if(NODE_EXECUTABLE)
+    file(GLOB dashboard_page_tests CONFIGURE_DEPENDS
+         ${CMAKE_CURRENT_SOURCE_DIR}/web/*.test.mjs)
+    add_test(NAME dashboard_page
+             COMMAND ${NODE_EXECUTABLE} --test ${dashboard_page_tests})
+else()
+    message(STATUS "node not found; skipping the dashboard page's tests")
+endif()
+
 add_custom_target(tests
     COMMAND ${CMAKE_CTEST_COMMAND} --output-on-failure
     DEPENDS counter_tests

@@ -117,6 +117,12 @@ well_separation = 1
 
 [runtime]
 black_timeout_ms = 1000  # timeout per black SAT query in milliseconds
+# Stream per-stage and per-generation progress to <output-dir>/progress.jsonl
+# and copy the live dashboard page beside it, so serving the output directory
+# shows the run as it happens. Off by default: a campaign of many runs pays for
+# the file and its flushes with nobody watching. `counter --dashboard` turns it
+# on for a single run without editing a config.
+# dashboard = true
 # Per-call ltlsynt realizability timeout in ms. 0 (default) is no timeout;
 # ltlsynt has no internal one, so on hard specs a single synthesis query can run
 # for minutes. A call exceeding this is killed and treated as unrealizable.

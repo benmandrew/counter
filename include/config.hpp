@@ -100,6 +100,12 @@ struct Config {
     // CLI tools, via getrusage + per-tool wait4). Opt-in: off leaves output
     // identical to before.
     bool report_cpu_timing = false;
+    // When true, stream per-stage and per-generation progress to
+    // <output-dir>/progress.jsonl and copy the dashboard page beside it. Opt-in
+    // because a campaign of many runs pays for the extra file and its flushes
+    // without anyone watching. The --dashboard flag turns it on for one run
+    // without editing the config.
+    bool dashboard = false;
     SelectionScheme selection_scheme = SelectionScheme::Nsga2;
     double selection_rate = 0.5;
     // Elitism: the top elitism_rate fraction of the population carries over

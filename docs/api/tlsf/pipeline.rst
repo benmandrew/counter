@@ -8,4 +8,4 @@ the realizable, deduplicated survivors, and writes each to
 ``<output_dir>/repair_N.tlsf`` with a ``repair_N.fitness.json`` sidecar. It is
 the TLSF analogue of the FRETISH pipeline in ``src/main.cpp``.
 
-.. doxygenfile:: pipeline.hpp
+.. doxygenfile:: tlsf/pipeline.hpp

@@ -25,6 +25,16 @@ class RandomSource {
                  std::size_t seed)
         : m_fn(std::move(generator)), m_seed(seed) {}
 
+    // Move-only. The generator owns its engine by value (see
+    // make_random_source_from_seed), so a copy would fork the stream and
+    // advance independently of the original -- silently breaking seed
+    // reproducibility rather than failing. Pass by const reference instead;
+    // next_index is const, so a const reference is all any caller needs.
+    RandomSource(const RandomSource&) = delete;
+    RandomSource& operator=(const RandomSource&) = delete;
+    RandomSource(RandomSource&&) = default;
+    RandomSource& operator=(RandomSource&&) = default;
+
     /// Returns a pseudo-random index in [0, upper_bound).
     [[nodiscard]] std::size_t next_index(std::size_t upper_bound) const {
         assert(m_fn);

@@ -7,7 +7,6 @@
 
 #include <algorithm>
 #include <cassert>
-#include <cmath>
 #include <cstddef>
 #include <functional>
 #include <iterator>
@@ -15,7 +14,6 @@
 #include <stdexcept>
 #include <string>
 #include <type_traits>
-#include <unordered_set>
 #include <utility>
 #include <vector>
 
@@ -26,6 +24,7 @@
 #include "genetic/mutation.hpp"
 #include "genetic/nsga2.hpp"
 #include "genetic/operators.hpp"
+#include "genetic/pipeline.hpp"
 #include "genetic/random_source.hpp"
 #include "genetic/scored.hpp"
 #include "requirement.hpp"
@@ -317,168 +316,43 @@ std::vector<ScoredSpecification> score_and_sort_specifications(
     const Config& cfg, const std::vector<Specification>& specs,
     const AggregateWeightedFitnessFunction& fitness_function);
 
-namespace generation_detail {
-
-constexpr std::size_t k_rate_granularity = 1'000'000;
-
-inline bool probability_check(double rate, const RandomSource& random_source) {
-    if (rate <= 0.0) {
-        return false;
-    }
-    if (rate >= 1.0) {
-        return true;
-    }
-    return random_source.next_index(k_rate_granularity) <
-           static_cast<std::size_t>(rate *
-                                    static_cast<double>(k_rate_granularity));
-}
-
-/// Breeds @p offspring_n new specifications from the fittest parents. Each slot
-/// starts as parent i, is crossed with a random parent drawn from the top
-/// @p top_n with probability crossover_rate, mutated with probability
-/// mutation_rate, then simplified if the operator set provides a simplifier.
-/// The per-slot RNG draw sequence is fixed so a seed reproduces the generation.
-template <typename Spec>
-std::vector<Spec> breed_offspring(const Config& cfg,
-                                  const std::vector<Scored<Spec>>& sorted_pop,
-                                  std::size_t offspring_n, std::size_t top_n,
-                                  const GeneticOperators<Spec>& ops,
-                                  const RandomSource& random_source) {
-    std::vector<Spec> offspring_pop;
-    offspring_pop.reserve(offspring_n);
-    for (std::size_t i = 0; i < offspring_n; ++i) {
-        Spec offspring = sorted_pop[i].specification;
-        if (probability_check(cfg.crossover_rate, random_source)) {
-            const std::size_t partner = random_source.next_index(top_n);
-            offspring = ops.crossover(
-                offspring, sorted_pop[partner].specification, random_source);
-        }
-        if (probability_check(cfg.mutation_rate, random_source)) {
-            offspring = ops.mutate(offspring, random_source, cfg);
-        }
-        offspring_pop.push_back(ops.simplify
-                                    ? ops.simplify(std::move(offspring))
-                                    : std::move(offspring));
-    }
-    return offspring_pop;
-}
-
-/// Cycles through the existing survivors to pad the population back up to
-/// @p target_size. Padding duplicates carry zero crowding distance, so later
-/// selection sheds them first. Requires a non-empty @p survivors.
-template <typename Spec>
-void pad_to_size(std::vector<Spec>& survivors, std::size_t target_size) {
-    const std::size_t survivor_count = survivors.size();
-    survivors.reserve(target_size);
-    while (survivors.size() < target_size) {
-        survivors.push_back(survivors[survivors.size() % survivor_count]);
-    }
-}
-
-/// Drops every repeat of a specification already present earlier in
-/// @p population, preserving the order of the first occurrences.
-template <typename Spec>
-std::vector<Scored<Spec>> dedup_by_specification(
-    std::vector<Scored<Spec>> population) {
-    std::unordered_set<Spec> seen;
-    seen.reserve(population.size());
-    std::vector<Scored<Spec>> distinct;
-    distinct.reserve(population.size());
-    for (Scored<Spec>& scored : population) {
-        if (seen.insert(scored.specification).second) {
-            distinct.push_back(std::move(scored));
-        }
-    }
-    return distinct;
-}
-
-/// Replicates a deduplicated, crowded-comparison-ordered @p distinct
-/// population back up to @p target_size. Each individual is weighted
-/// 1 / (1 + rank); every one keeps at least one copy and the remaining
-/// target_size - distinct.size() slots are apportioned by the largest-remainder
-/// (Hamilton) method over the normalised weights, breaking remainder ties
-/// towards the better-ranked individual. Copies are emitted contiguously in the
-/// input order, so the result stays sorted best-first for breed_offspring.
+/// Wraps each filter as a named pipeline stage, so a consumer walking the stage
+/// list sees one entry per active filter. The filters keep their own n_in/n_out
+/// tallies, which the drivers still fold into their end-of-run reports.
 ///
-/// Purely arithmetic: it draws no random numbers, so a seeded run stays
-/// reproducible. Requires a non-empty @p distinct no longer than @p
-/// target_size.
+/// @param filters Captured by reference; must outlive the returned stages.
 template <typename Spec>
-std::vector<Scored<Spec>> replicate_to_size(
-    const std::vector<Scored<Spec>>& distinct, std::size_t target_size) {
-    assert(!distinct.empty());
-    assert(distinct.size() <= target_size);
-    const std::size_t count = distinct.size();
-    const std::size_t spare = target_size - count;
-
-    std::vector<double> weights(count);
-    double total_weight = 0.0;
-    for (std::size_t i = 0; i < count; ++i) {
-        weights[i] = 1.0 / (1.0 + static_cast<double>(distinct[i].rank));
-        total_weight += weights[i];
+std::vector<PipelineStage<Spec>> filter_stages(
+    const std::vector<FilterFunctionT<Spec>>& filters) {
+    std::vector<PipelineStage<Spec>> stages;
+    stages.reserve(filters.size());
+    for (const FilterFunctionT<Spec>& filter : filters) {
+        // Filters built inline for tests carry no display name.
+        std::string name = filter.name().empty() ? "filter" : filter.name();
+        stages.emplace_back(std::move(name),
+                            [&filter](GenerationContext<Spec>& ctx) {
+                                ctx.m_candidates = filter(ctx.m_candidates);
+                            });
     }
-
-    std::vector<std::size_t> copies(count, 1);
-    std::vector<double> remainders(count, 0.0);
-    std::size_t allocated = 0;
-    for (std::size_t i = 0; i < count; ++i) {
-        const double quota =
-            static_cast<double>(spare) * weights[i] / total_weight;
-        const double whole = std::floor(quota);
-        const auto share = static_cast<std::size_t>(whole);
-        copies[i] += share;
-        remainders[i] = quota - whole;
-        allocated += share;
-    }
-
-    std::vector<std::size_t> order(count);
-    for (std::size_t i = 0; i < count; ++i) {
-        order[i] = i;
-    }
-    std::stable_sort(order.begin(), order.end(),
-                     [&remainders](std::size_t lhs, std::size_t rhs) {
-                         return remainders[lhs] > remainders[rhs];
-                     });
-    for (std::size_t i = 0; allocated < spare; ++i, ++allocated) {
-        ++copies[order[i % count]];
-    }
-
-    std::vector<Scored<Spec>> replicated;
-    replicated.reserve(target_size);
-    for (std::size_t i = 0; i < count; ++i) {
-        for (std::size_t copy = 0; copy < copies[i]; ++copy) {
-            replicated.push_back(distinct[i]);
-        }
-    }
-    assert(replicated.size() == target_size);
-    return replicated;
+    return stages;
 }
 
-}  // namespace generation_detail
-
-/// True for the selection schemes that rank by the NSGA-II crowded-comparison
-/// order rather than the blended fitness scalar.
-inline bool uses_nsga2_ranking(const Config& cfg) {
-    return cfg.selection_scheme == SelectionScheme::Nsga2 ||
-           cfg.selection_scheme == SelectionScheme::Nsga2Replicate;
-}
-
-/// Orders a scored population best-first according to @p cfg's selection
-/// scheme: descending weighted fitness for WeightedAverage, or the NSGA-II
-/// crowded-comparison order (front rank ascending, crowding descending) for
-/// Nsga2. The sort is stable in both cases so a fixed RNG seed is
-/// reproducible.
+/// The names of every stage a generation can run, in pipeline order, counting
+/// filters that only run on some generations.
+///
+/// A consumer needs the full roster up front to reserve a layout that does not
+/// move between generations; which stages actually ran in a given generation
+/// still comes from the stage reports. Built from the same pipeline the run
+/// uses, so it cannot drift from it.
 template <typename Spec>
-void order_population(const Config& cfg,
-                      std::vector<Scored<Spec>>& population) {
-    if (uses_nsga2_ranking(cfg)) {
-        nsga2_sort(population);
-        return;
+std::vector<std::string> generation_stage_names(
+    const std::vector<FilterFunctionT<Spec>>& filters) {
+    std::vector<std::string> names;
+    for (const PipelineStage<Spec>& stage :
+         make_generation_pipeline<Spec>(filter_stages(filters))) {
+        names.push_back(stage.name());
     }
-    std::stable_sort(population.begin(), population.end(),
-                     [](const Scored<Spec>& lhs, const Scored<Spec>& rhs) {
-                         return lhs.fitness > rhs.fitness;
-                     });
+    return names;
 }
 
 /// Generic one-generation evolution loop, templated on the specification
@@ -494,75 +368,24 @@ std::vector<Scored<Spec>> evolve_generation_generic(
     const Fitness& fitness_functions,
     const std::vector<FilterFunctionT<Spec>>& filter_functions,
     const GeneticOperators<Spec>& ops, const RandomSource& random_source,
-    const GenerationProgressCallback& on_progress = nullptr) {
+    const GenerationProgressCallback& on_progress = nullptr,
+    const StageObserver& on_stage = nullptr) {
     assert(random_source);
     assert(!fitness_functions.empty());
     assert(cfg.crossover_rate >= 0.0 && cfg.crossover_rate <= 1.0);
     assert(cfg.mutation_rate >= 0.0 && cfg.mutation_rate <= 1.0);
     assert(!population.empty());
 
-    // Select parents from the whole population, unfiltered: the filter only
-    // screens the offspring produced below, after crossover and mutation.
-    std::vector<Scored<Spec>> sorted_pop = population;
-    order_population(cfg, sorted_pop);
-    const std::size_t top_n = std::min(target_size, sorted_pop.size());
-    // The best elite_n of the selected parents carry over verbatim (see below);
-    // the remaining slots are bred from the top offspring_n parents.
-    const std::size_t elite_n = std::min(elitism_size, top_n);
-    const std::size_t offspring_n = top_n - elite_n;
-    std::vector<Spec> next_generation = generation_detail::breed_offspring(
-        cfg, sorted_pop, offspring_n, top_n, ops, random_source);
-
-    std::vector<Spec> survivors =
-        filter_population(next_generation, filter_functions);
-    if (survivors.empty()) {
-        survivors = std::move(next_generation);
-    }
-    // Elites bypass crossover, mutation, and the offspring filters: the top
-    // elite_n specifications carry over unchanged so the best candidates are
-    // never lost to a stochastic operator or removed by a filter.
-    for (std::size_t i = 0; i < elite_n; ++i) {
-        survivors.push_back(sorted_pop[i].specification);
-    }
-    assert(!survivors.empty());
-    generation_detail::pad_to_size(survivors, target_size);
-
-    std::vector<Scored<Spec>> scored =
-        score_population(cfg, survivors, fitness_functions, on_progress);
-
-    if (uses_nsga2_ranking(cfg)) {
-        // (mu + lambda) survivor selection: pool the incoming parents with the
-        // freshly scored offspring, rank the union by the crowded-comparison
-        // order, and keep the best target_size. This is NSGA-II's elitism, so
-        // no non-dominated candidate is ever lost; padding duplicates carry
-        // zero crowding distance and are shed first. Parents keep their cached
-        // objective vectors, so pooling adds no re-scoring.
-        std::vector<Scored<Spec>> pool = population;
-        pool.insert(pool.end(), std::make_move_iterator(scored.begin()),
-                    std::make_move_iterator(scored.end()));
-
-        const bool replicate =
-            cfg.selection_scheme == SelectionScheme::Nsga2Replicate;
-        if (replicate) {
-            // Ranking the distinct specifications rather than the ~target_size
-            // slots holding them stops the truncation below from cutting
-            // arbitrarily through the rank-0 front.
-            pool = generation_detail::dedup_by_specification(std::move(pool));
-        }
-        nsga2_sort(pool);
-
-        if (pool.size() > target_size) {
-            pool.resize(target_size);
-        } else if (replicate && pool.size() < target_size) {
-            // Deduplication alone would leave too few slots to breed from, so
-            // selection pressure is re-expressed as replication multiplicity.
-            pool = generation_detail::replicate_to_size(pool, target_size);
-        }
-        return pool;
-    }
-
-    order_population(cfg, scored);
-    return scored;
+    GenerationContext<Spec> ctx(
+        cfg, population, target_size, elitism_size, ops, random_source,
+        [&cfg, &fitness_functions,
+         &on_progress](const std::vector<Spec>& candidates) {
+            return score_population(cfg, candidates, fitness_functions,
+                                    on_progress);
+        });
+    const std::vector<PipelineStage<Spec>> stages =
+        make_generation_pipeline<Spec>(filter_stages(filter_functions));
+    return run_generation_pipeline(ctx, stages, on_stage);
 }
 
 /// Returns the bundle of FRETISH genetic operators wiring
@@ -598,6 +421,9 @@ const GeneticOperators<Specification>& fretish_operators();
 /// @param random_source     Random source for crossover and mutation
 /// @param on_progress       Optional callback invoked after each individual is
 ///                          scored; receives (done, total) counts
+/// @param on_stage          Optional callback invoked after each pipeline stage
+///                          completes; receives the stage's name, population
+///                          sizes, and elapsed time
 /// @return                  Next generation of target_size specifications
 /// @throws std::invalid_argument if random_source is not callable, if
 ///                               fitness_function is empty, if rates are
@@ -608,4 +434,5 @@ std::vector<ScoredSpecification> evolve_generation(
     const AggregateWeightedFitnessFunction& fitness_function,
     const std::vector<FilterFunction>& filter_functions,
     const RandomSource& random_source,
-    const GenerationProgressCallback& on_progress = nullptr);
+    const GenerationProgressCallback& on_progress = nullptr,
+    const StageObserver& on_stage = nullptr);

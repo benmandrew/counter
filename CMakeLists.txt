@@ -83,6 +83,7 @@ target_sources(counter_fitness PRIVATE
     src/tlsf/mucs.cpp
     src/tlsf/pipeline.cpp
     src/config_io.cpp
+    src/dashboard.cpp
 )
 target_include_directories(counter_fitness PUBLIC include)
 target_link_libraries(counter_fitness PUBLIC counter_core tomlplusplus::tomlplusplus)
@@ -119,6 +120,17 @@ if(NOT FORMALISER_SCRIPT_PATH)
 endif()
 target_compile_definitions(counter_fitness PRIVATE
     FORMALISER_SCRIPT_PATH="${FORMALISER_SCRIPT_PATH}")
+
+# The live dashboard page, copied beside progress.jsonl at run start so that
+# serving the output directory is all a viewer needs. Resolved from the source
+# tree the same way FORMALISER_SCRIPT_PATH is; a run whose page has gone missing
+# still writes the progress log, it just does not drop the viewer next to it.
+if(NOT DEFINED COUNTER_DASHBOARD_PAGE_PATH)
+    set(COUNTER_DASHBOARD_PAGE_PATH "${CMAKE_SOURCE_DIR}/web/dashboard.html"
+        CACHE FILEPATH "Path to the live dashboard HTML page")
+endif()
+target_compile_definitions(counter_fitness PRIVATE
+    COUNTER_DASHBOARD_PAGE_PATH="${COUNTER_DASHBOARD_PAGE_PATH}")
 
 add_executable(counter src/main.cpp src/crash/crash_handler.cpp)
 target_link_libraries(counter PRIVATE counter_fitness cpptrace::cpptrace)

@@ -32,6 +32,13 @@ ctest --preset debug -R syntactic     # run tests matching a regex
 
 Test binaries land at `build/test/counter_tests`. The test framework uses `expect(bool, message)` and `fail(message)` from `test/test_support.hpp`; each test suite is a free function declared in `test/test_suite.hpp`.
 
+The dashboard page's script is tested separately, under node's built-in runner
+(`test/web/*.test.mjs`, registered with ctest as `dashboard_page`; run directly
+with `node --test "test/web/*.test.mjs"`). `test/web/harness.mjs` extracts the
+`<script>` block from `web/dashboard.html` and evaluates it, so the tests run
+against the page that actually ships rather than a copy of it. CMake skips them
+when `node` is absent.
+
 ## Lint & Format
 
 ```sh
@@ -74,6 +81,32 @@ Every header file in `include/` must have a corresponding `.rst` page under `doc
 5. Collect the realizable survivors from the final population (re-checked with `black` + `ltlsynt`).
 6. Apply final filters: dedup, then optional implication filter to keep only maximal specs.
 7. Score, sort, and write each maximal spec to `<output-dir>/repair_N.json`.
+
+## Live dashboard
+
+Opt-in, via `counter --dashboard` or `[runtime] dashboard = true` (the flag can
+only enable). Off by default so a campaign of many runs does not pay for the
+file and its flushes with nobody watching. When on, both drivers stream progress
+to `<output-dir>/progress.jsonl` (one JSON object per line, flushed as written)
+and copy `web/dashboard.html` there as `index.html`. To watch a run:
+`python3 -m http.server -d <output-dir> 8000`. The page polls once a second;
+`?poll=<seconds>` overrides that (`?poll=0` loads once and stops polling).
+
+The page's script keeps everything above its `boot()` call free of DOM access at
+load time: `boot()` runs only when `document` exists, and otherwise the script
+exports its functions for `test/web/` to test under node. Adding a top-level
+`document.getElementById` (rather than one inside a function) breaks that and
+takes the JS tests with it.
+
+The page derives its stage list from the `stage` records of the latest
+generation, so a new filter or pipeline stage shows up with no change to either
+side. Generation stages come from `make_generation_pipeline`
+(`include/genetic/pipeline.hpp`), which returns an ordered vector of named
+`PipelineStage`s; `run_generation_pipeline` reports each to an optional
+`StageObserver`. Breeding must stay a single stage — crossover and mutation
+interleave per offspring slot, so splitting them reorders every RNG draw after
+the first and breaks seed reproducibility. The `determinism` test suite pins the
+draw stream against exactly that.
 
 ## TLSF repair modes
 

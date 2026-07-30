@@ -108,7 +108,8 @@
         "parallel":          { "type": "integer", "minimum": 1, "description": "Thread pool size. Omit to use hardware concurrency." },
         "max_concurrent_realizability": { "type": "integer", "minimum": 0, "description": "Cap on ltlsynt processes running at once, independent of the thread pool. 0 (default) is unlimited; a positive value bounds peak RAM." },
         "report_cpu_timing": { "type": "boolean", "description": "Print the CPU-attribution report (your code vs. external CLI tools)." },
-        "max_scoring_failure_rate": { "type": "number", "minimum": 0, "maximum": 1, "description": "Fraction of a generation whose fitness scoring may throw before the run aborts. A single failure per generation is always tolerated." }
+        "max_scoring_failure_rate": { "type": "number", "minimum": 0, "maximum": 1, "description": "Fraction of a generation whose fitness scoring may throw before the run aborts. A single failure per generation is always tolerated." },
+        "dashboard": { "type": "boolean", "description": "Stream progress to <output-dir>/progress.jsonl and copy the live dashboard page beside it. Off by default; --dashboard also enables it." }
       }
     }
   }

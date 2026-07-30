@@ -80,7 +80,7 @@ const KeySpec& config_key_spec() {
           section({"black_timeout_ms", "ltlsynt_timeout_ms",
                    "ltl2tgba_timeout_ms", "parallel",
                    "max_concurrent_realizability", "report_cpu_timing",
-                   "max_scoring_failure_rate"})}});
+                   "max_scoring_failure_rate", "dashboard"})}});
     return spec;
 }
 
@@ -332,6 +332,9 @@ void apply_runtime(const toml::table& tbl, Config& cfg) {
                 "config: runtime.max_concurrent_realizability must be >= 0");
         }
         cfg.max_concurrent_realizability = static_cast<std::size_t>(*val);
+    }
+    if (auto val = tbl["dashboard"].value<bool>()) {
+        cfg.dashboard = *val;
     }
     if (auto val = tbl["report_cpu_timing"].value<bool>()) {
         cfg.report_cpu_timing = *val;

@@ -19,6 +19,7 @@
 #include "config.hpp"
 #include "config_io.hpp"
 #include "crash/crash_handler.hpp"
+#include "dashboard.hpp"
 #include "filter/implication.hpp"
 #include "filter/vacuity.hpp"
 #include "fitness/function.hpp"
@@ -273,11 +274,25 @@ bool is_realizable_repair(const Specification& spec) {
                                                         global_sat_checker());
 }
 
+// The registration-order objective names, used to label the per-objective means
+// the dashboard reports. Reads them off the fitness function rather than a
+// second hardcoded list, so a new objective needs no change here.
+std::vector<std::string> fitness_objective_names(
+    const AggregateWeightedFitnessFunction& fitness_function) {
+    std::vector<std::string> names;
+    for (const WeightedFitnessFunction& objective : fitness_function) {
+        names.push_back(objective.name);
+    }
+    return names;
+}
+
 std::pair<std::vector<ScoredSpecification>, std::vector<FilterRunStats>>
 run_evolution(const Config& cfg, std::vector<ScoredSpecification> population,
               const AggregateWeightedFitnessFunction& fitness_function,
               const std::vector<FilterFunction>& filter_functions,
-              RandomSource& random_source) {
+              RandomSource& random_source, DashboardWriter& dashboard) {
+    const std::vector<std::string> objective_names =
+        fitness_objective_names(fitness_function);
     std::vector<FilterRunStats> filter_stats;
     filter_stats.reserve(filter_functions.size());
     for (const FilterFunction& flt : filter_functions) {
@@ -329,9 +344,18 @@ run_evolution(const Config& cfg, std::vector<ScoredSpecification> population,
             filters_for_generation(filter_functions, gen_idx + 1,
                                    gen_idx + 1 == cfg.generations);
 
+        // The stage index is assigned here rather than by the pipeline: the
+        // observer sees stages in order, and the dashboard needs their order
+        // without the pipeline having to number them.
+        std::size_t stage_index = 0;
+        auto on_stage = [&dashboard, &stage_index,
+                         gen = gen_idx + 1](const StageObservation& obs) {
+            dashboard.stage(gen, stage_index++, obs);
+        };
+
         population = evolve_generation(
             cfg, population, selection_size, elitism_size, fitness_function,
-            active_filters, random_source, on_progress);
+            active_filters, random_source, on_progress, on_stage);
 
         // Each active filter copy carries this generation's in/out sizes; fold
         // them into the running per-filter totals reported at the end.
@@ -364,6 +388,27 @@ run_evolution(const Config& cfg, std::vector<ScoredSpecification> population,
         status.set(col_real, std::to_string(n_real));
         status.render();
         status.finish();
+
+        // The maximum, not population[0]: under NSGA-II the population is
+        // ordered by front rank and crowding distance, so the first individual
+        // need not hold the highest weighted scalar. Reporting it as "best"
+        // would put a number on the dashboard below the mean beside it.
+        double fitness_total = 0.0;
+        double fitness_best = 0.0;
+        std::vector<std::vector<double>> objectives;
+        objectives.reserve(population.size());
+        for (const ScoredSpecification& cand : population) {
+            fitness_total += cand.fitness;
+            fitness_best = std::max(fitness_best, cand.fitness);
+            objectives.push_back(cand.objectives);
+        }
+        dashboard.generation(
+            gen_idx + 1, elapsed, fitness_best,
+            population.empty()
+                ? 0.0
+                : fitness_total / static_cast<double>(population.size()),
+            mean_objectives(objective_names, objectives), n_real,
+            population.size());
     }
     return {std::move(population), std::move(filter_stats)};
 }
@@ -461,6 +506,10 @@ void print_help(const char* prog) {
         << "                       other extension as FRETISH).\n"
         << "  --seed <n>           RNG seed for reproducible runs. If omitted\n"
         << "                       a random seed is chosen and printed.\n"
+        << "  --dashboard          Stream progress to\n"
+        << "                       <output-dir>/progress.jsonl and write a\n"
+        << "                       live dashboard page beside it. Equivalent\n"
+        << "                       to [runtime] dashboard = true.\n"
         << "  -h, --help           Show this help message and exit.\n"
         << "\n"
         << "Input format (examples/takeoff/spec.json):\n"
@@ -497,6 +546,10 @@ int main(int argc, const char* const argv[]) {
             return 1;
         }
     }
+    // Folded into cfg here so everything downstream, both drivers included,
+    // reads one switch. The flag can only enable: a config that already asked
+    // for the dashboard is not turned off by its absence.
+    cfg.dashboard = cfg.dashboard || has_flag(argc, argv, "--dashboard");
     global_sat_checker().set_timeout(cfg.black_timeout);
     RealizabilityChecker::set_max_concurrency(cfg.max_concurrent_realizability);
     RealizabilityChecker::set_timeout(cfg.ltlsynt_timeout);
@@ -575,11 +628,23 @@ int main(int argc, const char* const argv[]) {
     const std::size_t seed = *maybe_seed;
     std::cout << "Seed: " << seed << "\n";
     register_crash_metadata(format_crash_metadata(seed, *input_path, cfg));
+
+    DashboardWriter dashboard(*output_dir, cfg.dashboard);
+    dashboard.run_start(*input_path, cfg.generations, population.size(), seed,
+                        fitness_objective_names(fitness_function),
+                        generation_stage_names(filter_functions));
+    const std::string page = dashboard.write_page();
+    if (!page.empty()) {
+        std::cout << "Progress: " << dashboard.path() << "\n"
+                  << "  view with: python3 -m http.server -d " << *output_dir
+                  << " 8000\n";
+    }
+
     const auto wall_start = std::chrono::steady_clock::now();
     try {
         auto [population_result, filter_stats] =
             run_evolution(cfg, std::move(population), fitness_function,
-                          filter_functions, random_source);
+                          filter_functions, random_source, dashboard);
         population = std::move(population_result);
         const std::vector<Specification> realizable_vec =
             collect_realizable_specifications(population);
@@ -593,6 +658,11 @@ int main(int argc, const char* const argv[]) {
             std::cout << " (" << maximal.size() << " maximal)";
         }
         std::cout << ", written to " << *output_dir << "/\n";
+        dashboard.run_end(cfg.generations, realizable_vec.size(),
+                          maximal.size(),
+                          std::chrono::duration<double>(
+                              std::chrono::steady_clock::now() - wall_start)
+                              .count());
         print_filter_report(filter_stats);
         print_scoring_report();
         print_timing_report();

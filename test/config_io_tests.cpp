@@ -75,6 +75,7 @@ well_separation = 5
 [runtime]
 black_timeout_ms = 500
 parallel         = 4
+dashboard        = true
 )";
     const Config cfg = config_from_toml_string(toml);
     expect(cfg.generations == 5,
@@ -129,6 +130,11 @@ parallel         = 4
            "config_io: runtime black_timeout_ms should be parsed from TOML");
     expect(cfg.parallel == 4,
            "config_io: runtime parallel should be parsed from TOML");
+    expect(cfg.dashboard,
+           "config_io: runtime dashboard should be parsed from TOML");
+    expect(!Config{}.dashboard,
+           "config_io: the dashboard should be opt-in, so a config that does "
+           "not mention it leaves progress output off");
 }
 
 void test_config_io_partial_overrides_defaults() {

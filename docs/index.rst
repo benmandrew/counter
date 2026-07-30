@@ -67,6 +67,7 @@ functions, and anonymous namespaces, with source browsing and call graphs.
    api/genetic/mutation
    api/genetic/nsga2
    api/genetic/operators
+   api/genetic/pipeline
    api/genetic/random_source
    api/genetic/scored
 

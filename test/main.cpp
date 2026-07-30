@@ -26,6 +26,10 @@ bool run_genetic_suite(std::string_view suite_name) {
         run_determinism_tests();
         return true;
     }
+    if (suite_name == "pipeline") {
+        run_pipeline_tests();
+        return true;
+    }
     if (suite_name == "nsga2") {
         run_nsga2_tests();
         return true;
@@ -201,6 +205,7 @@ int main(int argc, const char* const argv[]) {
             run_crossover_tests();
             run_generation_tests();
             run_determinism_tests();
+            run_pipeline_tests();
             run_nsga2_tests();
             run_mutation_tests();
             run_prop_formula_ast_tests();

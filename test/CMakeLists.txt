@@ -10,6 +10,7 @@ add_executable(counter_tests
     genetic/crossover_tests.cpp
     genetic/generation_tests.cpp
     genetic/determinism_tests.cpp
+    genetic/pipeline_tests.cpp
     genetic/mutation_tests.cpp
     genetic/nsga2_tests.cpp
     main.cpp
@@ -54,6 +55,7 @@ add_test(NAME counter_tests.spot_runner COMMAND counter_tests spot_runner)
 add_test(NAME counter_tests.crossover COMMAND counter_tests crossover)
 add_test(NAME counter_tests.generation COMMAND counter_tests generation)
 add_test(NAME counter_tests.determinism COMMAND counter_tests determinism)
+add_test(NAME counter_tests.pipeline COMMAND counter_tests pipeline)
 add_test(NAME counter_tests.nsga2 COMMAND counter_tests nsga2)
 add_test(NAME counter_tests.mutation COMMAND counter_tests mutation)
 add_test(NAME counter_tests.prop_formula_ast COMMAND counter_tests prop_formula_ast)

@@ -22,6 +22,7 @@ import argparse
 import csv
 import subprocess
 import sys
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
@@ -72,6 +73,8 @@ def main() -> None:
                         help="recompute every row with repairs, not just "
                              "best_relation=unknown")
     parser.add_argument("--dry-run", action="store_true")
+    parser.add_argument("--jobs", type=int, default=1,
+                        help="concurrent compare subprocesses (default 1)")
     args = parser.parse_args()
 
     results_csv = args.results or args.base / "results.csv"
@@ -114,8 +117,10 @@ def main() -> None:
         """
         base = f"sweep_{row['sweep']}_{row['level_name']}"
         tail = f"{row['spec']}_seed{int(row['seed']):02d}"
-        sel, wk = row["selection"], row["weakening"]
-        met, rep = row["metric"], row["repair_mode"]
+        # Legacy CSVs predate some factor columns; a missing factor just means
+        # its tag layouts cannot match, and the bare layout still can.
+        sel, wk = row.get("selection", ""), row.get("weakening", "")
+        met, rep = row.get("metric", ""), row.get("repair_mode", "")
         for mid in (f"{sel}_{wk}_{met}_{rep}", f"{sel}_{wk}_{met}",
                     f"{sel}_{met}_{rep}", f"{sel}_{met}", f"{sel}_{wk}",
                     f"{sel}_{rep}", f"{sel}", ""):
@@ -134,35 +139,50 @@ def main() -> None:
                   f"({r['n_repairs']} repairs, now={r['best_relation']})")
         return
 
-    updated = failed = missing = 0
-    for n, i in enumerate(targets, 1):
+    def process(i):
+        """Everything except the row rewrite; safe to run concurrently."""
         row = rows[i]
-        spec = row["spec"]
-        if spec not in SPECS:
-            print(f"  [{n}/{len(targets)}] skip: spec '{spec}' not in SPECS")
-            continue
+        if row["spec"] not in SPECS:
+            return i, "skip", "", None
         output_dir = find_run_dir(row)
         if output_dir is None or not (
                 list(output_dir.glob("repair_*.json"))
                 + list(output_dir.glob("repair_*.tlsf"))):
-            name = output_dir.name if output_dir else "<no run dir>"
-            print(f"  [{n}/{len(targets)}] {name}: no repair files, skipping")
-            missing += 1
-            continue
-
-        print(f"  [{n}/{len(targets)}] {output_dir.name}  "
-              f"({row['n_repairs']} repairs)", flush=True)
-        res = recompare_dir(output_dir, SPECS[spec]["ideals_dir"])
+            return i, "missing", output_dir.name if output_dir else "", None
+        res = recompare_dir(output_dir, SPECS[row["spec"]]["ideals_dir"])
         if res is None:
-            failed += 1
-            continue
-        best_rel, implies_ideal, n_implies = res
-        row["best_relation"] = best_rel
-        row["implies_ideal"] = implies_ideal
-        row["n_implies"] = n_implies
-        updated += 1
-        print(f"        -> {best_rel}  (implies_ideal={implies_ideal})")
-        write_csv_atomic(results_csv, rows, fieldnames)  # persist after each row
+            return i, "failed", output_dir.name, None
+        return i, "ok", output_dir.name, res
+
+    updated = failed = missing = 0
+    with ThreadPoolExecutor(max_workers=max(1, args.jobs)) as pool:
+        futures = [pool.submit(process, i) for i in targets]
+        for n, fut in enumerate(as_completed(futures), 1):
+            i, status, name, res = fut.result()
+            row = rows[i]
+            if status == "skip":
+                print(f"  [{n}/{len(targets)}] skip: spec '{row['spec']}' "
+                      f"not in SPECS")
+                continue
+            if status == "missing":
+                print(f"  [{n}/{len(targets)}] {name or '<no run dir>'}: "
+                      f"no repair files, skipping")
+                missing += 1
+                continue
+            if status == "failed" or res is None:
+                failed += 1
+                continue
+            best_rel, implies_ideal, n_implies = res
+            row["best_relation"] = best_rel
+            row["implies_ideal"] = implies_ideal
+            row["n_implies"] = n_implies
+            updated += 1
+            print(f"  [{n}/{len(targets)}] {name}  "
+                  f"({row['n_repairs']} repairs) -> {best_rel}  "
+                  f"(implies_ideal={implies_ideal})", flush=True)
+            if updated % 25 == 0:
+                write_csv_atomic(results_csv, rows, fieldnames)
+    write_csv_atomic(results_csv, rows, fieldnames)
 
     print(f"\nDone. {updated} updated, {failed} failed, {missing} missing "
           f"repairs.\nResults: {results_csv}")

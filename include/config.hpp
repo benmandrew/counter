@@ -10,8 +10,18 @@
 /// distance over the individual objectives, searching for the Pareto front
 /// rather than one weighted compromise. WeightedAverage ranks them by the
 /// single blended fitness scalar; it converges prematurely and is retained for
-/// comparison rather than use.
-enum class SelectionScheme : std::uint8_t { WeightedAverage, Nsga2 };
+/// comparison rather than use. Nsga2Replicate ranks identically to Nsga2 but
+/// deduplicates the (mu + lambda) pool before sorting and then replicates the
+/// distinct survivors back up to the target size, apportioning copies by
+/// 1 / (1 + rank). The plain Nsga2 pool holds only a handful of distinct
+/// specifications across its slots, so truncating it cuts arbitrarily through
+/// the Pareto front; replication instead makes breeding pressure proportional
+/// to rank without discarding any distinct candidate.
+enum class SelectionScheme : std::uint8_t {
+    WeightedAverage,
+    Nsga2,
+    Nsga2Replicate
+};
 
 /// Metric turning the bounded trace counts into a semantic-similarity score.
 /// Direct takes the ratio of counts -- the fraction of one requirement's

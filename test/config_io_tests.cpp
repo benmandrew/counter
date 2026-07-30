@@ -214,6 +214,14 @@ void test_config_io_selection_scheme_nsga2_parsed() {
            "config_io: selection_scheme = \"nsga2\" should be parsed");
 }
 
+void test_config_io_selection_scheme_nsga2_replicate_parsed() {
+    const Config cfg = config_from_toml_string(
+        "[genetic]\nselection_scheme = \"nsga2-replicate\"\n");
+    expect(cfg.selection_scheme == SelectionScheme::Nsga2Replicate,
+           "config_io: selection_scheme = \"nsga2-replicate\" should be "
+           "parsed");
+}
+
 void test_config_io_selection_scheme_invalid_throws() {
     bool threw = false;
     try {
@@ -334,6 +342,7 @@ void run_config_io_tests() {
     test_config_io_selection_scheme_defaults_to_nsga2();
     test_config_io_selection_scheme_weighted_parsed();
     test_config_io_selection_scheme_nsga2_parsed();
+    test_config_io_selection_scheme_nsga2_replicate_parsed();
     test_config_io_selection_scheme_invalid_throws();
     test_config_io_similarity_metric_defaults_to_logarithmic();
     test_config_io_similarity_metric_direct_parsed();

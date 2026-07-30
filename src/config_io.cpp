@@ -82,10 +82,12 @@ void apply_genetic(const toml::table& tbl, Config& cfg) {
             cfg.selection_scheme = SelectionScheme::WeightedAverage;
         } else if (*val == "nsga2") {
             cfg.selection_scheme = SelectionScheme::Nsga2;
+        } else if (*val == "nsga2-replicate") {
+            cfg.selection_scheme = SelectionScheme::Nsga2Replicate;
         } else {
             throw std::runtime_error(
-                "config: genetic.selection_scheme must be \"weighted\" or "
-                "\"nsga2\"");
+                "config: genetic.selection_scheme must be \"weighted\", "
+                "\"nsga2\", or \"nsga2-replicate\"");
         }
     }
     // Elites are a subset of the selected parents, so elitism must be strictly

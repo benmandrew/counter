@@ -7,6 +7,7 @@
 
 #include <algorithm>
 #include <cassert>
+#include <cmath>
 #include <cstddef>
 #include <functional>
 #include <iterator>
@@ -14,6 +15,7 @@
 #include <stdexcept>
 #include <string>
 #include <type_traits>
+#include <unordered_set>
 #include <utility>
 #include <vector>
 
@@ -373,7 +375,93 @@ void pad_to_size(std::vector<Spec>& survivors, std::size_t target_size) {
     }
 }
 
+/// Drops every repeat of a specification already present earlier in
+/// @p population, preserving the order of the first occurrences.
+template <typename Spec>
+std::vector<Scored<Spec>> dedup_by_specification(
+    std::vector<Scored<Spec>> population) {
+    std::unordered_set<Spec> seen;
+    seen.reserve(population.size());
+    std::vector<Scored<Spec>> distinct;
+    distinct.reserve(population.size());
+    for (Scored<Spec>& scored : population) {
+        if (seen.insert(scored.specification).second) {
+            distinct.push_back(std::move(scored));
+        }
+    }
+    return distinct;
+}
+
+/// Replicates a deduplicated, crowded-comparison-ordered @p distinct
+/// population back up to @p target_size. Each individual is weighted
+/// 1 / (1 + rank); every one keeps at least one copy and the remaining
+/// target_size - distinct.size() slots are apportioned by the largest-remainder
+/// (Hamilton) method over the normalised weights, breaking remainder ties
+/// towards the better-ranked individual. Copies are emitted contiguously in the
+/// input order, so the result stays sorted best-first for breed_offspring.
+///
+/// Purely arithmetic: it draws no random numbers, so a seeded run stays
+/// reproducible. Requires a non-empty @p distinct no longer than @p
+/// target_size.
+template <typename Spec>
+std::vector<Scored<Spec>> replicate_to_size(
+    const std::vector<Scored<Spec>>& distinct, std::size_t target_size) {
+    assert(!distinct.empty());
+    assert(distinct.size() <= target_size);
+    const std::size_t count = distinct.size();
+    const std::size_t spare = target_size - count;
+
+    std::vector<double> weights(count);
+    double total_weight = 0.0;
+    for (std::size_t i = 0; i < count; ++i) {
+        weights[i] = 1.0 / (1.0 + static_cast<double>(distinct[i].rank));
+        total_weight += weights[i];
+    }
+
+    std::vector<std::size_t> copies(count, 1);
+    std::vector<double> remainders(count, 0.0);
+    std::size_t allocated = 0;
+    for (std::size_t i = 0; i < count; ++i) {
+        const double quota =
+            static_cast<double>(spare) * weights[i] / total_weight;
+        const double whole = std::floor(quota);
+        const auto share = static_cast<std::size_t>(whole);
+        copies[i] += share;
+        remainders[i] = quota - whole;
+        allocated += share;
+    }
+
+    std::vector<std::size_t> order(count);
+    for (std::size_t i = 0; i < count; ++i) {
+        order[i] = i;
+    }
+    std::stable_sort(order.begin(), order.end(),
+                     [&remainders](std::size_t lhs, std::size_t rhs) {
+                         return remainders[lhs] > remainders[rhs];
+                     });
+    for (std::size_t i = 0; allocated < spare; ++i, ++allocated) {
+        ++copies[order[i % count]];
+    }
+
+    std::vector<Scored<Spec>> replicated;
+    replicated.reserve(target_size);
+    for (std::size_t i = 0; i < count; ++i) {
+        for (std::size_t copy = 0; copy < copies[i]; ++copy) {
+            replicated.push_back(distinct[i]);
+        }
+    }
+    assert(replicated.size() == target_size);
+    return replicated;
+}
+
 }  // namespace generation_detail
+
+/// True for the selection schemes that rank by the NSGA-II crowded-comparison
+/// order rather than the blended fitness scalar.
+inline bool uses_nsga2_ranking(const Config& cfg) {
+    return cfg.selection_scheme == SelectionScheme::Nsga2 ||
+           cfg.selection_scheme == SelectionScheme::Nsga2Replicate;
+}
 
 /// Orders a scored population best-first according to @p cfg's selection
 /// scheme: descending weighted fitness for WeightedAverage, or the NSGA-II
@@ -383,7 +471,7 @@ void pad_to_size(std::vector<Spec>& survivors, std::size_t target_size) {
 template <typename Spec>
 void order_population(const Config& cfg,
                       std::vector<Scored<Spec>>& population) {
-    if (cfg.selection_scheme == SelectionScheme::Nsga2) {
+    if (uses_nsga2_ranking(cfg)) {
         nsga2_sort(population);
         return;
     }
@@ -442,7 +530,7 @@ std::vector<Scored<Spec>> evolve_generation_generic(
     std::vector<Scored<Spec>> scored =
         score_population(cfg, survivors, fitness_functions, on_progress);
 
-    if (cfg.selection_scheme == SelectionScheme::Nsga2) {
+    if (uses_nsga2_ranking(cfg)) {
         // (mu + lambda) survivor selection: pool the incoming parents with the
         // freshly scored offspring, rank the union by the crowded-comparison
         // order, and keep the best target_size. This is NSGA-II's elitism, so
@@ -452,9 +540,23 @@ std::vector<Scored<Spec>> evolve_generation_generic(
         std::vector<Scored<Spec>> pool = population;
         pool.insert(pool.end(), std::make_move_iterator(scored.begin()),
                     std::make_move_iterator(scored.end()));
+
+        const bool replicate =
+            cfg.selection_scheme == SelectionScheme::Nsga2Replicate;
+        if (replicate) {
+            // Ranking the distinct specifications rather than the ~target_size
+            // slots holding them stops the truncation below from cutting
+            // arbitrarily through the rank-0 front.
+            pool = generation_detail::dedup_by_specification(std::move(pool));
+        }
         nsga2_sort(pool);
+
         if (pool.size() > target_size) {
             pool.resize(target_size);
+        } else if (replicate && pool.size() < target_size) {
+            // Deduplication alone would leave too few slots to breed from, so
+            // selection pressure is re-expressed as replication multiplicity.
+            pool = generation_detail::replicate_to_size(pool, target_size);
         }
         return pool;
     }

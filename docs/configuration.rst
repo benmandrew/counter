@@ -92,6 +92,32 @@ the whole Pareto front — the repairs not beaten on every objective at once —
 rather than one weighted compromise. That is useful when the right balance
 between, say, semantic similarity and size is not known in advance.
 
+**nsga2-replicate** ranks exactly as ``nsga2`` does, but changes what the
+(μ+λ) survivor step keeps. The pooled parents and offspring are mostly repeats
+of a handful of specifications, and duplicates never dominate one another, so
+they inflate the rank-0 front until truncating the pool back to
+``population_size`` cuts through that front arbitrarily. Deduplicating the pool
+on its own is no fix: it leaves a handful of survivors, selection becomes a
+no-op, and breeding collapses. Instead the pool is deduplicated, ranked, and —
+where the distinct set is smaller than ``population_size`` — replicated back up
+to it, weighting each individual by ``1 / (1 + rank)`` with a floor of one copy
+and handing out the spare slots by *largest-remainder* (Hamilton)
+apportionment. Selection pressure is re-expressed as how many slots an
+individual holds rather than whether it survives at all. The step is purely
+arithmetic and draws no random numbers, so a seeded run stays reproducible.
+
+The measured effect is diversity. An A/B over the four FRETISH examples at
+``generations = 10``, ``population_size = 200`` and ``elitism_rate = 0``, with
+20 seeds each for 80 paired runs, raised the distinct candidates held at
+generation 9 from 5.9 to 98.3, ``n_repairs`` from 3.43 to 9.94, and the share
+of runs finding any repair at all from 0.966 to 1.000 — for roughly 50% more
+wall-clock time. Repair quality did not move: pooled ``implies_ideal`` was
+0.500 under both schemes. That figure is uninformative here rather than
+reassuring, because the corpus sits at its extremes — ``takeoff`` and
+``fsm-timing`` score 1.000 either way, ``fsm`` and ``fsm-combined`` score 0.000
+either way — so it leaves no headroom in which a quality difference could show.
+The diversity gain is measured; the quality gain is unproven.
+
 **weighted** collapses them into a single weighted average and ranks by that
 scalar, using truncation selection with elitism. In principle this finds the one
 repair that best fits the configured trade-off; in practice it converges
@@ -101,14 +127,14 @@ not move with the generation count at any level from 5 to 80, and on the
 ``nsga2``'s 89.3%, at no saving in wall-clock time. It is kept for comparison
 rather than for use.
 
-Two consequences are worth knowing. Under ``nsga2`` the ``[fitness]`` weights
-only decide which components are active (weight > 0); they no longer bias
-selection. And its survivor selection pools each generation's parents with their
-offspring and keeps the best — a (μ+λ) scheme, already elitist — so
-``elitism_rate = 0`` is the natural companion setting.
+Two consequences are worth knowing. Under either NSGA-II scheme the
+``[fitness]`` weights only decide which components are active (weight > 0);
+they no longer bias selection. And their survivor selection pools each
+generation's parents with their offspring and keeps the best — a (μ+λ) scheme,
+already elitist — so ``elitism_rate = 0`` is the natural companion setting.
 
-Both schemes still emit the weighted-average scalar in each repair's fitness
-record, so outputs stay comparable across runs.
+All three schemes still emit the weighted-average scalar in each repair's
+fitness record, so outputs stay comparable across runs.
 
 Filters
 -------

@@ -58,6 +58,14 @@ The same checks run from `.githooks/pre-commit`, which is tracked. Git refuses t
 
 Adding a TOML config key means editing three places, none of which the compiler ties together: the `apply_*` function in `src/config_io.cpp` that reads it, `config_key_spec()` in the same file (else the parser warns "unknown key" on a key it accepts), and `schemas/config-schema.json` (else editors reject it). `scripts/check_config_schema.py` enforces the last two against each other and against `example-config.toml`, and runs as part of `lint`.
 
+## Commit provenance
+
+Every binary answers `--version` with `commit=`, `commit_short=` and `dirty=` lines, naming the commit it was built from. The hash is resolved at **build** time, not configure time: `cmake/version.cmake` runs `cmake/write_version_header.cmake` in script mode on every build, which renders `cmake/version.hpp.in` into `build/generated/git_version.hpp` via `configure_file` (so the file is rewritten only when the commit changed). Resolving it at configure time instead would bake in whatever HEAD was when cmake last ran, and `cmake --build` after a new commit would keep reporting the old hash — the exact failure this exists to catch. Only `src/version.cpp` includes the generated header, so a new commit recompiles one translation unit. `dirty` counts modified *tracked* files only.
+
+`scripts/run_experiments.py` shells `counter --version` once at startup — never `git rev-parse`, which reports the source rather than the binary — and stamps `commit` (abbreviated) and `dirty` onto every CSV row, plus a per-host `<stem>-manifest-<host>.json` beside the CSV. It refuses to launch when a binary's commit differs from the working tree's HEAD, was built dirty, or cannot be read at all; `--allow-stale-binary` downgrades that to a warning. Neither column may join the resume key in `run_experiments.py` or `KEY_FIELDS` in `merge_experiments.py`: archived rows have no commit, so keying on it would make every one of them miss and re-run finished campaigns.
+
+Campaigns closed before this existed carry a reconstructed `PROVENANCE.json` in their archive directory (`"attribution": "inferred"`), covering the profile commit only; `binary_commit` is `null` there and must stay that way. `experiments/README.md` documents the method and why a commit landing inside a run window proves nothing. Those two paths are the only tracked files under `experiments/`, via negations in `.gitignore` that need the directory to be ignored by content rather than by name.
+
 ## Docs
 
 Every header file in `include/` must have a corresponding `.rst` page under `docs/api/` and be listed in `docs/index.rst`. When adding a new header, add the page and toctree entry before committing. The internal reference needs no per-file upkeep — it scans `src/` automatically, so nothing extra is required there.

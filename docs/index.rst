@@ -30,6 +30,7 @@ functions, and anonymous namespaces, with source browsing and call graphs.
    api/serialisation
    api/status_line
    api/thread_pool
+   api/version
 
 .. toctree::
    :maxdepth: 1

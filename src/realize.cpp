@@ -11,6 +11,7 @@
 #include "serialisation.hpp"
 #include "tlsf/parser.hpp"
 #include "tlsf/specification.hpp"
+#include "version.hpp"
 
 namespace {
 
@@ -24,7 +25,9 @@ void print_usage(const char* prog) {
         << "Single file: prints REALIZABLE or UNREALIZABLE.\n"
         << "Multiple files: prints \"<path>: REALIZABLE\" or \"<path>: "
            "UNREALIZABLE\" per line.\n"
-        << "Exits with status 0 on success, or status 1 on error.\n";
+        << "Exits with status 0 on success, or status 1 on error.\n"
+        << "\n"
+        << "  --version  Print the git commit this binary was built from.\n";
 }
 
 std::optional<bool> check_tlsf_realizable(const std::string& path,
@@ -78,6 +81,10 @@ int main(int argc, const char* const argv[]) {
     if (argc == 0 || argv == nullptr || argv[0] == nullptr) {
         std::cerr << "fatal: missing argv[0]\n";
         return 1;
+    }
+    if (has_flag(argc, argv, "--version")) {
+        version::print(std::cout);
+        return 0;
     }
     if (has_flag(argc, argv, "-h") || has_flag(argc, argv, "--help")) {
         print_usage(argv[0]);

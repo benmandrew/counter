@@ -33,6 +33,7 @@
 #include "serialisation.hpp"
 #include "status_line.hpp"
 #include "tlsf/pipeline.hpp"
+#include "version.hpp"
 
 std::optional<std::string> parse_string_arg(int argc, const char* const* argv,
                                             const char* flag) {
@@ -510,6 +511,10 @@ void print_help(const char* prog) {
         << "                       <output-dir>/progress.jsonl and write a\n"
         << "                       live dashboard page beside it. Equivalent\n"
         << "                       to [runtime] dashboard = true.\n"
+        << "  --version            Print the git commit this binary was "
+           "built\n"
+        << "                       from as commit=, commit_short= and dirty=\n"
+        << "                       lines, and exit.\n"
         << "  -h, --help           Show this help message and exit.\n"
         << "\n"
         << "Input format (examples/takeoff/spec.json):\n"
@@ -529,10 +534,29 @@ void print_help(const char* prog) {
         << "              AfterTicks  {\"ticks\": n}\n";
 }
 
+// Both flags report on the binary rather than on a run, so they are answered
+// before the config is read: interrogating a binary must not require a valid
+// --config, and --version in particular is what a harness calls to find out
+// what it is about to run.
+bool handle_info_flags(int argc, const char* const* argv) {
+    if (has_flag(argc, argv, "--version")) {
+        version::print(std::cout);
+        return true;
+    }
+    if (has_flag(argc, argv, "-h") || has_flag(argc, argv, "--help")) {
+        print_help(argv[0]);
+        return true;
+    }
+    return false;
+}
+
 int main(int argc, const char* const argv[]) {
     if (argc == 0 || argv == nullptr || argv[0] == nullptr) {
         std::cerr << "fatal: missing argv[0]\n";
         return 1;
+    }
+    if (handle_info_flags(argc, argv)) {
+        return 0;
     }
     init_cpptrace(argv[0]);
     Config cfg;
@@ -554,10 +578,6 @@ int main(int argc, const char* const argv[]) {
     RealizabilityChecker::set_max_concurrency(cfg.max_concurrent_realizability);
     RealizabilityChecker::set_timeout(cfg.ltlsynt_timeout);
     set_ltl2tgba_timeout(cfg.ltl2tgba_timeout);
-    if (has_flag(argc, argv, "-h") || has_flag(argc, argv, "--help")) {
-        print_help(argv[0]);
-        return 0;
-    }
     const std::optional<std::string> input_path =
         parse_string_arg(argc, argv, "--input");
     const std::optional<std::string> output_dir =

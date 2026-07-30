@@ -7,9 +7,15 @@ and it exits non-zero on the first failure. The one thing worth guarding is that
 path regardless of how deep the factors nest — a config that lands one level
 deeper than a parser expects is silently mis-attributed to the wrong cell and
 its rows key wrong (the trap REPORT.md flags).
+
+The second half guards the commit-provenance columns, whose failure mode is the
+mirror image: a column that joins the resume or merge key makes every archived
+row miss and re-runs campaigns that are already finished.
 """
 
+import csv
 import sys
+import tempfile
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
@@ -201,5 +207,125 @@ for name, prof in P.items():
             f"{name}: missing input for spec {s}"
         if prof["timeout_caps"] is not None:
             assert s in prof["timeout_caps"], f"{name}: no timeout cap for {s}"
+
+
+# ── Commit provenance ────────────────────────────────────────────────────────
+
+# The output format of `counter --version` (src/version.cpp). Parsing must
+# survive a line that is not a key=value pair, so a future banner cannot break
+# a campaign launch.
+check(R.parse_version_output(
+          "commit=c38f582109c1c3ea7fa9b935a9a37f40f0fbba99\n"
+          "commit_short=c38f582\n"
+          "dirty=0\n"),
+      {"commit": "c38f582109c1c3ea7fa9b935a9a37f40f0fbba99",
+       "commit_short": "c38f582", "dirty": "0"},
+      "parse_version_output on the shipped format")
+check(R.parse_version_output("counter 0.1.0\ncommit=abc\n"),
+      {"commit": "abc"}, "parse_version_output ignores non-key=value lines")
+
+# A binary that predates --version exits non-zero rather than printing; so does
+# a path that is not a binary at all. Both must read as LEGACY_COMMIT rather
+# than raising, since the staleness check is what turns that into a refusal.
+missing = R.binary_version(Path("/nonexistent/counter"))
+check(missing["commit"], R.LEGACY_COMMIT, "absent binary reads as unknown")
+
+# The provenance columns are recorded but never keyed on. `commit` in
+# CSV_FIELDS and out of KEY_FIELDS is the whole backward-compatibility
+# contract: archived rows have no commit, and must still match on resume.
+for f in ("commit", "dirty"):
+    assert f in R.CSV_FIELDS, f"{f} missing from CSV_FIELDS"
+    assert f not in M.KEY_FIELDS, \
+        f"{f} must not be a merge key field: archived rows have no commit"
+check(M.LEGACY_COMMIT, R.LEGACY_COMMIT, "LEGACY_COMMIT agrees across scripts")
+
+# ... and the merge key must be blind to it: the same run recorded by two
+# binaries is one row, not two.
+legacy_row = {"sweep": "C", "level_name": "default", "selection": "nsga2",
+              "weakening": "wkon", "metric": "log", "repair_mode": "mono",
+              "spec": "lift", "seed": "3"}
+check(M.key_of({**legacy_row, "commit": "c38f582", "dirty": "0"}),
+      M.key_of(legacy_row), "merge key ignores the commit columns")
+
+# The historical header, copied from experiments/2026-07-23-arbiter-hp/
+# results-arbiter-hp.csv. Resuming against it must find its rows, and appending
+# to it must drop the new columns rather than widening a closed campaign's CSV.
+LEGACY_HEADER = [
+    "sweep", "level_name", "level_value", "selection", "weakening", "metric",
+    "repair_mode", "spec", "seed", "found_repair", "n_repairs", "best_fitness",
+    "best_relation", "implies_ideal", "n_implies", "wall_time_s", "timed_out",
+    "n_dropped",
+]
+check(R.CSV_FIELDS[:len(LEGACY_HEADER)], LEGACY_HEADER,
+      "CSV_FIELDS extends the archived header rather than reordering it")
+
+with tempfile.TemporaryDirectory() as tmp:
+    legacy_csv = Path(tmp) / "results-legacy.csv"
+    with open(legacy_csv, "w", newline="") as f:
+        w = csv.DictWriter(f, fieldnames=LEGACY_HEADER)
+        w.writeheader()
+        w.writerow({**legacy_row, "level_value": "default",
+                    "found_repair": "1", "n_repairs": "2",
+                    "best_fitness": "0.9", "best_relation": "equivalent",
+                    "implies_ideal": "1", "n_implies": "1",
+                    "wall_time_s": "12.0", "timed_out": "0", "n_dropped": "0"})
+
+    done = R.load_done_set(legacy_csv)
+    check(done, {("C", "default", "nsga2", "wkon", "log", "mono", "lift", 3)},
+          "load_done_set resumes an archived CSV")
+
+    # A new-format row appended to that CSV keeps its header: extrasaction
+    # ignores the columns it predates.
+    fieldnames = R.existing_fieldnames(legacy_csv)
+    check(fieldnames, LEGACY_HEADER, "archived header is read back unchanged")
+    R.append_row(legacy_csv, {**legacy_row, "level_value": "default",
+                              "found_repair": "0", "n_repairs": "0",
+                              "best_fitness": "", "best_relation": "none",
+                              "implies_ideal": "0", "n_implies": "0",
+                              "wall_time_s": "1.0", "timed_out": "0",
+                              "n_dropped": "0", "seed": "4",
+                              "commit": "c38f582", "dirty": "0"},
+                 fieldnames)
+    check(R.existing_fieldnames(legacy_csv), LEGACY_HEADER,
+          "appending a provenance row does not widen an archived CSV")
+    check(len(R.load_done_set(legacy_csv)), 2, "the appended row resumes too")
+
+# Merging a provenance-carrying CSV into an archived one widens the header and
+# fills the archived rows with the legacy default, rather than dropping the new
+# columns or writing them blank.
+new_header = LEGACY_HEADER + ["commit", "dirty"]
+check(M.fill_defaults(legacy_row, new_header)["commit"], M.LEGACY_COMMIT,
+      "an archived row fills commit with the legacy default")
+check(M.fill_defaults(legacy_row, new_header)["dirty"], "",
+      "dirty has no legacy value and stays blank")
+
+# ── Staleness check ──────────────────────────────────────────────────────────
+
+HEAD = "c38f582109c1c3ea7fa9b935a9a37f40f0fbba99"
+FRESH = {"commit": HEAD, "commit_short": "c38f582", "dirty": "0"}
+
+check(R.staleness_problems({"counter": FRESH}, HEAD), [],
+      "a clean binary at HEAD is not stale")
+check(len(R.staleness_problems({"counter": {**FRESH, "dirty": "1"}}, HEAD)), 1,
+      "a dirty binary is stale")
+check(len(R.staleness_problems(
+          {"counter": {"commit": "0" * 40, "commit_short": "0000000",
+                       "dirty": "0"}}, HEAD)), 1,
+      "a binary built from another commit is stale")
+check(len(R.staleness_problems(
+          {"counter": {"commit": R.LEGACY_COMMIT,
+                       "commit_short": R.LEGACY_COMMIT, "dirty": ""}}, HEAD)),
+      1, "a binary that cannot report a commit is stale")
+# Outside a git work tree there is nothing to compare against, so only the
+# binary's own dirty/unknown state can condemn it.
+check(R.staleness_problems({"counter": FRESH}, None), [],
+      "no working-tree HEAD means no mismatch to report")
+
+# The manifest is per host: campaigns run on av2 and av3 at once and merge into
+# one CSV, so a shared manifest name would have them overwrite each other.
+mp = R.manifest_path(Path("experiments/results-ablate-tlsf.csv"))
+assert mp.name.startswith("results-ablate-tlsf-manifest-"), mp
+assert mp.suffix == ".json", mp
+check(mp.parent, Path("experiments"), "manifest sits beside its CSV")
 
 print("ok: all factor-path round-trips pass")

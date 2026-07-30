@@ -18,6 +18,7 @@ include(cmake/ganak.cmake)
 include(cmake/spot.cmake)
 include(cmake/black.cmake)
 include(cmake/dependencies.cmake)
+include(cmake/version.cmake)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -45,8 +46,13 @@ target_sources(counter_core PRIVATE
     src/tlsf/parser.cpp
     src/tlsf/specification.cpp
     src/tlsf/writer.cpp
+    src/version.cpp
 )
 target_include_directories(counter_core PUBLIC include)
+# Only version.cpp includes the generated header, so a new commit recompiles
+# one translation unit rather than the whole tree.
+target_include_directories(counter_core PRIVATE "${COUNTER_VERSION_HEADER_DIR}")
+add_dependencies(counter_core counter_version_header)
 target_link_libraries(counter_core PUBLIC nlohmann_json::nlohmann_json)
 # Include nlohmann as a system directory so clang-tidy skips warnings inside it.
 target_include_directories(counter_core SYSTEM PUBLIC ${nlohmann_json_SOURCE_DIR}/include)

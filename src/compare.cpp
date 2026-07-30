@@ -26,6 +26,7 @@
 #include "tlsf/filter.hpp"
 #include "tlsf/parser.hpp"
 #include "tlsf/specification.hpp"
+#include "version.hpp"
 
 namespace {
 
@@ -43,7 +44,9 @@ void print_usage(const char* prog) {
         << "repair is equivalent to, strictly stronger than, strictly\n"
         << "weaker than, or incomparable with the ideal, under the\n"
         << "assume-guarantee implication order. Both directories must hold\n"
-        << "the same format: FRETISH JSON (.json) or basic-TLSF (.tlsf).\n";
+        << "the same format: FRETISH JSON (.json) or basic-TLSF (.tlsf).\n"
+        << "\n"
+        << "  --version  Print the git commit this binary was built from.\n";
 }
 
 std::optional<Args> parse_args(int argc, const char* const* argv) {
@@ -53,7 +56,10 @@ std::optional<Args> parse_args(int argc, const char* const* argv) {
             continue;
         }
         const std::string arg(argv[i]);
-        if (arg == "--help" || arg == "-h") {
+        if (arg == "--version") {
+            version::print(std::cout);
+            std::exit(0);
+        } else if (arg == "--help" || arg == "-h") {
             print_usage(argv[0]);
             std::exit(0);
         } else if (arg == "--repairs" && i + 1 < argc &&

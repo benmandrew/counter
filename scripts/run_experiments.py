@@ -17,6 +17,13 @@ Usage:
     python scripts/run_experiments.py --seeds 0 1 2      # specific seeds
     python scripts/run_experiments.py --dry-run          # print plan, no execution
     python scripts/run_experiments.py --no-resume        # ignore existing results
+
+Every row records the commit the counter binary was built from, read once at
+startup from `counter --version` rather than from the working tree — the two
+diverge whenever a fix lands without a rebuild. A launch whose binary does not
+match HEAD, or was built dirty, is refused; --allow-stale-binary downgrades
+that to a warning. A per-host manifest lands beside the results CSV with the
+branch, describe, binary commits and the sweep the launch asked for.
 """
 
 import argparse
@@ -25,6 +32,7 @@ import json
 import math
 import os
 import re
+import socket
 import subprocess
 import sys
 import threading
@@ -150,7 +158,7 @@ CSV_FIELDS = [
     "sweep", "level_name", "level_value", "selection", "weakening", "metric",
     "repair_mode", "spec", "seed", "found_repair", "n_repairs", "best_fitness",
     "best_relation", "implies_ideal", "n_implies", "wall_time_s",
-    "timed_out", "n_dropped",
+    "timed_out", "n_dropped", "commit", "dirty",
 ]
 
 # Rows written before `selection` existed are all NSGA-II: every config in use
@@ -190,6 +198,15 @@ LEGACY_REPAIR = "mono"
 # value "monolithic"). A config with no such ancestor predates the factor and is
 # read as LEGACY_REPAIR.
 REPAIR_DIRS: tuple[str, ...] = ("mono", "muc")
+
+# Rows written before `commit` existed have no recorded commit at all: nothing
+# asked the binary what it was built from, and a binary's commit is not
+# recoverable after the fact (mtime bounds a window, and the binaries on av2/av3
+# lag main by an unbounded amount — see the PROVENANCE.json files under
+# experiments/). Unlike LEGACY_SELECTION this is an admission of ignorance
+# rather than a known value, so it must never join the resume or merge key:
+# keying on it would make every archived row miss and re-run whole campaigns.
+LEGACY_COMMIT = "unknown"
 
 # Every factor directory name, so scheme_of can tell a scheme segment apart
 # from a factor segment regardless of nesting order or depth.
@@ -903,6 +920,179 @@ def parse_compare_output(stdout: str) -> tuple[str, int, int]:
     return best_relation, int(n_implies > 0), n_implies
 
 
+# ── Binary provenance ────────────────────────────────────────────────────────
+
+def parse_version_output(text: str) -> dict[str, str]:
+    """Parse `<binary> --version` output into its key=value pairs.
+
+    The binary prints one `key=value` line per fact (commit, commit_short,
+    dirty). Lines without a `=` are ignored, so a future banner line cannot
+    break the parse.
+    """
+    fields: dict[str, str] = {}
+    for line in text.splitlines():
+        key, sep, value = line.partition("=")
+        if sep:
+            fields[key.strip()] = value.strip()
+    return fields
+
+
+def binary_version(bin_path: Path) -> dict[str, str]:
+    """Ask a binary what it was built from. Once per campaign, not per run.
+
+    Deliberately not `git rev-parse`: the working tree says what the source is
+    now, and the binary says what it was compiled from. Those diverge every
+    time a fix lands without a rebuild, and that gap is exactly what a recorded
+    commit is for. A binary that predates --version exits non-zero and reads as
+    LEGACY_COMMIT, which the staleness check then treats as stale — it is, by
+    definition, older than this script.
+    """
+    unknown = {"commit": LEGACY_COMMIT, "commit_short": LEGACY_COMMIT,
+               "dirty": ""}
+    try:
+        proc = subprocess.run([str(bin_path), "--version"], check=True,
+                              timeout=60, capture_output=True, text=True)
+    except (OSError, subprocess.SubprocessError):
+        return unknown
+    fields = parse_version_output(proc.stdout)
+    if "commit" not in fields:
+        return unknown
+    return {**unknown, **fields}
+
+
+def working_tree_head() -> str | None:
+    """HEAD of the checkout this script lives in, or None outside a work tree."""
+    try:
+        proc = subprocess.run(
+            ["git", "-C", str(REPO_ROOT), "rev-parse", "HEAD"],
+            check=True, timeout=60, capture_output=True, text=True)
+    except (OSError, subprocess.SubprocessError):
+        return None
+    return proc.stdout.strip() or None
+
+
+def git_describe() -> str:
+    try:
+        proc = subprocess.run(
+            ["git", "-C", str(REPO_ROOT), "describe", "--always", "--dirty",
+             "--tags"],
+            check=True, timeout=60, capture_output=True, text=True)
+    except (OSError, subprocess.SubprocessError):
+        return LEGACY_COMMIT
+    return proc.stdout.strip() or LEGACY_COMMIT
+
+
+def git_branch() -> str:
+    try:
+        proc = subprocess.run(
+            ["git", "-C", str(REPO_ROOT), "rev-parse", "--abbrev-ref", "HEAD"],
+            check=True, timeout=60, capture_output=True, text=True)
+    except (OSError, subprocess.SubprocessError):
+        return LEGACY_COMMIT
+    return proc.stdout.strip() or LEGACY_COMMIT
+
+
+def staleness_problems(versions: dict[str, dict[str, str]],
+                       head: str | None) -> list[str]:
+    """Reasons the binaries must not be trusted to represent HEAD.
+
+    Empty means every binary reports a clean build of the working tree's HEAD.
+    """
+    problems: list[str] = []
+    for name, version in versions.items():
+        if version["commit"] == LEGACY_COMMIT:
+            problems.append(
+                f"{name} does not report a commit: it predates --version, or "
+                f"was built outside a git work tree")
+            continue
+        if version.get("dirty") == "1":
+            problems.append(
+                f"{name} was built from a modified working tree "
+                f"({version['commit_short']}-dirty), so its commit does not "
+                f"identify the code that ran")
+        if head is not None and version["commit"] != head:
+            problems.append(
+                f"{name} was built from {version['commit_short']}, but the "
+                f"working tree is at {head[:7]}")
+    return problems
+
+
+def enforce_binary_freshness(versions: dict[str, dict[str, str]],
+                             head: str | None, allow_stale: bool) -> None:
+    problems = staleness_problems(versions, head)
+    if not problems:
+        return
+    bar = "!" * 72
+    print(f"\n{bar}")
+    print("STALE BINARY: the binaries do not match this working tree.")
+    for problem in problems:
+        print(f"  - {problem}")
+    print("A campaign run against a binary that predates a fix produces "
+          "numbers\nthat look valid and are not. Rebuild "
+          "(cmake --workflow --preset release)\nor pass --allow-stale-binary "
+          "if the mismatch is deliberate.")
+    print(f"{bar}\n")
+    if not allow_stale:
+        sys.exit("Refusing to start with a stale binary.")
+    print("Continuing anyway (--allow-stale-binary).\n")
+
+
+def write_manifest(path: Path, profile_name: str, profile: dict,
+                   versions: dict[str, dict[str, str]], head: str | None,
+                   jobs: int, specs: list, seeds: list,
+                   sweeps: set | None) -> None:
+    """Record what this host ran, beside the CSV it appends to.
+
+    The CSV carries the binary commit per row, but nothing else about the
+    launch: which branch, which levels, how many workers. Reconstructing that
+    afterwards from config mtimes is the guesswork the PROVENANCE.json files
+    under experiments/ document; this writes it down at run time instead.
+    """
+    manifest = {
+        "profile": profile_name,
+        "hostname": socket.gethostname(),
+        "started": time.strftime("%Y-%m-%dT%H:%M:%S%z"),
+        "git": {
+            "branch": git_branch(),
+            "describe": git_describe(),
+            "head": head or LEGACY_COMMIT,
+        },
+        "binaries": {
+            name: {"path": str(bin_path), **versions[name]}
+            for name, bin_path in (("counter", COUNTER_BIN),
+                                   ("compare", COMPARE_BIN))
+        },
+        "sweep": {
+            "schemes": profile["schemes"],
+            "weakenings": profile["weakenings"],
+            "metrics": profile["metrics"],
+            "repair_modes": profile["repair_modes"],
+            "sweeps": sorted(sweeps) if sweeps is not None else None,
+            # Restricted to the sweeps this launch asked for: a profile's level
+            # map covers sweeps a --sweeps run never touches, and recording
+            # those makes the manifest describe a campaign that did not happen.
+            "levels": {k: v for k, v in profile["levels"].items()
+                       if sweeps is None or k in sweeps},
+            "specs": list(specs),
+            "seeds": list(seeds),
+            "jobs": jobs,
+            "configs_dir": str(profile["configs_dir"]),
+            "results_dir": str(profile["results_dir"]),
+            "results_csv": str(profile["results_csv"]),
+        },
+    }
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(manifest, indent=2) + "\n")
+
+
+def manifest_path(results_csv: Path) -> Path:
+    """One manifest per host beside the CSV; campaigns run on av2 and av3 at
+    once and merge into one file, so a shared name would have them overwrite
+    each other."""
+    host = socket.gethostname().split(".")[0]
+    return results_csv.with_name(f"{results_csv.stem}-manifest-{host}.json")
+
+
 # ── CSV helpers ───────────────────────────────────────────────────────────────
 
 def load_done_set(csv_path: Path) -> set:
@@ -1066,6 +1256,9 @@ def main() -> None:
     parser.add_argument("--dry-run", action="store_true")
     parser.add_argument("--no-resume", action="store_true",
                         help="Re-run even if a result already exists in the CSV")
+    parser.add_argument("--allow-stale-binary", action="store_true",
+                        help="Warn instead of refusing when the binaries were "
+                             "not built from the working tree's HEAD")
     args = parser.parse_args()
 
     profile = PROFILES[args.profile]
@@ -1078,6 +1271,29 @@ def main() -> None:
     configs_dir: Path = profile["configs_dir"]
     results_dir: Path = profile["results_dir"]
 
+    # Validate binaries (skipped for --dry-run so plans work without a build)
+    head = working_tree_head()
+    unknown_version = {"commit": LEGACY_COMMIT, "commit_short": LEGACY_COMMIT,
+                       "dirty": ""}
+    versions = {"counter": dict(unknown_version),
+                "compare": dict(unknown_version)}
+    if not args.dry_run:
+        for bin_path in [COUNTER_BIN, COMPARE_BIN]:
+            if not bin_path.exists():
+                sys.exit(
+                    f"Binary not found: {bin_path}\n"
+                    f"Run: cmake --workflow --preset release"
+                )
+        # Once, at startup: every run of this campaign uses these binaries, so
+        # asking per run would cost thousands of subprocesses to learn one fact.
+        versions = {"counter": binary_version(COUNTER_BIN),
+                    "compare": binary_version(COMPARE_BIN)}
+
+    def version_label(name: str) -> str:
+        version = versions[name]
+        suffix = "-dirty" if version.get("dirty") == "1" else ""
+        return f"{name} {version['commit_short']}{suffix}"
+
     print("=" * 64)
     print(f"  Profile: {args.profile}")
     print(f"    jobs:    {jobs}")
@@ -1086,16 +1302,12 @@ def main() -> None:
     print(f"    configs: {configs_dir}")
     print(f"    runs:    {results_dir}")
     print(f"    results: {results_csv}")
+    print(f"    binary:  {version_label('counter')}, "
+          f"{version_label('compare')}")
     print("=" * 64)
 
-    # Validate binaries (skipped for --dry-run so plans work without a build)
     if not args.dry_run:
-        for bin_path in [COUNTER_BIN, COMPARE_BIN]:
-            if not bin_path.exists():
-                sys.exit(
-                    f"Binary not found: {bin_path}\n"
-                    f"Run: cmake --workflow --preset release"
-                )
+        enforce_binary_freshness(versions, head, args.allow_stale_binary)
 
     # Collect config files
     if not configs_dir.exists():
@@ -1244,8 +1456,14 @@ def main() -> None:
     results_dir.mkdir(parents=True, exist_ok=True)
     results_csv.parent.mkdir(parents=True, exist_ok=True)
 
+    manifest = manifest_path(results_csv)
+    write_manifest(manifest, args.profile, profile, versions, head, jobs,
+                   specs, seeds, wanted_sweeps)
+    print(f"Manifest: {manifest}")
+
     fieldnames = existing_fieldnames(results_csv) or CSV_FIELDS
-    for column in ["timed_out", "weakening", "metric", "repair_mode"]:
+    for column in ["timed_out", "weakening", "metric", "repair_mode",
+                   "commit", "dirty"]:
         if column not in fieldnames:
             print(f"Note: {results_csv.name} predates the {column} column; "
                   f"appending without it")
@@ -1298,7 +1516,11 @@ def main() -> None:
                 row = {**result, "sweep": sweep, "level_name": level_name,
                        "level_value": level_value_of(level_name),
                        "selection": scheme, "weakening": weakening,
-                       "metric": metric, "repair_mode": repair}
+                       "metric": metric, "repair_mode": repair,
+                       # The abbreviated hash, since this is a column a human
+                       # reads; the manifest beside the CSV keeps the full one.
+                       "commit": versions["counter"]["commit_short"],
+                       "dirty": versions["counter"].get("dirty", "")}
                 append_row(results_csv, row, fieldnames)
                 done.add(row_key(key, sweep, level_name))
                 state["rows_written"] += 1

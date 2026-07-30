@@ -1,0 +1,28 @@
+{
+  "campaign": "2026-07-23-arbiter-hp",
+  "attribution": "inferred",
+  "generated_on": "2026-07-30",
+  "method": "Reconstructed after the fact, not recorded at run time. Each campaign is a uniquely-named profile introduced by exactly one commit; the configs-<profile>/ files were written locally by gen_configs.py on the same clock as git commit, so their mtimes anchor the campaign to that commit. Corroborated where possible by config content, run.log feature fingerprints, and EXPERIMENTS.md prose.",
+  "profile_commit": {
+    "sha": "776f750fd1c5977ad9fc4079806e20d09b5c3c2f",
+    "subject": "tune: calibrate arbiter-hp to pop10000/gen100, 600s cap",
+    "author_date": "2026-07-23 12:05",
+    "commit_date": "2026-07-23 12:05"
+  },
+  "profile_commit_confidence": "strong",
+  "profile_commit_evidence": "The 5-minute and 3-minute deltas to the two candidate commits both sit inside the av3 skew band, so mtime alone cannot choose between them. Config content resolves it independently of any clock: configs-arbiter-hp/nsga2/sweep_W_wsoff-oaoff.toml has generations = 100 and population_size = 10000, exactly 776f750's calibration. Zero commits land inside the run window, so the binary is unambiguous.",
+  "binary_commit": null,
+  "binary_commit_note": "Not inferable. Binaries on av2/av3 lag main by an unbounded, undocumented amount, so a commit falling inside a run window may be absent from the binary that ran. 62bbc6f is the standing proof: committed 2026-07-20 14:16, squarely inside the muc run window, yet EXPERIMENTS.md records it as not in that campaign's binary. Do not derive binary attribution from window containment. Campaigns run after the --version change carry a recorded binary commit in their manifest instead.",
+  "run_window": {
+    "earliest": "2026-07-23 12:10",
+    "latest": "2026-07-23 16:39",
+    "note": "Run-window mtimes come from two hosts with unsynced clocks; av3 runs ~17 min fast. Seeds partition by host (av2 low, av3 high), so the run dir name identifies which clock a timestamp came from."
+  },
+  "recorded_binary_facts": [],
+  "caveats": [],
+  "introduced_by": {
+    "sha": "33ed058ae3bbea6198a51cae1270ed50826a69b4",
+    "subject": "feat: add focused high-population arbiter profile (arbiter-hp)",
+    "author_date": "2026-07-23 11:57"
+  }
+}

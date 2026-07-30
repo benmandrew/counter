@@ -9,6 +9,7 @@
 #include "runner/spot.hpp"
 #include "tlsf/parser.hpp"
 #include "tlsf/specification.hpp"
+#include "version.hpp"
 
 namespace {
 
@@ -21,7 +22,9 @@ void print_usage(const char* prog) {
         << "side sections (PRESET, ASSERT, GUARANTEE) that stays unrealizable\n"
         << "against the full, unchanged environment side. Prints REALIZABLE\n"
         << "(no core) when the input is already realizable.\n"
-        << "Exits 0 on success, 1 on error.\n";
+        << "Exits 0 on success, 1 on error.\n"
+        << "\n"
+        << "  --version  Print the git commit this binary was built from.\n";
 }
 
 bool has_flag(int argc, const char* const* argv, const char* flag) {
@@ -39,6 +42,10 @@ int main(int argc, const char* const argv[]) {
     if (argc == 0 || argv == nullptr || argv[0] == nullptr) {
         std::cerr << "fatal: missing argv[0]\n";
         return 1;
+    }
+    if (has_flag(argc, argv, "--version")) {
+        version::print(std::cout);
+        return 0;
     }
     if (has_flag(argc, argv, "-h") || has_flag(argc, argv, "--help")) {
         print_usage(argv[0]);

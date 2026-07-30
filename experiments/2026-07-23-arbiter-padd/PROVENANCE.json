@@ -1,0 +1,23 @@
+{
+  "campaign": "2026-07-23-arbiter-padd",
+  "attribution": "inferred",
+  "generated_on": "2026-07-30",
+  "method": "Reconstructed after the fact, not recorded at run time. Each campaign is a uniquely-named profile introduced by exactly one commit; the configs-<profile>/ files were written locally by gen_configs.py on the same clock as git commit, so their mtimes anchor the campaign to that commit. Corroborated where possible by config content, run.log feature fingerprints, and EXPERIMENTS.md prose.",
+  "profile_commit": {
+    "sha": "db30a59b02f731216e88384a6b50d35d2aa78889",
+    "subject": "feat: add arbiter p_add_assumption spread sweep (arbiter-padd)",
+    "author_date": "2026-07-23 16:46",
+    "commit_date": "2026-07-23 16:46"
+  },
+  "profile_commit_confidence": "strong",
+  "profile_commit_evidence": "The cleanest case in the set: configs written ~96 seconds after the commit, runs begin four minutes later, and zero commits exist anywhere in the run window (the next commit on main is 9e5fc08 at 2026-07-24 14:23, six hours after the last run). Profile and binary pin to a single revision.",
+  "binary_commit": null,
+  "binary_commit_note": "Not inferable. Binaries on av2/av3 lag main by an unbounded, undocumented amount, so a commit falling inside a run window may be absent from the binary that ran. 62bbc6f is the standing proof: committed 2026-07-20 14:16, squarely inside the muc run window, yet EXPERIMENTS.md records it as not in that campaign's binary. Do not derive binary attribution from window containment. Campaigns run after the --version change carry a recorded binary commit in their manifest instead.",
+  "run_window": {
+    "earliest": "2026-07-23 16:50",
+    "latest": "2026-07-24 08:36",
+    "note": "Run-window mtimes come from two hosts with unsynced clocks; av3 runs ~17 min fast. Seeds partition by host (av2 low, av3 high), so the run dir name identifies which clock a timestamp came from."
+  },
+  "recorded_binary_facts": [],
+  "caveats": []
+}

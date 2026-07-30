@@ -59,6 +59,8 @@ PROFILE_CSVS: dict[str, str] = {
     # so merging under either profile name merges the same rows.
     "ablate-tlsf": "results-ablate-tlsf.csv",
     "h2h-tlsf": "results-ablate-tlsf.csv",
+    "replicate": "results-replicate.csv",
+    "replicate-tlsf": "results-replicate-tlsf.csv",
 }
 
 # Per-run output directory each profile writes under experiments/. Most profiles
@@ -77,6 +79,8 @@ PROFILE_RESULT_DIRS: dict[str, str] = {
     "ablate-fret": "results-ablate-fret",
     "ablate-tlsf": "results-ablate-tlsf",
     "h2h-tlsf": "results-ablate-tlsf",
+    "replicate": "results-replicate",
+    "replicate-tlsf": "results-replicate-tlsf",
 }
 
 # Natural key of a results row: one run per (sweep, level_name, selection,

@@ -723,6 +723,96 @@ PROFILES: dict[str, dict] = {
         "results_csv": EXPERIMENTS_DIR / "results-ablate-tlsf.csv",
         "default_jobs": 1,
     },
+    # nsga2 vs nsga2-replicate on FRETISH, at the gen40/pop1000 operating point
+    # the cj-large and metric campaigns used — so the control arm is checkable
+    # against their rows rather than being taken on trust. Three arms:
+    #   nsga2/sweep_R            control
+    #   nsga2-replicate/sweep_R  treatment
+    #   nsga2/sweep_S            compute-matched control (see gen_configs)
+    # The design is the config tree, not this table: sweep S is generated under
+    # nsga2 only, so listing both schemes and both sweeps still yields three
+    # arms rather than four. Generate with
+    #   python scripts/gen_configs.py --schemes nsga2 nsga2-replicate \
+    #       --sweeps R --generations 40 --population-size 1000 \
+    #       --out-dir experiments/configs-replicate
+    #   python scripts/gen_configs.py --schemes nsga2 --sweeps S \
+    #       --generations 40 --population-size 1000 \
+    #       --compute-match-factor <measured> \
+    #       --out-dir experiments/configs-replicate
+    #
+    # Responses: implies_ideal (quality) with fsm carrying the power — it is the
+    # only FRETISH family measured off both bounds (0.46-0.53 across cj-large
+    # and metric) — fsm-combined (0.08) testing upward movement, and
+    # takeoff/fsm-timing (~1.0) as saturation controls that should not move.
+    # found_repair, n_repairs and wall_time_s are secondary.
+    "replicate": {
+        "schemes": ["nsga2", "nsga2-replicate"],
+        "weakenings": None,
+        "metrics": None,
+        "repair_modes": None,
+        "sweeps": ["R", "S"],
+        "levels": {},
+        "specs": list(FRETISH_SPECS),
+        # Seed-major disjoint ranges across av2/av3 (pass --seeds on launch).
+        # 200 pairs per cell resolves ~0.15 absolute on implies_ideal at fsm's
+        # p~=0.5, ~0.10 pooled over the two elitism levels. Smaller effects are
+        # out of reach at any budget this campaign can afford — 0.05 would need
+        # ~1600 seeds per arm.
+        "seeds": list(range(200)),
+        # cj-large's caps for this operating point, scaled for the two arms that
+        # cost more: replicate breeds from a replicated population and sweep S
+        # runs a longer generation budget. Sized never to bite — a cap that
+        # fires records implies_ideal = 0 for a run that was merely slow.
+        "timeout_caps": {"takeoff": 900, "fsm": 900, "fsm-timing": 900,
+                         "fsm-combined": 1500},
+        # The treatment arm's whole claim is that it keeps more distinct
+        # candidates, which shows up as more repairs, and compare's cost scales
+        # with them. At the default 600 s the arm under test would be the one
+        # whose comparisons get censored.
+        "compare_timeout": 1800,
+        "baseline_aliases": {},
+        "configs_dir": EXPERIMENTS_DIR / "configs-replicate",
+        "results_dir": EXPERIMENTS_DIR / "results-replicate",
+        "results_csv": EXPERIMENTS_DIR / "results-replicate.csv",
+        "default_jobs": 4,
+    },
+    # The TLSF half of the same comparison, at the TLSF baseline operating point
+    # (gen10/pop200) for comparability with the prior TLSF data. Two arms only:
+    # the compute-matched control rides on the FRETISH half, where the responses
+    # are less saturated and a run costs minutes rather than tens of minutes.
+    # Generate with
+    #   python scripts/gen_configs.py --tlsf --schemes nsga2 nsga2-replicate \
+    #       --sweeps R --out-dir experiments/configs-replicate-tlsf
+    # (--tlsf carries the 500 ms ltlsynt timeout, 60 s ltl2tgba timeout and 0.15
+    # scoring tolerance the heavy specs need.)
+    #
+    # Specs chosen by measured headroom from the 2026-07-21 muc campaign at this
+    # operating point: arbiter (found_repair 0.50) and lily02 (implies_ideal
+    # 0.67) are the two that can move; gyro-var1, lift and minepump sit at
+    # implies_ideal 0.000 with found_repair ~1.0 and serve as negative controls.
+    # humanoid-531 is excluded on cost alone (965 s mean, 2400 s p90).
+    "replicate-tlsf": {
+        "schemes": ["nsga2", "nsga2-replicate"],
+        "weakenings": None,
+        "metrics": None,
+        "repair_modes": None,
+        "sweeps": ["R"],
+        "levels": {},
+        "specs": ["arbiter", "gyro-var1", "lift", "lily02", "minepump"],
+        "seeds": list(range(60)),
+        # The muc profile's caps, roughly doubled: the treatment arm runs longer
+        # and its extra survivors each cost realizability checks.
+        "timeout_caps": {"arbiter": 300, "gyro-var1": 600, "lift": 1200,
+                         "lily02": 300, "minepump": 300},
+        "compare_timeout": 1200,
+        "baseline_aliases": {},
+        "configs_dir": EXPERIMENTS_DIR / "configs-replicate-tlsf",
+        "results_dir": EXPERIMENTS_DIR / "results-replicate-tlsf",
+        "results_csv": EXPERIMENTS_DIR / "results-replicate-tlsf.csv",
+        # jobs=1 for the same RAM reason as the tlsf profile: ltlsynt is
+        # multi-GB resident per call on these specs.
+        "default_jobs": 1,
+    },
 }
 
 

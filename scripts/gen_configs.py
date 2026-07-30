@@ -29,8 +29,10 @@ CONFIGS_DIR = Path(__file__).parent.parent / "experiments" / "configs"
 
 # Selection schemes the whole grid is duplicated across. config.hpp defaults to
 # "weighted"; a config omitting the key silently gets that, which is why every
-# generated config pins it explicitly.
-SCHEMES: list[str] = ["nsga2", "weighted"]
+# generated config pins it explicitly. nsga2-replicate is appended rather than
+# ordered next to nsga2 so the first two entries keep the positions the earlier
+# grids were generated under.
+SCHEMES: list[str] = ["nsga2", "weighted", "nsga2-replicate"]
 
 # run_weakening as a crossed factor: each (scheme, sweep, level) is emitted once
 # per weakening state into its own <scheme>/<wkon|wkoff>/ directory. The state
@@ -88,6 +90,12 @@ DEFAULTS: dict = {
     "selection_scheme": "nsga2",
     "crossover_rate": 0.1,
     "mutation_rate": 1.0,
+    # Fraction of the population carried over verbatim, mirroring config.hpp.
+    # Emitted into [genetic] only when a sweep overrides it (see make_toml), so
+    # every existing grid stays byte-identical; the elitism sweep (R) crosses it
+    # because carrying elites over re-injects exact duplicates, which is the
+    # mechanism the replicate scheme exists to undo.
+    "elitism_rate": 0.1,
     "weight_syntactic": 0.33,
     "weight_semantic": 0.33,
     "weight_halstead": 0.1,
@@ -142,6 +150,11 @@ DEFAULTS: dict = {
     # circuit breaker drops them, but at the smallest population the default 0.05
     # tolerance floors to 1 and aborts the run, so the campaign raises it.
     "max_scoring_failure_rate": 0.0,
+    # Progress log + dashboard page, off by default in config.hpp and emitted
+    # only when true. A campaign of many runs should leave it off; the
+    # mechanism-check subset turns it on because progress.jsonl is where the
+    # per-stage distinct-individual counts are recorded.
+    "dashboard": False,
 }
 
 
@@ -166,6 +179,8 @@ def make_toml(overrides: dict, defaults: dict = DEFAULTS) -> str:
         f'selection_scheme = "{d["selection_scheme"]}"',
         f"crossover_rate  = {_fmt(d['crossover_rate'])}",
         f"mutation_rate   = {_fmt(d['mutation_rate'])}",
+    ] + ([f"elitism_rate    = {_fmt(d['elitism_rate'])}"]
+         if "elitism_rate" in overrides else []) + [
         "",
         "[fitness]",
         f"weight_syntactic = {_fmt(d['weight_syntactic'])}",
@@ -206,7 +221,9 @@ def make_toml(overrides: dict, defaults: dict = DEFAULTS) -> str:
         [f"ltl2tgba_timeout_ms = {d['ltl2tgba_timeout_ms']}"]
         if d.get("ltl2tgba_timeout_ms") else []) + (
         [f"max_scoring_failure_rate = {_fmt(d['max_scoring_failure_rate'])}"]
-        if d.get("max_scoring_failure_rate") else []) + [
+        if d.get("max_scoring_failure_rate") else []) + (
+        [f"dashboard = {_fmt(d['dashboard'])}"]
+        if d.get("dashboard") else []) + [
         "",
         "[tlsf]",
         f'repair_mode = "{d["repair_mode"]}"',
@@ -339,6 +356,38 @@ SWEEP_J: list[tuple[str, dict]] = [
     ("weaken-off", {"run_weakening": False}),
 ]
 
+# Sweep R: vary elitism, for the nsga2-vs-nsga2-replicate campaign. Elitism
+# carries the top fraction over verbatim, which re-injects exact duplicates into
+# the pool -- the mechanism nsga2-replicate deduplicates away. The scheme's
+# original A/B ran at elitism_rate = 0, which is *not* the shipped default, so
+# crossing the two states is what separates "replicate helps" from "replicate
+# helps only where nothing else re-injects duplicates".
+SWEEP_R: list[tuple[str, dict]] = [
+    ("elit0",   {"elitism_rate": 0.0}),
+    ("elit0.1", {"elitism_rate": 0.1}),   # config.hpp default
+]
+
+
+# Sweep S: the compute-matched control for sweep R. nsga2-replicate costs more
+# wall time per run than nsga2 (it breeds from a replicated population), so a
+# raw R comparison confounds "better selection" with "more compute". S is
+# sweep R's levels at a larger generation budget, run under nsga2 only: if
+# replicate beats plain nsga2 at R but not this arm, the gain was the compute.
+#
+# The multiplier is a flag rather than a constant because the campaign fixes it
+# from calibration -- measure replicate's actual cost ratio, then regenerate S
+# with --compute-match-factor set to it. Only `generations` is scaled;
+# population_size is the axis the duplication story is about, so holding it
+# fixed keeps the arms comparable in the dimension under test.
+DEFAULT_COMPUTE_MATCH_FACTOR = 1.5
+
+
+def make_sweep_s(generations: int, factor: float) -> list[tuple[str, dict]]:
+    matched = max(1, round(generations * factor))
+    return [(f"cm-{level_name}", {**overrides, "generations": matched})
+            for level_name, overrides in SWEEP_R]
+
+
 SWEEPS: list[tuple[str, list]] = [
     ("A", SWEEP_A),
     ("B", SWEEP_B),
@@ -350,6 +399,11 @@ SWEEPS: list[tuple[str, list]] = [
     ("H", SWEEP_H),
     ("I", SWEEP_I),
     ("J", SWEEP_J),
+    ("R", SWEEP_R),
+    # Placeholder levels at the default operating point and match factor: main()
+    # rebuilds this entry from --generations/--compute-match-factor. It is
+    # tabulated anyway so --sweeps validates "S" and the default set includes it.
+    ("S", make_sweep_s(DEFAULTS["generations"], DEFAULT_COMPUTE_MATCH_FACTOR)),
 ]
 
 # ── TLSF campaign grid ───────────────────────────────────────────────────────
@@ -453,6 +507,12 @@ TLSF_SWEEP_Q: list[tuple[str, dict]] = [
     for arm_name, arm_overrides in _ARBITER_WSON_ARMS
 ]
 
+# TLSF sweep R: the elitism cross of the FRETISH sweep R, at the TLSF baseline
+# operating point (gen10/pop200) and carrying the TLSF runtime settings --tlsf
+# supplies. Same letter as the FRETISH sweep because it is the same factor; the
+# two never share a table, exactly as A and B do not.
+TLSF_SWEEP_R: list[tuple[str, dict]] = list(SWEEP_R)
+
 TLSF_SWEEPS: list[tuple[str, list]] = [
     ("A", TLSF_SWEEP_A),
     ("B", TLSF_SWEEP_B),
@@ -460,6 +520,7 @@ TLSF_SWEEPS: list[tuple[str, list]] = [
     ("P", TLSF_SWEEP_P),
     ("W", TLSF_SWEEP_W),
     ("Q", TLSF_SWEEP_Q),
+    ("R", TLSF_SWEEP_R),
 ]
 
 TLSF_CONFIGS_DIR = Path(__file__).parent.parent / "experiments" / "configs-tlsf"
@@ -558,6 +619,17 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--out-dir", type=Path, default=CONFIGS_DIR, metavar="PATH",
                         help=f"Directory to write <scheme>/ dirs into (default: "
                              f"{CONFIGS_DIR})")
+    parser.add_argument("--compute-match-factor", type=float,
+                        default=DEFAULT_COMPUTE_MATCH_FACTOR, metavar="X",
+                        help=f"Generation-budget multiplier for sweep S, the "
+                             f"compute-matched control arm (default: "
+                             f"{DEFAULT_COMPUTE_MATCH_FACTOR}). Set it to the "
+                             f"cost ratio measured in calibration")
+    parser.add_argument("--dashboard", action="store_true",
+                        help="Emit runtime.dashboard = true, so each run writes "
+                             "progress.jsonl (per-stage distinct-individual "
+                             "counts). Costs a flushed write per stage; leave "
+                             "off for a full campaign, on for a subset")
     parser.add_argument("--tlsf", action="store_true",
                         help="Emit the TLSF campaign grid: a coarse "
                              "generations x population cross (sweeps A, B) for "
@@ -636,6 +708,13 @@ def main() -> None:
     defaults["ltlsynt_timeout_ms"] = ltlsynt_timeout or 0
     defaults["ltl2tgba_timeout_ms"] = ltl2tgba_timeout or 0
     defaults["max_scoring_failure_rate"] = max_scoring_failure_rate or 0.0
+    defaults["dashboard"] = args.dashboard
+    # Sweep S's levels depend on the operating point and the match factor, so
+    # the tabulated placeholder is rebuilt here against the actual arguments.
+    sweep_table = [
+        ("S", make_sweep_s(args.generations, args.compute_match_factor))
+        if name == "S" else (name, levels)
+        for name, levels in sweep_table]
     wanted = set(args.sweeps)
     sweeps = [(name, levels) for name, levels in sweep_table if name in wanted]
     # --levels restricts every selected sweep to the named levels (a sweep left

@@ -11,6 +11,32 @@
 
 namespace {
 
+// Handles the genetic-algorithm suites. Split out of run_suite for the same
+// reason as run_tlsf_suite below.
+bool run_genetic_suite(std::string_view suite_name) {
+    if (suite_name == "crossover") {
+        run_crossover_tests();
+        return true;
+    }
+    if (suite_name == "generation") {
+        run_generation_tests();
+        return true;
+    }
+    if (suite_name == "determinism") {
+        run_determinism_tests();
+        return true;
+    }
+    if (suite_name == "nsga2") {
+        run_nsga2_tests();
+        return true;
+    }
+    if (suite_name == "mutation") {
+        run_mutation_tests();
+        return true;
+    }
+    return false;
+}
+
 // Handles the population-filter suites. Split out of run_suite for the same
 // reason as run_tlsf_suite below.
 bool run_filter_suite(std::string_view suite_name) {
@@ -89,20 +115,7 @@ void run_suite(std::string_view suite_name,
         run_spot_runner_tests();
         return;
     }
-    if (suite_name == "crossover") {
-        run_crossover_tests();
-        return;
-    }
-    if (suite_name == "generation") {
-        run_generation_tests();
-        return;
-    }
-    if (suite_name == "nsga2") {
-        run_nsga2_tests();
-        return;
-    }
-    if (suite_name == "mutation") {
-        run_mutation_tests();
+    if (run_genetic_suite(suite_name)) {
         return;
     }
     if (suite_name == "prop_formula_ast") {
@@ -187,6 +200,7 @@ int main(int argc, const char* const argv[]) {
             run_spot_runner_tests();
             run_crossover_tests();
             run_generation_tests();
+            run_determinism_tests();
             run_nsga2_tests();
             run_mutation_tests();
             run_prop_formula_ast_tests();

@@ -2,7 +2,11 @@
 
 A dated log of `counter` parameter experiments, newest first. Each entry records
 **what changed**, **why**, and **what it found**. Raw data lives in the matching
-gitignored `experiments-DD-MM-YYYY/` directory; analysis is `scripts/analyse.ipynb`.
+gitignored `experiments/YYYY-MM-DD-<campaign>/` subdirectory, alongside a
+per-campaign `analyse.ipynb`; the subdirectory's `results-*.csv` stem matches
+its run-dir folder so `scripts/recompare.py --results` resolves it directly.
+Active campaigns write to the `experiments/` top level and are archived into a
+dated subdirectory when they close.
 
 The outcome metric throughout is `implies_ideal` — the fraction of runs producing
 at least one repair *equivalent to* or *stronger than* an ideal.

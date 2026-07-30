@@ -1,0 +1,118 @@
+name: Benchmark
+
+# Nightly only, at 03:00 UTC. Absolute ns/iter is compared across runner
+# instances, so this is advisory (fail-on-alert: false) and was never a merge
+# gate -- it does not belong on the pull-request path.
+on:
+  schedule:
+    - cron: "0 3 * * *"
+  # Manual trigger for an on-demand benchmark run.
+  workflow_dispatch:
+
+env:
+  SCCACHE_GHA_ENABLED: "true"
+
+jobs:
+  # Staleness gate for the nightly schedule. The toolchain is pinned by the Nix
+  # flake, so a scheduled run over a tree that has not moved since the previous
+  # night re-measures the same binary on the same inputs -- adding a
+  # runner-noise datapoint to the history for no signal. Manual dispatch always
+  # runs.
+  gate:
+    runs-on: ubuntu-latest
+    outputs:
+      run: ${{ steps.decide.outputs.run }}
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Decide whether this run has anything to do
+        id: decide
+        run: |
+          if [ "${{ github.event_name }}" != "schedule" ]; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          committed=$(git log -1 --format=%ct)
+          age=$(( $(date +%s) - committed ))
+          # 25h of slack over the 24h cron so a slightly-late trigger still runs.
+          if [ "$age" -lt 90000 ]; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+            echo "HEAD committed ${age}s ago; running the nightly benchmark."
+          else
+            echo "run=false" >> "$GITHUB_OUTPUT"
+            echo "No commits in the last 25h; skipping the nightly benchmark."
+          fi
+
+  benchmark:
+    needs: gate
+    if: needs.gate.outputs.run == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      # comment-on-alert posts a PR review, which contents: write does not cover.
+      pull-requests: write
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Install Nix
+        uses: cachix/install-nix-action@v31
+        with:
+          github_access_token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up sccache
+        uses: mozilla-actions/sccache-action@v0.0.10
+
+      - name: Cache third-party dependencies
+        uses: actions/cache@v5
+        with:
+          path: |
+            build-bench/third_party
+            build-bench/_deps
+          key: ${{ runner.os }}-bench-ninja-${{ hashFiles('cmake/spot.cmake', 'cmake/ganak.cmake', 'cmake/black.cmake', 'bench/CMakeLists.txt', 'cmake/dependencies.cmake') }}
+          restore-keys: |
+            ${{ runner.os }}-bench-ninja-
+
+      - name: Configure and build
+        env:
+          CMAKE_C_COMPILER_LAUNCHER: sccache
+          CMAKE_CXX_COMPILER_LAUNCHER: sccache
+        run: |
+          nix develop --command bash -euo pipefail -c '
+            echo "::group::Configure"
+            cmake --preset bench
+            echo "::endgroup::"
+
+            echo "::group::Build"
+            cmake --build --preset bench --target counter_bench
+            echo "::endgroup::"
+          '
+
+      - name: Check regression assertions
+        run: ./build-bench/bench/counter_bench --check-assertions
+
+      - name: Run benchmarks
+        run: |
+          ./build-bench/bench/counter_bench \
+            --benchmark_format=json \
+            --benchmark_out=bench_results.json \
+            --benchmark_time_unit=ns
+
+      - name: Store benchmark results
+        uses: benchmark-action/github-action-benchmark@v1
+        with:
+          name: counter benchmarks
+          tool: googlecpp
+          output-file-path: bench_results.json
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          auto-push: ${{ github.ref == 'refs/heads/main' }}
+          alert-threshold: '150%'
+          comment-on-alert: true
+          # Absolute ns/iter is compared across runner instances, so host
+          # contention alone moves every benchmark by more than the threshold.
+          # Alert, but do not fail the build on it.
+          fail-on-alert: false
+          gh-pages-branch: gh-pages
+          benchmark-data-dir-path: .

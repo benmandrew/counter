@@ -45,6 +45,8 @@ cmake --build build --target format        # apply clang-format in-place
 cmake --build build --target format-ci     # dry-run (fails if unformatted)
 ```
 
+The same checks run from `.githooks/pre-commit`, which is tracked. Git refuses to clone hooks, so `core.hooksPath` has to be set locally once per clone; `cmake/githooks.cmake` does it at configure time, since the hooks shell out to build targets and cannot work before that anyway. Edit the hook in `.githooks/`, not in `.git/hooks/`, which git no longer reads once the path is set. Bypass a hook with `git commit --no-verify`; CI is the real enforcement.
+
 ## Config keys
 
 Adding a TOML config key means editing three places, none of which the compiler ties together: the `apply_*` function in `src/config_io.cpp` that reads it, `config_key_spec()` in the same file (else the parser warns "unknown key" on a key it accepts), and `schemas/config-schema.json` (else editors reject it). `scripts/check_config_schema.py` enforces the last two against each other and against `example-config.toml`, and runs as part of `lint`.

@@ -69,13 +69,15 @@ void DashboardWriter::write_line(const std::string& line) {
 void DashboardWriter::run_start(const std::string& input,
                                 std::size_t generations, std::size_t population,
                                 std::size_t seed,
-                                const std::vector<std::string>& objectives) {
+                                const std::vector<std::string>& objectives,
+                                const std::vector<std::string>& stages) {
     nlohmann::json record{{"type", "run_start"},
                           {"input", input},
                           {"generations", generations},
                           {"population", population},
                           {"seed", seed},
-                          {"objectives", objectives}};
+                          {"objectives", objectives},
+                          {"stages", stages}};
     write_line(record.dump());
 }
 

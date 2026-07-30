@@ -7,7 +7,6 @@
 
 #include <algorithm>
 #include <cassert>
-#include <cmath>
 #include <cstddef>
 #include <functional>
 #include <iterator>
@@ -15,7 +14,6 @@
 #include <stdexcept>
 #include <string>
 #include <type_traits>
-#include <unordered_set>
 #include <utility>
 #include <vector>
 
@@ -337,6 +335,24 @@ std::vector<PipelineStage<Spec>> filter_stages(
                             });
     }
     return stages;
+}
+
+/// The names of every stage a generation can run, in pipeline order, counting
+/// filters that only run on some generations.
+///
+/// A consumer needs the full roster up front to reserve a layout that does not
+/// move between generations; which stages actually ran in a given generation
+/// still comes from the stage reports. Built from the same pipeline the run
+/// uses, so it cannot drift from it.
+template <typename Spec>
+std::vector<std::string> generation_stage_names(
+    const std::vector<FilterFunctionT<Spec>>& filters) {
+    std::vector<std::string> names;
+    for (const PipelineStage<Spec>& stage :
+         make_generation_pipeline<Spec>(filter_stages(filters))) {
+        names.push_back(stage.name());
+    }
+    return names;
 }
 
 /// Generic one-generation evolution loop, templated on the specification

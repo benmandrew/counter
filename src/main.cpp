@@ -631,7 +631,8 @@ int main(int argc, const char* const argv[]) {
 
     DashboardWriter dashboard(*output_dir, cfg.dashboard);
     dashboard.run_start(*input_path, cfg.generations, population.size(), seed,
-                        fitness_objective_names(fitness_function));
+                        fitness_objective_names(fitness_function),
+                        generation_stage_names(filter_functions));
     const std::string page = dashboard.write_page();
     if (!page.empty()) {
         std::cout << "Progress: " << dashboard.path() << "\n"

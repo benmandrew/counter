@@ -20,9 +20,17 @@ viewer cannot see. Four record types are emitted, each tagged with ``type``:
 ``n_out`` and elapsed time), ``generation`` (timing, best and mean fitness,
 per-objective means, realizable count) and ``run_end``.
 
-The stage names are not enumerated anywhere in the schema. The page derives them
-from the ``stage`` records of the most recent generation, so a new filter or
-pipeline stage appears without either side being taught about it.
+No stage name is written down anywhere. ``run_start`` carries the roster of
+every stage a generation *can* run, built by ``generation_stage_names`` from the
+same pipeline the run uses, so it cannot drift from it; the ``stage`` records
+then say which of them actually ran. A new filter or pipeline stage therefore
+appears without either side being taught about it.
+
+The roster exists so the page can lay the stage chart out at a fixed height with
+each stage on a fixed row. Filters run on intervals, so the active set shrinks
+and grows between generations; a chart sized to whichever stages happened to run
+would change height underneath the reader. Stages absent from a generation keep
+their row, struck through and greyed.
 
 Optional fields are omitted rather than defaulted. ``n_realizable`` is absent
 when the driver does not measure it per generation — the TLSF path checks

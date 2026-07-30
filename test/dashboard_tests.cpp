@@ -71,7 +71,8 @@ void test_records_are_one_json_object_per_line() {
         expect(writer.enabled(),
                "dashboard: the writer should open its log in a directory that "
                "exists");
-        writer.run_start("spec.json", 2, 10, 7, {"syntactic", "semantic"});
+        writer.run_start("spec.json", 2, 10, 7, {"syntactic", "semantic"},
+                         {"breed", "dedup", "score"});
         writer.stage(1, 0, observation("breed", 10, 8));
         writer.generation(1, 1.5, 0.9, 0.5, {{"syntactic", 0.8}}, 3, 10);
         writer.run_end(2, 4, 2, 3.0);
@@ -87,6 +88,10 @@ void test_records_are_one_json_object_per_line() {
     expect(records[0]["objectives"].size() == 2,
            "dashboard: run_start should list the objective names so the page "
            "need not know them");
+    expect(records[0]["stages"].size() == 3,
+           "dashboard: run_start should declare every stage the run can "
+           "execute, so the page can reserve a layout that does not move as "
+           "interval-gated filters come and go");
     expect(records[1]["name"] == "breed" && records[1]["n_in"] == 10 &&
                records[1]["n_out"] == 8,
            "dashboard: a stage record should carry its name and both "
@@ -126,7 +131,7 @@ void test_writer_survives_an_unwritable_directory() {
            "disabled");
     // Every call must still be safe: losing the progress log must never take
     // the repair run with it.
-    writer.run_start("spec.json", 1, 1, 1, {});
+    writer.run_start("spec.json", 1, 1, 1, {}, {});
     writer.stage(1, 0, observation("breed", 1, 1));
     writer.generation(1, 1.0, 0.5, 0.5, {}, 1, 1);
     writer.run_end(1, 0, 0, 1.0);

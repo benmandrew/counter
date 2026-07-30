@@ -227,6 +227,14 @@
   .dlabel { fill: var(--ink); font-size: 12.5px; font-weight: 600; }
   .dlabel-2 { fill: var(--ink-2); font-size: 12.5px; }
   .barname { fill: var(--ink-2); font-size: 12.5px; }
+  /* A stage that did not run this generation keeps its row, so the chart's
+     height and row positions stay put as interval-gated filters come and go. */
+  .barname-off { fill: var(--muted); font-size: 12.5px; }
+  .dlabel-off { fill: var(--muted); font-size: 12.5px; }
+  /* struck through where the bar would be: the row is reserved, the stage did
+     not run. A line rather than colour alone, so the state survives a
+     greyscale print and a colour-vision difference. */
+  .strike { stroke: var(--muted); stroke-width: 2; }
   .s1-stroke { stroke: var(--series-1); fill: none; stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }
   .s2-stroke { stroke: var(--series-2); fill: none; stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }
   .s1-fill { fill: var(--series-1); }
@@ -534,6 +542,7 @@
     runEnd: null,
     gens: [],              /* generation records, ascending by gen */
     stagesByGen: {},       /* gen -> [stage records] */
+    stageRoster: [],       /* fallback roster: stage names in order of first sight */
     latestStageGen: null,
     fetched: false,
     present: false,
@@ -542,8 +551,8 @@
 
   function parse(text) {
     var s = {
-      runStart: null, runEnd: null, gens: [], stagesByGen: {}, latestStageGen: null,
-      fetched: true, present: true, error: null
+      runStart: null, runEnd: null, gens: [], stagesByGen: {}, stageRoster: [],
+      latestStageGen: null, fetched: true, present: true, error: null
     };
     var lines = text.split("\n");
     var byGen = {};
@@ -563,6 +572,12 @@
         if (typeof rec.gen === "number") {
           if (!s.stagesByGen[rec.gen]) { s.stagesByGen[rec.gen] = []; }
           s.stagesByGen[rec.gen].push(rec);
+          /* Only consulted when run_start declares no roster, i.e. a log from
+             before it did. A filter first seen late lands at the end rather
+             than in pipeline position; the declared roster has no such gap. */
+          if (rec.name !== undefined && s.stageRoster.indexOf(rec.name) === -1) {
+            s.stageRoster.push(rec.name);
+          }
           if (s.latestStageGen === null || rec.gen > s.latestStageGen) { s.latestStageGen = rec.gen; }
         }
       }
@@ -684,9 +699,38 @@
       return;
     }
 
+    /* Every stage the run can execute, not just this generation's. Filters run
+       on intervals, so the active set shrinks and grows; laying the chart out
+       from the full roster keeps its height fixed and each stage on the same
+       row, which is what makes it followable against the charts below.
+       run_start declares the roster; a log without one falls back to every
+       stage name seen so far. Rows are keyed by name, which production
+       guarantees is unique per stage. */
+    var roster = (s.runStart && Array.isArray(s.runStart.stages) &&
+                  s.runStart.stages.length)
+      ? s.runStart.stages.slice()
+      : s.stageRoster.slice();
+
+    var ran = {};
+    stages.forEach(function (st) {
+      if (st.name !== undefined) { ran[st.name] = st; }
+    });
+    var rows = roster.map(function (name) {
+      return { name: name, rec: ran[name] || null };
+    });
+    /* A stage the roster does not mention still gets a row rather than
+       vanishing. */
+    stages.forEach(function (st) {
+      if (st.name !== undefined && roster.indexOf(st.name) === -1) {
+        rows.push({ name: st.name, rec: st });
+      }
+    });
+
+    var nRan = rows.filter(function (r) { return r.rec !== null; }).length;
     title.textContent = "Stage flow — generation " + s.latestStageGen;
-    sub.textContent = stages.length + " stage" + (stages.length === 1 ? "" : "s") +
-      " in pipeline order; bar length is the spec count leaving the stage.";
+    sub.textContent = nRan + " of " + rows.length + " stage" +
+      (rows.length === 1 ? "" : "s") + " ran this generation; bar length is " +
+      "the spec count leaving the stage.";
 
     var maxOut = 0;
     stages.forEach(function (st) {
@@ -699,7 +743,7 @@
 
     var plotW = STAGE_VB_W - BAR_X0 - TIP_RESERVE;
     var topPad = 34;
-    var H = topPad + stages.length * BAR_PITCH + 12;
+    var H = topPad + rows.length * BAR_PITCH + 12;
 
     var svg = el("svg", {
       "class": "stage-chart",
@@ -725,8 +769,34 @@
     /* baseline the bars grow from */
     svg.appendChild(el("line", { "class": "axis", x1: BAR_X0, y1: topPad - 12, x2: BAR_X0, y2: H - 8 }));
 
-    stages.forEach(function (st, idx) {
+    rows.forEach(function (row, idx) {
       var y = topPad + idx * BAR_PITCH;
+
+      if (row.rec === null) {
+        /* Reserved row: this stage did not run this generation. Labelled
+           rather than left blank, so an empty row reads as "skipped" and not
+           as "zero specs". */
+        svg.appendChild(el("text", {
+          "class": "barname-off", x: NAME_RIGHT, y: y + BAR_H / 2 + 4,
+          "text-anchor": "end"
+        }, truncate(row.name, 25)));
+        svg.appendChild(el("line", {
+          "class": "strike", x1: BAR_X0, y1: y + BAR_H / 2,
+          x2: BAR_X0 + plotW, y2: y + BAR_H / 2
+        }));
+        svg.appendChild(el("text", {
+          "class": "dlabel-off", x: BAR_X0 + plotW + 8, y: y + BAR_H / 2 + 4
+        }, "not run"));
+        svg.appendChild(el("rect", {
+          "class": "hitarea", x: 0, y: y - 2, width: STAGE_VB_W,
+          height: BAR_PITCH + 2, role: "img",
+          "aria-label": row.name + ": did not run in generation " +
+            s.latestStageGen
+        }));
+        return;
+      }
+
+      var st = row.rec;
       var nOut = typeof st.n_out === "number" ? st.n_out : 0;
       var nIn = typeof st.n_in === "number" ? st.n_in : 0;
       var delta = nOut - nIn;

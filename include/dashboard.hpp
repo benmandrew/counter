@@ -40,9 +40,19 @@ class DashboardWriter {
     /// empty string if the source page could not be read.
     std::string write_page();
 
+    /// @param input       Path to the specification being repaired
+    /// @param generations  Configured generation count
+    /// @param population   Configured population size
+    /// @param seed         RNG seed the run was started from
+    /// @param objectives   Objective names, in registration order
+    /// @param stages       Every stage a generation can run, in pipeline order,
+    ///                     including filters that only run on some generations,
+    ///                     so the page can reserve a layout that does not move
+    ///                     as interval-gated filters come and go
     void run_start(const std::string& input, std::size_t generations,
                    std::size_t population, std::size_t seed,
-                   const std::vector<std::string>& objectives);
+                   const std::vector<std::string>& objectives,
+                   const std::vector<std::string>& stages);
 
     /// @param gen         1-indexed generation
     /// @param index       Position of the stage within the generation's stage

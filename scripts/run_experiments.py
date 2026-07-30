@@ -144,13 +144,15 @@ N_SEEDS = 30
 # own 20s black budget. fsm-timing (bounded-interval operators) is slow: a 29-
 # repair run measured ~141s, and repair counts grow with generations/population.
 # Keep this well above that, in line with the generous counter_timeout budgets.
+# A profile whose arms differ in repair count should raise it via its own
+# `compare_timeout` key -- see the compare_timed_out column below.
 COMPARE_TIMEOUT_S = 600
 
 CSV_FIELDS = [
     "sweep", "level_name", "level_value", "selection", "weakening", "metric",
     "repair_mode", "spec", "seed", "found_repair", "n_repairs", "best_fitness",
     "best_relation", "implies_ideal", "n_implies", "wall_time_s",
-    "timed_out", "n_dropped",
+    "timed_out", "compare_timed_out", "n_dropped",
 ]
 
 # Rows written before `selection` existed are all NSGA-II: every config in use
@@ -962,7 +964,8 @@ def derive_config(config_path: Path, output_dir: Path, parallel_k: int) -> Path:
 
 def run_one(config_path: Path, sweep: str, level_name: str, spec_name: str,
             seed: int, timeout: int, results_dir: Path, parallel_k=None,
-            run_id: str | None = None) -> dict | None:
+            run_id: str | None = None,
+            compare_timeout: int = COMPARE_TIMEOUT_S) -> dict | None:
     """Execute counter (+ compare) once; return the metric columns.
 
     The returned dict carries spec/seed and all metric fields but no
@@ -1027,24 +1030,39 @@ def run_one(config_path: Path, sweep: str, level_name: str, spec_name: str,
         "best_fitness": "" if math.isnan(best_fitness) else round(best_fitness, 6),
         "wall_time_s": wall,
         "timed_out": int(timed_out),
+        "compare_timed_out": 0,
         "n_dropped": parse_dropped(log_path),
     }
 
     if n_repairs == 0 or timed_out:
         return {**base, "best_relation": "none", "implies_ideal": 0, "n_implies": 0}
 
+    # compare's cost scales with n_repairs * n_ideals, so an arm that produces
+    # more repairs hits the timeout more often. Scoring that as implies_ideal = 0
+    # would read a *slower* comparison as a *worse* repair and bias the
+    # comparison against exactly the arm under test, so the timeout is recorded
+    # in its own column for the analysis to exclude rather than folded into the
+    # response. A compare that failed for any other reason keeps the old
+    # behaviour: it is a broken run, not a censored measurement.
+    compare_timed_out = False
     try:
         result = subprocess.run(
             [str(COMPARE_BIN), "--repairs", str(output_dir),
              "--ideals", str(spec["ideals_dir"])],
-            check=True, timeout=COMPARE_TIMEOUT_S, capture_output=True, text=True,
+            check=True, timeout=compare_timeout, capture_output=True, text=True,
         )
         best_rel, implies_ideal, n_implies = parse_compare_output(result.stdout)
-    except (subprocess.TimeoutExpired, subprocess.CalledProcessError) as e:
+    except subprocess.TimeoutExpired:
+        print(f"    [{run_id}] WARN: compare timed out after {compare_timeout}s "
+              f"on {n_repairs} repairs — recorded, not scored")
+        compare_timed_out = True
+        best_rel, implies_ideal, n_implies = "unknown", 0, 0
+    except subprocess.CalledProcessError as e:
         print(f"    [{run_id}] WARN: compare failed — {e}")
         best_rel, implies_ideal, n_implies = "unknown", 0, 0
 
-    return {**base, "best_relation": best_rel, "implies_ideal": implies_ideal, "n_implies": n_implies}
+    return {**base, "best_relation": best_rel, "implies_ideal": implies_ideal,
+            "n_implies": n_implies, "compare_timed_out": int(compare_timed_out)}
 
 
 # ── Entry point ───────────────────────────────────────────────────────────────
@@ -1245,7 +1263,8 @@ def main() -> None:
     results_csv.parent.mkdir(parents=True, exist_ok=True)
 
     fieldnames = existing_fieldnames(results_csv) or CSV_FIELDS
-    for column in ["timed_out", "weakening", "metric", "repair_mode"]:
+    for column in ["timed_out", "compare_timed_out", "weakening", "metric",
+                   "repair_mode"]:
         if column not in fieldnames:
             print(f"Note: {results_csv.name} predates the {column} column; "
                   f"appending without it")
@@ -1280,7 +1299,8 @@ def main() -> None:
             print(f"[start]      {run_id}  (timeout {timeout}s)", flush=True)
 
         result = run_one(cfg, c_sweep, c_level, spec_name, seed,
-                         timeout, results_dir, parallel_k, run_id)
+                         timeout, results_dir, parallel_k, run_id,
+                         profile.get("compare_timeout", COMPARE_TIMEOUT_S))
 
         with lock:
             state["completed"] += 1

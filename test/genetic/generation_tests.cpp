@@ -1,4 +1,5 @@
 #include <algorithm>
+#include <cstddef>
 #include <set>
 #include <stdexcept>
 #include <string>
@@ -478,6 +479,225 @@ void test_filters_for_generation_last_runs_all_filters() {
            "filter regardless of interval");
 }
 
+// --- dedup_by_specification / replicate_to_size ---
+
+// int stands in for Spec: both helpers need only hashing, equality, and
+// copying, so the real Specification would add nothing but construction cost.
+Scored<int> make_scored(int specification, std::size_t rank) {
+    Scored<int> scored;
+    scored.specification = specification;
+    scored.rank = rank;
+    return scored;
+}
+
+std::vector<int> specifications_of(const std::vector<Scored<int>>& population) {
+    std::vector<int> out;
+    out.reserve(population.size());
+    for (const Scored<int>& scored : population) {
+        out.push_back(scored.specification);
+    }
+    return out;
+}
+
+/// Copies of each of @p distinct present in @p replicated, in the order of
+/// @p distinct.
+std::vector<std::size_t> copy_counts(const std::vector<Scored<int>>& replicated,
+                                     const std::vector<Scored<int>>& distinct) {
+    std::vector<std::size_t> counts(distinct.size(), 0);
+    for (std::size_t i = 0; i < distinct.size(); ++i) {
+        counts[i] = static_cast<std::size_t>(std::count_if(
+            replicated.begin(), replicated.end(),
+            [&distinct, i](const Scored<int>& scored) {
+                return scored.specification == distinct[i].specification;
+            }));
+    }
+    return counts;
+}
+
+void test_dedup_by_specification_keeps_first_occurrence_in_order() {
+    const std::vector<Scored<int>> pool = {
+        make_scored(7, 0), make_scored(3, 1), make_scored(7, 2),
+        make_scored(9, 1), make_scored(3, 0), make_scored(7, 3)};
+    const auto distinct = generation_detail::dedup_by_specification<int>(pool);
+    expect(specifications_of(distinct) == std::vector<int>({7, 3, 9}),
+           "dedup_by_specification: should keep the first occurrence of each "
+           "specification, in first-occurrence order");
+    expect(
+        distinct[0].rank == 0 && distinct[1].rank == 1 && distinct[2].rank == 1,
+        "dedup_by_specification: survivors should carry the metadata of the "
+        "first occurrence, not a later duplicate");
+}
+
+void test_dedup_by_specification_all_distinct_is_identity() {
+    const std::vector<Scored<int>> pool = {make_scored(1, 0), make_scored(2, 1),
+                                           make_scored(3, 2)};
+    expect(specifications_of(generation_detail::dedup_by_specification<int>(
+               pool)) == std::vector<int>({1, 2, 3}),
+           "dedup_by_specification: a pool with no repeats should pass through "
+           "unchanged");
+}
+
+void test_replicate_to_size_produces_target_size() {
+    const std::vector<Scored<int>> distinct = {
+        make_scored(1, 0), make_scored(2, 1), make_scored(3, 2)};
+    expect(generation_detail::replicate_to_size(distinct, 10).size() == 10,
+           "replicate_to_size: output should be exactly target_size");
+}
+
+void test_replicate_to_size_keeps_every_individual() {
+    const std::vector<Scored<int>> distinct = {
+        make_scored(1, 0), make_scored(2, 1), make_scored(3, 5),
+        make_scored(4, 9)};
+    const auto counts = copy_counts(
+        generation_detail::replicate_to_size(distinct, 12), distinct);
+    expect(std::all_of(counts.begin(), counts.end(),
+                       [](std::size_t n) { return n >= 1; }),
+           "replicate_to_size: every distinct individual should keep at least "
+           "one copy, however poor its rank");
+}
+
+void test_replicate_to_size_copies_non_increasing_in_rank() {
+    const std::vector<Scored<int>> distinct = {
+        make_scored(1, 0), make_scored(2, 1), make_scored(3, 2)};
+    const auto counts = copy_counts(
+        generation_detail::replicate_to_size(distinct, 10), distinct);
+    expect(counts[0] >= counts[1] && counts[1] >= counts[2],
+           "replicate_to_size: a better rank should never get fewer copies "
+           "than a worse one");
+    // Weights 1, 1/2 and 1/3 over the 7 spare slots give quotas of 3.818,
+    // 1.909 and 1.273; the floors allocate 5 and the two largest remainders
+    // (1 then 0) take the rest. Ignoring rank would instead give {4, 3, 3},
+    // so the exact split is what pins the 1 / (1 + rank) weighting down.
+    expect(counts == std::vector<std::size_t>({5, 3, 2}),
+           "replicate_to_size: copies should follow the 1 / (1 + rank) "
+           "apportionment exactly");
+}
+
+void test_replicate_to_size_is_deterministic() {
+    const std::vector<Scored<int>> distinct = {
+        make_scored(1, 0), make_scored(2, 0), make_scored(3, 1),
+        make_scored(4, 4)};
+    const auto first = generation_detail::replicate_to_size(distinct, 17);
+    const auto second = generation_detail::replicate_to_size(distinct, 17);
+    expect(specifications_of(first) == specifications_of(second),
+           "replicate_to_size: it draws no random numbers, so repeated calls "
+           "on identical input must agree");
+}
+
+void test_replicate_to_size_exact_fit_copies_once_each() {
+    const std::vector<Scored<int>> distinct = {
+        make_scored(1, 0), make_scored(2, 1), make_scored(3, 2)};
+    const auto replicated = generation_detail::replicate_to_size(distinct, 3);
+    expect(specifications_of(replicated) == std::vector<int>({1, 2, 3}),
+           "replicate_to_size: with no spare slots every individual should get "
+           "exactly one copy, in input order");
+}
+
+void test_replicate_to_size_single_individual_fills_population() {
+    const std::vector<Scored<int>> distinct = {make_scored(42, 0)};
+    const auto replicated = generation_detail::replicate_to_size(distinct, 5);
+    expect(replicated.size() == 5 && specifications_of(replicated) ==
+                                         std::vector<int>({42, 42, 42, 42, 42}),
+           "replicate_to_size: a lone survivor should fill the whole "
+           "population");
+}
+
+void test_replicate_to_size_equal_ranks_apportion_evenly() {
+    const std::vector<Scored<int>> distinct = {
+        make_scored(1, 0), make_scored(2, 0), make_scored(3, 0),
+        make_scored(4, 0)};
+    const auto even = copy_counts(
+        generation_detail::replicate_to_size(distinct, 12), distinct);
+    expect(even == std::vector<std::size_t>({3, 3, 3, 3}),
+           "replicate_to_size: equal ranks dividing exactly should split the "
+           "population evenly");
+
+    // 10 slots over 4 equal ranks cannot divide, so the remainder decides:
+    // counts may differ by one, never more.
+    const auto ragged = copy_counts(
+        generation_detail::replicate_to_size(distinct, 10), distinct);
+    const auto bounds = std::minmax_element(ragged.begin(), ragged.end());
+    expect(*bounds.second - *bounds.first <= 1,
+           "replicate_to_size: with equal ranks the largest-remainder split "
+           "should differ by at most one copy");
+}
+
+std::size_t distinct_specifications(
+    const std::vector<ScoredSpecification>& population) {
+    std::set<std::size_t> hashes;
+    for (const ScoredSpecification& scored : population) {
+        hashes.insert(std::hash<Specification>{}(scored.specification));
+    }
+    return hashes.size();
+}
+
+Config nsga2_replicate_config() {
+    Config cfg;
+    cfg.selection_scheme = SelectionScheme::Nsga2Replicate;
+    return cfg;
+}
+
+void test_evolve_generation_nsga2_replicate_produces_target_size() {
+    const Config cfg = nsga2_replicate_config();
+    const AggregateWeightedFitnessFunction fns = two_objective_fns();
+    // Every parent is the same specification, so the pool deduplicates well
+    // below target_size and the replication branch is the one under test.
+    const std::vector<ScoredSpecification> pop =
+        score_population(cfg,
+                         {make_spec("p", "q"), make_spec("p", "q"),
+                          make_spec("p", "q"), make_spec("p", "q")},
+                         fns);
+    const auto next =
+        evolve_generation(cfg, pop, 4, 0, fns, {}, make_source({1, 2, 3}, 0));
+    expect(next.size() == 4,
+           "evolve_generation/nsga2-replicate: a pool that deduplicates below "
+           "target_size must still be replicated back up to it");
+}
+
+void test_evolve_generation_nsga2_replicate_retains_distinct_candidates() {
+    const AggregateWeightedFitnessFunction fns = two_objective_fns();
+    // "p" dominates both others on both objectives, so under plain nsga2 its
+    // three copies fill the rank-0 front and truncation keeps the copies in
+    // preference to the distinct candidates behind them.
+    const std::vector<Specification> specs = {
+        make_spec("p", "q"), make_spec("p", "q"), make_spec("p", "q"),
+        make_spec("r", "s"), make_spec("t", "u")};
+    const Config plain = nsga2_config();
+    const Config replicating = nsga2_replicate_config();
+    const auto plain_next =
+        evolve_generation(plain, score_population(plain, specs, fns), 4, 0, fns,
+                          {}, make_source({1, 2, 3}, 0));
+    const auto replicated_next = evolve_generation(
+        replicating, score_population(replicating, specs, fns), 4, 0, fns, {},
+        make_source({1, 2, 3}, 0));
+    expect(distinct_specifications(replicated_next) >
+               distinct_specifications(plain_next),
+           "evolve_generation/nsga2-replicate: deduplicating before truncation "
+           "should hold strictly more distinct specifications than plain nsga2 "
+           "when duplicates crowd the rank-0 front");
+}
+
+void test_evolve_generation_nsga2_replicate_is_deterministic() {
+    const Config cfg = nsga2_replicate_config();
+    const AggregateWeightedFitnessFunction fns = two_objective_fns();
+    const std::vector<ScoredSpecification> pop = score_population(
+        cfg, {make_spec("p", "q"), make_spec("r", "s"), make_spec("t", "u")},
+        fns);
+    const auto first =
+        evolve_generation(cfg, pop, 4, 0, fns, {}, make_source({1, 2, 3}, 0));
+    const auto second =
+        evolve_generation(cfg, pop, 4, 0, fns, {}, make_source({1, 2, 3}, 0));
+    bool identical = first.size() == second.size();
+    for (std::size_t i = 0; identical && i < first.size(); ++i) {
+        identical = first_condition(first[i].specification) ==
+                    first_condition(second[i].specification);
+    }
+    expect(identical,
+           "evolve_generation/nsga2-replicate: apportionment draws no random "
+           "numbers, so identical inputs and RNG produce an identical "
+           "generation");
+}
+
 }  // namespace
 
 void run_generation_tests() {
@@ -500,4 +720,16 @@ void run_generation_tests() {
     test_evolve_generation_nsga2_is_deterministic();
     test_filters_for_generation_respects_intervals();
     test_filters_for_generation_last_runs_all_filters();
+    test_dedup_by_specification_keeps_first_occurrence_in_order();
+    test_dedup_by_specification_all_distinct_is_identity();
+    test_replicate_to_size_produces_target_size();
+    test_replicate_to_size_keeps_every_individual();
+    test_replicate_to_size_copies_non_increasing_in_rank();
+    test_replicate_to_size_is_deterministic();
+    test_replicate_to_size_exact_fit_copies_once_each();
+    test_replicate_to_size_single_individual_fills_population();
+    test_replicate_to_size_equal_ranks_apportion_evenly();
+    test_evolve_generation_nsga2_replicate_produces_target_size();
+    test_evolve_generation_nsga2_replicate_retains_distinct_candidates();
+    test_evolve_generation_nsga2_replicate_is_deterministic();
 }

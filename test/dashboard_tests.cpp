@@ -55,11 +55,12 @@ std::vector<nlohmann::json> read_records(const std::string& path) {
 }
 
 StageObservation observation(const std::string& name, std::size_t n_in,
-                             std::size_t n_out) {
+                             std::size_t n_out, std::size_t distinct = 0) {
     StageObservation obs;
     obs.name = name;
     obs.n_in = n_in;
     obs.n_out = n_out;
+    obs.distinct = distinct;
     obs.elapsed_s = 0.5;
     return obs;
 }
@@ -73,7 +74,7 @@ void test_records_are_one_json_object_per_line() {
                "exists");
         writer.run_start("spec.json", 2, 10, 7, {"syntactic", "semantic"},
                          {"breed", "dedup", "score"});
-        writer.stage(1, 0, observation("breed", 10, 8));
+        writer.stage(1, 0, observation("breed", 10, 8, 5));
         writer.generation(1, 1.5, 0.9, 0.5, {{"syntactic", 0.8}}, 3, 10);
         writer.run_end(2, 4, 2, 3.0);
     }
@@ -96,6 +97,9 @@ void test_records_are_one_json_object_per_line() {
                records[1]["n_out"] == 8,
            "dashboard: a stage record should carry its name and both "
            "population sizes");
+    expect(records[1]["distinct"] == 5,
+           "dashboard: a stage record should carry how many of its survivors "
+           "are distinct, which is what the population sizes cannot show");
 }
 
 void test_unmeasured_fields_are_omitted_not_defaulted() {

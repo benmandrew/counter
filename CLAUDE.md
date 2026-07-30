@@ -102,6 +102,13 @@ and copy `web/dashboard.html` there as `index.html`. To watch a run:
 `python3 -m http.server -d <output-dir> 8000`. The page polls once a second;
 `?poll=<seconds>` overrides that (`?poll=0` loads once and stops polling).
 
+Each `stage` record carries `distinct` beside `n_in`/`n_out`: how many of the
+survivors are distinct specifications. The population is largely repeats, which
+no size can show, so this is the field that measures whether a selection scheme
+actually keeps diversity. Computing it hashes the whole population, so
+`run_generation_pipeline` only does so when an observer is attached — a run
+without the dashboard pays nothing.
+
 The page's script keeps everything above its `boot()` call free of DOM access at
 load time: `boot()` runs only when `document` exists, and otherwise the script
 exports its functions for `test/web/` to test under node. Adding a top-level

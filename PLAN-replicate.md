@@ -52,6 +52,15 @@ move; gyro-var1, lift and minepump sit at `implies_ideal` 0.000 with
 `found_repair` near 1.0 and serve as negative controls. humanoid-531 is excluded
 on cost alone (965 s mean, 2400 s p90).
 
+**Weakening cross** (`replicate-wkoff`), 2 specs × 2 arms × 2 elitism levels ×
+200 seeds = 1600 runs. Phase 1 runs at the shipped `run_weakening = true`, where
+the filter drops about 70% of each generation's offspring — so it measures
+replicate in the configuration that discards most of what breeding produces, and
+cj-large found that turning the filter off raises `implies_ideal`. This arm
+repeats sweep R with the filter off on fsm and fsm-combined, the two specs with
+headroom. Arm C is not crossed in: compute-matching is a claim about the
+scheme's cost, inherited from the `wkon` arm.
+
 **Resolution.** `implies_ideal` is a per-run binary. 200 pairs per cell resolves
 about 0.15 absolute at fsm's p ≈ 0.5, about 0.10 pooled over the two elitism
 levels. An 0.05 effect would need roughly 1600 seeds per arm and is out of reach.
@@ -100,6 +109,14 @@ python scripts/gen_configs.py --schemes nsga2 --sweeps S \
 python scripts/run_experiments.py --profile replicate --seeds $(seq -s' ' 0 99)    # av2
 python scripts/run_experiments.py --profile replicate --seeds $(seq -s' ' 100 199) # av3
 python scripts/merge_experiments.py av2 av3 --profile replicate
+
+# Weakening cross, after sweep R finishes (it shares R's CSV and machines)
+python scripts/gen_configs.py --schemes nsga2 nsga2-replicate --sweeps R \
+    --weakening off --generations 40 --population-size 1000 \
+    --out-dir experiments/configs-replicate
+
+python scripts/run_experiments.py --profile replicate-wkoff --seeds $(seq -s' ' 0 99)    # av2
+python scripts/run_experiments.py --profile replicate-wkoff --seeds $(seq -s' ' 100 199) # av3
 
 # Phase 2 configs and runs
 python scripts/gen_configs.py --tlsf --schemes nsga2 nsga2-replicate --sweeps R \

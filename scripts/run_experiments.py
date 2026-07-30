@@ -776,6 +776,44 @@ PROFILES: dict[str, dict] = {
         "results_csv": EXPERIMENTS_DIR / "results-replicate.csv",
         "default_jobs": 4,
     },
+    # The weakening cross of the FRETISH comparison, on the two specs with
+    # headroom. `replicate` runs at the shipped run_weakening = true, where the
+    # filter drops about 70% of each generation's offspring -- so it measures
+    # replicate's advantage in a configuration that discards most of what
+    # breeding produces, and the 2026-07-15 cj-large campaign found that turning
+    # the filter off raises implies_ideal. This arm runs the same sweep R cells
+    # with the filter off, to say whether "replicate keeps more distinct
+    # candidates" survives the stage that throws most of them away.
+    #
+    # Only fsm and fsm-combined: takeoff and fsm-timing sit at implies_ideal
+    # ~1.0, so a second factor buys nothing there. Arm C is not crossed in --
+    # compute-matching is a statement about the scheme's cost, inherited from
+    # the wkon arm -- so this is a two-arm comparison.
+    #
+    # It shares `replicate`'s results directory and CSV deliberately: the
+    # weakening column separates the rows, run_id carries a _wkoff tag so no run
+    # directory collides with the flat-layout runs, and the analysis reads one
+    # file. Generate the configs it reads with
+    #   python scripts/gen_configs.py --schemes nsga2 nsga2-replicate \
+    #       --sweeps R --weakening off --generations 40 --population-size 1000 \
+    #       --out-dir experiments/configs-replicate
+    "replicate-wkoff": {
+        "schemes": ["nsga2", "nsga2-replicate"],
+        "weakenings": ["wkoff"],
+        "metrics": None,
+        "repair_modes": None,
+        "sweeps": ["R"],
+        "levels": {},
+        "specs": ["fsm", "fsm-combined"],
+        "seeds": list(range(200)),
+        "timeout_caps": {"fsm": 900, "fsm-combined": 1500},
+        "compare_timeout": 1800,
+        "baseline_aliases": {},
+        "configs_dir": EXPERIMENTS_DIR / "configs-replicate",
+        "results_dir": EXPERIMENTS_DIR / "results-replicate",
+        "results_csv": EXPERIMENTS_DIR / "results-replicate.csv",
+        "default_jobs": 4,
+    },
     # The TLSF half of the same comparison, at the TLSF baseline operating point
     # (gen10/pop200) for comparability with the prior TLSF data. Two arms only:
     # the compute-matched control rides on the FRETISH half, where the responses

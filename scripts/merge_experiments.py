@@ -60,6 +60,9 @@ PROFILE_CSVS: dict[str, str] = {
     "ablate-tlsf": "results-ablate-tlsf.csv",
     "h2h-tlsf": "results-ablate-tlsf.csv",
     "replicate": "results-replicate.csv",
+    # replicate-wkoff shares replicate's CSV (the weakening column separates the
+    # rows), so merging under either name merges the same file.
+    "replicate-wkoff": "results-replicate.csv",
     "replicate-tlsf": "results-replicate-tlsf.csv",
 }
 
@@ -80,6 +83,7 @@ PROFILE_RESULT_DIRS: dict[str, str] = {
     "ablate-tlsf": "results-ablate-tlsf",
     "h2h-tlsf": "results-ablate-tlsf",
     "replicate": "results-replicate",
+    "replicate-wkoff": "results-replicate",
     "replicate-tlsf": "results-replicate-tlsf",
 }
 

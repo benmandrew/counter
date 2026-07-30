@@ -58,6 +58,10 @@ The same checks run from `.githooks/pre-commit`, which is tracked. Git refuses t
 
 Adding a TOML config key means editing three places, none of which the compiler ties together: the `apply_*` function in `src/config_io.cpp` that reads it, `config_key_spec()` in the same file (else the parser warns "unknown key" on a key it accepts), and `schemas/config-schema.json` (else editors reject it). `scripts/check_config_schema.py` enforces the last two against each other and against `example-config.toml`, and runs as part of `lint`.
 
+## Commit provenance
+
+Every binary answers `--version` with `commit=`, `commit_short=` and `dirty=` lines, naming the commit it was built from. The hash is resolved at **build** time, not configure time: `cmake/version.cmake` runs `cmake/write_version_header.cmake` in script mode on every build, which renders `cmake/version.hpp.in` into `build/generated/git_version.hpp` via `configure_file` (so the file is rewritten only when the commit changed). Resolving it at configure time instead would bake in whatever HEAD was when cmake last ran, and `cmake --build` after a new commit would keep reporting the old hash — the exact failure this exists to catch. Only `src/version.cpp` includes the generated header, so a new commit recompiles one translation unit. `dirty` counts modified *tracked* files only.
+
 ## Docs
 
 Every header file in `include/` must have a corresponding `.rst` page under `docs/api/` and be listed in `docs/index.rst`. When adding a new header, add the page and toctree entry before committing. The internal reference needs no per-file upkeep — it scans `src/` automatically, so nothing extra is required there.

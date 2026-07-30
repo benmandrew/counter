@@ -10,6 +10,7 @@
 #include "serialisation.hpp"
 #include "tlsf/parser.hpp"
 #include "tlsf/specification.hpp"
+#include "version.hpp"
 
 namespace {
 
@@ -20,7 +21,10 @@ void print_usage(const char* prog) {
                  "specification.\n"
               << "FRETISH JSON prints each requirement's LTL; a basic-TLSF\n"
               << "(.tlsf) input prints each non-empty section's formulae and\n"
-              << "the combined lowering.\n";
+              << "the combined lowering.\n"
+              << "\n"
+              << "  --version  Print the git commit this binary was built "
+                 "from.\n";
 }
 
 void print_tlsf_ltl(const std::string& path, bool show_path) {
@@ -92,6 +96,10 @@ int main(int argc, const char* const argv[]) {
     if (argc == 0 || argv == nullptr || argv[0] == nullptr) {
         std::cerr << "fatal: missing argv[0]\n";
         return 1;
+    }
+    if (has_flag(argc, argv, "--version")) {
+        version::print(std::cout);
+        return 0;
     }
     if (has_flag(argc, argv, "-h") || has_flag(argc, argv, "--help")) {
         print_usage(argv[0]);

@@ -24,6 +24,7 @@ same way. Values still out of range for their field abort the run.
 
    [runtime]
    parallel = 16              # override thread pool size
+   dashboard = true           # stream progress.jsonl + the live dashboard page
    report_cpu_timing = true   # print a CPU-attribution report at the end
 
 ``example-config.toml`` in the repository root is an annotated template listing
@@ -157,6 +158,14 @@ Runtime
 ``runtime.parallel`` overrides the thread pool size, which otherwise follows
 ``std::thread::hardware_concurrency()``. ``runtime.black_timeout_ms`` bounds
 each ``black`` satisfiability query, defaulting to 1000 ms.
+
+``runtime.dashboard`` streams per-stage and per-generation progress to
+``<output-dir>/progress.jsonl`` and copies the live dashboard page beside it, so
+``python3 -m http.server -d <output-dir> 8000`` shows the run as it happens. It
+defaults to false, because a campaign of many runs pays for the extra file and
+its flushes with nobody watching; ``counter --dashboard`` enables it for a
+single run without editing a config. The flag can only turn the dashboard on —
+a config that already asked for it is not disabled by omitting the flag.
 
 ``runtime.report_cpu_timing`` prints a CPU-attribution report at the end,
 separating time spent in counter's own code from time spent in the external

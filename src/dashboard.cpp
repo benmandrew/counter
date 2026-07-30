@@ -21,7 +21,10 @@ constexpr const char* k_page_source = "";
 
 }  // namespace
 
-DashboardWriter::DashboardWriter(const std::string& dir) {
+DashboardWriter::DashboardWriter(const std::string& dir, bool enabled) {
+    if (!enabled) {
+        return;
+    }
     const std::filesystem::path path =
         std::filesystem::path(dir) / k_progress_filename;
     m_path = path.string();

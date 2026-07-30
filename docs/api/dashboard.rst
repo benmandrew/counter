@@ -5,7 +5,12 @@ Streams a run's progress to ``<output-dir>/progress.jsonl`` as it happens, and
 copies the dashboard page beside it, so serving the output directory is all a
 viewer needs::
 
-   python3 -m http.server -d <output-dir> 8000
+   counter --dashboard --input <spec> --output-dir <dir>
+   python3 -m http.server -d <dir> 8000
+
+Opt-in: ``counter --dashboard`` or ``[runtime] dashboard = true``. A writer
+constructed disabled touches nothing and every method on it is a no-op, so
+neither driver branches on whether progress was asked for.
 
 ``DashboardWriter`` appends one JSON object per line and flushes each as it is
 written — the page polls the file mid-run, so a buffered line is a line the

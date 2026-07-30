@@ -24,9 +24,11 @@
 /// Losing the progress log must never take a repair run with it.
 class DashboardWriter {
    public:
-    /// Opens (and truncates) `<dir>/progress.jsonl`. Never throws; check
-    /// enabled() to learn whether the file opened.
-    explicit DashboardWriter(const std::string& dir);
+    /// Opens (and truncates) `<dir>/progress.jsonl` when @p enabled, and
+    /// otherwise touches nothing: every method below becomes a no-op, so a
+    /// caller need not branch on whether progress was asked for. Never throws;
+    /// check enabled() to learn whether the file actually opened.
+    DashboardWriter(const std::string& dir, bool enabled);
 
     [[nodiscard]] bool enabled() const { return m_enabled; }
 

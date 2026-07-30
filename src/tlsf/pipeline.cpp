@@ -449,7 +449,7 @@ int run_repair(const std::string& input_path, const std::string& output_dir,
         tlsf_get_fitness_function(original, cfg);
 
     DashboardProgress progress;
-    DashboardWriter dashboard(output_dir);
+    DashboardWriter dashboard(output_dir, cfg.dashboard);
     progress.writer = &dashboard;
     for (const WeightedFitnessFunctionT<Specification>& objective : fitness) {
         progress.objective_names.push_back(objective.name);

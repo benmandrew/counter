@@ -506,6 +506,10 @@ void print_help(const char* prog) {
         << "                       other extension as FRETISH).\n"
         << "  --seed <n>           RNG seed for reproducible runs. If omitted\n"
         << "                       a random seed is chosen and printed.\n"
+        << "  --dashboard          Stream progress to\n"
+        << "                       <output-dir>/progress.jsonl and write a\n"
+        << "                       live dashboard page beside it. Equivalent\n"
+        << "                       to [runtime] dashboard = true.\n"
         << "  -h, --help           Show this help message and exit.\n"
         << "\n"
         << "Input format (examples/takeoff/spec.json):\n"
@@ -542,6 +546,10 @@ int main(int argc, const char* const argv[]) {
             return 1;
         }
     }
+    // Folded into cfg here so everything downstream, both drivers included,
+    // reads one switch. The flag can only enable: a config that already asked
+    // for the dashboard is not turned off by its absence.
+    cfg.dashboard = cfg.dashboard || has_flag(argc, argv, "--dashboard");
     global_sat_checker().set_timeout(cfg.black_timeout);
     RealizabilityChecker::set_max_concurrency(cfg.max_concurrent_realizability);
     RealizabilityChecker::set_timeout(cfg.ltlsynt_timeout);
@@ -621,7 +629,7 @@ int main(int argc, const char* const argv[]) {
     std::cout << "Seed: " << seed << "\n";
     register_crash_metadata(format_crash_metadata(seed, *input_path, cfg));
 
-    DashboardWriter dashboard(*output_dir);
+    DashboardWriter dashboard(*output_dir, cfg.dashboard);
     dashboard.run_start(*input_path, cfg.generations, population.size(), seed,
                         fitness_objective_names(fitness_function));
     const std::string page = dashboard.write_page();

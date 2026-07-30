@@ -67,7 +67,7 @@ StageObservation observation(const std::string& name, std::size_t n_in,
 void test_records_are_one_json_object_per_line() {
     const TempDir dir;
     {
-        DashboardWriter writer(dir.string());
+        DashboardWriter writer(dir.string(), true);
         expect(writer.enabled(),
                "dashboard: the writer should open its log in a directory that "
                "exists");
@@ -96,7 +96,7 @@ void test_records_are_one_json_object_per_line() {
 void test_unmeasured_fields_are_omitted_not_defaulted() {
     const TempDir dir;
     {
-        DashboardWriter writer(dir.string());
+        DashboardWriter writer(dir.string(), true);
         // The TLSF driver counts realizable survivors only at the end of a run,
         // so a zero here would be a measurement the run never made.
         writer.generation(1, 1.0, 0.5, 0.4, {}, std::nullopt, 10);
@@ -120,7 +120,7 @@ void test_unmeasured_fields_are_omitted_not_defaulted() {
 }
 
 void test_writer_survives_an_unwritable_directory() {
-    DashboardWriter writer("/nonexistent-directory-for-counter-tests");
+    DashboardWriter writer("/nonexistent-directory-for-counter-tests", true);
     expect(!writer.enabled(),
            "dashboard: a writer that cannot open its log should report itself "
            "disabled");

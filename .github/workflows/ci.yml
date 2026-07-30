@@ -5,11 +5,16 @@ on:
     branches:
       - main
   pull_request:
-  # Nightly exhaustive pass: full-tree lint sweep (catches header-fan-out that
-  # the changed-file lint on PRs/pushes misses) and the benchmark run. 03:00 UTC.
+  # Nightly full-tree lint sweep at 03:00 UTC, which catches the header fan-out
+  # the changed-file lint on PRs and pushes cannot see: clang-tidy findings are
+  # per translation unit, so editing a header can break the TUs that include it
+  # without touching a file the diff-scoped lint ever compiles. Scheduled runs
+  # stop at the check job -- build-and-test is skipped, since the push that
+  # produced this commit already ran the same four configurations over the same
+  # Nix-pinned toolchain. Benchmarks live in benchmark.yml.
   schedule:
     - cron: "0 3 * * *"
-  # Manual trigger for an on-demand full sweep + benchmark.
+  # Manual trigger for an on-demand full sweep plus the whole build matrix.
   workflow_dispatch:
 
 env:
@@ -18,9 +23,9 @@ env:
 jobs:
   # Staleness gate for the nightly schedule. The toolchain is pinned by the Nix
   # flake, so a scheduled run over a tree that has not moved since the previous
-  # night re-derives the same lint, docs, test, and benchmark results from the
-  # same inputs -- pure runner minutes for no signal. Pushes, pull requests, and
-  # manual dispatch always run.
+  # night re-derives the same lint and docs results from the same inputs --
+  # pure runner minutes for no signal. Pushes, pull requests, and manual
+  # dispatch always run.
   gate:
     runs-on: ubuntu-latest
     outputs:
@@ -270,14 +275,18 @@ jobs:
           '
 
   # Emit the build-and-test matrix as JSON so pull requests run a lean
-  # debug+release pair while pushes to main, the nightly schedule, and manual
-  # dispatch add the gcc (portability) and tsan (data-race) configurations.
+  # debug+release pair while pushes to main and manual dispatch add the gcc
+  # (portability) and tsan (data-race) configurations.
+  #
+  # Not on the schedule: a scheduled run only reaches here over a commit that
+  # was pushed to main, and that push already built and tested all four
+  # configurations against the same Nix-pinned toolchain and the same
+  # seed-pinned tests, so the rebuild re-derives the results it already has.
   # Gating this job also gates build-and-test, which is skipped when a job it
-  # needs is skipped -- so the four-configuration matrix never starts on a
-  # scheduled run the gate rejected.
+  # needs is skipped.
   build-matrix:
     needs: gate
-    if: needs.gate.outputs.run == 'true'
+    if: needs.gate.outputs.run == 'true' && github.event_name != 'schedule'
     runs-on: ubuntu-latest
     outputs:
       matrix: ${{ steps.set.outputs.matrix }}
@@ -345,83 +354,3 @@ jobs:
             ctest --preset ${{ matrix.preset }}
             echo "::endgroup::"
           '
-
-  # Benchmarks run only on the nightly schedule (and manual dispatch); the gate
-  # additionally skips a scheduled run over an unchanged tree, which would just
-  # add a runner-noise datapoint to the history. Absolute ns/iter is compared
-  # across runner instances, so this is advisory (fail-on-alert: false) and was
-  # never a merge gate.
-  benchmark:
-    needs: gate
-    runs-on: ubuntu-latest
-    if: >-
-      needs.gate.outputs.run == 'true'
-      && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch')
-    permissions:
-      contents: write
-      # comment-on-alert posts a PR review, which contents: write does not cover.
-      pull-requests: write
-
-    steps:
-      - name: Check out repository
-        uses: actions/checkout@v7
-
-      - name: Install Nix
-        uses: cachix/install-nix-action@v31
-        with:
-          github_access_token: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Set up sccache
-        uses: mozilla-actions/sccache-action@v0.0.10
-
-      - name: Cache third-party dependencies
-        uses: actions/cache@v5
-        with:
-          path: |
-            build-bench/third_party
-            build-bench/_deps
-          key: ${{ runner.os }}-bench-ninja-${{ hashFiles('cmake/spot.cmake', 'cmake/ganak.cmake', 'cmake/black.cmake', 'bench/CMakeLists.txt', 'cmake/dependencies.cmake') }}
-          restore-keys: |
-            ${{ runner.os }}-bench-ninja-
-
-      - name: Configure and build
-        env:
-          CMAKE_C_COMPILER_LAUNCHER: sccache
-          CMAKE_CXX_COMPILER_LAUNCHER: sccache
-        run: |
-          nix develop --command bash -euo pipefail -c '
-            echo "::group::Configure"
-            cmake --preset bench
-            echo "::endgroup::"
-
-            echo "::group::Build"
-            cmake --build --preset bench --target counter_bench
-            echo "::endgroup::"
-          '
-
-      - name: Check regression assertions
-        run: ./build-bench/bench/counter_bench --check-assertions
-
-      - name: Run benchmarks
-        run: |
-          ./build-bench/bench/counter_bench \
-            --benchmark_format=json \
-            --benchmark_out=bench_results.json \
-            --benchmark_time_unit=ns
-
-      - name: Store benchmark results
-        uses: benchmark-action/github-action-benchmark@v1
-        with:
-          name: counter benchmarks
-          tool: googlecpp
-          output-file-path: bench_results.json
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-          auto-push: ${{ github.ref == 'refs/heads/main' }}
-          alert-threshold: '150%'
-          comment-on-alert: true
-          # Absolute ns/iter is compared across runner instances, so host
-          # contention alone moves every benchmark by more than the threshold.
-          # Alert, but do not fail the build on it.
-          fail-on-alert: false
-          gh-pages-branch: gh-pages
-          benchmark-data-dir-path: .

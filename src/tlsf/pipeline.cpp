@@ -15,6 +15,7 @@
 #include <nlohmann/json.hpp>
 
 #include "config.hpp"
+#include "dashboard.hpp"
 #include "genetic/generation.hpp"
 #include "genetic/random_source.hpp"
 #include "genetic/scored.hpp"
@@ -224,11 +225,24 @@ ActiveFilters select_active_filters(
 // Evolves `spec` under `cfg` against `fitness`, returning the final scored
 // population and, via `filter_stats_out`, this run's per-filter in/out totals.
 // Shared by both repair modes; in MUC mode `spec` is a core sub-specification.
+// Where one evolve run should report its progress, and how to place it in a run
+// that evolves more than once. MUC repair calls evolve_population per core, so
+// gen_offset keeps the dashboard's generation numbering monotonic across those
+// calls while muc_iter records which core a generation belonged to. A null
+// writer disables reporting entirely.
+struct DashboardProgress {
+    DashboardWriter* writer = nullptr;
+    std::vector<std::string> objective_names;
+    std::size_t gen_offset = 0;
+    std::size_t muc_iter = 0;
+};
+
 std::vector<Scored<Specification>> evolve_population(
     const Specification& spec, const Config& cfg,
     const RandomSource& random_source,
     const AggregateWeightedFitnessFunctionT<Specification>& fitness,
-    std::vector<FilterRunStats>& filter_stats_out) {
+    std::vector<FilterRunStats>& filter_stats_out,
+    const DashboardProgress& progress = {}) {
     const std::vector<FilterFunctionT<Specification>> per_gen_filters =
         build_per_gen_filters(spec, cfg);
 
@@ -257,9 +271,22 @@ std::vector<Scored<Specification>> evolve_population(
         const bool is_last = gen + 1 == cfg.generations;
         ActiveFilters active =
             select_active_filters(per_gen_filters, gen, is_last);
+        const auto gen_start = std::chrono::steady_clock::now();
+        // MUC repair restarts its generation count on every core it evolves, so
+        // the dashboard is given a number that keeps climbing across
+        // iterations; muc_iter carries the structure that flattens away.
+        const std::size_t dashboard_gen = progress.gen_offset + gen + 1;
+        std::size_t stage_index = 0;
+        auto on_stage = [&progress, &stage_index,
+                         dashboard_gen](const StageObservation& obs) {
+            if (progress.writer != nullptr) {
+                progress.writer->stage(dashboard_gen, stage_index++, obs,
+                                       progress.muc_iter);
+            }
+        };
         population = evolve_generation_generic(
             cfg, population, selection_size, elitism_size, fitness,
-            active.filters, tlsf_operators(), random_source);
+            active.filters, tlsf_operators(), random_source, nullptr, on_stage);
         // The active copies hold this generation's in/out sizes; fold them into
         // the running per-filter totals for the end-of-run report.
         for (std::size_t k = 0; k < active.filters.size(); ++k) {
@@ -272,6 +299,34 @@ std::vector<Scored<Specification>> evolve_population(
             population.empty() ? 0.0 : population.front().fitness;
         std::cout << "gen " << (gen + 1) << "/" << cfg.generations
                   << "  best fitness " << best << "\n";
+        if (progress.writer != nullptr) {
+            // The maximum, not front(): NSGA-II orders by front rank and
+            // crowding distance, so the leading individual need not hold the
+            // highest weighted scalar.
+            double total = 0.0;
+            double maximum = 0.0;
+            std::vector<std::vector<double>> objectives;
+            objectives.reserve(population.size());
+            for (const Scored<Specification>& cand : population) {
+                total += cand.fitness;
+                maximum = std::max(maximum, cand.fitness);
+                objectives.push_back(cand.objectives);
+            }
+            progress.writer->generation(
+                dashboard_gen,
+                std::chrono::duration<double>(std::chrono::steady_clock::now() -
+                                              gen_start)
+                    .count(),
+                maximum,
+                population.empty()
+                    ? 0.0
+                    : total / static_cast<double>(population.size()),
+                // No count: this path checks realizability once, after
+                // evolution, so any number here would be one the run never
+                // measured.
+                mean_objectives(progress.objective_names, objectives),
+                std::nullopt, population.size(), progress.muc_iter);
+        }
     }
     return population;
 }
@@ -295,10 +350,11 @@ void accumulate_filter_stats(std::vector<FilterRunStats>& aggregate,
 std::vector<Scored<Specification>> run_monolithic(
     const Specification& original, const Config& cfg,
     const RandomSource& random_source,
-    const AggregateWeightedFitnessFunctionT<Specification>& fitness) {
+    const AggregateWeightedFitnessFunctionT<Specification>& fitness,
+    const DashboardProgress& progress) {
     std::vector<FilterRunStats> filter_stats;
-    const std::vector<Scored<Specification>> population =
-        evolve_population(original, cfg, random_source, fitness, filter_stats);
+    const std::vector<Scored<Specification>> population = evolve_population(
+        original, cfg, random_source, fitness, filter_stats, progress);
     std::vector<Scored<Specification>> survivors =
         realizable_survivors(population, cfg, fitness);
     print_filter_report(filter_stats);
@@ -313,9 +369,11 @@ std::vector<Scored<Specification>> run_monolithic(
 std::vector<Scored<Specification>> run_muc(
     const Specification& original, const Config& cfg,
     const RandomSource& random_source,
-    const AggregateWeightedFitnessFunctionT<Specification>& output_fitness) {
+    const AggregateWeightedFitnessFunctionT<Specification>& output_fitness,
+    const DashboardProgress& progress) {
     std::vector<FilterRunStats> aggregate_stats;
     Specification current = original;
+    std::size_t gen_offset = 0;
     for (std::size_t iter = 0; iter < cfg.muc_max_iterations; ++iter) {
         if (is_realizable(current)) {
             break;
@@ -335,8 +393,13 @@ std::vector<Scored<Specification>> run_muc(
         const AggregateWeightedFitnessFunctionT<Specification> sub_fitness =
             tlsf_get_fitness_function(muc.spec, cfg);
         std::vector<FilterRunStats> iter_stats;
-        const std::vector<Scored<Specification>> population = evolve_population(
-            muc.spec, cfg, random_source, sub_fitness, iter_stats);
+        DashboardProgress iter_progress = progress;
+        iter_progress.gen_offset = gen_offset;
+        iter_progress.muc_iter = iter + 1;
+        const std::vector<Scored<Specification>> population =
+            evolve_population(muc.spec, cfg, random_source, sub_fitness,
+                              iter_stats, iter_progress);
+        gen_offset += cfg.generations;
         accumulate_filter_stats(aggregate_stats, iter_stats);
         const std::vector<Scored<Specification>> sub_survivors =
             realizable_survivors(population, cfg, sub_fitness);
@@ -385,10 +448,25 @@ int run_repair(const std::string& input_path, const std::string& output_dir,
     const AggregateWeightedFitnessFunctionT<Specification> fitness =
         tlsf_get_fitness_function(original, cfg);
 
+    DashboardProgress progress;
+    DashboardWriter dashboard(output_dir);
+    progress.writer = &dashboard;
+    for (const WeightedFitnessFunctionT<Specification>& objective : fitness) {
+        progress.objective_names.push_back(objective.name);
+    }
+    dashboard.run_start(input_path, cfg.generations, cfg.population_size,
+                        maybe_seed.value_or(0), progress.objective_names);
+    const auto wall_start = std::chrono::steady_clock::now();
+    if (!dashboard.write_page().empty()) {
+        std::cout << "Progress: " << dashboard.path() << "\n"
+                  << "  view with: python3 -m http.server -d " << output_dir
+                  << " 8000\n";
+    }
+
     std::vector<Scored<Specification>> survivors =
         cfg.repair_mode == RepairMode::Muc
-            ? run_muc(original, cfg, random_source, fitness)
-            : run_monolithic(original, cfg, random_source, fitness);
+            ? run_muc(original, cfg, random_source, fitness, progress)
+            : run_monolithic(original, cfg, random_source, fitness, progress);
     const std::size_t n_realizable = survivors.size();
     // Final maximality pass: keep only realizable repairs not strictly implied
     // by another, mirroring the FRETISH final implication filter.
@@ -396,6 +474,10 @@ int run_repair(const std::string& input_path, const std::string& output_dir,
         survivors = keep_maximal(survivors, global_sat_checker());
     }
     write_survivors(survivors, fitness, output_dir);
+    dashboard.run_end(cfg.generations, n_realizable, survivors.size(),
+                      std::chrono::duration<double>(
+                          std::chrono::steady_clock::now() - wall_start)
+                          .count());
     std::cout << "Realizable specifications: " << n_realizable;
     if (cfg.run_implication_filter) {
         std::cout << " (" << survivors.size() << " maximal)";

@@ -24,6 +24,7 @@ functions, and anonymous namespaces, with source browsing and call graphs.
    api/bounded_async
    api/config
    api/config_io
+   api/dashboard
    api/prop_formula
    api/requirement
    api/serialisation

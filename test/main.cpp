@@ -177,6 +177,10 @@ void run_suite(std::string_view suite_name,
         run_config_io_tests();
         return;
     }
+    if (suite_name == "dashboard") {
+        run_dashboard_tests();
+        return;
+    }
     if (run_tlsf_suite(suite_name)) {
         return;
     }
@@ -224,6 +228,7 @@ int main(int argc, const char* const argv[]) {
             run_requirement_tests();
             run_serialisation_tests();
             run_config_io_tests();
+            run_dashboard_tests();
             run_tlsf_parser_tests();
             run_tlsf_writer_tests();
             run_tlsf_filter_tests();

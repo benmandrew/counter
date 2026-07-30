@@ -28,6 +28,7 @@ add_executable(counter_tests
     prop_formula/temporal_tests.cpp
     serialisation_tests.cpp
     config_io_tests.cpp
+    dashboard_tests.cpp
     tlsf/parser_tests.cpp
     tlsf/writer_tests.cpp
     tlsf/filter_tests.cpp
@@ -74,6 +75,7 @@ add_test(NAME counter_tests.well_separation_filter COMMAND counter_tests well_se
 add_test(NAME counter_tests.requirement COMMAND counter_tests requirement)
 add_test(NAME counter_tests.serialisation COMMAND counter_tests serialisation)
 add_test(NAME counter_tests.config_io COMMAND counter_tests config_io)
+add_test(NAME counter_tests.dashboard COMMAND counter_tests dashboard)
 add_test(NAME counter_tests.tlsf_parser COMMAND counter_tests tlsf_parser)
 add_test(NAME counter_tests.tlsf_writer COMMAND counter_tests tlsf_writer)
 add_test(NAME counter_tests.tlsf_filter COMMAND counter_tests tlsf_filter)

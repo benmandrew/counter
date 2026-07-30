@@ -75,6 +75,22 @@ Every header file in `include/` must have a corresponding `.rst` page under `doc
 6. Apply final filters: dedup, then optional implication filter to keep only maximal specs.
 7. Score, sort, and write each maximal spec to `<output-dir>/repair_N.json`.
 
+## Live dashboard
+
+Both drivers stream progress to `<output-dir>/progress.jsonl` (one JSON object
+per line, flushed as written) and copy `web/dashboard.html` there as
+`index.html`. To watch a run: `python3 -m http.server -d <output-dir> 8000`.
+
+The page derives its stage list from the `stage` records of the latest
+generation, so a new filter or pipeline stage shows up with no change to either
+side. Generation stages come from `make_generation_pipeline`
+(`include/genetic/pipeline.hpp`), which returns an ordered vector of named
+`PipelineStage`s; `run_generation_pipeline` reports each to an optional
+`StageObserver`. Breeding must stay a single stage — crossover and mutation
+interleave per offspring slot, so splitting them reorders every RNG draw after
+the first and breaks seed reproducibility. The `determinism` test suite pins the
+draw stream against exactly that.
+
 ## TLSF repair modes
 
 Binaries: `counter` (genetic repair), `realize`, `compare`, `ltl`, `mucs` — run each with `--help` for flags.

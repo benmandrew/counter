@@ -678,7 +678,7 @@ def main() -> None:
         for wk_dir, wk_override in weakenings:
             for mx_dir, mx_override in metrics:
                 for rp_dir, rp_override in repairs:
-                    out = args.out_dir / scheme
+                    out = out_dir / scheme
                     for seg in (wk_dir, mx_dir, rp_dir):
                         if seg is not None:
                             out = out / seg
@@ -695,7 +695,7 @@ def main() -> None:
                                      if p is not None)
                     print(f"  {label:24} "
                           f"{len(list(out.glob('sweep_*.toml'))):3} configs")
-    print(f"\nGenerated {count} config files in {args.out_dir}")
+    print(f"\nGenerated {count} config files in {out_dir}")
 
 
 if __name__ == "__main__":

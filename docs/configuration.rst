@@ -10,6 +10,11 @@ on — are tuned without recompiling by passing a *Tom's Obvious Minimal Languag
    counter --input spec.json --output-dir out --config my-config.toml
 
 Every section and key is optional; absent keys keep their built-in defaults.
+Sections and keys the parser does not recognise are ignored, each reported on
+stderr by its full path, so a misspelling shows up as
+``config: unknown key genetic.mutaton_rate, ignoring`` rather than as a setting
+that silently did nothing. A key placed in the wrong section is reported the
+same way. Values still out of range for their field abort the run.
 
 .. code-block:: toml
 

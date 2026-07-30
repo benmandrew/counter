@@ -3,9 +3,11 @@
 #include <chrono>
 #include <cstddef>
 #include <iostream>
+#include <map>
 #include <set>
 #include <stdexcept>
 #include <string>
+#include <utility>
 
 #define TOML_EXCEPTIONS 1
 #include <toml++/toml.hpp>
@@ -35,19 +37,68 @@ void require_nonnegative(double value, const char* name) {
     }
 }
 
-const std::set<std::string> k_known_sections = {
-    "genetic",        "fitness", "syntactic", "mutation",
-    "model_counting", "filters", "runtime",   "tlsf"};
+// Mirrors the keys the apply_* functions below read, so that a typo in a
+// config file is reported rather than silently ignored. Adding a key to an
+// apply_* function means adding it here too; config_io_tests holds a config
+// exercising every key, which fails if the two drift apart.
+struct KeySpec {
+    std::set<std::string> keys;
+    std::map<std::string, KeySpec> tables;
+};
 
-void warn_unknown_keys(const toml::table& tbl) {
+KeySpec section(std::set<std::string> keys,
+                std::map<std::string, KeySpec> tables = {}) {
+    return KeySpec{std::move(keys), std::move(tables)};
+}
+
+const KeySpec& config_key_spec() {
+    static const KeySpec spec = section(
+        {},
+        {{"genetic",
+          section({"generations", "population_size", "selection_rate",
+                   "elitism_rate", "crossover_rate", "mutation_rate",
+                   "selection_scheme"})},
+         {"fitness", section({"weight_syntactic", "weight_semantic",
+                              "weight_halstead", "weight_status"})},
+         {"syntactic",
+          section({"weight_trigger", "weight_response", "weight_timing"})},
+         {"mutation",
+          section({"p_trigger", "p_response", "p_timing", "p_add_assumption",
+                   "p_conditional_assumption", "strengthen_assumptions",
+                   "allow_output_assumptions"})},
+         {"tlsf", section({"repair_mode", "muc_max_iterations"},
+                          {{"mutation", section({"p_assumption", "p_guarantee",
+                                                 "p_temporal"})}})},
+         {"model_counting", section({"default_bound", "metric"})},
+         {"filters",
+          section({"run_weakening", "run_implication", "run_vacuity",
+                   "run_well_separation"},
+                  {{"intervals",
+                    section({"dedup", "false_condition", "weakening", "bloat",
+                             "vacuity", "well_separation"})}})},
+         {"runtime",
+          section({"black_timeout_ms", "ltlsynt_timeout_ms",
+                   "ltl2tgba_timeout_ms", "parallel",
+                   "max_concurrent_realizability", "report_cpu_timing",
+                   "max_scoring_failure_rate"})}});
+    return spec;
+}
+
+void warn_unknown_keys(const toml::table& tbl, const KeySpec& spec,
+                       const std::string& prefix) {
     for (const auto& [key, node] : tbl) {
+        const std::string name(key.str());
+        const std::string path = prefix + name;
         if (node.is_table()) {
-            const bool unknown = k_known_sections.find(std::string(key)) ==
-                                 k_known_sections.end();
-            if (unknown) {
-                std::cerr << "config: unknown section [" << key
+            const auto sub = spec.tables.find(name);
+            if (sub == spec.tables.end()) {
+                std::cerr << "config: unknown section [" << path
                           << "], ignoring\n";
+            } else {
+                warn_unknown_keys(*node.as_table(), sub->second, path + ".");
             }
+        } else if (spec.keys.find(name) == spec.keys.end()) {
+            std::cerr << "config: unknown key " << path << ", ignoring\n";
         }
     }
 }
@@ -292,7 +343,7 @@ void apply_runtime(const toml::table& tbl, Config& cfg) {
 }
 
 Config apply_toml(const toml::table& tbl) {
-    warn_unknown_keys(tbl);
+    warn_unknown_keys(tbl, config_key_spec(), "");
     Config cfg;
     if (const auto* sec = tbl["genetic"].as_table()) {
         apply_genetic(*sec, cfg);

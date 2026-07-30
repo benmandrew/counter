@@ -1,4 +1,6 @@
 #include <cstddef>
+#include <iostream>
+#include <sstream>
 #include <stdexcept>
 #include <string>
 
@@ -8,6 +10,28 @@
 #include "test_support.hpp"
 
 namespace {
+
+Config config_capturing_warnings(const std::string& toml,
+                                 std::string& warnings) {
+    std::ostringstream captured;
+    std::streambuf* const previous = std::cerr.rdbuf(captured.rdbuf());
+    try {
+        Config cfg = config_from_toml_string(toml);
+        std::cerr.rdbuf(previous);
+        warnings = captured.str();
+        return cfg;
+    } catch (...) {
+        std::cerr.rdbuf(previous);
+        warnings = captured.str();
+        throw;
+    }
+}
+
+std::string warnings_from(const std::string& toml) {
+    std::string warnings;
+    config_capturing_warnings(toml, warnings);
+    return warnings;
+}
 
 void test_config_io_all_fields() {
     const std::string toml = R"(
@@ -328,6 +352,140 @@ void test_config_io_muc_max_iterations_nonpositive_throws() {
     expect(threw, "config_io: muc_max_iterations = 0 should throw");
 }
 
+// Every key any apply_* function reads. Fails if the parser gains a key that
+// the unknown-key spec in config_io.cpp was not told about.
+void test_config_io_known_keys_do_not_warn() {
+    const std::string toml = R"(
+[genetic]
+generations      = 5
+population_size  = 100
+selection_rate   = 0.5
+elitism_rate     = 0.1
+crossover_rate   = 0.2
+mutation_rate    = 0.8
+selection_scheme = "nsga2"
+
+[fitness]
+weight_syntactic = 0.3
+weight_semantic  = 0.4
+weight_halstead  = 0.05
+weight_status    = 0.6
+
+[syntactic]
+weight_trigger  = 2.0
+weight_response = 1.5
+weight_timing   = 0.5
+
+[mutation]
+p_trigger                = 0.3
+p_response               = 0.7
+p_timing                 = 0.1
+p_add_assumption         = 0.05
+p_conditional_assumption = 0.25
+strengthen_assumptions   = true
+allow_output_assumptions = false
+
+[tlsf]
+repair_mode        = "muc"
+muc_max_iterations = 32
+
+[tlsf.mutation]
+p_assumption = 0.3
+p_guarantee  = 0.7
+p_temporal   = 0.2
+
+[model_counting]
+default_bound = 10
+metric        = "direct"
+
+[filters]
+run_weakening       = false
+run_implication     = false
+run_vacuity         = true
+run_well_separation = true
+
+[filters.intervals]
+dedup           = 1
+false_condition = 2
+weakening       = 3
+bloat           = 4
+vacuity         = 5
+well_separation = 6
+
+[runtime]
+black_timeout_ms             = 500
+ltlsynt_timeout_ms           = 30000
+ltl2tgba_timeout_ms          = 1000
+parallel                     = 4
+max_concurrent_realizability = 6
+report_cpu_timing            = true
+max_scoring_failure_rate     = 0.05
+)";
+    const std::string warnings = warnings_from(toml);
+    expect(warnings.empty(),
+           "config_io: a config of known keys should warn about none, got: " +
+               warnings);
+}
+
+void test_config_io_unknown_section_warns() {
+    const std::string warnings = warnings_from("[genetics]\ngenerations = 5\n");
+    expect(warnings.find("unknown section [genetics]") != std::string::npos,
+           "config_io: an unknown section should be named in a warning");
+}
+
+void test_config_io_unknown_key_warns() {
+    const std::string warnings = warnings_from("[genetic]\ngenerationss = 5\n");
+    expect(
+        warnings.find("unknown key genetic.generationss") != std::string::npos,
+        "config_io: an unknown key should be warned about by its full path");
+}
+
+void test_config_io_unknown_top_level_key_warns() {
+    const std::string warnings = warnings_from("generations = 5\n");
+    expect(warnings.find("unknown key generations") != std::string::npos,
+           "config_io: a key outside any section should be warned about");
+}
+
+void test_config_io_unknown_nested_key_warns() {
+    const std::string warnings = warnings_from(
+        "[filters.intervals]\ndedupe = 2\n\n[tlsf.mutation]\np_temporal_ = "
+        "0.2\n");
+    expect(warnings.find("unknown key filters.intervals.dedupe") !=
+               std::string::npos,
+           "config_io: an unknown key in a nested section should be warned "
+           "about by its full path");
+    expect(warnings.find("unknown key tlsf.mutation.p_temporal_") !=
+               std::string::npos,
+           "config_io: an unknown key in [tlsf.mutation] should be warned "
+           "about by its full path");
+}
+
+void test_config_io_unknown_nested_section_warns() {
+    const std::string warnings =
+        warnings_from("[filters.interval]\ndedup = 2\n");
+    expect(warnings.find("unknown section [filters.interval]") !=
+               std::string::npos,
+           "config_io: an unknown nested section should be warned about by its "
+           "full path");
+}
+
+// A key in the wrong section is the typo the per-section spec exists to catch.
+void test_config_io_misplaced_key_warns() {
+    const std::string warnings = warnings_from("[fitness]\ngenerations = 5\n");
+    expect(
+        warnings.find("unknown key fitness.generations") != std::string::npos,
+        "config_io: a known key in the wrong section should be warned "
+        "about");
+}
+
+void test_config_io_unknown_key_still_applies_known_ones() {
+    std::string warnings;
+    const Config cfg = config_capturing_warnings(
+        "[genetic]\ngenerations = 5\nnonsense = 1\n", warnings);
+    expect(cfg.generations == 5,
+           "config_io: an unknown key should not stop known keys applying");
+}
+
 }  // namespace
 
 void run_config_io_tests() {
@@ -355,4 +513,12 @@ void run_config_io_tests() {
     test_config_io_repair_mode_invalid_throws();
     test_config_io_muc_max_iterations_parsed();
     test_config_io_muc_max_iterations_nonpositive_throws();
+    test_config_io_known_keys_do_not_warn();
+    test_config_io_unknown_section_warns();
+    test_config_io_unknown_key_warns();
+    test_config_io_unknown_top_level_key_warns();
+    test_config_io_unknown_nested_key_warns();
+    test_config_io_unknown_nested_section_warns();
+    test_config_io_misplaced_key_warns();
+    test_config_io_unknown_key_still_applies_known_ones();
 }

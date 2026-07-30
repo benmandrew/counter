@@ -430,8 +430,32 @@
   "use strict";
 
   var SOURCE = "progress.jsonl";
-  var POLL_MS = 1000;
   var MINUS = "−";
+
+  /* Poll interval in seconds, from ?poll= on the URL; 1s by default. The page
+     is served as a static file, so the URL is the only knob a viewer has that
+     survives without editing or rebuilding anything.
+
+     ?poll=0 loads once and never re-polls, for reading a finished or archived
+     run. Anything else is clamped to [0.25s, 300s]: each poll refetches and
+     reparses the whole log, which grows with the run, so a very fast interval
+     costs more the longer the run goes on. An unparseable value falls back to
+     the default rather than stopping the page from working. */
+  var POLL_MS = (function () {
+    var match = /[?&]poll=([^&]*)/.exec(window.location.search);
+    if (!match) { return 1000; }
+    var secs = parseFloat(decodeURIComponent(match[1]));
+    if (!isFinite(secs) || secs < 0) { return 1000; }
+    if (secs === 0) { return 0; }
+    return Math.min(Math.max(secs, 0.25), 300) * 1000;
+  })();
+
+  function fmtPollRate(ms) {
+    var secs = ms / 1000;
+    var text = (secs < 1) ? secs.toFixed(2).replace(/0+$/, "").replace(/\.$/, "")
+                          : String(Math.round(secs * 100) / 100);
+    return text + "s";
+  }
 
   /* ------------------------------------------------------------------ theme */
   var root = document.documentElement;
@@ -1079,7 +1103,10 @@
       label = "finished · " + fmtInt(s.runEnd.generations_run) + " gens · " +
         fmtInt(s.runEnd.n_maximal) + " maximal";
     } else {
-      st = "running"; label = "running · polling every 1s";
+      st = "running";
+      label = POLL_MS > 0
+        ? "running · polling every " + fmtPollRate(POLL_MS)
+        : "running · polling off · reload to refresh";
     }
     box.setAttribute("data-state", st);
     txt.textContent = label;
@@ -1265,7 +1292,7 @@
 
   renderAll(state);
   poll();
-  timer = window.setInterval(poll, POLL_MS);
+  if (POLL_MS > 0) { timer = window.setInterval(poll, POLL_MS); }
 })();
 </script>
 </body>

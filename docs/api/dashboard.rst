@@ -12,6 +12,14 @@ Opt-in: ``counter --dashboard`` or ``[runtime] dashboard = true``. A writer
 constructed disabled touches nothing and every method on it is a no-op, so
 neither driver branches on whether progress was asked for.
 
+The page polls once a second. ``?poll=<seconds>`` on the URL changes that —
+``?poll=5`` for a slow run, ``?poll=0.25`` for a fast one, ``?poll=0`` to load
+once and never re-poll when reading a finished or archived run. Values are
+clamped to 0.25--300 s, and an unparseable one falls back to the default: each
+poll refetches and reparses the whole log, which grows with the run, so a very
+fast interval costs more the longer the run goes on. The status pill reports the
+rate in force.
+
 ``DashboardWriter`` appends one JSON object per line and flushes each as it is
 written — the page polls the file mid-run, so a buffered line is a line the
 viewer cannot see. Four record types are emitted, each tagged with ``type``:

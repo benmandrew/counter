@@ -82,7 +82,8 @@ only enable). Off by default so a campaign of many runs does not pay for the
 file and its flushes with nobody watching. When on, both drivers stream progress
 to `<output-dir>/progress.jsonl` (one JSON object per line, flushed as written)
 and copy `web/dashboard.html` there as `index.html`. To watch a run:
-`python3 -m http.server -d <output-dir> 8000`.
+`python3 -m http.server -d <output-dir> 8000`. The page polls once a second;
+`?poll=<seconds>` overrides that (`?poll=0` loads once and stops polling).
 
 The page derives its stage list from the `stage` records of the latest
 generation, so a new filter or pipeline stage shows up with no change to either

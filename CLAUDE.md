@@ -35,14 +35,19 @@ Test binaries land at `build/test/counter_tests`. The test framework uses `expec
 ## Lint & Format
 
 ```sh
-cmake --build build --target lint          # cpplint + clang-tidy + cppcheck
+cmake --build build --target lint          # cpplint + clang-tidy + cppcheck + config parity
 cmake --build build --target lint-cpplint
 cmake --build build --target lint-clang-tidy
 cmake --build build --target lint-cppcheck
+cmake --build build --target lint-config-schema
 
 cmake --build build --target format        # apply clang-format in-place
 cmake --build build --target format-ci     # dry-run (fails if unformatted)
 ```
+
+## Config keys
+
+Adding a TOML config key means editing three places, none of which the compiler ties together: the `apply_*` function in `src/config_io.cpp` that reads it, `config_key_spec()` in the same file (else the parser warns "unknown key" on a key it accepts), and `schemas/config-schema.json` (else editors reject it). `scripts/check_config_schema.py` enforces the last two against each other and against `example-config.toml`, and runs as part of `lint`.
 
 ## Docs
 

@@ -1,0 +1,29 @@
+#!/bin/sh
+set -e
+
+# Every check here shells out to a build target, so the build directory must
+# already be configured. That is also what installs this hook: see
+# cmake/githooks.cmake.
+REPO_ROOT=$(git rev-parse --show-toplevel)
+
+if [ ! -d "$REPO_ROOT/build" ]; then
+    echo "pre-commit: $REPO_ROOT/build is not configured; skipping checks."
+    echo "            Run 'cmake --preset debug' to enable them."
+    exit 0
+fi
+
+echo "Checking formatting..."
+cmake --build "$REPO_ROOT/build" --target format-ci
+
+echo "Running cpplint and cppcheck..."
+cmake --build "$REPO_ROOT/build" --target lint-cpplint lint-cppcheck
+
+# Guarded so the hook still works on branches predating the target, where
+# ninja would abort with "unknown target".
+if [ -f "$REPO_ROOT/scripts/check_config_schema.py" ]; then
+    echo "Checking config key parity..."
+    cmake --build "$REPO_ROOT/build" --target lint-config-schema
+fi
+
+echo "Building docs..."
+cmake --build "$REPO_ROOT/build" --target docs

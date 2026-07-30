@@ -14,7 +14,7 @@
         "elitism_rate":    { "type": "number",  "minimum": 0, "maximum": 1, "description": "Fraction of the population carried over verbatim each generation, bypassing crossover, mutation, and filters. Must be less than selection_rate." },
         "crossover_rate":  { "type": "number",  "minimum": 0, "maximum": 1, "description": "Probability of crossover between parents." },
         "mutation_rate":   { "type": "number",  "minimum": 0, "maximum": 1, "description": "Probability of mutating an offspring." },
-        "selection_scheme": { "type": "string", "enum": ["weighted", "nsga2"], "default": "nsga2", "description": "Selection scheme: 'nsga2' (default) ranks by Pareto non-domination and crowding distance over the individual fitness components; 'weighted' ranks by the weighted-average fitness scalar, but converges prematurely and is retained for comparison." }
+        "selection_scheme": { "type": "string", "enum": ["weighted", "nsga2", "nsga2-replicate"], "default": "nsga2", "description": "Selection scheme: 'nsga2' (default) ranks by Pareto non-domination and crowding distance over the individual fitness components; 'nsga2-replicate' ranks identically but deduplicates the (mu + lambda) pool before sorting and replicates the distinct survivors back up to population_size, apportioning copies by 1 / (1 + rank); 'weighted' ranks by the weighted-average fitness scalar, but converges prematurely and is retained for comparison." }
       }
     },
     "fitness": {
@@ -43,7 +43,10 @@
         "p_trigger":  { "type": "number", "minimum": 0, "maximum": 1, "description": "Per-requirement probability of mutating the trigger." },
         "p_response": { "type": "number", "minimum": 0, "maximum": 1, "description": "Per-requirement probability of mutating the response." },
         "p_timing":   { "type": "number", "minimum": 0, "maximum": 1, "description": "Per-requirement probability of mutating the timing." },
-        "p_add_assumption": { "type": "number", "minimum": 0, "maximum": 1, "description": "Both modes: probability a mutation appends a new environment assumption (fairness over an input) instead of rewriting an existing requirement/formula." }
+        "p_add_assumption": { "type": "number", "minimum": 0, "maximum": 1, "description": "Both modes: probability a mutation appends a new environment assumption (fairness over an input) instead of rewriting an existing requirement/formula." },
+        "p_conditional_assumption": { "type": "number", "minimum": 0, "maximum": 1, "description": "Of the appended assumptions, the fraction guarded by a random input atom rather than by 'true'." },
+        "strengthen_assumptions": { "type": "boolean", "description": "Mutate assumption timings in the strengthening direction rather than the weakening one. Retained so the two directions can be compared." },
+        "allow_output_assumptions": { "type": "boolean", "description": "Allow freshly added environment assumptions to reference output atoms as well as inputs. False (the default) keeps them input-only and so well-separated by construction." }
       }
     },
     "tlsf": {
@@ -59,14 +62,17 @@
             "p_guarantee":  { "type": "number", "minimum": 0, "maximum": 1, "description": "Probability of mutating a guarantee-side section (PRESET/ASSERT/GUARANTEE)." },
             "p_temporal":   { "type": "number", "minimum": 0, "maximum": 1, "description": "Probability that a chosen section formula is rewritten by the temporal-structure mutation (may insert/drop/swap X/F/G/U/R/W) rather than the skeleton-preserving propositional rewrite." }
           }
-        }
+        },
+        "repair_mode": { "type": "string", "enum": ["monolithic", "muc"], "default": "monolithic", "description": "Repair strategy: 'monolithic' (default) evolves the whole specification at once; 'muc' extracts a minimal unrealizable core, evolves only that sub-specification, reintegrates it with the untouched non-core guarantees, and repeats." },
+        "muc_max_iterations": { "type": "integer", "minimum": 1, "description": "muc mode only: cap on the outer extract-repair-reintegrate loop." }
       }
     },
     "model_counting": {
       "type": "object",
       "additionalProperties": false,
       "properties": {
-        "default_bound": { "type": "integer", "minimum": 1, "description": "Trace-length bound k for bounded model counting." }
+        "default_bound": { "type": "integer", "minimum": 1, "description": "Trace-length bound k for bounded model counting." },
+        "metric": { "type": "string", "enum": ["direct", "logarithmic"], "default": "logarithmic", "description": "How trace counts become a similarity score: 'direct' takes the ratio of counts (a true overlap, but bound-dependent); 'logarithmic' (default) takes the ratio of their logarithms, comparing growth rates and staying stable as the bound grows." }
       }
     },
     "filters": {
@@ -75,6 +81,8 @@
       "properties": {
         "run_weakening":   { "type": "boolean", "description": "Enable per-generation weakening filter." },
         "run_implication": { "type": "boolean", "description": "Enable final implication maximality filter." },
+        "run_vacuity":     { "type": "boolean", "description": "Drop candidates whose assumptions are jointly unsatisfiable, which are realizable for free." },
+        "run_well_separation": { "type": "boolean", "description": "Drop candidates that are not well-separated: ones the system can satisfy vacuously by forcing its own assumptions to fail. Strictly stronger than run_vacuity, but each test is a full ltlsynt query, so it is off by default." },
         "intervals": {
           "type": "object",
           "additionalProperties": false,
@@ -83,7 +91,9 @@
             "dedup":           { "type": "integer", "minimum": 1, "description": "Deduplication filter interval." },
             "false_condition": { "type": "integer", "minimum": 1, "description": "False-condition filter interval." },
             "weakening":       { "type": "integer", "minimum": 1, "description": "Weakening filter interval (only when run_weakening)." },
-            "bloat":           { "type": "integer", "minimum": 1, "description": "Bloat-cap filter interval." }
+            "bloat":           { "type": "integer", "minimum": 1, "description": "Bloat-cap filter interval." },
+            "vacuity":         { "type": "integer", "minimum": 1, "description": "Vacuity filter interval (only when run_vacuity)." },
+            "well_separation": { "type": "integer", "minimum": 1, "description": "Well-separation filter interval (only when run_well_separation)." }
           }
         }
       }
@@ -93,8 +103,12 @@
       "additionalProperties": false,
       "properties": {
         "black_timeout_ms":  { "type": "integer", "minimum": 0, "description": "Timeout per black SAT query in milliseconds." },
+        "ltlsynt_timeout_ms": { "type": "integer", "minimum": 0, "description": "Per-call ltlsynt realizability timeout in milliseconds. 0 (default) is no timeout; a call exceeding it is killed and treated as unrealizable." },
+        "ltl2tgba_timeout_ms": { "type": "integer", "minimum": 0, "description": "Per-call ltl2tgba automaton-construction timeout in milliseconds. 0 (default) is no timeout." },
         "parallel":          { "type": "integer", "minimum": 1, "description": "Thread pool size. Omit to use hardware concurrency." },
-        "report_cpu_timing": { "type": "boolean", "description": "Print the CPU-attribution report (your code vs. external CLI tools)." }
+        "max_concurrent_realizability": { "type": "integer", "minimum": 0, "description": "Cap on ltlsynt processes running at once, independent of the thread pool. 0 (default) is unlimited; a positive value bounds peak RAM." },
+        "report_cpu_timing": { "type": "boolean", "description": "Print the CPU-attribution report (your code vs. external CLI tools)." },
+        "max_scoring_failure_rate": { "type": "number", "minimum": 0, "maximum": 1, "description": "Fraction of a generation whose fitness scoring may throw before the run aborts. A single failure per generation is always tolerated." }
       }
     }
   }

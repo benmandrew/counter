@@ -147,7 +147,32 @@ else()
     )
 endif()
 
+# --- config key parity ---
+
+# Checks config_io.cpp's key spec, schemas/config-schema.json, and
+# example-config.toml against each other. Unlike the linters above this ignores
+# COUNTER_LINT_FILES_OVERRIDE: it is a whole-tree consistency check costing
+# milliseconds, and restricting it to changed files would miss exactly the
+# case it exists for (one of the three edited without the others).
+find_program(PYTHON3_EXE NAMES python3 python)
+
+if(PYTHON3_EXE)
+    add_custom_target(lint-config-schema
+        COMMAND ${PYTHON3_EXE}
+            ${CMAKE_CURRENT_SOURCE_DIR}/scripts/check_config_schema.py
+            --root ${CMAKE_CURRENT_SOURCE_DIR}
+        COMMENT "Checking TOML config key parity"
+        VERBATIM
+    )
+else()
+    add_custom_target(lint-config-schema
+        COMMAND ${CMAKE_COMMAND} -E echo "WARNING: python3 was not found on PATH, skipping"
+        COMMENT "python3 not available"
+        VERBATIM
+    )
+endif()
+
 # --- aggregate ---
 
 add_custom_target(lint)
-add_dependencies(lint lint-cpplint lint-clang-tidy lint-cppcheck)
+add_dependencies(lint lint-cpplint lint-clang-tidy lint-cppcheck lint-config-schema)

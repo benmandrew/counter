@@ -96,6 +96,17 @@ struct Config {
     // max_scoring_failure_rate). 0 (the default) disables the timeout,
     // preserving prior behaviour; the heavy TLSF specs set it.
     std::chrono::milliseconds ltl2tgba_timeout{0};
+    // Per-call wall-clock budget for each ltlfilt exec. Unlike the budgets
+    // above this defaults to a real value rather than to "off": --simplify is
+    // super-exponential on the deep nested-X conjunctions the search builds,
+    // and an abandoned call costs only a missed simplification, never an
+    // individual.
+    std::chrono::milliseconds ltlfilt_timeout{10'000};
+    // Per-call wall-clock budget for each ganak model-counting exec. 0 (the
+    // default) disables it: counting is the fitness function's real work, so a
+    // slow count is usually a legitimately hard one rather than a blowup, and
+    // abandoning it drops the individual against max_scoring_failure_rate.
+    std::chrono::milliseconds ganak_timeout{0};
     // When true, print the CPU-attribution report (your code vs. the external
     // CLI tools, via getrusage + per-tool wait4). Opt-in: off leaves output
     // identical to before.
@@ -179,3 +190,9 @@ struct Config {
     // A single failure is always tolerated, whatever the population size.
     double max_scoring_failure_rate = 0.05;
 };
+
+/// Applies every per-tool timeout in `cfg` to the process-global runner
+/// singletons. Drivers must call this rather than setting the tools they happen
+/// to remember: compare did the latter and, for as long as the ltlsynt and
+/// ltl2tgba budgets had existed, ran both unbounded whatever the config said.
+void apply_tool_timeouts(const Config& cfg);

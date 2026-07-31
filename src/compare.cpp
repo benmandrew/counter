@@ -431,8 +431,16 @@ int main(int argc, const char* const argv[]) {
     const Args& args = *maybe_args;
 
     Config cfg;
+    // Comparison is dominated by solver calls on specs the search has already
+    // stretched, so every budget here is generous next to a run's. They are set
+    // through apply_tool_timeouts rather than one at a time: this driver used
+    // to set only black's, which left ltlsynt (reachable through the TLSF
+    // filters) unbounded, so a single hard query could spend the whole
+    // per-invocation budget the experiment harness allows.
     cfg.black_timeout = std::chrono::milliseconds{20'000};
-    global_sat_checker().set_timeout(cfg.black_timeout);
+    cfg.ltlsynt_timeout = std::chrono::milliseconds{60'000};
+    cfg.ltl2tgba_timeout = std::chrono::milliseconds{60'000};
+    apply_tool_timeouts(cfg);
     SatisfiabilityChecker& checker = global_sat_checker();
 
     // Route by input format. A .tlsf extension on either directory path, or any

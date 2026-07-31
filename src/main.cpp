@@ -574,10 +574,8 @@ int main(int argc, const char* const argv[]) {
     // reads one switch. The flag can only enable: a config that already asked
     // for the dashboard is not turned off by its absence.
     cfg.dashboard = cfg.dashboard || has_flag(argc, argv, "--dashboard");
-    global_sat_checker().set_timeout(cfg.black_timeout);
+    apply_tool_timeouts(cfg);
     RealizabilityChecker::set_max_concurrency(cfg.max_concurrent_realizability);
-    RealizabilityChecker::set_timeout(cfg.ltlsynt_timeout);
-    set_ltl2tgba_timeout(cfg.ltl2tgba_timeout);
     const std::optional<std::string> input_path =
         parse_string_arg(argc, argv, "--input");
     const std::optional<std::string> output_dir =

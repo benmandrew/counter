@@ -115,6 +115,10 @@ void run_suite(std::string_view suite_name,
         run_ltlfilt_runner_tests();
         return;
     }
+    if (suite_name == "process_runner") {
+        run_process_runner_tests();
+        return;
+    }
     if (suite_name == "spot_runner") {
         run_spot_runner_tests();
         return;
@@ -205,6 +209,7 @@ int main(int argc, const char* const argv[]) {
             run_formaliser_runner_tests();
             run_ganak_runner_tests();
             run_ltlfilt_runner_tests();
+            run_process_runner_tests();
             run_spot_runner_tests();
             run_crossover_tests();
             run_generation_tests();

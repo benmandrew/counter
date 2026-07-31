@@ -81,6 +81,7 @@ functions, and anonymous namespaces, with source browsing and call graphs.
    api/runner/formaliser
    api/runner/ganak
    api/runner/ltlfilt
+   api/runner/process
    api/runner/spot
 
 .. toctree::

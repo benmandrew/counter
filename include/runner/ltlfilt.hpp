@@ -5,6 +5,8 @@
 ///        canonical form, improving cache hit rates across tool invocations
 ///        and deciding formulae that reduce to a boolean constant outright.
 
+#include <chrono>
+#include <cstddef>
 #include <string>
 
 struct LtlfiltStats {
@@ -14,10 +16,25 @@ struct LtlfiltStats {
     // Child-process CPU time (user+sys), from wait4(); unlike total_time_s
     // (wall) it excludes time the parent spends blocked waiting on the child.
     inline static double total_cpu_s = 0.0;
+    // Calls abandoned at the per-call timeout. Both callers treat these as
+    // inconclusive rather than as errors, so unlike the ltl2tgba and ltlsynt
+    // counters this one costs no individual: it measures how often --simplify
+    // hit its blowup case.
+    inline static std::size_t n_timeouts = 0;
 };
 
 /// Returns the full filesystem path to the ltlfilt binary.
 std::string ltlfilt_path();
+
+/// Per-call wall-clock budget for every ltlfilt exec (process-global, like the
+/// ltlsynt and ltl2tgba budgets). A call exceeding it is killed and reported as
+/// inconclusive: simplify_ltl returns its input unchanged and ltl_equivalent
+/// returns true. Zero disables the timeout. Unlike the other tool budgets this
+/// defaults to a non-zero value, because --simplify blows up
+/// super-exponentially on deep nested-X conjunctions and losing a
+/// simplification costs nothing but a larger formula. Set once at startup from
+/// Config::ltlfilt_timeout.
+void set_ltlfilt_timeout(std::chrono::milliseconds timeout);
 
 /// Returns the ltlfilt-simplified form of `formula` verbatim, including SPOT's
 /// boolean constants "0" (false) and "1" (true) when the formula reduces to

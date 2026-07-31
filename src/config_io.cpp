@@ -12,6 +12,11 @@
 #define TOML_EXCEPTIONS 1
 #include <toml++/toml.hpp>
 
+#include "runner/black.hpp"
+#include "runner/ganak.hpp"
+#include "runner/ltlfilt.hpp"
+#include "runner/spot.hpp"
+
 namespace {
 
 template <typename T>
@@ -78,7 +83,8 @@ const KeySpec& config_key_spec() {
                              "vacuity", "well_separation"})}})},
          {"runtime",
           section({"black_timeout_ms", "ltlsynt_timeout_ms",
-                   "ltl2tgba_timeout_ms", "parallel",
+                   "ltl2tgba_timeout_ms", "ltlfilt_timeout_ms",
+                   "ganak_timeout_ms", "parallel",
                    "max_concurrent_realizability", "report_cpu_timing",
                    "max_scoring_failure_rate", "dashboard"})}});
     return spec;
@@ -320,6 +326,20 @@ void apply_runtime(const toml::table& tbl, Config& cfg) {
         }
         cfg.ltl2tgba_timeout = std::chrono::milliseconds{*val};
     }
+    if (auto val = tbl["ltlfilt_timeout_ms"].value<int64_t>()) {
+        if (*val < 0) {
+            throw std::runtime_error(
+                "config: runtime.ltlfilt_timeout_ms must be >= 0");
+        }
+        cfg.ltlfilt_timeout = std::chrono::milliseconds{*val};
+    }
+    if (auto val = tbl["ganak_timeout_ms"].value<int64_t>()) {
+        if (*val < 0) {
+            throw std::runtime_error(
+                "config: runtime.ganak_timeout_ms must be >= 0");
+        }
+        cfg.ganak_timeout = std::chrono::milliseconds{*val};
+    }
     if (auto val = tbl["parallel"].value<int64_t>()) {
         if (*val <= 0) {
             throw std::runtime_error("config: runtime.parallel must be >= 1");
@@ -401,4 +421,12 @@ Config config_from_toml_string(const std::string& content) {
                                  exc.what());
     }
     return apply_toml(tbl);
+}
+
+void apply_tool_timeouts(const Config& cfg) {
+    global_sat_checker().set_timeout(cfg.black_timeout);
+    RealizabilityChecker::set_timeout(cfg.ltlsynt_timeout);
+    set_ltl2tgba_timeout(cfg.ltl2tgba_timeout);
+    set_ltlfilt_timeout(cfg.ltlfilt_timeout);
+    set_ganak_timeout(cfg.ganak_timeout);
 }

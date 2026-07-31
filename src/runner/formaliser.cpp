@@ -1,7 +1,5 @@
 #include "runner/formaliser.hpp"
 
-#include <sys/resource.h>
-#include <sys/wait.h>
 #include <unistd.h>
 
 #include <array>
@@ -13,6 +11,17 @@
 #include <string>
 #include <utility>
 #include <vector>
+
+#include "runner/process.hpp"
+
+namespace {
+
+// How long the child gets to act on the stdin EOF before its process group is
+// killed at teardown. Generous for a node process that only has to flush and
+// exit, and short enough that a wedged one cannot hold up shutdown.
+constexpr std::chrono::milliseconds k_shutdown_grace{2000};
+
+}  // namespace
 
 std::string formaliser_script_path() {
 #ifdef FORMALISER_SCRIPT_PATH
@@ -48,18 +57,15 @@ PersistentProcess::~PersistentProcess() {
     // Closing the write end sends EOF on the child's stdin, which a
     // well-behaved --batch CLI treats as "no more requests" and exits on.
     close(m_write_fd);
-    int wait_status = 0;
-    struct rusage child_usage{};
-    [[maybe_unused]] const pid_t waited =
-        wait4(m_pid, &wait_status, 0, &child_usage);
-    assert(waited >= 0);
-    // Sampled once here rather than per request: the child is long-lived, so
-    // this is its whole-run user+sys CPU across every formalise() call.
+    // Bounded rather than a blocking wait4: a node process wedged mid-request
+    // never acts on the EOF, and teardown must not hang on it. Past the grace
+    // period reap_with_grace kills the whole process group.
+    //
+    // The CPU total is sampled once here rather than per request: the child is
+    // long-lived, so this is its whole-run user+sys CPU across every
+    // formalise() call.
     RequirementFormaliser::total_cpu_s +=
-        static_cast<double>(child_usage.ru_utime.tv_sec) +
-        (static_cast<double>(child_usage.ru_utime.tv_usec) / 1e6) +
-        static_cast<double>(child_usage.ru_stime.tv_sec) +
-        (static_cast<double>(child_usage.ru_stime.tv_usec) / 1e6);
+        reap_with_grace(m_pid, k_shutdown_grace);
     close(m_read_fd);
 }
 
@@ -101,12 +107,23 @@ void PersistentProcess::ensure_spawned() {
         }
         close(stdin_pipe[0]);
         close(stdout_pipe[1]);
+        // Own process group, so teardown can kill this child and anything it
+        // spawned with one signal. Deliberately *without* PDEATHSIG, unlike
+        // the one-shot tools: this child is spawned lazily by whichever
+        // worker thread formalises first and then serves every later caller,
+        // and PDEATHSIG would have the kernel kill it the moment that one
+        // thread returned. The concurrency test catches exactly that, as a
+        // second worker reading a response from a node process that is already
+        // dead. The cost is that an abnormally killed counter leaves this
+        // child behind; the destructor covers the normal path.
+        harden_child_after_fork(ParentDeathPolicy::SurviveParentThread);
         // execvp (not execv): `node` is a general system interpreter looked
         // up on PATH, not a tool CMake resolves to an absolute path at build
         // time like ltl2tgba/ganak/black.
         execvp(m_command[0].c_str(), argv.data());
         _exit(127);
     }
+    adopt_child_process_group(child_pid);
     close(stdin_pipe[0]);
     close(stdout_pipe[1]);
     m_pid = child_pid;

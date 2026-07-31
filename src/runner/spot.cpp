@@ -1,22 +1,14 @@
 #include "runner/spot.hpp"
 
-#include <poll.h>
-#include <sys/prctl.h>
-#include <sys/resource.h>
 #include <sys/types.h>
-#include <sys/wait.h>
 #include <unistd.h>
 
 #include <algorithm>
-#include <array>
 #include <atomic>
 #include <cassert>
-#include <cerrno>
 #include <chrono>
 #include <condition_variable>
-#include <csignal>
 #include <cstdlib>
-#include <cstring>
 #include <fstream>
 #include <iostream>
 #include <memory>
@@ -24,11 +16,11 @@
 #include <stdexcept>
 #include <string>
 #include <unordered_map>
-#include <utility>
 #include <vector>
 
 #include "requirement.hpp"
 #include "runner/ltlfilt.hpp"
+#include "runner/process.hpp"
 
 namespace {
 
@@ -94,177 +86,6 @@ class GateGuard {
     GateGuard(const GateGuard&) = delete;
     GateGuard& operator=(const GateGuard&) = delete;
 };
-
-struct ProcessResult {
-    int m_exit_code = 0;
-    std::string m_output;
-    double m_cpu_s = 0.0;
-    bool m_timed_out = false;
-};
-
-double rusage_cpu_seconds(const struct rusage& usage) {
-    const double user_s = static_cast<double>(usage.ru_utime.tv_sec) +
-                          (static_cast<double>(usage.ru_utime.tv_usec) / 1e6);
-    const double sys_s = static_cast<double>(usage.ru_stime.tv_sec) +
-                         (static_cast<double>(usage.ru_stime.tv_usec) / 1e6);
-    return user_s + sys_s;
-}
-
-void spawn_child_and_exec(char* const* argv, const char* executable,
-                          int write_fd) {
-    if (dup2(write_fd, STDOUT_FILENO) < 0 ||
-        dup2(write_fd, STDERR_FILENO) < 0) {
-        _exit(127);
-    }
-    close(write_fd);
-    // Never outlive the parent: if the counter process is killed (e.g. a
-    // campaign harness enforcing a wall/RAM budget) while this subprocess is
-    // mid-run, deliver SIGKILL instead of leaving a multi-GB ltl2tgba/ltlsynt
-    // orphan reparented to PID 1. getppid() closes the fork/prctl race where
-    // the parent died in the window before the request was registered. Every
-    // exec here is a short-lived query subprocess, so this is always desired.
-    prctl(PR_SET_PDEATHSIG, SIGKILL);
-    if (getppid() == 1) {
-        _exit(127);
-    }
-    execv(executable, argv);
-    _exit(127);
-}
-
-std::string read_from_fd(int read_fd) {
-    std::string output;
-    std::array<char, 4096> read_buf{};
-    while (true) {
-        const ssize_t bytes_read =
-            read(  // NOLINT(clang-analyzer-unix.BlockInCriticalSection)
-                read_fd, read_buf.data(), read_buf.size());
-        if (bytes_read > 0) {
-            output.append(read_buf.data(),
-                          static_cast<std::size_t>(bytes_read));
-            continue;
-        }
-        if (bytes_read == 0) {
-            break;
-        }
-        if (errno == EINTR) {
-            continue;
-        }
-        assert(false);
-        __builtin_unreachable();
-    }
-    return output;
-}
-
-// Reads from read_fd until the child closes it (EOF) or `timeout` elapses.
-// Returns the bytes read so far and whether the deadline was hit; the caller
-// kills and reaps the child on timeout. A zero timeout never expires, matching
-// the untimed read_from_fd.
-std::pair<std::string, bool> read_from_fd_timed(
-    int read_fd, std::chrono::milliseconds timeout) {
-    std::string output;
-    std::array<char, 4096> read_buf{};
-    const auto deadline = std::chrono::steady_clock::now() + timeout;
-    while (true) {
-        const auto now = std::chrono::steady_clock::now();
-        if (now >= deadline) {
-            return {output, true};
-        }
-        const auto remaining =
-            std::chrono::duration_cast<std::chrono::milliseconds>(deadline -
-                                                                  now)
-                .count();
-        struct pollfd pfd{read_fd, POLLIN, 0};
-        const int poll_result = poll(&pfd, 1, static_cast<int>(remaining));
-        if (poll_result < 0) {
-            if (errno == EINTR) {
-                continue;
-            }
-            assert(false);
-            __builtin_unreachable();
-        }
-        if (poll_result == 0) {
-            return {output, true};
-        }
-        const ssize_t bytes_read =
-            read(  // NOLINT(clang-analyzer-unix.BlockInCriticalSection)
-                read_fd, read_buf.data(), read_buf.size());
-        if (bytes_read > 0) {
-            output.append(read_buf.data(),
-                          static_cast<std::size_t>(bytes_read));
-            continue;
-        }
-        if (bytes_read == 0) {
-            return {output, false};
-        }
-        if (errno == EINTR) {
-            continue;
-        }
-        assert(false);
-        __builtin_unreachable();
-    }
-}
-
-int wait_for_child(pid_t child_pid, double& cpu_s_out) {
-    int wait_status = 0;
-    struct rusage child_usage{};
-    [[maybe_unused]] const pid_t waited =
-        wait4(child_pid, &wait_status, 0, &child_usage);
-    assert(waited >= 0);
-    cpu_s_out = rusage_cpu_seconds(child_usage);
-    if (WIFEXITED(wait_status)) {
-        return WEXITSTATUS(wait_status);
-    }
-    if (WIFSIGNALED(wait_status)) {
-        return 128 + WTERMSIG(wait_status);
-    }
-    return -1;
-}
-
-ProcessResult execute_and_capture(
-    const std::vector<std::string>& arguments,
-    std::chrono::milliseconds timeout = std::chrono::milliseconds::zero()) {
-    assert(!arguments.empty());
-    // Build argv before forking: heap allocation inside the child between
-    // fork() and execv() can deadlock if another thread held the allocator
-    // lock at the moment of the fork (e.g. under ASAN's allocator).
-    std::vector<char*> argv(arguments.size() + 1);
-    for (std::size_t arg_idx = 0; arg_idx < arguments.size(); ++arg_idx) {
-        argv[arg_idx] = const_cast<char*>(arguments[arg_idx].c_str());
-    }
-    argv[arguments.size()] = nullptr;
-    std::array<int, 2> pipe_fds = {-1, -1};
-    [[maybe_unused]] const int pipe_result = pipe(pipe_fds.data());
-    assert(pipe_result == 0);
-    const pid_t child_pid = fork();
-    if (child_pid < 0) {
-        close(pipe_fds[0]);
-        close(pipe_fds[1]);
-        assert(false);
-        __builtin_unreachable();
-    }
-    if (child_pid == 0) {
-        close(pipe_fds[0]);
-        spawn_child_and_exec(argv.data(), arguments[0].c_str(), pipe_fds[1]);
-    }
-    close(pipe_fds[1]);
-    bool timed_out = false;
-    std::string output;
-    if (timeout > std::chrono::milliseconds::zero()) {
-        std::tie(output, timed_out) = read_from_fd_timed(pipe_fds[0], timeout);
-        if (timed_out) {
-            // The child is still running (or its pipe still open); kill it so
-            // wait_for_child reaps immediately instead of blocking on the very
-            // query the timeout exists to abandon.
-            kill(child_pid, SIGKILL);
-        }
-    } else {
-        output = read_from_fd(pipe_fds[0]);
-    }
-    close(pipe_fds[0]);
-    double cpu_s = 0.0;
-    int exit_code = wait_for_child(child_pid, cpu_s);
-    return {exit_code, output, cpu_s, timed_out};
-}
 
 std::string join_comma(const std::vector<std::string>& items) {
     std::string result;

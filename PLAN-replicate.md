@@ -121,22 +121,30 @@ only the censored ones: `scripts/drop_censored_rows.py` deletes those rows and
 their run directories, and the `replicate-recap` profile — sweep R at a 3600 s
 cap, sharing the same CSV and results directory — re-runs exactly what resume
 then finds missing. fsm is absent from it because nothing censored there.
-fsm-timing runs on a 50-seed subsample: it scores 1.000 in both arms wherever it
-completes, so its re-run buys an honest wall-time ratio rather than a quality
-contrast, at about 6 h per machine against 31 h for the full 250.
+**What actually ran (2026-07-31 18:00).** Both arms of sweep R completed first,
+so the censored set is known exactly rather than projected: 379 runs, av2 180
+and av3 199, all `nsga2-replicate` — 283 fsm-timing, 59 fsm-combined, 37
+takeoff. No fsm, and no `nsga2` row anywhere, which is the one-sided filter
+stated outright.
 
-That comes to about 78 runs per machine — 17 takeoff, ~28 fsm-combined, ~33
-fsm-timing — which is 10 h at four jobs if they average half the new cap and
-19 h if they all reach it. The three stages are chained rather than
-co-scheduled, sweep R then wkoff then recap, because `wall_time_s` is a
-response here and two profiles sharing a machine would contaminate it.
+The fsm-timing subsample was dropped and all 283 re-run. It was a cost measure
+against a projected 31 h per machine, and the parallelisation removed the cost:
+a pilot of four seeds that had each hit the 900 s cap returned 117 s, 180 s,
+216 s and 671 s under the recap binary, a 296 s mean. That puts the whole recap
+at about 5 h across both machines, below the subsample's own estimate. Running
+every censored row instead of a sample strictly improves the design — it
+retires the caveat below rather than living with it.
+
+The stage order also changed: recap ran before wkoff, not after. Chaining still
+holds — one profile per machine at a time, since `wall_time_s` is a response
+here — but wkoff (1600 runs) is now the outstanding stage, not the middle one.
 
 Recap rows are indistinguishable from originals by key, deliberately — the
 analysis wants one row per cell — but recoverable from the data, since a
 surviving row censored at the old cap still reads `timed_out = 1` at
-`wall_time_s` of exactly 900 or 1500. Within fsm-timing, the un-resampled cells
-stay censored at 900 s; the analysis must read that spec's wall-time ratio from
-the subsample alone.
+`wall_time_s` of exactly 900 or 1500. With the full re-run there are no
+un-resampled fsm-timing cells left censored at 900 s, so that spec's wall-time
+ratio reads off the whole cell.
 
 `replicate-wkoff` was raised to 3600 s on both specs before it launched, so the
 weakening cross never inherited the defect.
@@ -214,6 +222,39 @@ beats arm C, not merely arm A; `found_repair` and `n_repairs` improve; and the
 median paired wall-time ratio is at most 2.0. Otherwise it stays opt-in, and #39
 stays open on its two remaining levers — single-point seeding and the weakening
 filter's 70.4% drop rate.
+
+## 5a. The CSV holds two binaries
+
+The recap appends to the same `results-replicate.csv` as sweep R, so 379 of its
+2400 rows were produced by a later binary than the 2021 beside them. The file
+predates the `commit` column and the harness appends without one, so nothing in
+the data distinguishes them.
+
+`experiments/2026-07-31-replicate/PROVENANCE.json` records the split and the evidence for
+it: sweep R ran binary `2d9b890` (build mtime one minute after that commit; it
+predates `--version` and self-reports nothing) under harness `231f822`, two
+commits ahead of its own binary. The recap ran `6576438` for both, recorded by
+`--version` and in the launch manifests. The pre-rebase objects are unreachable
+from any branch and are held by the annotated tag `provenance/replicate-sweep-r`;
+without it `gc` collects them and the attribution stops resolving.
+
+The two are comparable because `6576438` reverts the one commit between them
+that changed results: on `takeoff` and `fsm`, seeds 0–3, it reproduces sweep R's
+repair counts 8/8.
+
+Once the recap finishes, close the gap in the data as well:
+
+```sh
+python scripts/backfill_provenance.py \
+    --csv experiments/results-replicate.csv \
+    --backup experiments/results-replicate.csv.bak-1600rows \
+    --old-commit 2d9b890 --new-commit 6576438 --apply
+```
+
+It derives the split from the drop backup's `timed_out=1` keys and refuses to
+write unless every row classifies and the re-run count matches, so running it
+early fails loudly rather than mislabelling a partial campaign. It must not run
+while the harness is appending.
 
 ## 6. Hygiene
 

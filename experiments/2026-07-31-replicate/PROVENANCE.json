@@ -1,0 +1,106 @@
+{
+  "campaign": "2026-07-31-replicate",
+  "attribution": "recorded",
+  "generated_on": "2026-07-31",
+  "status": "live \u2014 the recap stage was still running when this was written",
+  "method": "Recorded at run time, not reconstructed. The recap stage's binary commit comes from counter --version via the run manifests; the sweep R stage's comes from the build mtime of the binary that ran, anchored against the commit lineage preserved by the tag provenance/replicate-sweep-r.",
+  "two_binaries_one_csv": {
+    "why": "experiments/results-replicate.csv holds rows from two different binaries. Sweep R ran 3200 rows across av2 and av3; 379 of them were censored by a per-run timeout that fired only on the nsga2-replicate arm, making that arm's cells uninterpretable (fsm-timing was 75.5% censored). Those 379 rows were deleted by scripts/drop_censored_rows.py and re-run at a 3600s cap by the replicate-recap profile, which appends to the same CSV by design so resume selects exactly the deleted keys. The re-run rows therefore carry a later binary than the 2021 rows beside them.",
+    "row_split": "The re-run rows are exactly the rows whose (sweep, level_name, selection, spec, seed) key appears with timed_out=1 in the pre-drop backups, results-replicate.csv.bak-1600rows on each host. Every other row is sweep R. There is no column in the CSV that distinguishes them: it predates the commit/dirty columns, so the harness appended the new rows without them and printed a note saying so.",
+    "counts": {
+      "sweep_r_rows": 2021,
+      "recap_rows": 379,
+      "recap_by_spec": {
+        "fsm-timing": 283,
+        "fsm-combined": 59,
+        "takeoff": 37
+      },
+      "recap_by_host": {
+        "av2 (seeds 0-99)": 180,
+        "av3 (seeds 100-199)": 199
+      },
+      "note": "All 379 are nsga2-replicate. Zero nsga2 rows were censored, which is why the censoring was a one-sided filter on the response and not a neutral loss of data."
+    }
+  },
+  "stages": [
+    {
+      "stage": "sweep R",
+      "rows": 2021,
+      "binary_commit": {
+        "sha": "2d9b890",
+        "subject": "feat: add the nsga2-replicate campaign profiles and elitism sweeps",
+        "commit_date": "2026-07-30 16:22",
+        "confidence": "strong",
+        "evidence": "build-release/counter on both hosts had mtime 2026-07-30 16:23, one minute after 2d9b890 and the only commit within that minute. The binary predates --version, so it self-reports nothing; this is a build-mtime anchor, not a recorded fact.",
+        "reachable_from_main": false,
+        "held_by_tag": "provenance/replicate-sweep-r"
+      },
+      "harness_commit": {
+        "sha": "231f822",
+        "subject": "fix: raise the run timeout caps that censored the replicate arm",
+        "commit_date": "2026-07-31 13:08",
+        "note": "The checkout at run time was ahead of the binary. 073b4a4 (07-30 16:35) and 231f822 (07-31 13:08) both landed after the binary was built and were never in it. Both are script-only changes, so the binary is still correctly attributed to 2d9b890 \u2014 but the harness that drove the runs is not the same revision as the code that ran, and the raised caps in 231f822 did not take effect for sweep R.",
+        "reachable_from_main": false,
+        "held_by_tag": "provenance/replicate-sweep-r"
+      }
+    },
+    {
+      "stage": "recap",
+      "rows": 379,
+      "binary_commit": {
+        "sha": "6576438",
+        "subject": "revert: restore the ltlfilt pre-pass on the black path",
+        "confidence": "recorded",
+        "evidence": "counter --version reported commit=65764386f9357fdca2d2ca4e4e373d4d3fde5aec, dirty=0 on both hosts, and the harness refuses to start against a stale binary. Also written to experiments/results-replicate-manifest-avlab12.json and -av3.json at launch.",
+        "reachable_from_main": true
+      },
+      "harness_commit": {
+        "sha": "6576438",
+        "note": "Binary and harness are the same revision for this stage."
+      }
+    }
+  ],
+  "binary_delta": {
+    "summary": "Between 2d9b890 and 6576438 the campaign branch gained two parallelisation commits and was rebased onto a main containing PR #47, then had one perf commit reverted. Net effect on counter's decisions: none observed.",
+    "commits": [
+      {
+        "sha": "9276564",
+        "subject": "perf: evaluate solver-backed filters and the survivor re-check in parallel",
+        "effect": "Parallelises the vacuous-assumptions filter and collect_realizable_specifications. Order-preserving (index-tagged completion), so it does not perturb results."
+      },
+      {
+        "sha": "cefea8f",
+        "subject": "perf: evaluate the TLSF solver-backed filters in parallel",
+        "effect": "TLSF paths only; this campaign is FRETISH, so it is inert here."
+      },
+      {
+        "sha": "7df2b50",
+        "subject": "fix(runner): contain and timeout every fork/exec, not just spot's",
+        "effect": "Arrived via the rebase onto main (PR #47). Bounds every external tool call. Not present in the sweep R binary, which is why that stage could leak orphaned ltlfilt children."
+      },
+      {
+        "sha": "35a5c73",
+        "subject": "perf: drop the ltlfilt --simplify pre-pass from the black path",
+        "effect": "Present on the branch but REVERTED by 6576438 and never used for any row in this CSV. It made nsga2-replicate/takeoff 4.2x slower and changed its results (maximal-spec counts inflated 25 -> 57 on seed 0) because removing the constant fold sent ~4900 extra formulae to black, 499-746 of which hit the 1s timeout, and an indeterminate implication check is kept by the filter."
+      },
+      {
+        "sha": "6576438",
+        "subject": "revert: restore the ltlfilt pre-pass on the black path",
+        "effect": "Restores sweep R's black-path behaviour exactly. This is what makes the two stages comparable."
+      }
+    ]
+  },
+  "comparability_evidence": {
+    "claim": "Rows from the two binaries can sit in one CSV and be analysed together.",
+    "test": "Ran the recap binary (6576438) on av2 against nsga2-replicate/takeoff and /fsm, seeds 0-3, 4 concurrent at parallel=8, and compared the repair counts to the same seeds under the sweep R binary (231f822 checkout, 2d9b890 binary).",
+    "result": "8/8 identical. takeoff: 459/25, 430/38, 443/24, 463/28. fsm: 279/69, 316/44, 314/79, 413/74.",
+    "limits": "Two of four specs, four seeds each, and it compares repair counts rather than the repair files byte-for-byte. fsm-timing and fsm-combined were not checked this way. The parallelisation commits were separately verified byte-identical on 45/45 repair files before the rebase."
+  },
+  "caveats": [
+    "Not single-revision: the CSV mixes two binaries by row, not by time. Any analysis that assumes one revision produced the whole file is wrong, and the row_split rule above is the only way to tell them apart until the commit column is backfilled.",
+    "The sweep R binary lagged its own checkout by two commits. Do not infer the binary from the branch state at run time for this campaign.",
+    "The 3600s cap in 231f822 was written before sweep R finished but never applied to it, because the binary and the runs were already under way at the old caps. It applies only to the recap.",
+    "Run-window mtimes come from two hosts with unsynced clocks; av3 runs ~17 min fast. Seeds partition by host (av2 0-99, av3 100-199), so a run directory name identifies which clock a timestamp came from.",
+    "scripts/backfill_provenance.py can write the commit and dirty columns into the CSV once the recap finishes, which closes this gap in the data itself rather than only in this file. It must not run while the harness is appending."
+  ]
+}

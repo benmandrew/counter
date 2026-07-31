@@ -5,6 +5,7 @@
 #include <atomic>
 #include <cstddef>
 #include <cstdint>
+#include <functional>
 #include <optional>
 #include <string>
 #include <thread>
@@ -199,6 +200,41 @@ std::vector<uint8_t> compute_subsumed(
     return result;
 }
 
+// FRETISH routes every element-wise filter through make_predicate_filter, so
+// parallelising that one function covered all of them. TLSF filters each
+// hand-roll their loop, so the same index-collect pattern lives here for the
+// two whose predicate is an external solver call. Verdicts are collected by
+// index and the survivors rebuilt in population order, so the result matches a
+// serial sweep exactly.
+std::vector<tlsf::Specification> filter_in_parallel(
+    const std::vector<tlsf::Specification>& pop, std::size_t max_in_flight,
+    const std::function<bool(const tlsf::Specification&)>& predicate) {
+    std::vector<char> keep(pop.size(), 0);
+    if (max_in_flight <= 1) {
+        for (std::size_t idx = 0; idx < pop.size(); ++idx) {
+            keep[idx] = predicate(pop[idx]) ? 1 : 0;
+        }
+    } else {
+        run_bounded_async(
+            pop.size(), max_in_flight,
+            [&predicate, &pop](std::size_t idx) {
+                return global_thread_pool().submit(
+                    [&predicate, &spec = pop[idx]] { return predicate(spec); });
+            },
+            [&keep](std::size_t idx, bool verdict) {
+                keep[idx] = verdict ? 1 : 0;
+            });
+    }
+    std::vector<tlsf::Specification> survivors;
+    survivors.reserve(pop.size());
+    for (std::size_t idx = 0; idx < pop.size(); ++idx) {
+        if (keep[idx] != 0) {
+            survivors.push_back(pop[idx]);
+        }
+    }
+    return survivors;
+}
+
 }  // namespace
 
 FilterFunctionT<tlsf::Specification> tlsf_make_dedup_filter() {
@@ -216,53 +252,49 @@ FilterFunctionT<tlsf::Specification> tlsf_make_dedup_filter() {
             }};
 }
 
-FilterFunctionT<tlsf::Specification> tlsf_make_assumption_sat_filter() {
-    return {"assumption-sat", [](const std::vector<tlsf::Specification>& pop) {
-                std::vector<tlsf::Specification> survivors;
-                survivors.reserve(pop.size());
-                for (const tlsf::Specification& spec : pop) {
-                    const bool no_assumptions = spec.m_initially.empty() &&
-                                                spec.m_require.empty() &&
-                                                spec.m_assume.empty();
-                    if (no_assumptions ||
-                        global_sat_checker()
-                            .check_satisfiability(spec.assumption_ltl())
-                            .value_or(true)) {
-                        survivors.push_back(spec);
-                    }
-                }
-                return survivors;
+FilterFunctionT<tlsf::Specification> tlsf_make_assumption_sat_filter(
+    std::size_t max_in_flight) {
+    return {"assumption-sat",
+            [max_in_flight](const std::vector<tlsf::Specification>& pop) {
+                return filter_in_parallel(
+                    pop, max_in_flight, [](const tlsf::Specification& spec) {
+                        const bool no_assumptions = spec.m_initially.empty() &&
+                                                    spec.m_require.empty() &&
+                                                    spec.m_assume.empty();
+                        return no_assumptions ||
+                               global_sat_checker()
+                                   .check_satisfiability(spec.assumption_ltl())
+                                   .value_or(true);
+                    });
             }};
 }
 
 FilterFunctionT<tlsf::Specification> tlsf_make_well_separation_filter(
-    RealizabilityChecker& checker) {
-    return {"not-well-separated",
-            [&checker](const std::vector<tlsf::Specification>& pop) {
-                std::vector<tlsf::Specification> survivors;
-                survivors.reserve(pop.size());
-                for (const tlsf::Specification& spec : pop) {
+    RealizabilityChecker& checker, std::size_t max_in_flight) {
+    return {
+        "not-well-separated",
+        [&checker, max_in_flight](const std::vector<tlsf::Specification>& pop) {
+            return filter_in_parallel(
+                pop, max_in_flight,
+                [&checker](const tlsf::Specification& spec) {
                     // Input-only assumptions are well-separated by
                     // construction; only an output-referencing one can be
                     // forced to fail, so only then run the (expensive)
                     // realizability query.
                     if (!assumptions_reference_output(spec)) {
-                        survivors.push_back(spec);
-                        continue;
+                        return true;
                     }
-                    // Not well-separated exactly when (assumptions) -> false is
-                    // realizable: the system has a strategy forcing its own
-                    // assumptions to fail. A timed-out query returns false
-                    // (unrealizable), keeping the candidate.
+                    // Not well-separated exactly when (assumptions) ->
+                    // false is realizable: the system has a strategy
+                    // forcing its own assumptions to fail. A timed-out
+                    // query returns false (unrealizable), keeping the
+                    // candidate.
                     const std::string formula =
                         "(" + spec.assumption_ltl() + ") -> (false)";
-                    if (!checker.check_realizability_ltl(formula, spec.m_inputs,
-                                                         spec.m_outputs)) {
-                        survivors.push_back(spec);
-                    }
-                }
-                return survivors;
-            }};
+                    return !checker.check_realizability_ltl(
+                        formula, spec.m_inputs, spec.m_outputs);
+                });
+        }};
 }
 
 std::optional<bool> tlsf_spec_implies(const tlsf::Specification& from,

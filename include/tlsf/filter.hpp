@@ -21,7 +21,13 @@ FilterFunctionT<tlsf::Specification> tlsf_make_dedup_filter();
 /// since contradictory assumptions trivially "realize" any guarantee. A spec
 /// with no assumption formulae is kept; an uncertain (timed-out) satisfiability
 /// result is treated as satisfiable and the spec is kept.
-FilterFunctionT<tlsf::Specification> tlsf_make_assumption_sat_filter();
+///
+/// @param max_in_flight Concurrent checks. Each spec carrying assumptions costs
+///                      a `black` subprocess on a cache miss, and the miss rate
+///                      rises with population diversity, so a serial sweep here
+///                      dominates a diverse run. 1 evaluates serially.
+FilterFunctionT<tlsf::Specification> tlsf_make_assumption_sat_filter(
+    std::size_t max_in_flight = 1);
 
 /// Returns a filter dropping specifications that are not well-separated: ones
 /// where the system can vacuously satisfy the spec by forcing its own
@@ -32,8 +38,13 @@ FilterFunctionT<tlsf::Specification> tlsf_make_assumption_sat_filter();
 /// construction and skip the solver. A timed-out query is treated as
 /// unrealizable (well-separated), so a slow check never silently drops a
 /// candidate. @p checker is captured by reference and must outlive the filter.
+///
+/// @param checker       Realizability checker for the ltlsynt query; must be
+///                      thread-safe when max_in_flight exceeds 1
+/// @param max_in_flight Concurrent checks. Each is a full ltlsynt query, itself
+///                      gated by Config::max_concurrent_realizability.
 FilterFunctionT<tlsf::Specification> tlsf_make_well_separation_filter(
-    RealizabilityChecker& checker);
+    RealizabilityChecker& checker, std::size_t max_in_flight = 1);
 
 /// Whether spec @p from logically implies spec @p dest: true when
 /// `(from.to_ltl()) & !(dest.to_ltl())` is unsatisfiable, false when

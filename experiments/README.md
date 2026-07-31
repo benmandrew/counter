@@ -25,9 +25,7 @@ from 2026-07-14 onwards).
 | `2026-07-23-wellsep` | Well-separation × output assumptions on TLSF (sweep W). |
 | `2026-07-23-arbiter-hp` | Sweep-W arms on the arbiter family — zero repairs in every cell (null result). |
 | `2026-07-23-arbiter-padd` | p_add 0.1→0.8 × filter arms on arbiter — zero repairs in every cell; rules out p_add as the arbiter unlock. |
-
-The 2026-07-24 ablation + AuRUS head-to-head campaign is archived with the
-paper, not here: `~/projects/writing/rumoga/data/ablation-2026-07/`.
+| `2026-07-24-ablation` | 2×2×2 factorial (selection × metric × Halstead) on FRETISH (4 specs, 40 seeds) + TLSF (19 families, 20 seeds), plus the AuRUS head-to-head (12 families, 30 repeats, ltlsynt-validated). First campaign with recorded rather than inferred provenance. Also archived with the paper (`~/projects/writing/counter-paper/data/ablation-2026-07/`). |
 
 ## Scoring vintage
 
@@ -51,7 +49,11 @@ Every campaign directory carries a `PROVENANCE.json`. For campaigns closed
 before commit recording existed it is **reconstructed after the fact**, and
 says so: `"attribution": "inferred"`. Campaigns run after that change record
 their commit at run time instead, in the per-row CSV column and the per-host
-manifest, and need none of what follows.
+manifest, and need none of what follows. `2026-07-24-ablation` sits between
+the two: it predates commit recording in the binary but was launched and
+closed under live session logging, so its file says `"attribution":
+"recorded"` — with a non-null `binary_commit` — and needs none of the
+reconstruction either.
 
 The reconstruction anchors on the fact that each campaign is a uniquely-named
 profile introduced by exactly one commit, and that `configs-<profile>/` was
@@ -65,7 +67,7 @@ apart, and the `generations = 100` / `population_size = 10000` in its checked-in
 config picks out the calibration commit regardless of any timestamp.
 
 `profile_commit` is not a claim about which binary produced the numbers, and
-`binary_commit` is deliberately `null` everywhere rather than absent — the
+`binary_commit` is deliberately `null` in every inferred file rather than absent — the
 field is present and empty to record that it was considered and found
 un-inferable. Binaries on av2/av3 lag main by an unbounded, undocumented
 amount. `62bbc6f` is the standing proof: committed 2026-07-20 14:16, squarely
@@ -90,11 +92,13 @@ from never having looked.
 
 Each campaign directory carries a `scripts/` holding the three drivers that
 produced it — `gen_configs.py`, `run_experiments.py` and `merge_experiments.py`
-— copied verbatim from the revision that ran. Recording the commit alone was
+— copied verbatim from the revision that ran (`2026-07-24-ablation` adds two
+more, `aurus_campaign.py` and `aurus_validate.py`, for its AuRUS arm).
+Recording the commit alone was
 enough to recover them with `git show`, but only for a reader who still has the
 history; the copies make a campaign directory reproduce on its own, which
 matters when one is lifted out and shipped beside a paper. 35 files across the
-12 campaigns, and `merge_experiments.py` is missing from `2026-07-10` because
+12 retrofitted campaigns, and `merge_experiments.py` is missing from `2026-07-10` because
 it did not exist yet, which is also why that campaign has a single `results.csv`
 and no per-host split.
 
@@ -109,7 +113,7 @@ git hash-object experiments/2026-07-21-muc/scripts/run_experiments.py
 Attribution defaults to `profile_commit`, and that basis is an attribution
 rather than a record: the anchor dates the campaign's *configs*, so a long
 campaign resumed under a later revision would not show up in it. 25 of the 36
-entries rest on it; 10 across five campaigns are settled by campaign content,
+retrofitted entries rest on it; 10 across five campaigns are settled by campaign content,
 which is stronger evidence and overrides the anchor wherever the two disagree,
 and the last is the `merge_experiments.py` that did not exist yet.
 
@@ -142,7 +146,7 @@ by `d6e8e9d`, 22 minutes before `fe3aab5b` added a 30000 ms default, while its
 rows run to seed 35 and so need the 60-seed budget `fe3aab5b` set. Grid first,
 seed budget raised, launch 5 minutes later.
 
-Six of the 36 entries therefore name commits that are not ancestors of `main`,
+Six of the 36 retrofitted entries therefore name commits that are not ancestors of `main`,
 flagged by `reachable_from_main: false`. They are held reachable by the
 annotated tag `provenance/tlsf-branch`, which points at that branch's tip —
 every one of the six is an ancestor of it, so a single ref pins them all.
@@ -162,6 +166,7 @@ between them. The truncated gen40 counts are equally consistent with the run
 having continued under `d7cb33f` afterwards, so late rows may come from a later
 revision.
 
-None of this touches `binary_commit`, which stays null everywhere for the
-reasons above. A vendored driver says what orchestrated the runs, not what
-`counter` binary they invoked.
+None of this touches `binary_commit`, which stays null in every inferred file
+for the reasons above; `2026-07-24-ablation` is the one non-null, because its
+binary was recorded at launch rather than inferred. A vendored driver says
+what orchestrated the runs, not what `counter` binary they invoked.

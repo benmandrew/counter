@@ -29,5 +29,29 @@
   ],
   "caveats": [
     "587a5b64fa46df6dbc5dec2c63baa8f6a1342d55 (\"feat: default the selection scheme to nsga2\") landed the same minute as 4ba4c91."
-  ]
+  ],
+  "vendored_scripts": {
+    "vendored_on": "2026-07-31",
+    "note": "Verbatim copies of the campaign's driver scripts, recovered from git history so the directory reproduces without it. Each file records the commit it came from and its git blob sha; verify with `git hash-object <file>`. A file whose basis is `profile_commit` inherits that commit's confidence and is an attribution, not a record: the anchor dates the campaign's configs, and a long campaign could have been resumed under a later revision. Files with any other basis are pinned by campaign content, which is the stronger evidence and overrides profile_commit where the two disagree. Where reachable_from_main is false the source commit is off an unmerged branch and is not an ancestor of main; those commits are held reachable by the annotated tag `provenance/tlsf-branch`, which has to be pushed for the sha to resolve in a fresh clone. Without that tag they are dangling objects that gc will collect, and the copy here becomes the only durable instance of the content.",
+    "files": {
+      "gen_configs.py": {
+        "source_commit": "e9c5201ff56a6692fc89145725776758dbc38b0b",
+        "blob": "7f2f32a4bfd5e6c2ea4c23a79f7a59bb9ec137a7",
+        "reachable_from_main": true,
+        "basis": "profile_commit"
+      },
+      "run_experiments.py": {
+        "source_commit": "e9c5201ff56a6692fc89145725776758dbc38b0b",
+        "blob": "a66eb932e83d24d3933ba53bce3ae30beb31fc5a",
+        "reachable_from_main": true,
+        "basis": "profile_commit"
+      },
+      "merge_experiments.py": {
+        "source_commit": "e9c5201ff56a6692fc89145725776758dbc38b0b",
+        "blob": "a6f028787edb061a59da52bf9ba85f9926f94a74",
+        "reachable_from_main": true,
+        "basis": "profile_commit"
+      }
+    }
+  }
 }

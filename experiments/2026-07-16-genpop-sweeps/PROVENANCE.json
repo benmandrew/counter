@@ -29,5 +29,29 @@
     "subject": "tune: set the TLSF campaign ltlsynt timeout to 10s",
     "author_date": "2026-07-16 20:28",
     "commit_date": "2026-07-17 19:27"
+  },
+  "vendored_scripts": {
+    "vendored_on": "2026-07-31",
+    "note": "Verbatim copies of the campaign's driver scripts, recovered from git history so the directory reproduces without it. Each file records the commit it came from and its git blob sha; verify with `git hash-object <file>`. A file whose basis is `profile_commit` inherits that commit's confidence and is an attribution, not a record: the anchor dates the campaign's configs, and a long campaign could have been resumed under a later revision. Files with any other basis are pinned by campaign content, which is the stronger evidence and overrides profile_commit where the two disagree. Where reachable_from_main is false the source commit is off an unmerged branch and is not an ancestor of main; those commits are held reachable by the annotated tag `provenance/tlsf-branch`, which has to be pushed for the sha to resolve in a fresh clone. Without that tag they are dangling objects that gc will collect, and the copy here becomes the only durable instance of the content.",
+    "files": {
+      "gen_configs.py": {
+        "source_commit": "d6e8e9df3ed2eee83ad5f0766d1d0b3fa1dc40a5",
+        "blob": "9e1f0462dc355df5ce88b3802b59a11fd23fa07a",
+        "reachable_from_main": false,
+        "basis": "Not the profile commit, and not on main. Taken one commit earlier than this campaign's runner, because the grid and the runner were not written by the same revision. The on-disk configs carry no ltlsynt_timeout_ms line, and d6e8e9d's gen_configs.py regenerates all 8 of them byte-identically under a plain --tlsf. fe3aab5b, 22 minutes later, added a 30000 ms default that would have emitted the line. fe3aab5b can also reproduce them, but only if --ltlsynt-timeout 0 was passed to suppress a default that had just been introduced; the ordinary reading is that the grid was written before fe3aab5b landed and the runs launched 5 minutes after it."
+      },
+      "run_experiments.py": {
+        "source_commit": "fe3aab5bc1ea7d68a72008bc2c2b82417d2e1dda",
+        "blob": "658fc1f0eb7105689ec719dc7c642680183dabc7",
+        "reachable_from_main": false,
+        "basis": "Not the profile commit, and not on main. This campaign ran from the unmerged TLSF branch, whose commits survive only as dangling objects; profile_commit 49354abd is the rebased form, and the rebase pulled cd825ae4's repair_mode crossing underneath it. Three constraints pick fe3aab5b out. results-tlsf.csv has 17 columns where 49354abd yields 18. The runner must define the tlsf profile over exactly {arbiter, gyro-var1, humanoid-531, lift, lily02, minepump} on sweeps A and B, which the CSV confirms and which no 17-column revision on main has at all. Seeds run 0-35, so the seed budget must be the 60-seed one fe3aab5b set, not the 16 of the preceding commit. Its gen_configs.py emits no [tlsf] block, matching the on-disk configs, which 49354abd's does not. results-fretish.csv is older still (13 columns), consistent with the README's note that its run dirs no longer exist anywhere and it is an aliased artefact."
+      },
+      "merge_experiments.py": {
+        "source_commit": "fe3aab5bc1ea7d68a72008bc2c2b82417d2e1dda",
+        "blob": "799bc7a8bf1f2778f0759b8a935b801458a495c2",
+        "reachable_from_main": false,
+        "basis": "Not the profile commit, and not on main. This campaign ran from the unmerged TLSF branch, whose commits survive only as dangling objects; profile_commit 49354abd is the rebased form, and the rebase pulled cd825ae4's repair_mode crossing underneath it. Three constraints pick fe3aab5b out. results-tlsf.csv has 17 columns where 49354abd yields 18. The runner must define the tlsf profile over exactly {arbiter, gyro-var1, humanoid-531, lift, lily02, minepump} on sweeps A and B, which the CSV confirms and which no 17-column revision on main has at all. Seeds run 0-35, so the seed budget must be the 60-seed one fe3aab5b set, not the 16 of the preceding commit. Its gen_configs.py emits no [tlsf] block, matching the on-disk configs, which 49354abd's does not. results-fretish.csv is older still (13 columns), consistent with the README's note that its run dirs no longer exist anywhere and it is an aliased artefact."
+      }
+    }
   }
 }

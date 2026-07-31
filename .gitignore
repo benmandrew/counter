@@ -62,6 +62,12 @@ semantics.txt
 !/experiments/*/
 /experiments/*/*
 !/experiments/*/PROVENANCE.json
+# Retrofitted copies of the drivers each campaign ran, recovered from history.
+# Same problem one level down: re-open descent into scripts/ before negating,
+# then re-exclude its contents so only the .py files come back.
+!/experiments/*/scripts/
+/experiments/*/scripts/*
+!/experiments/*/scripts/*.py
 # scripts/merge_experiments.py scratch dir + per-run results (also covered by
 # /experiments/, but kept explicit so they stay ignored if that's relaxed).
 .merge_tmp/

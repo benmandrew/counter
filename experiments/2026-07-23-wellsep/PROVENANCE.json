@@ -43,5 +43,29 @@
   ],
   "caveats": [
     "Not single-revision: the run configuration changed 45 minutes into the campaign (6f0dfbe)."
-  ]
+  ],
+  "vendored_scripts": {
+    "vendored_on": "2026-07-31",
+    "note": "Verbatim copies of the campaign's driver scripts, recovered from git history so the directory reproduces without it. Each file records the commit it came from and its git blob sha; verify with `git hash-object <file>`. A file whose basis is `profile_commit` inherits that commit's confidence and is an attribution, not a record: the anchor dates the campaign's configs, and a long campaign could have been resumed under a later revision. Files with any other basis are pinned by campaign content, which is the stronger evidence and overrides profile_commit where the two disagree. Where reachable_from_main is false the source commit is off an unmerged branch and is not an ancestor of main; those commits are held reachable by the annotated tag `provenance/tlsf-branch`, which has to be pushed for the sha to resolve in a fresh clone. Without that tag they are dangling objects that gc will collect, and the copy here becomes the only durable instance of the content.",
+    "files": {
+      "gen_configs.py": {
+        "source_commit": "92073573596c8c811f290a0f1df337c0b278b8ad",
+        "blob": "442442cc7cfd48b63156824a2bf8584bc04db6e4",
+        "reachable_from_main": true,
+        "basis": "profile_commit"
+      },
+      "run_experiments.py": {
+        "source_commit": "6f0dfbe31ccd4e817ac3f1aa7f53b41c143fec55",
+        "blob": "73350574c4917f247218a5231e555dd584bdfa05",
+        "reachable_from_main": true,
+        "basis": "Not the profile commit. Two revisions land between profile_commit 92073573 and the end of the run, and campaign content picks out the later one. The per-host CSVs cover seeds 0-159 (av2) and 160-319 (av3), which is f64507ca's 320-seed split; 92073573 had 160 seeds split 0-79/80-159. All 11 lift timeouts sit at 600s and none at 180s, which is 6f0dfbe's raised cap. The run opened 8 minutes after f64507ca and 6f0dfbe landed 45 minutes in (recorded in caveats), so the first 45 minutes ran under f64507ca, which differs only in the lift timeout cap."
+      },
+      "merge_experiments.py": {
+        "source_commit": "92073573596c8c811f290a0f1df337c0b278b8ad",
+        "blob": "7dd4cd249f81a19b6c74ae01f16e00252c876979",
+        "reachable_from_main": true,
+        "basis": "profile_commit"
+      }
+    }
+  }
 }

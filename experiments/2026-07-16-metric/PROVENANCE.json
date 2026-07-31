@@ -22,5 +22,29 @@
   "caveats": [
     "The entire campaign ran between the commit's author date and its commit date, so the binary is the pre-commit working tree, not any object on main.",
     "Three unrelated commits (4a8a05e, ee509c6, 18865cc, the TLSF-parity branch) fall inside the window; orthogonal to this FRETISH campaign but not provably absent from the binary."
-  ]
+  ],
+  "vendored_scripts": {
+    "vendored_on": "2026-07-31",
+    "note": "Verbatim copies of the campaign's driver scripts, recovered from git history so the directory reproduces without it. Each file records the commit it came from and its git blob sha; verify with `git hash-object <file>`. A file whose basis is `profile_commit` inherits that commit's confidence and is an attribution, not a record: the anchor dates the campaign's configs, and a long campaign could have been resumed under a later revision. Files with any other basis are pinned by campaign content, which is the stronger evidence and overrides profile_commit where the two disagree. Where reachable_from_main is false the source commit is off an unmerged branch and is not an ancestor of main; those commits are held reachable by the annotated tag `provenance/tlsf-branch`, which has to be pushed for the sha to resolve in a fresh clone. Without that tag they are dangling objects that gc will collect, and the copy here becomes the only durable instance of the content.",
+    "files": {
+      "gen_configs.py": {
+        "source_commit": "9eb3d295dc8bbc8490890017f2b3efff30820c6a",
+        "blob": "ab025b796ecc556300e856124b0f537ed64dc021",
+        "reachable_from_main": true,
+        "basis": "profile_commit"
+      },
+      "run_experiments.py": {
+        "source_commit": "9eb3d295dc8bbc8490890017f2b3efff30820c6a",
+        "blob": "d3e6fe0332bc7e5b2356d04f9063b11ca89786f8",
+        "reachable_from_main": true,
+        "basis": "profile_commit"
+      },
+      "merge_experiments.py": {
+        "source_commit": "9eb3d295dc8bbc8490890017f2b3efff30820c6a",
+        "blob": "ad196cb0e888d6f1ba502fec9073b12f8bc6df6a",
+        "reachable_from_main": true,
+        "basis": "profile_commit"
+      }
+    }
+  }
 }

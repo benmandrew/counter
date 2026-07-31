@@ -4,6 +4,7 @@
 #include <utility>
 #include <vector>
 
+#include "bounded_async.hpp"
 #include "filter/bloat.hpp"
 #include "filter/implication.hpp"
 #include "filter/vacuity.hpp"
@@ -11,14 +12,37 @@
 #include "runner/spot.hpp"
 
 FilterFunction make_predicate_filter(
-    std::string name, std::function<bool(const Specification&)> predicate) {
-    return {std::move(name), [predicate = std::move(predicate)](
+    std::string name, std::function<bool(const Specification&)> predicate,
+    std::size_t max_in_flight) {
+    return {std::move(name), [predicate = std::move(predicate), max_in_flight](
                                  const std::vector<Specification>& pop) {
                 std::vector<Specification> survivors;
                 survivors.reserve(pop.size());
-                for (const Specification& spec : pop) {
-                    if (predicate(spec)) {
-                        survivors.push_back(spec);
+                // Verdicts are collected by index and the survivors rebuilt in
+                // population order, so a parallel filter drops exactly the same
+                // candidates in the same order as a serial one. Predicates draw
+                // no randomness, so seed reproducibility is unaffected.
+                std::vector<char> keep(pop.size(), 0);
+                if (max_in_flight <= 1) {
+                    for (std::size_t idx = 0; idx < pop.size(); ++idx) {
+                        keep[idx] = predicate(pop[idx]) ? 1 : 0;
+                    }
+                } else {
+                    run_bounded_async(
+                        pop.size(), max_in_flight,
+                        [&predicate, &pop](std::size_t idx) {
+                            return global_thread_pool().submit(
+                                [&predicate, &spec = pop[idx]] {
+                                    return predicate(spec);
+                                });
+                        },
+                        [&keep](std::size_t idx, bool verdict) {
+                            keep[idx] = verdict ? 1 : 0;
+                        });
+                }
+                for (std::size_t idx = 0; idx < pop.size(); ++idx) {
+                    if (keep[idx] != 0) {
+                        survivors.push_back(pop[idx]);
                     }
                 }
                 return survivors;
@@ -82,6 +106,9 @@ std::vector<ScoredSpecification> evolve_generation(
 
 std::vector<FilterFunction> get_filter_functions(
     const Config& cfg, Specification original, SatisfiabilityChecker& checker) {
+    // Matches score_population's dispatch width, the other per-generation stage
+    // that fans candidates out over the shared pool.
+    const std::size_t max_in_flight = cfg.parallel > 0 ? cfg.parallel * 4 : 1;
     std::vector<FilterFunction> filters;
     FilterFunction dedup = make_dedup_filter();
     dedup.set_interval(cfg.dedup_filter_interval);
@@ -103,7 +130,7 @@ std::vector<FilterFunction> get_filter_functions(
         // Contradictory assumptions make (A) -> (G) a tautology, so the
         // candidate reads as realizable without repairing anything. Reachable
         // whenever mutation can strengthen an assumption.
-        FilterFunction vacuity = make_vacuity_filter(checker);
+        FilterFunction vacuity = make_vacuity_filter(checker, max_in_flight);
         vacuity.set_interval(cfg.vacuity_filter_interval);
         filters.push_back(std::move(vacuity));
     }
@@ -114,7 +141,7 @@ std::vector<FilterFunction> get_filter_functions(
         // global realizability checker so its ltlsynt results are memoised
         // alongside the survivor re-checks.
         FilterFunction well_separation =
-            make_well_separation_filter(global_real_checker());
+            make_well_separation_filter(global_real_checker(), max_in_flight);
         well_separation.set_interval(cfg.well_separation_filter_interval);
         filters.push_back(std::move(well_separation));
     }

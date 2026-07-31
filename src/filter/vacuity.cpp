@@ -21,9 +21,12 @@ bool specification_has_unsatisfiable_assumptions(
     return sat.has_value() && !sat.value();
 }
 
-FilterFunction make_vacuity_filter(SatisfiabilityChecker& checker) {
+FilterFunction make_vacuity_filter(SatisfiabilityChecker& checker,
+                                   std::size_t max_in_flight) {
     return make_predicate_filter(
-        "vacuous-assumptions", [&checker](const Specification& spec) {
+        "vacuous-assumptions",
+        [&checker](const Specification& spec) {
             return !specification_has_unsatisfiable_assumptions(spec, checker);
-        });
+        },
+        max_in_flight);
 }

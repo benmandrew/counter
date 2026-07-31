@@ -91,6 +91,50 @@ A latent bug turned up next door: `gen_configs.py --tlsf` computed a TLSF output
 directory and then wrote to `args.out_dir` regardless. Every past TLSF campaign
 passed `--out-dir` explicitly, so it never fired.
 
+## 3a. The per-run timeout censored the treatment arm
+
+Sweep R's caps — 900 s, 1500 s for fsm-combined — were sized off nsga2's costs.
+Replicate runs several times longer, so the cap fired on the treatment arm
+alone. Over the first 1422 complete seed-pairs:
+
+| spec | cap | nsga2 timeouts | replicate timeouts |
+|---|---|---|---|
+| fsm | 900 s | 0 | 0 |
+| takeoff | 900 s | 0 | 34 / 354 |
+| fsm-combined | 1500 s | 0 | 56 / 358 |
+| fsm-timing | 900 s | 0 | 250 / 352 |
+
+This is the same bias the `compare_timeout` fix addressed, one level up and
+missed at design time: a cap that binds on one arm and never on the other is a
+one-sided filter on the response under test, since a censored run records
+`found_repair = 0` and `implies_ideal = 0`.
+
+It manufactures a decisive result. Pooled McNemar over all pairs reads 111
+replicate wins to 388, p ≈ 5e-37. Restricted to pairs where neither arm timed
+out it is 111 to 104, p = 0.68. On fsm-timing and takeoff every uncensored pair
+scores 1.000 in both arms with not one discordant pair — the entire apparent
+loss is the clock. fsm-timing's replicate median wall time *is* the cap, so that
+cell has no recoverable central tendency.
+
+The repair keeps every valid measurement. Only replicate rows are damaged, and
+only the censored ones: `scripts/drop_censored_rows.py` deletes those rows and
+their run directories, and the `replicate-recap` profile — sweep R at a 3600 s
+cap, sharing the same CSV and results directory — re-runs exactly what resume
+then finds missing. fsm is absent from it because nothing censored there.
+fsm-timing runs on a 50-seed subsample: it scores 1.000 in both arms wherever it
+completes, so its re-run buys an honest wall-time ratio rather than a quality
+contrast, at about 6 h per machine against 31 h for the full 250.
+
+Recap rows are indistinguishable from originals by key, deliberately — the
+analysis wants one row per cell — but recoverable from the data, since a
+surviving row censored at the old cap still reads `timed_out = 1` at
+`wall_time_s` of exactly 900 or 1500. Within fsm-timing, the un-resampled cells
+stay censored at 900 s; the analysis must read that spec's wall-time ratio from
+the subsample alone.
+
+`replicate-wkoff` was raised to 3600 s on both specs before it launched, so the
+weakening cross never inherited the defect.
+
 ## 4. Launch
 
 Calibrate first. The 1.5 default for `--compute-match-factor` is extrapolated
@@ -117,6 +161,18 @@ python scripts/gen_configs.py --schemes nsga2 nsga2-replicate --sweeps R \
 
 python scripts/run_experiments.py --profile replicate-wkoff --seeds $(seq -s' ' 0 99)    # av2
 python scripts/run_experiments.py --profile replicate-wkoff --seeds $(seq -s' ' 100 199) # av3
+
+# Recap: replace the rows the original caps censored (see 3a). Drop first, then
+# let resume select what is missing. --apply is required to write anything.
+python scripts/drop_censored_rows.py --csv experiments/results-replicate.csv \
+    --results-dir experiments/results-replicate \
+    --specs takeoff fsm-combined --apply
+python scripts/drop_censored_rows.py --csv experiments/results-replicate.csv \
+    --results-dir experiments/results-replicate \
+    --specs fsm-timing --seeds 0-24 --apply     # av2; 100-124 on av3
+
+python scripts/run_experiments.py --profile replicate-recap --seeds $(seq -s' ' 0 99)    # av2
+python scripts/run_experiments.py --profile replicate-recap --seeds $(seq -s' ' 100 199) # av3
 
 # Phase 2 configs and runs
 python scripts/gen_configs.py --tlsf --schemes nsga2 nsga2-replicate --sweeps R \

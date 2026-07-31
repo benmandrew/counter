@@ -63,6 +63,9 @@ PROFILE_CSVS: dict[str, str] = {
     # replicate-wkoff shares replicate's CSV (the weakening column separates the
     # rows), so merging under either name merges the same file.
     "replicate-wkoff": "results-replicate.csv",
+    # replicate-recap likewise: it replaces rows the original caps censored, in
+    # place and under the same keys.
+    "replicate-recap": "results-replicate.csv",
     "replicate-tlsf": "results-replicate-tlsf.csv",
 }
 
@@ -84,6 +87,7 @@ PROFILE_RESULT_DIRS: dict[str, str] = {
     "h2h-tlsf": "results-ablate-tlsf",
     "replicate": "results-replicate",
     "replicate-wkoff": "results-replicate",
+    "replicate-recap": "results-replicate",
     "replicate-tlsf": "results-replicate-tlsf",
 }
 

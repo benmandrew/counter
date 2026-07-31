@@ -59,17 +59,7 @@ mucs    <spec.tlsf>
 | `compare` | compare a directory of repairs against known-ideal ones |
 | `mucs` | extract a minimal unrealizable core from a TLSF specification |
 
-`counter`, `realize`, `ltl`, and `compare` accept both input formats. The format
-is inferred from the file extension — `.tlsf` is read as TLSF, anything else as
-FRETISH — or forced with `counter --format`. `mucs` is TLSF-only. Run any
-command with `--help` for full option descriptions.
-
-`mucs` isolates *why* a specification is unrealizable: it returns the smallest
-subset of the guarantee-side sections (PRESET, ASSERT, GUARANTEE) that stays
-unrealizable against the full, unchanged environment side, via QuickXplain over
-`ltlsynt`. On the unrealizable arbiter, for instance, it pares five guarantees
-down to the two — `G(g0 -> r0)` and `G F g0` — that actually conflict, pointing
-repair at the culprits instead of the whole coupled spec.
+Run any command with `--help` for full option descriptions.
 
 ## How it works
 

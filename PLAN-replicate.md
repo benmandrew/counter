@@ -125,6 +125,12 @@ fsm-timing runs on a 50-seed subsample: it scores 1.000 in both arms wherever it
 completes, so its re-run buys an honest wall-time ratio rather than a quality
 contrast, at about 6 h per machine against 31 h for the full 250.
 
+That comes to about 78 runs per machine — 17 takeoff, ~28 fsm-combined, ~33
+fsm-timing — which is 10 h at four jobs if they average half the new cap and
+19 h if they all reach it. The three stages are chained rather than
+co-scheduled, sweep R then wkoff then recap, because `wall_time_s` is a
+response here and two profiles sharing a machine would contaminate it.
+
 Recap rows are indistinguishable from originals by key, deliberately — the
 analysis wants one row per cell — but recoverable from the data, since a
 surviving row censored at the old cap still reads `timed_out = 1` at

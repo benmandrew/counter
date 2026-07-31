@@ -85,3 +85,83 @@ of its run dirs have a `config.toml`, which is written only at `jobs > 1`)
 rather than by a commit. Their files exist anyway, recording that attribution
 was attempted and how far it got — an absent file would be indistinguishable
 from never having looked.
+
+## Driver scripts
+
+Each campaign directory carries a `scripts/` holding the three drivers that
+produced it — `gen_configs.py`, `run_experiments.py` and `merge_experiments.py`
+— copied verbatim from the revision that ran. Recording the commit alone was
+enough to recover them with `git show`, but only for a reader who still has the
+history; the copies make a campaign directory reproduce on its own, which
+matters when one is lifted out and shipped beside a paper. 35 files across the
+12 campaigns, and `merge_experiments.py` is missing from `2026-07-10` because
+it did not exist yet, which is also why that campaign has a single `results.csv`
+and no per-host split.
+
+`vendored_scripts` in each `PROVENANCE.json` records, per file, the commit it
+came from, its git *blob* sha, and the basis for the attribution. The blob makes
+every copy checkable against the history it claims to come from:
+
+```sh
+git hash-object experiments/2026-07-21-muc/scripts/run_experiments.py
+```
+
+Attribution defaults to `profile_commit`, and that basis is an attribution
+rather than a record: the anchor dates the campaign's *configs*, so a long
+campaign resumed under a later revision would not show up in it. 25 of the 36
+entries rest on it; 10 across five campaigns are settled by campaign content,
+which is stronger evidence and overrides the anchor wherever the two disagree,
+and the last is the `merge_experiments.py` that did not exist yet.
+
+The first fingerprint is the CSV header. `CSV_FIELDS` in `run_experiments.py`
+grew a column at a time — `timed_out`, then `selection`, `n_dropped`,
+`weakening`, `metric`, `repair_mode` — so a results CSV names the class of
+runner revisions that could have written it. That alone is necessary but not
+sufficient, and taking it as sufficient gives the wrong answer twice: a runner
+also has to define the *profile* the campaign ran, and the seed budget, spec set
+and timeout caps in that profile are further fingerprints the campaign's own
+rows can check.
+
+Four campaigns come out against their anchor. `factorial` carries `n_dropped`,
+a 15th column added 6 minutes after its profile commit, so its runner is
+`52167cb` and not `f51adeb`. `wellsep` splits seeds 0-159 and 160-319 across the
+two hosts, which is `f64507ca`'s 320-seed design rather than the profile
+commit's 160, and all 11 of its `lift` timeouts sit at 600s rather than 180s,
+which is the cap `6f0dfbe` raised 45 minutes into the run.
+
+`genpop-sweeps` and `tlsf-genpop` are the awkward pair, because neither ran from
+`main` at all. Both come off the unmerged TLSF branch, which survives only as
+*dangling* objects, and both anchors are the rebased forms — the rebase pulled
+`cd825ae4`'s `repair_mode` crossing underneath them, so the anchors yield
+18-column runners where the CSVs have 17. No 17-column revision on `main`
+defines a TLSF profile at all, which is the check that catches the mistake.
+`tlsf-genpop` resolves cleanly to `8b52ea2`, whose `gen_configs.py` regenerates
+all 8 of its configs byte-identically under `--tlsf`. `genpop-sweeps` splits
+across two commits: its grid carries no `ltlsynt_timeout_ms`, so it was written
+by `d6e8e9d`, 22 minutes before `fe3aab5b` added a 30000 ms default, while its
+rows run to seed 35 and so need the 60-seed budget `fe3aab5b` set. Grid first,
+seed budget raised, launch 5 minutes later.
+
+Six of the 36 entries therefore name commits that are not ancestors of `main`,
+flagged by `reachable_from_main: false`. They are held reachable by the
+annotated tag `provenance/tlsf-branch`, which points at that branch's tip —
+every one of the six is an ancestor of it, so a single ref pins them all.
+Without that tag they are dangling objects, `git gc` collects them, and the
+shas stop resolving. The tag has to be pushed for that to hold for anyone else;
+a clone that lacks it still has the vendored files, since those live in the
+commit, but loses the ability to check them against the history they name. That
+is the case where vendoring earns its keep rather than merely saving a
+`git show`.
+
+The same reasoning closes `2026-07-10`, whose `profile_commit` is null because
+the profile mechanism did not exist. Its `run.log` files cannot predate
+`cacd979`, which introduced them, and its CSV holds sweep-A gen40 rows for
+`fsm-timing` (29) and `fsm-combined` (6) that `d7cb33f`'s `SKIP_COMBOS` would
+have excluded — a bound from each side, with exactly one runner revision
+between them. The truncated gen40 counts are equally consistent with the run
+having continued under `d7cb33f` afterwards, so late rows may come from a later
+revision.
+
+None of this touches `binary_commit`, which stays null everywhere for the
+reasons above. A vendored driver says what orchestrated the runs, not what
+`counter` binary they invoked.

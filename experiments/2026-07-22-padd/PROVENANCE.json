@@ -29,5 +29,29 @@
   ],
   "caveats": [
     "Unresolved: PR #32 (2f9a76c, 2026-07-21 18:04, feat/timing-strengthen: 7b6ddd2, fa07f89, af3857d, 1583a98) falls inside the run window and is engine-affecting. EXPERIMENTS.md is silent on whether it was deployed mid-run, and given the muc precedent it can be assumed neither present nor absent."
-  ]
+  ],
+  "vendored_scripts": {
+    "vendored_on": "2026-07-31",
+    "note": "Verbatim copies of the campaign's driver scripts, recovered from git history so the directory reproduces without it. Each file records the commit it came from and its git blob sha; verify with `git hash-object <file>`. A file whose basis is `profile_commit` inherits that commit's confidence and is an attribution, not a record: the anchor dates the campaign's configs, and a long campaign could have been resumed under a later revision. Files with any other basis are pinned by campaign content, which is the stronger evidence and overrides profile_commit where the two disagree. Where reachable_from_main is false the source commit is off an unmerged branch and is not an ancestor of main; those commits are held reachable by the annotated tag `provenance/tlsf-branch`, which has to be pushed for the sha to resolve in a fresh clone. Without that tag they are dangling objects that gc will collect, and the copy here becomes the only durable instance of the content.",
+    "files": {
+      "gen_configs.py": {
+        "source_commit": "8b66d7ea159d0c6dfa6d1ab809d4826d0dc78871",
+        "blob": "208948ce3dd1409710ad0de3e5cf5887dc3b1e29",
+        "reachable_from_main": true,
+        "basis": "profile_commit"
+      },
+      "run_experiments.py": {
+        "source_commit": "8b66d7ea159d0c6dfa6d1ab809d4826d0dc78871",
+        "blob": "b0ff5c8f2218f778ab79ad5d8e960dbaca9e1d19",
+        "reachable_from_main": true,
+        "basis": "profile_commit"
+      },
+      "merge_experiments.py": {
+        "source_commit": "8b66d7ea159d0c6dfa6d1ab809d4826d0dc78871",
+        "blob": "e11a3924384b5042a77e41d7ac5e58e203b80019",
+        "reachable_from_main": true,
+        "basis": "profile_commit"
+      }
+    }
+  }
 }

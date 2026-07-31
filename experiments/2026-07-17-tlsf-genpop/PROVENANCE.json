@@ -22,5 +22,29 @@
   "recorded_binary_facts": [],
   "caveats": [
     "Ran off the unmerged branch feat/tlsf-parameter-sweep, merged two hours after the last run; author dates only."
-  ]
+  ],
+  "vendored_scripts": {
+    "vendored_on": "2026-07-31",
+    "note": "Verbatim copies of the campaign's driver scripts, recovered from git history so the directory reproduces without it. Each file records the commit it came from and its git blob sha; verify with `git hash-object <file>`. A file whose basis is `profile_commit` inherits that commit's confidence and is an attribution, not a record: the anchor dates the campaign's configs, and a long campaign could have been resumed under a later revision. Files with any other basis are pinned by campaign content, which is the stronger evidence and overrides profile_commit where the two disagree. Where reachable_from_main is false the source commit is off an unmerged branch and is not an ancestor of main; those commits are held reachable by the annotated tag `provenance/tlsf-branch`, which has to be pushed for the sha to resolve in a fresh clone. Without that tag they are dangling objects that gc will collect, and the copy here becomes the only durable instance of the content.",
+    "files": {
+      "gen_configs.py": {
+        "source_commit": "8b52ea2b3b8dffa8adb049f683f8735653a641ab",
+        "blob": "cb0b308793016595e1d26d7ae03f5147fb2e41fd",
+        "reachable_from_main": false,
+        "basis": "Not the profile commit, and not on main. Same unmerged TLSF branch as genpop-sweeps: profile_commit 8dcde897 is the rebased form of 6006c22, and yields an 18-column CSV_FIELDS where the CSVs have 17. All 8 on-disk configs carry max_scoring_failure_rate = 0.15, which only 8b52ea2's gen_configs.py emits; 6006c22's and 8dcde897's do not. They also carry ltlsynt_timeout_ms = 500, the tune this campaign tested. The runner blob is shared with genpop-sweeps and is pinned the same way, by the tlsf profile and a seed budget above 16 (seeds run 0-33). Note 8b52ea2 is 17 minutes after the earliest run mtime, so the first runs used the previous configs and the grid was regenerated during the campaign."
+      },
+      "run_experiments.py": {
+        "source_commit": "8b52ea2b3b8dffa8adb049f683f8735653a641ab",
+        "blob": "658fc1f0eb7105689ec719dc7c642680183dabc7",
+        "reachable_from_main": false,
+        "basis": "Not the profile commit, and not on main. Same unmerged TLSF branch as genpop-sweeps: profile_commit 8dcde897 is the rebased form of 6006c22, and yields an 18-column CSV_FIELDS where the CSVs have 17. All 8 on-disk configs carry max_scoring_failure_rate = 0.15, which only 8b52ea2's gen_configs.py emits; 6006c22's and 8dcde897's do not. They also carry ltlsynt_timeout_ms = 500, the tune this campaign tested. The runner blob is shared with genpop-sweeps and is pinned the same way, by the tlsf profile and a seed budget above 16 (seeds run 0-33). Note 8b52ea2 is 17 minutes after the earliest run mtime, so the first runs used the previous configs and the grid was regenerated during the campaign."
+      },
+      "merge_experiments.py": {
+        "source_commit": "8b52ea2b3b8dffa8adb049f683f8735653a641ab",
+        "blob": "799bc7a8bf1f2778f0759b8a935b801458a495c2",
+        "reachable_from_main": false,
+        "basis": "Not the profile commit, and not on main. Same unmerged TLSF branch as genpop-sweeps: profile_commit 8dcde897 is the rebased form of 6006c22, and yields an 18-column CSV_FIELDS where the CSVs have 17. All 8 on-disk configs carry max_scoring_failure_rate = 0.15, which only 8b52ea2's gen_configs.py emits; 6006c22's and 8dcde897's do not. They also carry ltlsynt_timeout_ms = 500, the tune this campaign tested. The runner blob is shared with genpop-sweeps and is pinned the same way, by the tlsf profile and a seed budget above 16 (seeds run 0-33). Note 8b52ea2 is 17 minutes after the earliest run mtime, so the first runs used the previous configs and the grid was regenerated during the campaign."
+      }
+    }
+  }
 }

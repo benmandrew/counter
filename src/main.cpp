@@ -151,6 +151,8 @@ void print_timing_report() {
                      "treated as trivially true): "
                   << Ltl2tgbaStats::n_tautology_substitutions << "\n";
     }
+    std::cout << "\nConstant-folded (decided by ltlfilt, no black call): "
+              << SatisfiabilityChecker::n_constant_folded << "\n";
     std::cout << "\nFitness cache: "
               << AggregateWeightedFitnessFunction::n_cache_hits << " hits / "
               << AggregateWeightedFitnessFunction::n_cache_misses

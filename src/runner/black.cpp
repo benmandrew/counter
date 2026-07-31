@@ -15,6 +15,7 @@
 #include <utility>
 #include <vector>
 
+#include "runner/ltlfilt.hpp"
 #include "runner/process.hpp"
 
 namespace {
@@ -27,10 +28,10 @@ bool is_identifier_char(char chr) {
 // (see prop_formula.hpp). black parses those bare identifiers as free
 // variables, so it reports e.g. "G(false)" satisfiable by holding the variable
 // forever. It does read "True"/"False" as genuine constants, so rewrite whole
-// tokens on the way in. This is the only thing keeping black correct about
-// constants: check_satisfiability no longer runs an ltlfilt pre-pass that used
-// to fold some of them away before black saw them. SPOT needs no equivalent —
-// ltlfilt and ltl2tgba already treat "true"/"false" as constants.
+// tokens on the way in — without this, black is only ever correct about
+// constants when ltlfilt happens to fold them away first, which it cannot do
+// when the binary is missing or errors. SPOT needs no equivalent: ltlfilt and
+// ltl2tgba already treat "true"/"false" as constants.
 std::string to_black_constants(const std::string& formula) {
     static constexpr std::array<std::pair<std::string_view, std::string_view>,
                                 2>
@@ -80,28 +81,25 @@ std::string black_executable_path() {
 
 std::optional<bool> SatisfiabilityChecker::check_satisfiability(
     const std::string& ltl_formula) {
-    // No ltlfilt --simplify pre-pass, matching run_ltl2tgba_for_counting and
-    // check_realizability_ltl. It was kept here longer than on the SPOT paths
-    // for two reasons, and measurement retired both.
-    //
-    // Canonicalising the cache key does work — over 13868 distinct formulae
-    // from fsm and fsm-timing runs it merged them onto 7408 normal forms, a
-    // 46.6% collapse — but not hard enough to pay for itself: ltlfilt averages
-    // 10.3ms against black's 19.1ms on the same corpus, so the 6462 black calls
-    // it avoids fall short of the 7483 needed to break even. Dropping it is
-    // about 7% cheaper on this path, and removes the super-exponential
-    // ltlfilt --simplify blowup (see 35e1467) from the last path that could
-    // still hit it.
-    //
-    // The constant-fold it also provided claimed to skip "the bulk of what
-    // black would otherwise time out on". Measured over 200 sampled formulae
-    // per bucket, that is not so: those folding to "0" cost black 19.1ms (200
-    // UNSAT) and to "1" 18.7ms (200 SAT), against 19.4ms for formulae that do
-    // not fold at all, with no timeouts anywhere. black decides them as fast as
-    // anything else, and to_black_constants already keeps it correct on them.
+    const std::string normalised = simplify_ltl(ltl_formula);
+    // A formula that SPOT reduces to a boolean constant is already decided:
+    // "0" is unsatisfiable, "1" is valid and therefore satisfiable. The
+    // genetic algorithm generates these constantly — mostly implication checks
+    // that reduce away entirely — and they are the bulk of what black would
+    // otherwise time out on, so answering here skips the subprocess. This is
+    // an optimisation only: to_black_constants keeps black correct on these
+    // formulae by itself if the folding does not fire.
+    if (normalised == "0") {
+        n_constant_folded++;
+        return false;
+    }
+    if (normalised == "1") {
+        n_constant_folded++;
+        return true;
+    }
     {
         std::shared_lock lock(m_cache_mutex);
-        const auto found = m_cache.find(ltl_formula);
+        const auto found = m_cache.find(normalised);
         if (found != m_cache.end()) {
             n_cache_hits++;
             return found->second;
@@ -118,12 +116,12 @@ std::optional<bool> SatisfiabilityChecker::check_satisfiability(
     // budget stays zero, meaning no timeout on either side.
     const auto timeout_s =
         std::chrono::ceil<std::chrono::seconds>(m_timeout).count();
-    // The formula reaches black exactly as constructed, which is also the cache
-    // key now that nothing normalises it first. That is what black needs: it
-    // parses SPOT's compact operator notation ("GFa", "a W b") but not every
-    // token SPOT can emit — "0"/"1" are a syntax error and "xor" is
-    // unsupported — whereas a formula from requirement_to_ltl or an implication
-    // check is always black-compatible.
+    // Pass ltl_formula (not normalised) to black. black does parse SPOT's
+    // compact operator notation ("GFa", "a W b"), but not every token SPOT can
+    // emit: "0"/"1" are a syntax error and "xor" is unsupported. The original
+    // formula is always otherwise black-compatible because it comes from
+    // requirement_to_ltl / implication check construction. The normalised form
+    // is the cache key.
     const std::vector<std::string> command = {
         black, "solve",
         "-t",  std::to_string(timeout_s),
@@ -138,7 +136,7 @@ std::optional<bool> SatisfiabilityChecker::check_satisfiability(
     total_cpu_s += result.m_cpu_s;
     if (result.m_timed_out) {
         n_timeouts++;
-        m_cache.emplace(ltl_formula, std::nullopt);
+        m_cache.emplace(normalised, std::nullopt);
         return std::nullopt;
     }
     // Check UNSAT before SAT: the former contains the latter as a substring.
@@ -152,7 +150,7 @@ std::optional<bool> SatisfiabilityChecker::check_satisfiability(
         // exited normally with "UNKNOWN (stopped at k = N)".  Treat as
         // indeterminate, same as a process-level timeout.
         n_timeouts++;
-        m_cache.emplace(ltl_formula, std::nullopt);
+        m_cache.emplace(normalised, std::nullopt);
         return std::nullopt;
     } else {
         // black's output crossed a process boundary and didn't match any
@@ -162,6 +160,6 @@ std::optional<bool> SatisfiabilityChecker::check_satisfiability(
         throw std::runtime_error("unexpected output from black: " +
                                  result.m_output);
     }
-    m_cache.emplace(ltl_formula, sat);
+    m_cache.emplace(normalised, sat);
     return sat;
 }

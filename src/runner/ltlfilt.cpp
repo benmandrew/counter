@@ -1,105 +1,40 @@
 #include "runner/ltlfilt.hpp"
 
-#include <sys/resource.h>
-#include <sys/types.h>
-#include <sys/wait.h>
 #include <unistd.h>
 
-#include <array>
-#include <cassert>
-#include <cerrno>
+#include <atomic>
 #include <chrono>
-#include <cstring>
+#include <cstdint>
 #include <mutex>
 #include <string>
 #include <unordered_map>
-#include <vector>
 
+#include "runner/process.hpp"
 #include "runner/spot.hpp"
 
 namespace {
 
-struct ProcessResult {
-    int m_exit_code = 0;
-    std::string m_output;
-    double m_cpu_s = 0.0;
-};
+// Per-call wall-clock budget for the ltlfilt exec, in milliseconds; 0 disables
+// it. Set once at startup from Config::ltlfilt_timeout, read by every worker,
+// hence atomic. The initial value mirrors that config default, for the callers
+// that never load a config (the tests and the mucs/ltl tools).
+//
+// Unlike the ltlsynt and ltl2tgba budgets this defaults to a real value rather
+// than to "off": --simplify is super-exponential on the deep nested-X
+// conjunctions the search builds (see 35e1467), and both callers below already
+// degrade gracefully when they get no answer, so a bounded wait costs only the
+// wait itself.
+std::atomic<std::int64_t> g_ltlfilt_timeout_ms{10'000};
 
-double rusage_cpu_seconds(const struct rusage& usage) {
-    const double user_s = static_cast<double>(usage.ru_utime.tv_sec) +
-                          (static_cast<double>(usage.ru_utime.tv_usec) / 1e6);
-    const double sys_s = static_cast<double>(usage.ru_stime.tv_sec) +
-                         (static_cast<double>(usage.ru_stime.tv_usec) / 1e6);
-    return user_s + sys_s;
-}
-
-ProcessResult execute_and_capture(const std::vector<std::string>& arguments) {
-    assert(!arguments.empty());
-    // Build argv before forking: heap allocation inside the child between
-    // fork() and execv() can deadlock if another thread held the allocator
-    // lock at the moment of the fork (e.g. under ASAN's allocator).
-    std::vector<char*> argv(arguments.size() + 1);
-    for (std::size_t arg_idx = 0; arg_idx < arguments.size(); ++arg_idx) {
-        argv[arg_idx] = const_cast<char*>(arguments[arg_idx].c_str());
-    }
-    argv[arguments.size()] = nullptr;
-    std::array<int, 2> pipe_fds = {-1, -1};
-    [[maybe_unused]] const int pipe_result = pipe(pipe_fds.data());
-    assert(pipe_result == 0);
-    const pid_t child_pid = fork();
-    if (child_pid < 0) {
-        close(pipe_fds[0]);
-        close(pipe_fds[1]);
-        assert(false);
-        __builtin_unreachable();
-    }
-    if (child_pid == 0) {
-        close(pipe_fds[0]);
-        if (dup2(pipe_fds[1], STDOUT_FILENO) < 0 ||
-            dup2(pipe_fds[1], STDERR_FILENO) < 0) {
-            _exit(127);
-        }
-        close(pipe_fds[1]);
-        execv(arguments[0].c_str(), argv.data());
-        _exit(127);
-    }
-    close(pipe_fds[1]);
-    std::string output;
-    std::array<char, 4096> read_buf{};
-    while (true) {
-        const ssize_t bytes_read =
-            read(pipe_fds[0], read_buf.data(), read_buf.size());
-        if (bytes_read > 0) {
-            output.append(read_buf.data(),
-                          static_cast<std::size_t>(bytes_read));
-            continue;
-        }
-        if (bytes_read == 0) {
-            break;
-        }
-        if (errno == EINTR) {
-            continue;
-        }
-        close(pipe_fds[0]);
-        assert(false);
-        __builtin_unreachable();
-    }
-    close(pipe_fds[0]);
-    int wait_status = 0;
-    struct rusage child_usage{};
-    [[maybe_unused]] const pid_t waited =
-        wait4(child_pid, &wait_status, 0, &child_usage);
-    assert(waited >= 0);
-    int exit_code = -1;
-    if (WIFEXITED(wait_status)) {
-        exit_code = WEXITSTATUS(wait_status);
-    } else if (WIFSIGNALED(wait_status)) {
-        exit_code = 128 + WTERMSIG(wait_status);
-    }
-    return {exit_code, output, rusage_cpu_seconds(child_usage)};
+std::chrono::milliseconds ltlfilt_timeout() {
+    return std::chrono::milliseconds(g_ltlfilt_timeout_ms.load());
 }
 
 }  // namespace
+
+void set_ltlfilt_timeout(std::chrono::milliseconds timeout) {
+    g_ltlfilt_timeout_ms.store(timeout.count());
+}
 
 std::string ltlfilt_path() { return spot_bin_dir() + "/ltlfilt"; }
 
@@ -122,8 +57,8 @@ std::string simplify_ltl(const std::string& formula) {
         return formula;
     }
     const auto start = std::chrono::steady_clock::now();
-    const ProcessResult result =
-        execute_and_capture({binary, "--simplify", "-f", formula});
+    const ProcessResult result = execute_and_capture(
+        {binary, "--simplify", "-f", formula}, ltlfilt_timeout());
     const double elapsed =
         std::chrono::duration<double>(std::chrono::steady_clock::now() - start)
             .count();
@@ -137,6 +72,13 @@ std::string simplify_ltl(const std::string& formula) {
     std::scoped_lock lock(cache_mutex);
     LtlfiltStats::total_time_s += elapsed;
     LtlfiltStats::total_cpu_s += result.m_cpu_s;
+    if (result.m_timed_out) {
+        LtlfiltStats::n_timeouts++;
+    }
+    // The unsimplified fallback is cached like any other result, including
+    // after a timeout: a formula that blew the budget once will blow it every
+    // time, and re-paying the wait per occurrence is the stall this timeout
+    // exists to avoid.
     cache.emplace(formula, simplified);
     return simplified;
 }
@@ -158,16 +100,15 @@ bool ltl_equivalent(const std::string& lhs, const std::string& rhs) {
     if (access(binary.c_str(), F_OK) != 0) {
         return true;
     }
-    const ProcessResult result =
-        execute_and_capture({binary, "--equivalent-to=" + rhs, "-f", lhs});
+    const ProcessResult result = execute_and_capture(
+        {binary, "--equivalent-to=" + rhs, "-f", lhs}, ltlfilt_timeout());
+    if (result.m_timed_out) {
+        LtlfiltStats::n_timeouts++;
+    }
     // ltlfilt's filter convention: exit 0 means the input formula (lhs)
-    // matched (i.e. is equivalent to rhs); exit 1 means it didn't. Any other
-    // status (parse error, crash) is inconclusive, not a mismatch.
-    if (result.m_exit_code == 0) {
-        return true;
-    }
-    if (result.m_exit_code == 1) {
-        return false;
-    }
-    return true;
+    // matched (i.e. is equivalent to rhs); exit 1 means it didn't. Only exit 1
+    // is a mismatch — any other status (parse error, crash, the SIGKILL from a
+    // timeout) is inconclusive, and reported as equivalent rather than as a
+    // false mismatch.
+    return result.m_exit_code != 1;
 }

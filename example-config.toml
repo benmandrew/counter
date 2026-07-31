@@ -127,6 +127,20 @@ black_timeout_ms = 1000  # timeout per black SAT query in milliseconds
 # ltlsynt has no internal one, so on hard specs a single synthesis query can run
 # for minutes. A call exceeding this is killed and treated as unrealizable.
 # ltlsynt_timeout_ms = 30000
+# Per-call ltl2tgba timeout in ms. 0 (default) is no timeout; the -D
+# determinization blows up on deeply nested formulae. A call exceeding this is
+# killed and the individual is dropped.
+# ltl2tgba_timeout_ms = 30000
+# Per-call ltlfilt timeout in ms. Unlike the budgets above this defaults to
+# 10000 rather than off, because --simplify is super-exponential on deep
+# nested-X conjunctions and an abandoned call only costs a simplification: the
+# formula is used unsimplified. 0 disables it.
+# ltlfilt_timeout_ms = 10000
+# Per-call ganak model-counting timeout in ms. 0 (default) is no timeout.
+# Counting is the fitness function's real work, so a slow count is usually a
+# hard one rather than a blowup; a call exceeding this drops the individual and
+# spends the max_scoring_failure_rate budget below.
+# ganak_timeout_ms = 60000
 # parallel         = 8     # thread pool size (omit to use hardware concurrency)
 # Cap on ltlsynt processes running at once, independent of the thread pool. 0
 # (default) is unlimited; ltlsynt is multi-GB resident per call on hard specs,

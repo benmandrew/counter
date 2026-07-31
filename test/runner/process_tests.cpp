@@ -1,0 +1,152 @@
+#include <unistd.h>
+
+#include <chrono>
+#include <csignal>
+#include <cstdio>
+#include <filesystem>  // NOLINT(build/c++17)
+#include <fstream>
+#include <string>
+#include <thread>
+
+#include "runner/process.hpp"
+#include "test_suite.hpp"
+#include "test_support.hpp"
+
+namespace {
+
+using Clock = std::chrono::steady_clock;
+using std::chrono::milliseconds;
+
+// Every hung child below sleeps far longer than its budget, so a timeout that
+// silently stopped firing would show up as a multi-second test rather than a
+// wrong assertion. Anything over this means the deadline did not work.
+constexpr milliseconds k_max_reasonable_elapsed{10'000};
+
+double elapsed_ms(Clock::time_point start) {
+    return std::chrono::duration<double, std::milli>(Clock::now() - start)
+        .count();
+}
+
+std::string scratch_path(const std::string& name) {
+    return (std::filesystem::temp_directory_path() /
+            ("counter_process_test_" + std::to_string(getpid()) + "_" + name))
+        .string();
+}
+
+void test_captures_output_and_exit_code() {
+    const ProcessResult result =
+        execute_and_capture({"/bin/sh", "-c", "printf hello; exit 3"});
+    expect(result.m_output == "hello",
+           "process: stdout should be captured verbatim, got \"" +
+               result.m_output + "\"");
+    expect(result.m_exit_code == 3,
+           "process: exit status should be reported, got " +
+               std::to_string(result.m_exit_code));
+    expect(!result.m_timed_out,
+           "process: a command that exits on its own has not timed out");
+}
+
+void test_merges_stderr_into_output() {
+    const ProcessResult result =
+        execute_and_capture({"/bin/sh", "-c", "printf out; printf err >&2"});
+    expect(result.m_output.find("out") != std::string::npos &&
+               result.m_output.find("err") != std::string::npos,
+           "process: stderr should be merged into the captured output, got \"" +
+               result.m_output + "\"");
+}
+
+void test_zero_timeout_runs_to_completion() {
+    const ProcessResult result = execute_and_capture(
+        {"/bin/sh", "-c", "sleep 0.2; printf ok"}, milliseconds::zero());
+    expect(result.m_output == "ok" && !result.m_timed_out,
+           "process: a zero timeout means no deadline, not an instant one");
+}
+
+void test_timeout_fires_on_a_child_that_never_writes() {
+    const auto start = Clock::now();
+    const ProcessResult result =
+        execute_and_capture({"/bin/sh", "-c", "sleep 30"}, milliseconds{200});
+    const double took = elapsed_ms(start);
+    expect(result.m_timed_out,
+           "process: a child outlasting its budget should report a timeout");
+    expect(took < static_cast<double>(k_max_reasonable_elapsed.count()),
+           "process: the timeout should abandon the child promptly, took " +
+               std::to_string(took) + "ms");
+    expect(result.m_exit_code == 128 + SIGKILL,
+           "process: a killed child should report its signal, got " +
+               std::to_string(result.m_exit_code));
+}
+
+// The case the old per-runner wrappers could still hang on: EOF on the pipe
+// means the child closed stdout, not that it exited, so reaping has to be
+// inside the deadline too.
+void test_timeout_fires_after_the_child_closes_its_output() {
+    const auto start = Clock::now();
+    const ProcessResult result = execute_and_capture(
+        {"/bin/sh", "-c", "printf done; exec 1>&- 2>&-; sleep 30"},
+        milliseconds{300});
+    const double took = elapsed_ms(start);
+    expect(result.m_timed_out,
+           "process: a child that closes stdout but keeps running should still "
+           "hit its deadline");
+    expect(took < static_cast<double>(k_max_reasonable_elapsed.count()),
+           "process: reaping must honour the deadline rather than blocking in "
+           "wait4, took " +
+               std::to_string(took) + "ms");
+    expect(result.m_output == "done",
+           "process: output written before the close should survive, got \"" +
+               result.m_output + "\"");
+}
+
+// The orphan case this wrapper exists for: a grandchild must not outlive the
+// timeout that killed its parent.
+void test_timeout_kills_the_whole_process_group() {
+    const std::string pid_path = scratch_path("grandchild_pid");
+    std::filesystem::remove(pid_path);
+    // The backgrounded inner shell stays in the child's process group (a
+    // non-interactive shell does no job control), so killpg is what reaches it.
+    const std::string script =
+        "sh -c 'echo $$ > " + pid_path + "; sleep 30' &\nsleep 30\n";
+    const ProcessResult result =
+        execute_and_capture({"/bin/sh", "-c", script}, milliseconds{500});
+    expect(result.m_timed_out,
+           "process: the outer child should have timed out");
+
+    pid_t grandchild = 0;
+    for (int attempt = 0; attempt < 100 && grandchild == 0; ++attempt) {
+        std::ifstream pid_file(pid_path);
+        pid_file >> grandchild;
+        if (grandchild == 0) {
+            std::this_thread::sleep_for(milliseconds{10});
+        }
+    }
+    std::filesystem::remove(pid_path);
+    expect(grandchild > 0,
+           "process: the test's grandchild never recorded its pid, so the "
+           "group-kill assertion below would prove nothing");
+
+    // kill(pid, 0) probes for existence. Allow a moment for the SIGKILL to
+    // land and for init to reap the reparented grandchild.
+    bool alive = true;
+    for (int attempt = 0; attempt < 100 && alive; ++attempt) {
+        alive = kill(grandchild, 0) == 0;
+        if (alive) {
+            std::this_thread::sleep_for(milliseconds{10});
+        }
+    }
+    expect(!alive,
+           "process: a timeout must kill the child's whole process group; "
+           "grandchild " +
+               std::to_string(grandchild) + " survived it");
+}
+
+}  // namespace
+
+void run_process_runner_tests() {
+    test_captures_output_and_exit_code();
+    test_merges_stderr_into_output();
+    test_zero_timeout_runs_to_completion();
+    test_timeout_fires_on_a_child_that_never_writes();
+    test_timeout_fires_after_the_child_closes_its_output();
+    test_timeout_kills_the_whole_process_group();
+}

@@ -1,5 +1,6 @@
 #include "runner/ganak.hpp"
 
+#include <fcntl.h>
 #include <sys/resource.h>
 #include <sys/types.h>
 #include <sys/wait.h>
@@ -78,7 +79,7 @@ ProcessResult execute_and_capture(const std::vector<std::string>& arguments) {
     }
     argv[arguments.size()] = nullptr;
     std::array<int, 2> pipe_fds = {-1, -1};
-    [[maybe_unused]] const int pipe_result = pipe(pipe_fds.data());
+    [[maybe_unused]] const int pipe_result = pipe2(pipe_fds.data(), O_CLOEXEC);
     assert(pipe_result == 0);
     const pid_t child_pid = fork();
     if (child_pid < 0) {

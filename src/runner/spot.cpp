@@ -1,5 +1,6 @@
 #include "runner/spot.hpp"
 
+#include <fcntl.h>
 #include <poll.h>
 #include <sys/prctl.h>
 #include <sys/resource.h>
@@ -234,7 +235,7 @@ ProcessResult execute_and_capture(
     }
     argv[arguments.size()] = nullptr;
     std::array<int, 2> pipe_fds = {-1, -1};
-    [[maybe_unused]] const int pipe_result = pipe(pipe_fds.data());
+    [[maybe_unused]] const int pipe_result = pipe2(pipe_fds.data(), O_CLOEXEC);
     assert(pipe_result == 0);
     pid_t child_pid = -1;
     {

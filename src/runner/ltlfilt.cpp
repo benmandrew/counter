@@ -1,5 +1,6 @@
 #include "runner/ltlfilt.hpp"
 
+#include <fcntl.h>
 #include <poll.h>
 #include <spawn.h>
 #include <sys/resource.h>
@@ -51,7 +52,7 @@ ProcessResult execute_and_capture(const std::vector<std::string>& arguments) {
     }
     argv[arguments.size()] = nullptr;
     std::array<int, 2> pipe_fds = {-1, -1};
-    [[maybe_unused]] const int pipe_result = pipe(pipe_fds.data());
+    [[maybe_unused]] const int pipe_result = pipe2(pipe_fds.data(), O_CLOEXEC);
     assert(pipe_result == 0);
     pid_t child_pid = -1;
     {
@@ -188,7 +189,7 @@ class LtlfiltProcess {
         }
         std::array<int, 2> in_pipe = {-1, -1};
         std::array<int, 2> out_pipe = {-1, -1};
-        if (pipe(in_pipe.data()) != 0 || pipe(out_pipe.data()) != 0) {
+        if (pipe2(in_pipe.data(), O_CLOEXEC) != 0 || pipe2(out_pipe.data(), O_CLOEXEC) != 0) {
             m_failed = true;
             return false;
         }

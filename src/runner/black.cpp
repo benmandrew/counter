@@ -1,10 +1,13 @@
 #include "runner/black.hpp"
 
 #include <poll.h>
+#include <spawn.h>
 #include <sys/resource.h>
 #include <sys/types.h>
 #include <sys/wait.h>
 #include <unistd.h>
+
+extern char** environ;
 
 #include <array>
 #include <cassert>
@@ -24,6 +27,7 @@
 #include <utility>
 #include <vector>
 
+#include "profile.hpp"
 #include "runner/ltlfilt.hpp"
 
 namespace {
@@ -153,33 +157,48 @@ ProcessResult execute_and_capture(const std::vector<std::string>& arguments,
     std::array<int, 2> pipe_fds = {-1, -1};
     [[maybe_unused]] const int pipe_result = pipe(pipe_fds.data());
     assert(pipe_result == 0);
-    const pid_t child_pid = fork();
-    if (child_pid < 0) {
-        close(pipe_fds[0]);
-        close(pipe_fds[1]);
-        assert(false);
-        __builtin_unreachable();
-    }
-    if (child_pid == 0) {
-        close(pipe_fds[0]);
-        if (dup2(pipe_fds[1], STDOUT_FILENO) < 0 ||
-            dup2(pipe_fds[1], STDERR_FILENO) < 0) {
-            _exit(127);
+    pid_t child_pid = -1;
+    {
+        // posix_spawn rather than fork: see the matching comment in
+        // src/runner/ltlfilt.cpp. fork() write-protects the parent's whole
+        // address space, and the scoring pool's other worker threads then fault
+        // it all back in copy-on-write; posix_spawn's clone(CLONE_VM) does not.
+        COUNTER_PROFILE_SCOPE("proc/fork+exec");
+        posix_spawn_file_actions_t actions;
+        posix_spawn_file_actions_init(&actions);
+        posix_spawn_file_actions_addclose(&actions, pipe_fds[0]);
+        posix_spawn_file_actions_adddup2(&actions, pipe_fds[1], STDOUT_FILENO);
+        posix_spawn_file_actions_adddup2(&actions, pipe_fds[1], STDERR_FILENO);
+        posix_spawn_file_actions_addclose(&actions, pipe_fds[1]);
+        const int spawn_result =
+            posix_spawn(&child_pid, arguments[0].c_str(), &actions, nullptr,
+                        argv.data(), environ);
+        posix_spawn_file_actions_destroy(&actions);
+        if (spawn_result != 0) {
+            close(pipe_fds[0]);
+            close(pipe_fds[1]);
+            assert(false);
+            __builtin_unreachable();
         }
-        close(pipe_fds[1]);
-        execv(arguments[0].c_str(), argv.data());
-        _exit(127);
     }
     close(pipe_fds[1]);
     const auto deadline = std::chrono::steady_clock::now() + timeout;
-    auto [output, timed_out] =
-        read_with_timeout(pipe_fds[0], child_pid, deadline);
+    std::string output;
+    bool timed_out = false;
+    {
+        COUNTER_PROFILE_SCOPE("proc/read");
+        std::tie(output, timed_out) =
+            read_with_timeout(pipe_fds[0], child_pid, deadline);
+    }
     close(pipe_fds[0]);
     int wait_status = 0;
     struct rusage child_usage{};
-    [[maybe_unused]] const pid_t waited =
-        wait4(child_pid, &wait_status, 0, &child_usage);
-    assert(waited >= 0);
+    {
+        COUNTER_PROFILE_SCOPE("proc/wait");
+        [[maybe_unused]] const pid_t waited =
+            wait4(child_pid, &wait_status, 0, &child_usage);
+        assert(waited >= 0);
+    }
     int exit_code = -1;
     if (WIFEXITED(wait_status)) {
         exit_code = WEXITSTATUS(wait_status);

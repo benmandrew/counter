@@ -13,6 +13,8 @@
 #include <type_traits>
 #include <utility>
 
+#include "profile.hpp"
+
 /// Runs up to `max_in_flight` futures concurrently across `n_items` tasks.
 ///
 /// `spawn(i)` launches the i-th task and must return a std::future. Once
@@ -48,6 +50,10 @@ void run_bounded_async(std::size_t n_items, std::size_t max_in_flight,
     } drain_guard{in_flight};
 
     auto collect_one_ready = [&] {
+        // The dispatcher's own wait. Its wall time is time no task is being
+        // submitted, so it bounds how much of a stage is scheduling rather than
+        // work; its CPU share is what the 1ms poll below costs.
+        COUNTER_PROFILE_SCOPE("dispatch/collect-one-ready");
         for (;;) {
             for (auto it = in_flight.begin(); it != in_flight.end(); ++it) {
                 if (it->second.wait_for(std::chrono::milliseconds(0)) ==

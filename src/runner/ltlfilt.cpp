@@ -1,9 +1,12 @@
 #include "runner/ltlfilt.hpp"
 
+#include <spawn.h>
 #include <sys/resource.h>
 #include <sys/types.h>
 #include <sys/wait.h>
 #include <unistd.h>
+
+extern char** environ;
 
 #include <array>
 #include <cassert>
@@ -15,6 +18,7 @@
 #include <unordered_map>
 #include <vector>
 
+#include "profile.hpp"
 #include "runner/spot.hpp"
 
 namespace {
@@ -46,50 +50,67 @@ ProcessResult execute_and_capture(const std::vector<std::string>& arguments) {
     std::array<int, 2> pipe_fds = {-1, -1};
     [[maybe_unused]] const int pipe_result = pipe(pipe_fds.data());
     assert(pipe_result == 0);
-    const pid_t child_pid = fork();
-    if (child_pid < 0) {
-        close(pipe_fds[0]);
-        close(pipe_fds[1]);
-        assert(false);
-        __builtin_unreachable();
-    }
-    if (child_pid == 0) {
-        close(pipe_fds[0]);
-        if (dup2(pipe_fds[1], STDOUT_FILENO) < 0 ||
-            dup2(pipe_fds[1], STDERR_FILENO) < 0) {
-            _exit(127);
+    pid_t child_pid = -1;
+    {
+        // posix_spawn, not fork: glibc implements it with
+        // clone(CLONE_VM|CLONE_VFORK), which neither copies the page tables nor
+        // write-protects the parent's address space. fork() does both, and the
+        // scoring pool writes from every worker thread immediately afterwards,
+        // so each fork triggered a copy-on-write storm across the whole working
+        // set -- measured at ~3.5k minor faults per spawn, the dominant term in
+        // this process's system time. Nothing here needs a real child address
+        // space: the child only redirects its fds and execs.
+        COUNTER_PROFILE_SCOPE("proc/fork+exec");
+        posix_spawn_file_actions_t actions;
+        posix_spawn_file_actions_init(&actions);
+        posix_spawn_file_actions_addclose(&actions, pipe_fds[0]);
+        posix_spawn_file_actions_adddup2(&actions, pipe_fds[1], STDOUT_FILENO);
+        posix_spawn_file_actions_adddup2(&actions, pipe_fds[1], STDERR_FILENO);
+        posix_spawn_file_actions_addclose(&actions, pipe_fds[1]);
+        const int spawn_result =
+            posix_spawn(&child_pid, arguments[0].c_str(), &actions, nullptr,
+                        argv.data(), environ);
+        posix_spawn_file_actions_destroy(&actions);
+        if (spawn_result != 0) {
+            close(pipe_fds[0]);
+            close(pipe_fds[1]);
+            assert(false);
+            __builtin_unreachable();
         }
-        close(pipe_fds[1]);
-        execv(arguments[0].c_str(), argv.data());
-        _exit(127);
     }
     close(pipe_fds[1]);
     std::string output;
-    std::array<char, 4096> read_buf{};
-    while (true) {
-        const ssize_t bytes_read =
-            read(pipe_fds[0], read_buf.data(), read_buf.size());
-        if (bytes_read > 0) {
-            output.append(read_buf.data(),
-                          static_cast<std::size_t>(bytes_read));
-            continue;
+    {
+        COUNTER_PROFILE_SCOPE("proc/read");
+        std::array<char, 4096> read_buf{};
+        while (true) {
+            const ssize_t bytes_read =
+                read(pipe_fds[0], read_buf.data(), read_buf.size());
+            if (bytes_read > 0) {
+                output.append(read_buf.data(),
+                              static_cast<std::size_t>(bytes_read));
+                continue;
+            }
+            if (bytes_read == 0) {
+                break;
+            }
+            if (errno == EINTR) {
+                continue;
+            }
+            close(pipe_fds[0]);
+            assert(false);
+            __builtin_unreachable();
         }
-        if (bytes_read == 0) {
-            break;
-        }
-        if (errno == EINTR) {
-            continue;
-        }
-        close(pipe_fds[0]);
-        assert(false);
-        __builtin_unreachable();
     }
     close(pipe_fds[0]);
     int wait_status = 0;
     struct rusage child_usage{};
-    [[maybe_unused]] const pid_t waited =
-        wait4(child_pid, &wait_status, 0, &child_usage);
-    assert(waited >= 0);
+    {
+        COUNTER_PROFILE_SCOPE("proc/wait");
+        [[maybe_unused]] const pid_t waited =
+            wait4(child_pid, &wait_status, 0, &child_usage);
+        assert(waited >= 0);
+    }
     int exit_code = -1;
     if (WIFEXITED(wait_status)) {
         exit_code = WEXITSTATUS(wait_status);
@@ -104,9 +125,11 @@ ProcessResult execute_and_capture(const std::vector<std::string>& arguments) {
 std::string ltlfilt_path() { return spot_bin_dir() + "/ltlfilt"; }
 
 std::string simplify_ltl(const std::string& formula) {
+    COUNTER_PROFILE_SCOPE("ltlfilt/simplify_ltl");
     static std::unordered_map<std::string, std::string> cache;
     static std::mutex cache_mutex;
     {
+        COUNTER_PROFILE_SCOPE("ltlfilt/simplify_ltl:cache-lookup");
         std::scoped_lock lock(cache_mutex);
         const auto found = cache.find(formula);
         if (found != cache.end()) {

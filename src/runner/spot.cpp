@@ -27,6 +27,7 @@
 #include <utility>
 #include <vector>
 
+#include "profile.hpp"
 #include "requirement.hpp"
 #include "runner/ltlfilt.hpp"
 
@@ -235,34 +236,55 @@ ProcessResult execute_and_capture(
     std::array<int, 2> pipe_fds = {-1, -1};
     [[maybe_unused]] const int pipe_result = pipe(pipe_fds.data());
     assert(pipe_result == 0);
-    const pid_t child_pid = fork();
-    if (child_pid < 0) {
-        close(pipe_fds[0]);
-        close(pipe_fds[1]);
-        assert(false);
-        __builtin_unreachable();
-    }
-    if (child_pid == 0) {
-        close(pipe_fds[0]);
-        spawn_child_and_exec(argv.data(), arguments[0].c_str(), pipe_fds[1]);
+    pid_t child_pid = -1;
+    {
+        // Timed separately from the read and wait below: this scope is the
+        // parent's share of process creation (page-table copy for fork, plus
+        // the child's exec until it detaches), which is the part a cheaper
+        // spawn primitive would remove. The read/wait scopes are the child's
+        // actual work and would not move.
+        COUNTER_PROFILE_SCOPE("proc/fork+exec");
+        child_pid = fork();
+        if (child_pid < 0) {
+            close(pipe_fds[0]);
+            close(pipe_fds[1]);
+            assert(false);
+            __builtin_unreachable();
+        }
+        if (child_pid == 0) {
+            close(pipe_fds[0]);
+            spawn_child_and_exec(argv.data(), arguments[0].c_str(),
+                                 pipe_fds[1]);
+        }
     }
     close(pipe_fds[1]);
     bool timed_out = false;
     std::string output;
-    if (timeout > std::chrono::milliseconds::zero()) {
-        std::tie(output, timed_out) = read_from_fd_timed(pipe_fds[0], timeout);
-        if (timed_out) {
-            // The child is still running (or its pipe still open); kill it so
-            // wait_for_child reaps immediately instead of blocking on the very
-            // query the timeout exists to abandon.
-            kill(child_pid, SIGKILL);
+    {
+        // The child's own runtime: the parent sits in read()/poll() until the
+        // tool closes its stdout. Wall greatly exceeding CPU here is expected
+        // and healthy — it means the parent is blocked, not spinning.
+        COUNTER_PROFILE_SCOPE("proc/read");
+        if (timeout > std::chrono::milliseconds::zero()) {
+            std::tie(output, timed_out) =
+                read_from_fd_timed(pipe_fds[0], timeout);
+            if (timed_out) {
+                // The child is still running (or its pipe still open); kill it
+                // so wait_for_child reaps immediately instead of blocking on
+                // the very query the timeout exists to abandon.
+                kill(child_pid, SIGKILL);
+            }
+        } else {
+            output = read_from_fd(pipe_fds[0]);
         }
-    } else {
-        output = read_from_fd(pipe_fds[0]);
     }
     close(pipe_fds[0]);
     double cpu_s = 0.0;
-    int exit_code = wait_for_child(child_pid, cpu_s);
+    int exit_code = 0;
+    {
+        COUNTER_PROFILE_SCOPE("proc/wait");
+        exit_code = wait_for_child(child_pid, cpu_s);
+    }
     return {exit_code, output, cpu_s, timed_out};
 }
 

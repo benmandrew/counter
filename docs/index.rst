@@ -25,6 +25,7 @@ functions, and anonymous namespaces, with source browsing and call graphs.
    api/config
    api/config_io
    api/dashboard
+   api/profile
    api/prop_formula
    api/requirement
    api/serialisation

@@ -24,7 +24,7 @@
 #include "config.hpp"
 #include "profile.hpp"
 #include "runner/spot.hpp"
-#include "runner/spot_simplify.hpp"
+#include "runner/spot_inprocess.hpp"
 #include "runner/subprocess.hpp"
 
 namespace {

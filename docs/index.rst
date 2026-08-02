@@ -83,7 +83,7 @@ functions, and anonymous namespaces, with source browsing and call graphs.
    api/runner/ganak
    api/runner/ltlfilt
    api/runner/spot
-   api/runner/spot_simplify
+   api/runner/spot_inprocess
    api/runner/subprocess
 
 .. toctree::

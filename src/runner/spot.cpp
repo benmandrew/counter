@@ -22,6 +22,7 @@
 #include <iostream>
 #include <memory>
 #include <mutex>
+#include <optional>
 #include <stdexcept>
 #include <string>
 #include <unordered_map>
@@ -31,6 +32,7 @@
 #include "profile.hpp"
 #include "requirement.hpp"
 #include "runner/ltlfilt.hpp"
+#include "runner/spot_inprocess.hpp"
 #include "runner/subprocess.hpp"
 
 namespace {
@@ -230,11 +232,45 @@ std::string run_ltl2tgba_for_counting(const std::string& formula) {
         }
         Ltl2tgbaStats::n_cache_misses++;
     }
-    const std::string binary = ltl2tgba_path();
-    assert(access(binary.c_str(), F_OK) == 0);
     const auto start = std::chrono::steady_clock::now();
     const auto timeout =
         std::chrono::milliseconds(g_ltl2tgba_timeout_ms.load());
+    // In process when no deadline was asked for, which is the default. The
+    // translation itself measures about 0.16 ms against roughly 10 ms to spawn
+    // ltl2tgba for it, so this is almost entirely startup that is not paid.
+    // A configured timeout keeps the exec, because a deadline here is enforced
+    // by killing the process running the work and there is no other way to
+    // abandon a translation that does not terminate.
+    if (timeout == std::chrono::milliseconds::zero()) {
+        const SpotTranslation translation =
+            spot_translate_for_counting(formula);
+        const double in_process_elapsed =
+            std::chrono::duration<double>(std::chrono::steady_clock::now() -
+                                          start)
+                .count();
+        if (translation.m_tautology_print_bug) {
+            // Same defect as the exec path's exit 2, and handled the same way:
+            // the formula accepts every trace, so the universal automaton is
+            // the right answer rather than a scoring failure.
+            std::scoped_lock lock(cache_mutex);
+            Ltl2tgbaStats::record_time(in_process_elapsed, 0.0);
+            Ltl2tgbaStats::n_tautology_substitutions++;
+            cache.emplace(formula, k_universal_hoa);
+            return k_universal_hoa;
+        }
+        if (translation.m_hoa.has_value()) {
+            std::scoped_lock lock(cache_mutex);
+            // No child, so no child CPU to report; the work landed on this
+            // thread and shows up in the process's own CPU time instead.
+            Ltl2tgbaStats::record_time(in_process_elapsed, 0.0);
+            cache.emplace(formula, *translation.m_hoa);
+            return *translation.m_hoa;
+        }
+        // Unparseable. Fall through to the exec so the failure is reported the
+        // way it always was, by ltl2tgba's own exit code.
+    }
+    const std::string binary = ltl2tgba_path();
+    assert(access(binary.c_str(), F_OK) == 0);
     const SubprocessResult result =
         run_subprocess({binary, "-D", "-S", "-H", "-f", formula},
                        {timeout, /*m_die_with_parent=*/true});

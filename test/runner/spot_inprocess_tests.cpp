@@ -3,7 +3,8 @@
 #include <vector>
 
 #include "runner/ltlfilt.hpp"
-#include "runner/spot_simplify.hpp"
+#include "runner/spot.hpp"
+#include "runner/spot_inprocess.hpp"
 #include "runner/subprocess.hpp"
 #include "test_suite.hpp"
 #include "test_support.hpp"
@@ -96,11 +97,77 @@ void test_concurrent_calls_agree() {
     }
 }
 
+// Everything the HOA reader consumes has to match the tool. The `name:` line is
+// the one exception -- ltl2tgba fills it with its own simplified rendering of
+// the formula, and nothing in this project reads it -- so it is dropped before
+// comparing rather than quietly ignored in the assertion.
+std::string strip_name_line(const std::string& hoa) {
+    std::string kept;
+    std::size_t start = 0;
+    while (start < hoa.size()) {
+        std::size_t end = hoa.find('\n', start);
+        if (end == std::string::npos) {
+            end = hoa.size();
+        }
+        const std::string line = hoa.substr(start, end - start);
+        if (line.rfind("name:", 0) != 0) {
+            kept.append(line).append("\n");
+        }
+        start = end + 1;
+    }
+    return kept;
+}
+
+std::string via_ltl2tgba(const std::string& formula) {
+    const SubprocessResult result =
+        run_subprocess({ltl2tgba_path(), "-D", "-S", "-H", "-f", formula});
+    return result.m_output;
+}
+
+void test_translation_matches_ltl2tgba() {
+    const std::vector<std::string> formulas = {
+        "G(p -> F(q))", "p & q", "G(F(p))",  "p U q",
+        "X(p) & G(q)",  "F(p)",  "G(p | !p)"};
+    for (const std::string& formula : formulas) {
+        const std::string in_process =
+            spot_translate_for_counting(formula).m_hoa.value_or(k_declined);
+        std::string message = "spot-translate: ";
+        message.append(formula).append(" should match ltl2tgba -D -S -H");
+        expect(strip_name_line(in_process) ==
+                   strip_name_line(via_ltl2tgba(formula)),
+               message);
+    }
+}
+
+void test_unparseable_formula_is_declined_by_translate() {
+    expect(!spot_translate_for_counting("G(").m_hoa.has_value(),
+           "spot-translate: an unparseable formula should return no automaton "
+           "so the caller can fall back to the exec");
+}
+
+// SPOT 2.15.1 refuses to print the universal automaton it builds for a
+// tautology. That is a library defect, not a formula error, so it has to be
+// reported as such rather than surfacing as a translation failure -- otherwise
+// a genuinely-true formula counts against the run's scoring-failure tolerance.
+void test_tautology_print_bug_is_reported() {
+    // The same minimal trigger spot_tests.cpp uses for the exec path's exit 2.
+    const SpotTranslation translation =
+        spot_translate_for_counting("G((a & !((b & !c) -> d)) -> b)");
+    expect(translation.m_tautology_print_bug,
+           "spot-translate: a tautology should be reported as the "
+           "prop_complete() print bug, not as a failure");
+    expect(!translation.m_hoa.has_value(),
+           "spot-translate: no automaton accompanies the tautology report");
+}
+
 }  // namespace
 
-void run_spot_simplify_tests() {
+void run_spot_inprocess_tests() {
     test_agrees_with_ltlfilt();
     test_simplification_level_matches_the_flag();
     test_unparseable_formula_is_declined();
     test_concurrent_calls_agree();
+    test_translation_matches_ltl2tgba();
+    test_unparseable_formula_is_declined_by_translate();
+    test_tautology_print_bug_is_reported();
 }

@@ -111,8 +111,8 @@ void run_suite(std::string_view suite_name,
         run_ganak_runner_tests();
         return;
     }
-    if (suite_name == "spot_simplify") {
-        run_spot_simplify_tests();
+    if (suite_name == "spot_inprocess") {
+        run_spot_inprocess_tests();
         return;
     }
     if (suite_name == "ltlfilt_runner") {
@@ -213,7 +213,7 @@ int main(int argc, const char* const argv[]) {
             run_formaliser_runner_tests();
             run_ganak_runner_tests();
             run_ltlfilt_runner_tests();
-            run_spot_simplify_tests();
+            run_spot_inprocess_tests();
             run_spot_runner_tests();
             run_crossover_tests();
             run_generation_tests();

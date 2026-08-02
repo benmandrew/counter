@@ -1,0 +1,64 @@
+#pragma once
+
+/// @file spot_inprocess.hpp
+/// @brief The calls this project makes into the linked libspot, in place of
+///        spawning the equivalent Spot command-line tool.
+///
+/// Everything that talks to libspot lives here, for one reason: every such call
+/// has to be serialised behind the *same* process-wide lock. Splitting them
+/// across headers would make it easy to add a second entry point with a second
+/// lock, which is no protection at all.
+///
+/// That lock is not caution, it is a measured requirement. The contended state
+/// is not in any Spot object the caller holds -- it is process-global
+/// underneath: SPOT's Bison and Flex parser globals, and the `robin_hood` table
+/// that interns formula nodes. Giving each thread its own simplifier or
+/// translator therefore does not help, and crashes even when every call is
+/// locked, because construction alone reaches that state. See PROFILING.md.
+///
+/// Serialising is affordable because what is removed is so much larger than
+/// what is serialised: about 8 ms of process startup per call, against 0.02 ms
+/// of simplification or 0.16 ms of translation on real workloads.
+
+#include <optional>
+#include <string>
+
+/// Simplifies @p formula, the in-process equivalent of `ltlfilt --simplify`.
+/// Returns std::nullopt when the formula does not parse -- the caller should
+/// then leave it alone, as the exec path does.
+///
+/// The result is byte-identical to the tool, which needs simplification level 3
+/// rather than the library default; the two disagree on about 5% of formulae,
+/// so the level is not a detail that can be left to the default.
+std::optional<std::string> spot_simplify(const std::string& formula);
+
+/// The outcome of one translation. `m_hoa` holds the automaton, and is empty
+/// when the formula did not parse or when the tautology bug below fired.
+struct SpotTranslation {
+    std::optional<std::string> m_hoa;
+    /// True when the formula is a tautology and SPOT 2.15.1 refused to print
+    /// the universal automaton it had just built, because that automaton is
+    /// complete while its `prop_complete()` flag was left unset. This is the
+    /// same defect that makes the `ltl2tgba` binary exit 2 on a tautology, and
+    /// it is in the library rather than the command-line tool, so it has to be
+    /// handled on both paths. The caller substitutes the universal automaton,
+    /// exactly as it does for the exec's exit 2.
+    bool m_tautology_print_bug = false;
+};
+
+/// Translates @p formula into an automaton in HOA form, the in-process
+/// equivalent of `ltl2tgba -D -S -H -f <formula>`.
+///
+/// The output matches the tool exactly apart from the `name:` line, which the
+/// tool fills with its own simplified rendering of the formula and which
+/// nothing in this project reads.
+///
+/// Each call translates against a fresh `bdd_dict`. Sharing one across calls is
+/// measurably no faster and renumbers atomic propositions, since a dictionary
+/// carries over the propositions earlier formulae registered; a fresh one
+/// reproduces the tool's numbering.
+///
+/// Unlike the exec path this cannot be given a deadline: there is no process to
+/// kill, and C++ has no way to cancel a running call. A caller that needs one
+/// has to keep spawning `ltl2tgba`.
+SpotTranslation spot_translate_for_counting(const std::string& formula);

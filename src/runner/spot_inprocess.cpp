@@ -1,0 +1,78 @@
+#include "runner/spot_inprocess.hpp"
+
+#include <mutex>
+#include <optional>
+#include <sstream>
+#include <string>
+
+#include <spot/tl/parse.hh>
+#include <spot/tl/print.hh>
+#include <spot/tl/simplify.hh>
+#include <spot/twaalgos/hoa.hh>
+#include <spot/twaalgos/translate.hh>
+
+#include "profile.hpp"
+
+namespace {
+
+std::mutex& spot_mutex() {
+    static std::mutex mutex;
+    return mutex;
+}
+
+}  // namespace
+
+std::optional<std::string> spot_simplify(const std::string& formula) {
+    // Outside the lock deliberately, so the recorded wall time includes waiting
+    // for it. Wall far above CPU here would be the signal that serialising has
+    // started to cost something.
+    COUNTER_PROFILE_SCOPE("ltlfilt/libspot-simplify");
+    const std::scoped_lock lock(spot_mutex());
+    // Inside the lock, not at namespace scope: constructing a tl_simplifier
+    // touches the same SPOT globals its use does, and doing that unserialised
+    // crashes. The function-local static's own guard orders construction, but
+    // does not order it against another thread already simplifying.
+    // Level 3 matches `ltlfilt --simplify`; the default options do not.
+    static spot::tl_simplifier simplifier{spot::tl_simplifier_options(3)};
+    const spot::parsed_formula parsed = spot::parse_infix_psl(formula);
+    if (!parsed.errors.empty() || !parsed.f) {
+        return std::nullopt;
+    }
+    return spot::str_psl(simplifier.simplify(parsed.f));
+}
+
+SpotTranslation spot_translate_for_counting(const std::string& formula) {
+    COUNTER_PROFILE_SCOPE("spot/libspot-translate");
+    const std::scoped_lock lock(spot_mutex());
+    const spot::parsed_formula parsed = spot::parse_infix_psl(formula);
+    if (!parsed.errors.empty() || !parsed.f) {
+        return {};
+    }
+    // -D and -S: prefer a deterministic automaton with state-based acceptance.
+    // A fresh bdd_dict per call, so atomic propositions are numbered from this
+    // formula alone and match what the tool prints.
+    spot::translator translator{spot::make_bdd_dict()};
+    translator.set_pref(spot::postprocessor::Deterministic |
+                        spot::postprocessor::SBAcc);
+    std::ostringstream out;
+    try {
+        spot::print_hoa(out, translator.run(parsed.f), "");
+    } catch (const std::runtime_error& error) {
+        // Not an error in the formula: the automaton is correct and universal,
+        // and only printing refuses it. Reported rather than swallowed, so the
+        // caller substitutes the universal automaton instead of counting a
+        // genuinely-true formula as a scoring failure.
+        if (std::string(error.what())
+                .find("automaton is complete but prop_complete()") !=
+            std::string::npos) {
+            SpotTranslation translation;
+            translation.m_tautology_print_bug = true;
+            return translation;
+        }
+        throw;
+    }
+    // print_hoa leaves off the trailing newline the tool emits after --END--.
+    SpotTranslation translation;
+    translation.m_hoa = out.str() + "\n";
+    return translation;
+}

@@ -352,12 +352,12 @@ int run_tlsf(const Args& args, SatisfiabilityChecker& checker) {
 
     run_and_report(
         repair_meta, ideal_names, [&](std::size_t rep, std::size_t ide) {
-            return global_thread_pool().submit([&, rep, ide] {
+            return [&, rep, ide] {
                 return classify(tlsf_spec_implies(repairs[rep].spec,
                                                   ideals[ide].second, checker),
                                 tlsf_spec_implies(ideals[ide].second,
                                                   repairs[rep].spec, checker));
-            });
+            };
         });
     return 0;
 }
@@ -405,13 +405,13 @@ int run_fretish(const Args& args, SatisfiabilityChecker& checker) {
 
     run_and_report(repair_meta, ideal_names,
                    [&](std::size_t rep, std::size_t ide) {
-                       return global_thread_pool().submit([&, rep, ide] {
+                       return [&, rep, ide] {
                            return classify(
                                spec_implies(repairs[rep].second.spec,
                                             ideals[ide].second, checker),
                                spec_implies(ideals[ide].second,
                                             repairs[rep].second.spec, checker));
-                       });
+                       };
                    });
     return 0;
 }

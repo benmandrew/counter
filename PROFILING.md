@@ -641,11 +641,12 @@ so nothing in this entry applies to it either.
 
 **Link `libspot` in process — done for both tools that can move.** SPOT
 is already built from source, and `libspot.so` and its headers sit in the build tree.
-Simplification now runs in process unconditionally, behind one lock, and takes `fsm` gen20/pop1000
-from a median of 6.57 s to 4.52 s of whole-run wall, about 31%. The 1791 distinct formulae such a
-run simplifies cost 0.05 s in process against the 11.82 s the exec path spent in
-`ltlfilt/batch-exec`, nearly all of which was startup; the design and the numbers are in "The
-in-process simplifier" above. Counting-path translation followed it, but only when no per-call
+Simplification now runs in process whenever the shared lock can be taken within the cost of a spawn,
+and spawns otherwise, which takes `fsm` gen20/pop1000 from a median of 6.47 s to 5.10 s of whole-run
+wall, about 21%. The 1791 distinct formulae such a run simplifies cost 0.05 s in process against the
+11.82 s the exec path spent in `ltlfilt/batch-exec`, nearly all of which was startup; the design and
+the numbers are in "The in-process simplifier" above, and the reason it is conditional rather than
+unconditional is in "A regression the other specifications found". Counting-path translation followed it, but only when no per-call
 deadline is configured, which is the default; "The in-process translator" has that argument and its
 measurements. `ltlsynt` cannot move as things stand, because its per-call timeout and its memory cap
 both work by killing a separate process. Replacing the ability to abandon a call is a design

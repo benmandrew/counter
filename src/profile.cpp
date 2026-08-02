@@ -110,6 +110,7 @@ Site& site_interned(const std::string& name) {
     // Never destroyed, for the same reason as the registry above -- the names
     // it holds are what every Site's m_name points at.
     static auto& interned = *new std::deque<std::string>();
+    const char* stable = nullptr;
     {
         const std::scoped_lock lock(registry_mutex());
         for (Site* existing : site_registry()) {
@@ -118,8 +119,14 @@ Site& site_interned(const std::string& name) {
             }
         }
         interned.push_back(name);
+        // Taken here rather than after the lock: reading back() outside it
+        // would race with another thread's push_back, and would hand this
+        // caller whichever name that thread had just appended. The pointer
+        // itself stays good once taken, since a deque never moves an element
+        // it already holds.
+        stable = interned.back().c_str();
     }
-    return site(interned.back().c_str());
+    return site(stable);
 }
 
 void add_count(const char* name, std::uint64_t n) {

@@ -180,6 +180,12 @@ bool run_ltlfilt_batch(const std::string& binary,
     return out.size() == formulas.size();
 }
 
+// Bounded so a batch's input always fits in a pipe buffer; see the write loop
+// in run_ltlfilt_batch. Whatever does not fit stays queued for the next leader.
+// At namespace scope because simplify_ltl also needs it, to keep a formula
+// larger than the whole cap out of a batch in the first place.
+constexpr std::size_t k_max_batch_bytes = 16384;
+
 // Coalesces concurrent simplify_ltl misses into one ltlfilt exec.
 //
 // No timer and no artificial delay: whichever caller finds no leader takes
@@ -249,10 +255,6 @@ class SimplifyBatcher {
         bool m_failed = false;
     };
 
-    // Bounded so the batch's input always fits in a pipe buffer; see the write
-    // loop in run_ltlfilt_batch. Whatever does not fit stays queued for the
-    // next leader.
-    static constexpr std::size_t k_max_batch_bytes = 16384;
     static constexpr std::size_t k_max_batch_count = 64;
 
     // Marks every slot in the batch resolved and steps the leader down. The
@@ -362,8 +364,9 @@ std::string simplify_ltl(const std::string& formula) {
     const auto start = std::chrono::steady_clock::now();
     // The in-process engine needs no binary on disk and spawns nothing, so it
     // is tried before the ltlfilt path is even looked for. A formula it cannot
-    // parse falls through to the exec, which is what used to happen to a
-    // formula ltlfilt could not parse: the formula is returned unchanged.
+    // parse is cached and returned unchanged rather than sent to the exec:
+    // that is already what the exec did with a formula ltlfilt could not parse,
+    // so spawning to reach the same answer would only cost a process.
     if (g_simplify_engine.load(std::memory_order_relaxed) ==
         SimplifyEngine::Libspot) {
         SpotSimplification in_process =
@@ -404,9 +407,19 @@ std::string simplify_ltl(const std::string& formula) {
     // the batch fail its line-count check. Both go straight to a private exec.
     // The blank case is reachable: it is the specification formula of a
     // candidate with no guarantees.
+    //
+    // So does one too large to batch. take_batch admits its first formula
+    // whatever its size, since a batch of nothing makes no progress, so the
+    // byte cap alone does not bound a single formula -- and the write loop in
+    // run_ltlfilt_batch relies on the whole input fitting in the pipe buffer.
+    // A formula past the cap would break that assumption and could deadlock the
+    // leader against its own child, so it never enters a batch. The search
+    // builds deeply nested formulae (see run_ltl2tgba_for_counting), so this is
+    // not hypothetical.
     const bool batchable =
         formula.find('\n') == std::string::npos &&
-        formula.find_first_not_of(" \t\r") != std::string::npos;
+        formula.find_first_not_of(" \t\r") != std::string::npos &&
+        formula.size() + 1 <= k_max_batch_bytes;
     std::optional<std::string> batched;
     // An empty pool is ltlfilt_batchers = 0, which turns batching off: every
     // call gets its own exec, as it did before batching existed. The emptiness
@@ -424,7 +437,11 @@ std::string simplify_ltl(const std::string& formula) {
         COUNTER_PROFILE_SCOPE("ltlfilt/one-shot-exec");
         const SubprocessResult result =
             run_subprocess({binary, "--simplify", "-f", formula});
-        child_cpu_s = result.m_cpu_s;
+        // Added, not assigned. Reaching here after leading a batch means the
+        // batch ran and then failed its line-count check, and its child CPU is
+        // already in child_cpu_s; overwriting it would drop a whole exec from
+        // the total.
+        child_cpu_s += result.m_cpu_s;
         if (result.m_exit_code == 0 && !result.m_output.empty()) {
             simplified = result.m_output;
             while (!simplified.empty() && simplified.back() == '\n') {

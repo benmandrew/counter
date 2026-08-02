@@ -100,25 +100,39 @@ void run_bounded_async(std::size_t n_items, std::size_t max_in_flight,
     }
 
     auto launch = [&queue, &make_task](std::size_t idx) {
+        // Built before the counter moves, and the submit guarded after it.
+        // Only a task that is actually queued will ever push a result, so a
+        // throw from either step with the counter already raised would leave
+        // the drain loop waiting on a slot nobody can fill -- a hang, which is
+        // a far worse outcome than the exception that caused it.
+        auto task = make_task(idx);
         {
             const std::scoped_lock lock(queue->m_mutex);
             ++queue->m_outstanding;
         }
-        global_thread_pool().submit(
-            [queue, task = make_task(idx), idx]() mutable {
-                typename Queue::Entry entry;
-                entry.m_index = idx;
-                try {
-                    if constexpr (is_void) {
-                        task();
-                    } else {
-                        entry.m_value = task();
+        try {
+            global_thread_pool().submit(
+                [queue, task = std::move(task), idx]() mutable {
+                    typename Queue::Entry entry;
+                    entry.m_index = idx;
+                    try {
+                        if constexpr (is_void) {
+                            task();
+                        } else {
+                            entry.m_value = task();
+                        }
+                    } catch (...) {
+                        entry.m_error = std::current_exception();
                     }
-                } catch (...) {
-                    entry.m_error = std::current_exception();
-                }
-                queue->push(std::move(entry));
-            });
+                    queue->push(std::move(entry));
+                });
+        } catch (...) {
+            {
+                const std::scoped_lock lock(queue->m_mutex);
+                --queue->m_outstanding;
+            }
+            throw;
+        }
     };
 
     auto collect_one = [&queue, &on_complete] {

@@ -96,7 +96,12 @@ SpotTranslation spot_translate_for_counting(const std::string& formula,
             translation.m_tautology_print_bug = true;
             return translation;
         }
-        throw;
+        // Any other libspot failure is reported as "no automaton" rather than
+        // rethrown, which sends the caller to the exec. That is the reference
+        // behaviour this path replaced, so falling back to it keeps in-process
+        // translation from ever being the worse of the two: whatever ltl2tgba
+        // makes of the formula, including failing, is what happens.
+        return {};
     }
     // print_hoa leaves off the trailing newline the tool emits after --END--.
     SpotTranslation translation;

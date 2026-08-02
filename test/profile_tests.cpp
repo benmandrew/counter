@@ -9,6 +9,7 @@
 // process exit, long after the corruption, where it would surface as garbage
 // site names rather than as a crash anyone could trace back here.
 
+#include <atomic>
 #include <chrono>
 #include <cstdint>
 #include <string>
@@ -106,6 +107,45 @@ void test_clocks_advance_monotonically() {
            "thread_cpu_ns advances across a busy loop");
 }
 
+// The above says the clocks move. It does not say thread_cpu_ns measures *this
+// thread*, which is the profiler's whole diagnostic: a scope with large wall
+// and near-zero CPU is blocked rather than working, and that reading is only
+// true of a per-thread clock. Swapping CLOCK_THREAD_CPUTIME_ID for the
+// process-wide clock would keep every other assertion in this file passing.
+//
+// So burn CPU on another thread while this one sleeps. A per-thread clock
+// barely moves; a process-wide one picks up the whole burn. The margins are
+// wide -- the burn is far longer than the amount allowed to leak through, and
+// the sleep far longer than the wall time required -- so this does not depend
+// on the two threads being scheduled in any particular way.
+void test_thread_cpu_excludes_other_threads() {
+    std::atomic<bool> stop{false};
+    std::thread burner([&stop] {
+        std::uint64_t sink = 0;
+        while (!stop.load(std::memory_order_relaxed)) {
+            for (std::uint64_t i = 0; i < 100'000; ++i) {
+                sink += i;
+            }
+        }
+        expect(sink > 0, "the burner loop was not optimised away");
+    });
+
+    const std::uint64_t wall_before = profile::wall_ns();
+    const std::uint64_t cpu_before = profile::thread_cpu_ns();
+    std::this_thread::sleep_for(std::chrono::milliseconds(200));
+    const std::uint64_t wall_ns = profile::wall_ns() - wall_before;
+    const std::uint64_t cpu_ns = profile::thread_cpu_ns() - cpu_before;
+
+    stop.store(true, std::memory_order_relaxed);
+    burner.join();
+
+    expect(wall_ns > 100'000'000,
+           "the sleeping thread should still see wall time pass");
+    expect(cpu_ns < 50'000'000,
+           "thread_cpu_ns must not pick up another thread's CPU: a sleeping "
+           "thread burns almost none of its own, whatever the process does");
+}
+
 }  // namespace
 
 void run_profile_tests() {
@@ -114,4 +154,5 @@ void run_profile_tests() {
     test_interned_names_survive_registry_growth();
     test_wall_and_cpu_are_measured_separately();
     test_clocks_advance_monotonically();
+    test_thread_cpu_excludes_other_threads();
 }

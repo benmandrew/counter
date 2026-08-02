@@ -941,16 +941,21 @@ the `fetch_add` that records a call leaves `counter_tests.profile` passing and f
 `counter_tests.profile_enabled`, which is exactly the failure the single registration could not
 produce.
 
-Three weaknesses are recorded rather than fixed, and should be treated as gaps rather than coverage:
+The second one fixed is the per-thread clock. `test_clocks_advance_monotonically` only asserted that
+the clocks move, which any clock does, so swapping `CLOCK_THREAD_CPUTIME_ID` for the process-wide
+one — negating the distinction the whole harness is built on — passed it.
+`test_thread_cpu_excludes_other_threads` now burns CPU on a second thread while the first sleeps: a
+per-thread clock barely moves, a process-wide one picks up the burn. Checked by mutation, which is
+the only way to know a test of this kind works — with the process clock substituted, both profiler
+suites fail on exactly that assertion.
+
+Two weaknesses are recorded rather than fixed, and should be treated as gaps rather than coverage:
 
 - `test_concurrent_calls_agree` would pass with the libspot lock removed. It computes its expected
   value single-threaded first, which constructs the simplifier and warms its cache before any thread
   starts, so the unsafe construction never runs concurrently; and eight threads making one
   microsecond-long call each, with no barrier, are unlikely to overlap at all. The lock's
   justification rests on the four-configuration spike recorded above, not on this test.
-- `test_clocks_advance_monotonically` pins nothing a different clock would fail. Swapping
-  `CLOCK_THREAD_CPUTIME_ID` for the process-wide clock — which would negate the per-thread CPU
-  measurement the whole harness is built on — passes it.
 - Nothing observes the lock budget's fallback: no test ever sees `m_lock_busy` set, so the path that
   spawns instead of queueing is exercised only by whole-run measurement. The same is true of the
   missing-`ltlfilt` fallback, of `set_thread_pool_size`, and of the timeout-driven choice between

@@ -112,6 +112,15 @@ external tool took; this says where inside a call it went. Use
 `profile::site_interned` for a name only known at run time, and resolve it once
 rather than per call.
 
+`[runtime] parallel` sizes `global_thread_pool()` (via `set_thread_pool_size`,
+called once at startup; 0 means hardware concurrency). It did not until
+recently — the pool was hard-coded to `hardware_concurrency()` and the key only
+reached the bounded-async in-flight window — so every campaign ran each of its
+jobs with a full-width pool. `run_experiments.py` writes `parallel = k` to
+prevent exactly that. Honouring it makes four concurrent fsm runs 17% faster.
+Scaling is strongly sublinear (20 workers buy 4.3x over 1), so campaign
+throughput comes from more jobs with smaller pools, not from widening one run.
+
 Check performance work under the **`debug` preset too**, not only
 `relwithdebinfo` and `tsan`. It is the only one with ASAN and UBSAN on, and it
 caught two failures the others structurally could not: a LeakSanitizer report on

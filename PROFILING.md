@@ -621,6 +621,14 @@ across twenty scoring threads; "The lock is now the limiting factor" has the fig
 part of any of this: 890 calls and 24.9 s on this workload, with no batch mode of its own and no
 library to link, so nothing here applies to it.
 
+**Thread-pool oversubscription — fixed.** `[runtime] parallel` was documented as the thread pool
+size and never reached the pool, so every run built a full-width one no matter what a campaign
+asked for. Honouring the key takes four concurrent `fsm` gen20/pop1000 runs from a median of 8.40 s
+to 6.94 s, about 17% sooner for the same work. The scaling table in "The thread pool ignored its own
+setting" says where that comes from: twenty workers buy 4.3 times the throughput of one in process,
+so campaign throughput comes from running more jobs with smaller pools rather than from widening any
+single run.
+
 **`dispatch/collect-one-ready` — done.** `run_bounded_async` polled each outstanding future with
 `wait_for(0ms)` in a loop and then slept 1 ms, which cost 0.372 s of CPU across 11,535 calls and put
 up to a millisecond in front of every completion. Workers now push their result onto a mutex and
@@ -677,6 +685,65 @@ enough, and nothing else is.
 
 Building the `tsan` preset in a worktree is cheap if `build-tsan/third_party` is symlinked to a
 tree that already has Spot and black built; otherwise it rebuilds both from source.
+
+## The thread pool ignored its own setting
+
+The intent was to measure how a run scales with worker count, by varying `[runtime] parallel` from 1
+to 20. The result looked like a finding. Wall time barely moved, and more workers were slightly
+*worse*: 4.24, 4.33, 4.80, 5.28 and 4.87 s at 1, 2, 4, 8 and 20 on the in-process path, and a flat
+6.93, 6.66, 6.88, 6.78, 6.45 s on the spawning one. Read at face value, that says the run is bound
+by something serial and parallelism is not the lever.
+
+It says nothing of the kind. `global_thread_pool()` was hard-coded to
+`std::thread::hardware_concurrency()` and never read `Config::parallel` at all. The key reached only
+`max_in_flight` in `score_population`, the bounded-async in-flight window. The experiment therefore
+varied the window, not the pool, and every one of those runs used a full-width pool of twenty. The
+lesson is the ordinary one: a knob that produces no effect is as likely to be disconnected as to be
+unimportant, and checking that it is wired takes less time than interpreting the result.
+
+Both `schemas/config-schema.json` and `example-config.toml` describe the key as "thread pool size",
+so this was a documented promise the code did not keep.
+
+It matters most where it was relied on. `scripts/run_experiments.py` writes `parallel = k` into each
+level's config for exactly this purpose — its own comment says it caps each run's internal thread
+pool so that jobs times parallel comes to about the core count. That never happened. On a 20-core
+machine a campaign with eight concurrent jobs ran eight full-width pools, so 160 workers contended
+for 20 cores. This does not put any archived campaign's *results* in doubt, but their recorded
+timings are timings of an oversubscribed machine.
+
+The fix is to read the key when the pool is first built, with zero meaning the hardware concurrency,
+so a caller that never sets it is unaffected.
+
+What it buys, measured on `fsm` gen20/pop1000, four concurrent runs, five interleaved repetitions:
+
+- pools of five, which is what `parallel = 5` now gives: 6.849, 6.930, 6.938, 6.988, 7.023 s, median
+  6.94 s;
+- full-width pools, which is what ran before: 8.377, 8.382, 8.398, 8.518, 8.524 s, median 8.40 s.
+
+The distributions do not overlap: about 17% sooner, for a machine doing the same work.
+
+With the key honoured, the scaling measurement can finally be taken, and it is the one that should
+have been there all along. One run, workers 1 through 20:
+
+| workers | in process | spawning |
+|---|---|---|
+| 1 | 18.69 s | 39.22 s |
+| 2 | 9.23 s | 18.99 s |
+| 4 | 6.00 s | 10.08 s |
+| 8 | 5.01 s | 8.42 s |
+| 20 | 4.36 s | 6.45 s |
+
+Two things are worth reading off it. Neither path scales anywhere near linearly — twenty workers buy
+4.3 times the throughput of one in process, and 6.1 times spawning — so a campaign is better served
+by many small pools than by one wide one, which is precisely what the broken key was trying to
+arrange. And the in-process path scales the worse of the two, which is the global libspot lock
+showing up exactly where the previous section predicts it would.
+
+The single-worker row is the cleanest comparison this document has of what removing the execs buys,
+because nothing contends at one worker: 18.69 s against 39.22 s, a little over half.
+
+Output is identical across pool sizes 1 and 20 for the same seed, so the key changes cost and not
+results.
 
 ## What the debug preset caught
 

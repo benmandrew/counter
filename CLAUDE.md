@@ -229,7 +229,9 @@ equivalence against `ltl2tgba` via `autfilt`, and for the deadline and
 concurrent paths agreeing with the inline and serial ones. Raise
 `COUNTER_DIFFERENTIAL_N` (default 400) to run it heavy. Its first version
 asserted byte-equality and failed on 89 of 417 formulae, which is how the above
-was found. The translator's budget is protective rather than
+was found. Verified at `N=4000` (4017 formulae, 1005 translations) with no
+disagreement, and by the parity script over all six examples above including
+both TLSF ones — 36 runs, no configuration differing from any other. The translator's budget is protective rather than
 measured — it buys no speedup on any workload here, but it shares the lock, so
 it shares the failure mode.
 

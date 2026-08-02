@@ -1118,6 +1118,16 @@ Each was tested rather than reasoned about, and one of the tests found a real de
   message naming the cause, which `max_scoring_failure_rate` treats like any other failed
   individual. It is not covered by a test: reaching it requires the SPOT install tree to be missing,
   which the build guarantees against.
+- **Simplification's own runtime.** Not fixed, and stated here so the audit is not read as
+  complete. `simplify_ltl` bounds how long it will wait for the lock, at 8 ms, but nothing bounds
+  the simplification once it has it. That is not a regression — `run_subprocess` was called without
+  a timeout on that path too, so the exec was equally unbounded — but in process the call is also
+  uncancellable and holds the lock while it runs. It is reachable in principle: `ltlfilt --simplify`
+  is known to blow up super-exponentially on deeply nested-`X` conjunctions, which is why it was
+  dropped from the `ltl2tgba` and `ltlsynt` paths and kept only on the `black` and Ganak ones.
+  Giving it a deadline means giving it a configuration key it has never had, and the abandonment
+  machinery with it, so it is left alone rather than half-done. What the lock buys meanwhile is that
+  the damage stays a slowdown: everyone else falls back to spawning after 8 ms.
 - **File descriptors.** Was: a pipe pair per call. Now: none. A straight improvement, and the reason
   the earlier `O_CLOEXEC` bug cannot recur on these two paths.
 - **Thread-pool starvation.** Considered and not a problem. The libspot lock means at most one
@@ -1168,6 +1178,20 @@ across six configurations — `libspot` against `ltlfilt`, a configured `ltl2tgb
 none, `parallel` 1 against 8, and a deliberate repeat of the first configuration, so that a
 difference which is not about engines at all cannot be misread as one. It covers FRETISH
 (`spec.json`) and TLSF (`spec.tlsf`) examples alike.
+
+Both were then run at size. The differential suite at `COUNTER_DIFFERENTIAL_N=4000` — 4017 formulae
+simplified and compared twice each, and 1005 translated and compared against `ltl2tgba` twice each —
+passes with no disagreement of any kind. The parity script over `fsm`, `fsm-timing`,
+`fsm-combined`, `takeoff`, `minepump` and `lift`, six configurations each, gives one digest per
+example across all six: 36 runs, 6 distinct results, no configuration differing from any other. The
+two TLSF examples matter disproportionately there, because they drive the same simplification and
+counting paths through a different pipeline, and `lift` is the workload whose 24 ms simplifications
+made the lock budget necessary in the first place.
+
+The suites are also clean under both sanitiser presets: `spot_inprocess` and `differential` each
+report no race under ThreadSanitizer and no leak or undefined behaviour under ASAN and UBSAN. That
+is not a formality — ThreadSanitizer is what caught the lock handover described above, which every
+other check passed.
 
 The generated corpus found in one run what the hand-written suite had not found in a branch's worth
 of work, and what it found was not a defect in the new code but a false claim about the old tool.

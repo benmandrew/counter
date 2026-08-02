@@ -18,19 +18,25 @@ Measured, reproducible, and load-bearing for everything below:
   algorithms (`count_traces`, `guard_models`, `syntactic`, `halstead`) are cheap;
 - that batching `ltlfilt` calls trades about 5% of wall time for about 19% of total CPU, with
   byte-identical output;
-- the cost of in-process simplification through a linked `libspot` — 0.011 ms per formula, measured
-  with a spike that compiles, links and runs against the build tree's own library;
+- the cost of in-process simplification through a linked `libspot` on a real corpus — the 1791
+  distinct formulae an `fsm` gen20/pop1000 run simplifies cost 0.05 s in process, the same as one
+  batched `ltlfilt` exec over them;
 - that the per-call timeouts on `ltl2tgba` and `ltlsynt`, and `ltlsynt`'s memory cap, work only
   because those tools are separate processes that can be killed;
-- that in-process simplification is a drop-in — byte-identical to `ltlfilt --simplify` on 300
-  formulae — but is only thread-safe behind a single process-wide lock, since the state it contends
-  on is SPOT's global parser and formula-interning tables rather than anything per-simplifier;
+- that in-process simplification is a drop-in at simplification level 3, and only at that level —
+  byte-identical to `ltlfilt --simplify` on all 1791 real formulae and on 5000 random ones — but is
+  only thread-safe behind a single process-wide lock, since the state it contends on is SPOT's
+  global parser and formula-interning tables rather than anything per-simplifier;
+- that the in-process path is now implemented and measured at about 31% of whole-run wall time on
+  `fsm` gen20/pop1000;
 - byte-identical output across all 12 `repair_N.json` files before and after every change.
 
-Not established: any whole-run wall-clock improvement from this pass. There is none. The batcher
-makes wall time worse by a measured amount, and nothing else here moves it outside run-to-run
-spread. Separating a real effect from that spread needs an *A/B test* whose two binaries run
-alternately in one session; two sets of runs taken at different times cannot do it.
+One whole-run wall-clock improvement is established, and one only: the in-process simplifier takes
+`fsm` gen20/pop1000 from a median of 6.57 s to 4.52 s. It is established by the method this
+document insists on — an *A/B test* whose two engines run alternately in one session — because two
+sets of runs taken at different times cannot separate a real effect from run-to-run spread. The
+batcher's own wall cost stands as measured, and now applies only when the exec engine is selected
+explicitly.
 
 ## The harness
 
@@ -367,18 +373,34 @@ and calls `spot::parse_infix_psl`, `spot::tl_simplifier::simplify` and `spot::st
 which is the in-process equivalent of `ltlfilt --simplify`. It links and runs with no dependency
 beyond what the build already makes.
 
-The same 200 formulae used above, timed three ways alongside each other:
+Two measurement errors in the first version of this section were found later, and both of them
+changed the answer.
 
-| approach | wall | minor faults |
-|---|---|---|
-| 200 separate `ltlfilt` execs | 1800 ms | 551,349 |
-| one batched `ltlfilt` exec | 20 ms | 2786 |
-| in process via `libspot` | 2.25 ms | none — same process |
+The first is the simplification level. The spike constructed `spot::tl_simplifier` with its default
+options, and `ltlfilt --simplify` is not the default. `ltlfilt` builds
+`spot::tl_simplifier_options(level)`, and its `--simplify` flag sets level 3, which additionally
+enables `containment_checks` and `containment_checks_stronger`. The library default has both off.
+Over 5000 random formulae — `randltl -n 5000 --tree-size=5..40 --seed=1` over six atoms — the
+default options disagree with `ltlfilt --simplify` on 259 of them, about 5%. The earlier claim of
+byte-identical output on 300 formulae was therefore true only of that sample and only at the wrong
+level. It was luck, not equivalence.
 
-That is 0.011 ms per formula of actual simplification. Everything above that figure in the other two
-rows is process overhead rather than logic. Scaled to a real workload, the 2165 distinct
-simplifications a 20-generation, population-1000 `fsm` run performs would cost about 24 ms in
-process, against the 12.6 s that run currently spends in `ltlfilt` execs.
+The second is the corpus. The "200 formulae" behind the 1800 ms / 20 ms / 2.25 ms table, and behind
+the 0.011 ms per formula read off it, were not formulae from a run at all: the file held the same
+trivial formula, `a & b`, repeated. Level 3 is far more expensive than the default, because the
+containment checks build automata. On the 5000 random formulae, in process at level 3 takes 37.3 s
+and a single batched `ltlfilt` exec over the same 5000 takes 37.2 s — the same figure, because at
+that difficulty the simplification work dominates and process startup is noise.
+
+The honest measurement needs a real corpus. Every `simplify_ltl` cache miss of an `fsm`
+gen20/pop1000 run was dumped, which gives 1791 distinct formulae with a median length of 138
+characters. On those, in process at level 3 and one batched `ltlfilt` exec both take 0.05 s. The
+in-process output is byte-identical to `ltlfilt --simplify` on all 1791 real formulae and on all
+5000 random ones.
+
+Real formulae are cheap to simplify. The cost that mattered was never the simplification, it was
+the process. That sharpens the case for going in process rather than weakening it: essentially the
+entire measured cost is startup, and in-process work does not pay it.
 
 The blocker is not the linking. It is the timeout, and it splits the target in two.
 
@@ -417,9 +439,59 @@ The rule that follows is therefore narrow and worth writing down: one simplifier
 with every libspot call serialised behind a single process-wide lock. Nothing per-thread, and no
 unlocked construction.
 
-Serialising costs almost nothing at this scale. At 0.011 ms per call over the 2165 cache misses a
-whole run performs, even fully serialised the work is on the order of 24 ms, against the 12.6 s
-currently spent in `ltlfilt/batch-exec`.
+Serialising costs almost nothing at this scale. The 1791 distinct formulae a whole run simplifies
+take 0.05 s in process even fully serialised, against the 11.82 s the same run spends in
+`ltlfilt/batch-exec`.
+
+## The in-process simplifier
+
+The exec path was profiled first, so the change has something to be measured against. `fsm` at 20
+generations and population 1000, seed 1:
+
+| site | calls | wall |
+|---|---|---|
+| `ltlfilt/simplify_ltl` | 107,559 | 29.42 s |
+| `ltlfilt/batched-request` | 2367 | 29.25 s |
+| `ltlfilt/batch-exec` | 1494 | 11.82 s |
+
+Of the 107,559 `simplify_ltl` calls, 105,192 hit the cache and 2367 missed. Average batch size is
+1.58.
+
+Two things follow from that, and both are worth saying. Coalescing barely fires inside a single
+process: 2367 misses became 1494 execs. The batcher was measured across four concurrent `counter`
+processes, where it does help; within one process the scoring threads rarely collide closely enough
+to fill a batch. And the 11.82 s is essentially all startup, because the same 2367 formulae measure
+about 0.05 s of actual simplification. Callers see 29.25 s rather than 11.82 s, since followers
+block waiting on a leader's exec.
+
+`spot_simplify` (`include/runner/spot_simplify.hpp`, `src/runner/spot_simplify.cpp`) implements the
+rule above. One shared `spot::tl_simplifier`, built with `spot::tl_simplifier_options(3)` and
+constructed inside the same process-wide mutex that guards every call. A formula that does not
+parse returns `std::nullopt` and the caller returns it unchanged, which is what the exec path did
+with a formula `ltlfilt` could not parse. `cmake/spot.cmake` now exports `SPOT_INCLUDE_DIR`,
+`SPOT_LIB_DIR` and `SPOT_LIBRARIES`, and `counter_fitness` links `libspot.so` and `libbddx.so` with
+an rpath back into the build tree.
+
+`[runtime] simplify_engine` chooses between `"libspot"`, the default, and `"ltlfilt"`. The exec path
+is kept rather than deleted for two reasons: it is the A/B lever the in-process path was measured
+against, and it is the escape hatch if a future SPOT ever disagrees with its own command-line tool.
+`ltlfilt_batchers` now takes effect only under `"ltlfilt"`.
+
+The result was measured the way this document insists on — interleaved, alternating the two engines
+within one session, seven repetitions each, same seed, same config, same spec (`fsm` gen20/pop1000):
+
+- libspot: 4.41, 4.45, 4.51, 4.52, 4.68, 4.71, 4.80 s, median 4.52 s;
+- ltlfilt: 6.04, 6.41, 6.50, 6.57, 6.59, 6.76, 6.89 s, median 6.57 s.
+
+The two distributions do not overlap: the slowest in-process run is faster than the fastest spawning
+run. That is about 31% of whole-run wall time. Both engines produce identical repair output from the
+same seed, with `diff -r` over the two output directories clean.
+
+`test/runner/spot_simplify_tests.cpp` is registered as the ctest suite `counter_tests.spot_simplify`.
+It pins agreement with `ltlfilt --simplify` over a set of formulae; pins the level-3 requirement
+specifically, using `b | G(Fe U Gc)`, which level 3 simplifies to `b | (Fe U Gc)` while the default
+options leave the `G` in place; pins the decline path for an unparseable formula; and drives eight
+concurrent callers to check that they agree.
 
 ## Ranked targets
 
@@ -430,12 +502,13 @@ target are untouched. `black` accounts for 818
 execs on this workload and has no batch mode of its own, so nothing here applies to it. `ltl2tgba`
 and `ltlsynt` are still one exec per call.
 
-**Link `libspot` in process — measured for simplification, blocked for the other two tools.** SPOT
-is already built from source, and `libspot.so` and its headers sit in the build tree. A linked spike
-puts in-process simplification at 0.011 ms per formula against roughly 9 ms for one exec, and about
-24 ms across a whole `fsm` run against 12.6 s of `ltlfilt` execs; the spike and its numbers are in
-"Linking `libspot` in process" above. Simplification can move, has no timeout to give up, and is
-where most of the remaining startup cost sits. `ltl2tgba` and `ltlsynt` cannot move as things stand,
+**Link `libspot` in process — done for simplification, blocked for the other two tools.** SPOT
+is already built from source, and `libspot.so` and its headers sit in the build tree.
+Simplification now runs in process behind one lock, and takes `fsm` gen20/pop1000 from a median of
+6.57 s to 4.52 s of whole-run wall, about 31%. The 1791 distinct formulae such a run simplifies cost
+0.05 s in process against the 11.82 s the exec path spent in `ltlfilt/batch-exec`, nearly all of
+which was startup; the design and the numbers are in "The in-process simplifier" above.
+`ltl2tgba` and `ltlsynt` cannot move as things stand,
 because their per-call timeouts and `ltlsynt`'s memory cap work by killing a separate process.
 Replacing the ability to abandon a call is a design question rather than an optimisation, and it is
 the thing to answer before this target goes any further.
@@ -485,6 +558,14 @@ against its own call, so there is one writer under one lock.
 
 After that fix: a full run is clean (0 races, exit 0), and the whole suite passes under `tsan`,
 38 of 38 with no warnings. No pre-existing race surfaced on either workload.
+
+The in-process simplifier was checked the same way, and needed to be: it puts a linked library with
+process-global state under every scoring thread, which is exactly the shape the spike showed can
+crash. A full `counter` run on `fsm` with `simplify_engine = "libspot"` reports 0 races and exits 0,
+and the suite passes 39 of 39 under `tsan` with no warnings, the extra suite being the concurrency
+test that drives eight callers through `spot_simplify` at once. This confirms on a real workload
+what the spike established in isolation: one shared simplifier behind one process-wide lock is
+enough, and nothing else is.
 
 Building the `tsan` preset in a worktree is cheap if `build-tsan/third_party` is symlinked to a
 tree that already has Spot and black built; otherwise it rebuilds both from source.

@@ -944,6 +944,53 @@ Neither defect is about performance, and both were introduced by this branch. Th
 carrying is the narrow one: a preset that is convenient to iterate under is not the one that checks
 the work.
 
+## What a review pass found
+
+The branch had passed its full sweep by this point: the build, 39 of 39 tests, five lint targets,
+AddressSanitizer, UndefinedBehaviorSanitizer and ThreadSanitizer, all clean. A review pass was then
+run over the branch's own diff, looking specifically for what none of those can see. It found five
+defects, every one of them in code this branch introduced. Two of them follow directly from the
+performance work itself, and those are the two worth dwelling on.
+
+**The batcher's pipe assumption did not hold.** `run_ltlfilt_batch` writes a whole batch into a pipe
+and only then reads the answers back. That ordering is safe only while the batch fits in the pipe
+buffer, which is exactly what the byte cap is for. But `take_batch` admits its first formula whatever
+its size, because a batch of nothing makes no progress, so the cap never bounded a *single* formula.
+A formula larger than the buffer would block the leader in `write` while `ltlfilt` blocked writing
+answers into an output pipe nobody was draining yet. That is a deadlock, on a path with no timeout.
+It was reachable rather than theoretical: the search builds deeply nested formulae, as the note in
+`run_ltl2tgba_for_counting` about `WithinTicks` expansion already records. A formula past the cap now
+never enters a batch and takes its own exec.
+
+**The profiler's interning had a race.** `site_interned` appended the name to a deque under the
+registry lock, released the lock, and then called `interned.back()`. Two threads interning at once
+can interleave so that the first reads the second's string, registers a site under the wrong name,
+and returns it — after which two objectives accumulate into one site and one name never appears at
+all. It was also a plain data race against the other thread's `push_back`. The pointer is now taken
+inside the lock. The bug was introduced *by* the lifetime trick that keeps the deque alive forever,
+so the fix for the LeakSanitizer report and the fix for this race are neighbours in the same
+function.
+
+**A hang instead of an exception in `bounded_async.hpp`.** The outstanding-work counter was raised
+before the task was built and submitted, so a throw from either left a slot that no worker would ever
+fill and a drain loop waiting on it forever. The task is now built first and the submit guarded, on
+the principle the batcher's own exception path already follows: a hang is a far worse failure than
+the exception behind it.
+
+**Dropped accounting.** A leader whose batch failed its line-count check overwrote the batch's child
+CPU time with the retry's, so a whole exec vanished from the reported total.
+
+**An exception that skipped its fallback.** A libspot failure other than the known tautology bug
+propagated out of the translator instead of falling back, so a formula the exec path would have
+handled was dropped from the population. Unknown failures now report no automaton and let the caller
+spawn, which is the behaviour the in-process path replaced.
+
+The sanitizers and the test suite verify the paths that run, and every one of these lives on a path
+that does not — an oversized formula, a failed allocation, a concurrent first-time intern, a batch
+that fails its check, an unexpected library error. A clean sweep is evidence about the common case
+and very little about the rest, and performance work is unusually good at adding rare paths, because
+most of what it does is add a second way of doing something.
+
 ## Reproducing
 
 ```sh

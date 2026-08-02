@@ -14,7 +14,16 @@ set(SPOT_STAMP_DIR "${SPOT_PREFIX}/src/spot_project-stamp")
 # though the installed output is already present and valid. Skip
 # re-declaring the external project entirely when a prior run already
 # completed it, so a cache hit actually saves the rebuild.
-if(EXISTS "${SPOT_STAMP_DIR}/spot_project-done")
+# The stamp alone is not enough evidence now that this project links libspot
+# rather than only spawning its tools. The stamp says a build finished, not that
+# its output is still there, and the installed tree is large enough to be an
+# obvious thing to delete. Taking the fast path on a stamp whose library has
+# gone leaves a configure that succeeds and a build that fails with "missing and
+# no known rule to make it", so check for the library too and rebuild if it is
+# absent.
+if(EXISTS "${SPOT_STAMP_DIR}/spot_project-done"
+   AND EXISTS "${SPOT_INSTALL_DIR}/lib/libspot.so"
+   AND EXISTS "${SPOT_INSTALL_DIR}/lib/libbddx.so")
     add_custom_target(spot_project)
     message(STATUS "Spot ${SPOT_VERSION} already installed at ${SPOT_INSTALL_DIR}")
 else()

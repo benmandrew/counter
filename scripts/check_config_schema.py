@@ -30,7 +30,7 @@ from pathlib import Path
 
 # Keys whose accepted values are a closed set, checked against the schema's
 # "enum". Names are unique across sections, so the section need not be given.
-ENUM_KEYS = ("selection_scheme", "metric", "repair_mode")
+ENUM_KEYS = ("selection_scheme", "metric", "repair_mode", "simplify_engine")
 
 
 # --- src/config_io.cpp -------------------------------------------------------
@@ -117,6 +117,16 @@ def parser_keys(source):
     return flatten(SpecParser(tokenise(body)).parse_section())
 
 
+def helper_enums(source, helper):
+    """Accepted values from a free function the apply_* block delegates to."""
+    start = source.find(helper + "(const std::string&")
+    if start < 0:
+        return set()
+    end = source.find("\n}\n", start)
+    body = source[start:end] if end > 0 else source[start:]
+    return set(re.findall(r'== "([^"]+)"', body))
+
+
 def parser_enums(source):
     """Accepted string values per key, read from the *val == "..." chains."""
     found = {}
@@ -126,7 +136,15 @@ def parser_enums(source):
         # The chain ends at the next key lookup, or at the end of the file.
         stop = re.search(r'tbl\["\w+"\]', rest)
         block = rest[: stop.start()] if stop else rest
-        found[key] = set(re.findall(r'\*val == "([^"]+)"', block))
+        values = set(re.findall(r'\*val == "([^"]+)"', block))
+        # An apply_* function near the cognitive-complexity limit moves its
+        # comparisons into a free function, which leaves nothing to find here.
+        # Follow one level of delegation, or the key silently checks as having
+        # no accepted values at all -- which passes, and so hides exactly the
+        # schema drift this script exists to catch.
+        for helper in re.findall(r"(\w+)\(\*val\)", block):
+            values |= helper_enums(source, helper)
+        found[key] = values
     return found
 
 

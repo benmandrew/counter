@@ -121,6 +121,17 @@ prevent exactly that. Honouring it makes four concurrent fsm runs 17% faster.
 Scaling is strongly sublinear (20 workers buy 4.3x over 1), so campaign
 throughput comes from more jobs with smaller pools, not from widening one run.
 
+Linking libspot has two consequences worth knowing. **Every binary now needs
+`third_party/spot/lib` at load time** — `counter`, `compare`, `realize`, `ltl`
+and `mucs` all carry `NEEDED libspot.so.0`, including the two that make no
+in-process Spot calls, so a binary copied to another host without that directory
+fails before `main()` (relevant when staging to av2/av3). And **libspot is not
+sanitiser-instrumented**: `cmake/spot.cmake` passes only `CXX=` to Spot's
+configure, so under the `tsan` and `debug` presets the library is
+uninstrumented. TSan therefore cannot see a race that lives entirely inside
+Spot, which is the reason the thread-safety rule below was established with a
+separately compiled spike rather than by trusting a clean run.
+
 Check performance work under the **`debug` preset too**, not only
 `relwithdebinfo` and `tsan`. It is the only one with ASAN and UBSAN on, and it
 caught two failures the others structurally could not: a LeakSanitizer report on

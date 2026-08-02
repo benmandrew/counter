@@ -8,11 +8,15 @@
 #include <unistd.h>
 
 #include <array>
+#include <atomic>
 #include <cassert>
 #include <cerrno>
 #include <chrono>
+#include <condition_variable>
 #include <cstring>
+#include <memory>
 #include <mutex>
+#include <optional>
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -119,6 +123,247 @@ ProcessResult execute_and_capture(const std::vector<std::string>& arguments) {
     return {exit_code, output, rusage_cpu_seconds(child_usage)};
 }
 
+// Runs one ltlfilt over @p formulas, writing each on its own line and reading
+// one answer per line back. Returns false if anything about the exchange was
+// not exactly one line out per line in, in which case the caller falls back to
+// a formula-at-a-time exec rather than risk mismatching answers to formulae.
+//
+// Batch, not a persistent stream: ltlfilt does not answer line by line. It
+// flushes in irregular lumps and holds the remainder until stdin reaches EOF
+// (see PROFILING.md), so a request/response protocol over a long-lived child
+// deadlocks. Closing stdin after the whole batch is what makes it emit
+// everything.
+bool run_ltlfilt_batch(const std::string& binary,
+                       const std::vector<std::string>& formulas,
+                       std::vector<std::string>& out) {
+    COUNTER_PROFILE_SCOPE("ltlfilt/batch-exec");
+    assert(!formulas.empty());
+    std::string input;
+    for (const std::string& formula : formulas) {
+        input += formula;
+        input += '\n';
+    }
+
+    std::array<int, 2> in_pipe = {-1, -1};
+    std::array<int, 2> out_pipe = {-1, -1};
+    if (pipe2(in_pipe.data(), O_CLOEXEC) != 0) {
+        return false;
+    }
+    if (pipe2(out_pipe.data(), O_CLOEXEC) != 0) {
+        close(in_pipe[0]);
+        close(in_pipe[1]);
+        return false;
+    }
+
+    const std::array<std::string, 5> args = {binary, "--simplify",
+                                             "--skip-errors", "-F", "-"};
+    std::array<char*, 6> argv{};
+    for (std::size_t i = 0; i < args.size(); ++i) {
+        argv[i] = const_cast<char*>(args[i].c_str());
+    }
+    argv[args.size()] = nullptr;
+
+    pid_t child_pid = -1;
+    {
+        COUNTER_PROFILE_SCOPE("proc/fork+exec");
+        posix_spawn_file_actions_t actions;
+        posix_spawn_file_actions_init(&actions);
+        posix_spawn_file_actions_adddup2(&actions, in_pipe[0], STDIN_FILENO);
+        posix_spawn_file_actions_adddup2(&actions, out_pipe[1], STDOUT_FILENO);
+        const int spawn_result =
+            posix_spawn(&child_pid, binary.c_str(), &actions, nullptr,
+                        argv.data(), environ);
+        posix_spawn_file_actions_destroy(&actions);
+        if (spawn_result != 0) {
+            close(in_pipe[0]);
+            close(in_pipe[1]);
+            close(out_pipe[0]);
+            close(out_pipe[1]);
+            return false;
+        }
+    }
+    close(in_pipe[0]);
+    close(out_pipe[1]);
+
+    // The batch is capped (see k_max_batch_bytes) so the whole input fits in
+    // the pipe buffer. Without that cap this write could block while the child
+    // blocks writing answers into an output pipe nobody is draining yet.
+    bool wrote = true;
+    std::size_t written = 0;
+    while (written < input.size()) {
+        const ssize_t bytes_written =
+            write(in_pipe[1], input.data() + written, input.size() - written);
+        if (bytes_written > 0) {
+            written += static_cast<std::size_t>(bytes_written);
+            continue;
+        }
+        if (bytes_written < 0 && errno == EINTR) {
+            continue;
+        }
+        wrote = false;
+        break;
+    }
+    close(in_pipe[1]);
+
+    std::string output;
+    {
+        COUNTER_PROFILE_SCOPE("proc/read");
+        std::array<char, 4096> buf{};
+        while (true) {
+            // The analyser reaches here from SimplifyBatcher::simplify, which
+            // holds a lock at its call site -- but it releases that lock before
+            // calling this, precisely so the exec runs outside it. Blocking
+            // here is the leader waiting on its own child, not on a mutex.
+            const ssize_t
+                bytes_read =  // NOLINT(clang-analyzer-unix.BlockInCriticalSection)
+                read(out_pipe[0], buf.data(), buf.size());
+            if (bytes_read > 0) {
+                output.append(buf.data(), static_cast<std::size_t>(bytes_read));
+                continue;
+            }
+            if (bytes_read < 0 && errno == EINTR) {
+                continue;
+            }
+            break;
+        }
+    }
+    close(out_pipe[0]);
+
+    int wait_status = 0;
+    struct rusage child_usage{};
+    {
+        COUNTER_PROFILE_SCOPE("proc/wait");
+        [[maybe_unused]] const pid_t waited =
+            wait4(child_pid, &wait_status, 0, &child_usage);
+    }
+    LtlfiltStats::total_cpu_s += rusage_cpu_seconds(child_usage);
+    if (!wrote) {
+        return false;
+    }
+
+    out.clear();
+    out.reserve(formulas.size());
+    std::size_t start = 0;
+    while (start < output.size()) {
+        const std::size_t end = output.find('\n', start);
+        if (end == std::string::npos) {
+            break;
+        }
+        out.emplace_back(output, start, end - start);
+        start = end + 1;
+    }
+    // The count check is the safety property: one short or extra line means
+    // answers no longer line up with formulae, and a silently misattributed
+    // simplification would corrupt the search rather than slow it down.
+    return out.size() == formulas.size();
+}
+
+// Coalesces concurrent simplify_ltl misses into one ltlfilt exec.
+//
+// No timer and no artificial delay: whichever caller finds no leader takes
+// everything queued right now and runs it. While that exec is in flight the
+// other scoring threads pile up behind it, so the next batch is naturally as
+// large as the contention warrants and collapses to a batch of one when only
+// one thread is asking. Startup is ~9ms and ~2700 minor faults per exec
+// regardless of batch size, so this is the whole saving.
+class SimplifyBatcher {
+   public:
+    // std::nullopt means "run it yourself": the batch failed its line-count
+    // check, or ltlfilt could not be spawned.
+    std::optional<std::string> simplify(const std::string& binary,
+                                        const std::string& formula) {
+        auto slot = std::make_shared<Slot>();
+        slot->m_formula = formula;
+        std::unique_lock<std::mutex> lock(m_mutex);
+        m_pending.push_back(slot);
+        while (!slot->m_ready) {
+            if (m_leader) {
+                m_done.wait(lock);
+                continue;
+            }
+            m_leader = true;
+            std::vector<std::shared_ptr<Slot>> batch = take_batch();
+            lock.unlock();
+            std::vector<std::string> results;
+            std::vector<std::string> inputs;
+            inputs.reserve(batch.size());
+            for (const auto& queued : batch) {
+                inputs.push_back(queued->m_formula);
+            }
+            const bool batch_ok = run_ltlfilt_batch(binary, inputs, results);
+            lock.lock();
+            // Every slot in the batch is resolved before the leader steps
+            // down, including on failure: a slot left un-ready would park its
+            // caller on a condition variable nobody will signal again.
+            for (std::size_t i = 0; i < batch.size(); ++i) {
+                batch[i]->m_failed = !batch_ok;
+                if (batch_ok) {
+                    batch[i]->m_result = results[i];
+                }
+                batch[i]->m_ready = true;
+            }
+            m_leader = false;
+            m_done.notify_all();
+        }
+        if (slot->m_failed) {
+            return std::nullopt;
+        }
+        return slot->m_result;
+    }
+
+   private:
+    struct Slot {
+        std::string m_formula;
+        std::string m_result;
+        bool m_ready = false;
+        bool m_failed = false;
+    };
+
+    // Bounded so the batch's input always fits in a pipe buffer; see the write
+    // loop in run_ltlfilt_batch. Whatever does not fit stays queued for the
+    // next leader.
+    static constexpr std::size_t k_max_batch_bytes = 16384;
+    static constexpr std::size_t k_max_batch_count = 64;
+
+    std::vector<std::shared_ptr<Slot>> take_batch() {
+        std::vector<std::shared_ptr<Slot>> batch;
+        std::size_t bytes = 0;
+        while (!m_pending.empty() && batch.size() < k_max_batch_count) {
+            const std::size_t size = m_pending.front()->m_formula.size() + 1;
+            if (!batch.empty() && bytes + size > k_max_batch_bytes) {
+                break;
+            }
+            bytes += size;
+            batch.push_back(m_pending.front());
+            m_pending.erase(m_pending.begin());
+        }
+        return batch;
+    }
+
+    std::mutex m_mutex;
+    std::condition_variable m_done;
+    std::vector<std::shared_ptr<Slot>> m_pending;
+    bool m_leader = false;
+};
+
+// Several batchers rather than one: a single leader would serialise every
+// simplification in the process behind one exec at a time. Each batcher runs
+// its own exec concurrently, so throughput stays parallel while each exec still
+// amortises its startup over a whole batch.
+constexpr std::size_t k_batcher_count = 4;
+
+std::array<SimplifyBatcher, k_batcher_count>& batchers() {
+    static std::array<SimplifyBatcher, k_batcher_count> pool;
+    return pool;
+}
+
+std::size_t batcher_slot() {
+    static std::atomic<std::size_t> next{0};
+    thread_local const std::size_t slot =
+        next.fetch_add(1, std::memory_order_relaxed);
+    return slot % k_batcher_count;
+}
+
 }  // namespace
 
 std::string ltlfilt_path() { return spot_bin_dir() + "/ltlfilt"; }
@@ -144,21 +389,41 @@ std::string simplify_ltl(const std::string& formula) {
         return formula;
     }
     const auto start = std::chrono::steady_clock::now();
-    const ProcessResult result =
-        execute_and_capture({binary, "--simplify", "-f", formula});
+    std::string simplified = formula;
+    double child_cpu_s = 0.0;
+    // A formula spanning lines cannot go in a line-oriented batch, and a blank
+    // one is consumed by ltlfilt without producing an answer, which would make
+    // the batch fail its line-count check. Both go straight to a private exec.
+    // The blank case is reachable: it is the specification formula of a
+    // candidate with no guarantees.
+    const bool batchable =
+        formula.find('\n') == std::string::npos &&
+        formula.find_first_not_of(" \t\r") != std::string::npos;
+    std::optional<std::string> batched;
+    if (batchable) {
+        COUNTER_PROFILE_SCOPE("ltlfilt/batched-request");
+        batched = batchers()[batcher_slot()].simplify(binary, formula);
+    }
+    if (batched.has_value()) {
+        simplified = *batched;
+    } else {
+        COUNTER_PROFILE_SCOPE("ltlfilt/one-shot-exec");
+        const ProcessResult result =
+            execute_and_capture({binary, "--simplify", "-f", formula});
+        child_cpu_s = result.m_cpu_s;
+        if (result.m_exit_code == 0 && !result.m_output.empty()) {
+            simplified = result.m_output;
+            while (!simplified.empty() && simplified.back() == '\n') {
+                simplified.pop_back();
+            }
+        }
+    }
     const double elapsed =
         std::chrono::duration<double>(std::chrono::steady_clock::now() - start)
             .count();
-    std::string simplified = formula;
-    if (result.m_exit_code == 0 && !result.m_output.empty()) {
-        simplified = result.m_output;
-        while (!simplified.empty() && simplified.back() == '\n') {
-            simplified.pop_back();
-        }
-    }
     std::scoped_lock lock(cache_mutex);
     LtlfiltStats::total_time_s += elapsed;
-    LtlfiltStats::total_cpu_s += result.m_cpu_s;
+    LtlfiltStats::total_cpu_s += child_cpu_s;
     cache.emplace(formula, simplified);
     return simplified;
 }

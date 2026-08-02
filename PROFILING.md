@@ -16,6 +16,8 @@ Measured, reproducible, and load-bearing for everything below:
   `posix_spawn()`, measured inside the spawn scope;
 - the split of cost across the four fitness objectives, and the fact that the pure-CPU inner
   algorithms (`count_traces`, `guard_models`, `syntactic`, `halstead`) are cheap;
+- that batching `ltlfilt` calls cuts about a quarter of total CPU at unchanged wall time, with
+  byte-identical output;
 - byte-identical output across all 12 `repair_N.json` files before and after every change.
 
 Not established: any whole-run wall-clock improvement from this pass. Repeat runs of the same
@@ -181,6 +183,74 @@ formula, close stdin, then read every reply. That is what the 200-formula measur
 it needs a batch entry point rather than a drop-in replacement for `simplify_ltl`, which is called
 deep inside fitness evaluation where no batch of formulae exists to submit.
 
+## The batched simplifier
+
+That batch shape is now built and measured. `simplify_ltl` cache misses arriving from concurrent
+scoring threads are coalesced into a single `ltlfilt` exec. The design follows from the constraint
+above, point by point.
+
+- A caller that misses the cache queues its formula and waits. Whichever caller finds no *leader*
+  becomes the leader, takes everything queued at that instant, and runs one
+  `ltlfilt --simplify --skip-errors -F -` over the whole batch: write every formula, close stdin,
+  read every reply. Closing stdin is what makes `ltlfilt` emit everything, per the negative result
+  above.
+- There is no timer and no artificial delay. The leader takes whatever is queued right now. While
+  its exec is in flight the other scoring threads pile up behind it, so the next batch is naturally
+  as large as the contention warrants, and it collapses to a batch of one when only one thread is
+  asking.
+- Four independent batchers rather than one. A single leader would serialise every simplification in
+  the process behind one exec at a time. Four run their execs concurrently, so throughput stays
+  parallel while each exec still amortises its startup across a batch.
+- The batch is capped at 64 formulae and 16 KB of input, so the whole batch fits in a pipe buffer.
+  Without that cap the parent could block writing while the child blocks writing answers into an
+  output pipe nobody is draining yet.
+- The safety property is a line count. `--skip-errors` makes `ltlfilt` echo an unparseable line back
+  verbatim instead of dropping it, so the reply count must equal the request count. If it does not,
+  every formula in that batch falls back to its own exec. A silently misattributed simplification
+  would corrupt the search rather than slow it down, which is why the check is on the count rather
+  than on the content.
+- Two inputs bypass batching: a formula containing a newline, which would be read as several
+  requests, and a blank one, which `ltlfilt` consumes without answering and which would therefore
+  fail the count check. The blank case is reachable — it is the specification formula of a candidate
+  with no guarantees.
+
+Results on `fsm` at 20 generations and population 1000, seed 0, three runs each, means:
+
+| | baseline | batched | change |
+|---|---|---|---|
+| wall | 6.23 s | 6.17 s | unchanged |
+| user CPU | 20.06 s | 17.08 s | −15% |
+| system CPU | 42.11 s | 29.60 s | −30% |
+| minor page faults | 14.10 M | 11.78 M | −16% |
+
+Total spawns across the run fell from 4045 to 3262, and 2206 simplification requests were served by
+1424 execs. All 12 `repair_N.json` outputs stayed byte-identical on every run.
+
+What this buys is worth stating plainly. Wall-clock time is unchanged, because the run is bound by
+tools that still have to do their work; the saving is about a quarter of total CPU. That matters for
+campaigns, which run many `counter` processes concurrently on one machine and are therefore
+CPU-bound rather than latency-bound. It does not matter for a single interactive run.
+
+The number of batchers is a genuine trade-off, so the sweep behind the setting is recorded here.
+Fewer batchers give bigger batches and less CPU, but serialise more:
+
+| batchers | execs | system CPU | minor faults | wall |
+|---|---|---|---|---|
+| baseline | 2165 | 38.6 s | 13.96 M | ~6.2 s |
+| 4 | 1424 | 30.4 s | 11.76 M | 6.45 s |
+| 2 | 898 | 27.4 s | 10.38 M | 6.52 s |
+| 1 | 521 | 25.1 s | 9.38 M | 6.61 s |
+
+Four is the setting chosen: the largest CPU saving that costs no wall time. A campaign wanting
+minimum CPU could justify one or two instead.
+
+One reporting artefact comes with this. The "Tool timing report" `ltlfilt` row now measures each
+caller's wait, which includes time spent queued behind a leader, so its per-call figure is no longer
+the cost of an `ltlfilt` exec.
+
+Validation ran 5 examples across the FRETISH path and 3 across the TLSF path, two seeds each, with
+no hang and with the batch fallback never firing once.
+
 ## Where the in-process time goes
 
 The per-objective scopes answer a separate question: of the work `counter` does itself, what costs
@@ -220,14 +290,13 @@ The wider result is that `counter`'s own computation is not the bottleneck. Near
 spent waiting on external tools, and more than half of that wait is per-process startup rather than
 solving. This reinforces the top two ranked targets below instead of adding a third.
 
-## Ranked remaining targets
+## Ranked targets
 
-**Batched tool calls.** The largest lever by a wide margin, and the lever is eliminating per-spawn
-startup, not keeping a process warm. It needs a batch entry point that collects many formulae,
-writes them all, closes stdin, and reads all replies — the shape `ltlfilt -F -` actually supports.
-Any design here must not assume a tool answers one line per line; verify the tool's flushing
-behaviour before building a protocol on top of it. The call sites are the hard part, since
-`simplify_ltl` has no batch available where it is called.
+**Batched tool calls — done for `ltlfilt`.** The largest lever, and the lever is eliminating
+per-spawn startup rather than keeping a process warm. The batching design and its numbers are in
+"The batched simplifier" above. Two parts of this target are untouched. `black` accounts for 818
+execs on this workload and has no batch mode of its own, so nothing here applies to it. `ltl2tgba`
+and `ltlsynt` are still one exec per call.
 
 **Link libspot in process.** SPOT is already built from source, and `libspot.so` and its headers
 sit in the build tree. This removes the `ltlfilt`, `ltl2tgba` and `ltlsynt` spawns outright rather
@@ -235,9 +304,18 @@ than amortising them, and it sidesteps the flushing problem entirely by removing
 boundary — which now counts in its favour. It is a much larger change, and `ltlsynt`'s timeout and
 memory-cap behaviour would have to be rebuilt in-process.
 
-**`dispatch/collect-one-ready`.** 4.396 s of wall time for 0.372 s of CPU across 11,535 calls.
-`run_bounded_async` polls each outstanding future with `wait_for(0ms)` in a loop, then sleeps 1 ms.
-A completion queue signalled by the workers would cut both the dispatch latency and the poll's CPU.
+**`dispatch/collect-one-ready` — done.** `run_bounded_async` polled each outstanding future with
+`wait_for(0ms)` in a loop and then slept 1 ms, which cost 0.372 s of CPU across 11,535 calls and put
+up to a millisecond in front of every completion. Workers now push their result onto a mutex and
+condition-variable queue and signal it, so the dispatcher blocks until there is something to
+collect. `run_bounded_async` takes the task rather than a future, since every call site was already
+wrapping its work in `global_thread_pool().submit(...)`, and moving that inside is what lets the
+wrapper attach the signal.
+
+The scope's CPU falls from 0.372 s to about 0.21 s. Its wall time barely moves and neither does the
+run's, which is the useful part of the result: the dispatcher was mostly blocked on work that had
+not finished, not on poll granularity. This pipeline is throughput-bound, so removing the poll buys
+CPU rather than latency.
 
 **Five duplicated `execute_and_capture` implementations.** `src/runner/spot.cpp`,
 `src/runner/black.cpp`, `src/runner/ltlfilt.cpp`, `src/runner/ganak.cpp` and

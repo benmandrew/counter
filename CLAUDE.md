@@ -118,6 +118,16 @@ waiting on external tools, and over half of *that* is per-process startup —
 about 9ms and ~2700 minor page faults per exec, independent of formula
 difficulty, because each child demand-pages its own binary and libspot.
 
+`simplify_ltl` acts on that: concurrent cache misses are coalesced by a leader
+thread into one `ltlfilt --simplify --skip-errors -F -` exec over the whole
+batch (`SimplifyBatcher` in `src/runner/ltlfilt.cpp`). Batch composition varies
+run to run, so this is only safe because the result does not depend on it —
+`--skip-errors` guarantees one reply line per request line, and a batch whose
+reply count does not match falls back to a per-formula exec rather than risk
+misattributing a simplification. Worth about a quarter of total CPU at unchanged
+wall time, which is what campaigns (many concurrent `counter` processes) are
+bound by.
+
 Two traps recorded there. Do not build a streaming request/response protocol on
 a SPOT tool: `ltlfilt` does not answer one line per line, it flushes in
 irregular lumps and holds the rest until stdin hits EOF, and `stdbuf` cannot

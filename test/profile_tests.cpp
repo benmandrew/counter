@@ -39,12 +39,12 @@ void test_scope_records_a_call() {
 }
 
 void test_repeated_names_share_one_site() {
-    profile::Site& first = profile::site_interned("test/shared-name");
-    profile::Site& second = profile::site_interned("test/shared-name");
+    const profile::Site& first = profile::site_interned("test/shared-name");
+    const profile::Site& second = profile::site_interned("test/shared-name");
     expect(&first == &second, "the same name resolves to the same Site");
 
     const std::string name = "test/shared-name";
-    profile::Site& third = profile::site_interned(name);
+    const profile::Site& third = profile::site_interned(name);
     expect(&first == &third,
            "a name from a different string object still resolves to one Site");
 }

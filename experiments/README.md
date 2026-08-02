@@ -25,6 +25,7 @@ from 2026-07-14 onwards).
 | `2026-07-23-wellsep` | Well-separation × output assumptions on TLSF (sweep W). |
 | `2026-07-23-arbiter-hp` | Sweep-W arms on the arbiter family — zero repairs in every cell (null result). |
 | `2026-07-23-arbiter-padd` | p_add 0.1→0.8 × filter arms on arbiter — zero repairs in every cell; rules out p_add as the arbiter unlock. |
+| `2026-07-31-replicate` | nsga2 vs nsga2-replicate selection: sweep R (both schemes × elitism 0/0.1, gen40/pop1000, 200 seeds) with its censored-row recap, a weakening-off cross on fsm/fsm-combined, a compute-matched nsga2 arm (sweep S, gen120 = 3.0× measured cost ratio), and a TLSF half on 5 specs — 7,600 rows. First campaign with per-row commit attribution in the CSVs (backfilled for the pre-column rows; see its `PROVENANCE.json`). |
 
 The 2026-07-24 ablation + AuRUS head-to-head campaign is archived with the
 paper, not here: `~/projects/writing/rumoga/data/ablation-2026-07/`.

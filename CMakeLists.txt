@@ -66,6 +66,7 @@ target_sources(counter_fitness PRIVATE
     src/runner/ganak.cpp
     src/runner/ltlfilt.cpp
     src/runner/spot.cpp
+    src/runner/spot_simplify.cpp
     src/runner/subprocess.cpp
     src/thread_pool.cpp
     src/filter/bloat.cpp
@@ -98,6 +99,13 @@ target_link_libraries(counter_fitness PUBLIC counter_core tomlplusplus::tomlplus
 add_dependencies(counter_fitness spot_project)
 # Include Eigen as a system directory so clang-tidy skips warnings inside it.
 target_include_directories(counter_fitness SYSTEM PUBLIC ${eigen_SOURCE_DIR})
+# Spot's own headers likewise: they are not -Wall -Wextra -Wpedantic -Werror
+# clean, and this project builds with all of that on.
+target_include_directories(counter_fitness SYSTEM PUBLIC ${SPOT_INCLUDE_DIR})
+target_link_libraries(counter_fitness PUBLIC ${SPOT_LIBRARIES})
+# The binaries run from the build tree and libspot is only ever installed
+# there, so the runtime path has to point back at it.
+target_link_options(counter_fitness PUBLIC "-Wl,-rpath,${SPOT_LIB_DIR}")
 target_compile_definitions(counter_fitness PRIVATE
     GANAK_EXECUTABLE_PATH="${GANAK_EXECUTABLE}"
     SPOT_BIN_DIR="${SPOT_BIN_DIR}"

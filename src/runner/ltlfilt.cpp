@@ -21,8 +21,10 @@
 #include <unordered_map>
 #include <vector>
 
+#include "config.hpp"
 #include "profile.hpp"
 #include "runner/spot.hpp"
+#include "runner/spot_simplify.hpp"
 #include "runner/subprocess.hpp"
 
 namespace {
@@ -298,6 +300,8 @@ class SimplifyBatcher {
 // configurable rather than fixed; see Config::ltlfilt_batchers.
 std::atomic<std::size_t> g_batcher_count{4};
 
+std::atomic<SimplifyEngine> g_simplify_engine{SimplifyEngine::Libspot};
+
 // Built once, on the first simplification, and never resized: scoring threads
 // index into it without a lock, so growing it underneath them would be a race.
 // set_ltlfilt_batchers therefore has to run before any scoring starts.
@@ -331,6 +335,10 @@ std::string ltlfilt_path() { return spot_bin_dir() + "/ltlfilt"; }
 
 void set_ltlfilt_batchers(std::size_t count) { g_batcher_count.store(count); }
 
+void set_simplify_engine(SimplifyEngine engine) {
+    g_simplify_engine.store(engine);
+}
+
 std::string simplify_ltl(const std::string& formula) {
     COUNTER_PROFILE_SCOPE("ltlfilt/simplify_ltl");
     static std::unordered_map<std::string, std::string> cache;
@@ -345,13 +353,29 @@ std::string simplify_ltl(const std::string& formula) {
         }
         LtlfiltStats::n_cache_misses++;
     }
+    const auto start = std::chrono::steady_clock::now();
+    // The in-process engine needs no binary on disk and spawns nothing, so it
+    // is tried before the ltlfilt path is even looked for. A formula it cannot
+    // parse falls through to the exec, which is what used to happen to a
+    // formula ltlfilt could not parse: the formula is returned unchanged.
+    if (g_simplify_engine.load(std::memory_order_relaxed) ==
+        SimplifyEngine::Libspot) {
+        const std::optional<std::string> in_process = spot_simplify(formula);
+        const double elapsed = std::chrono::duration<double>(
+                                   std::chrono::steady_clock::now() - start)
+                                   .count();
+        std::scoped_lock lock(cache_mutex);
+        LtlfiltStats::total_time_s += elapsed;
+        const std::string& simplified = in_process.value_or(formula);
+        cache.emplace(formula, simplified);
+        return simplified;
+    }
     const std::string binary = ltlfilt_path();
     if (access(binary.c_str(), F_OK) != 0) {
         std::scoped_lock lock(cache_mutex);
         cache.emplace(formula, formula);
         return formula;
     }
-    const auto start = std::chrono::steady_clock::now();
     std::string simplified = formula;
     double child_cpu_s = 0.0;
     // A formula spanning lines cannot go in a line-oriented batch, and a blank

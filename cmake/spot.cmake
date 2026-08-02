@@ -60,3 +60,19 @@ else()
 endif()
 
 set(SPOT_BIN_DIR "${SPOT_BIN_DIR}" CACHE PATH "Path to Spot bin directory")
+
+# Spot is also linked into the process, not only spawned as tools, so that
+# simplification can skip an exec (see runner/spot_simplify.hpp). These paths
+# are inside the external project's install tree, so at configure time they may
+# not exist yet -- the directory is created eagerly because CMake rejects a
+# non-existent include directory at generate time, and the library file itself
+# only has to exist by the time something links, which add_dependencies on
+# spot_project already guarantees.
+set(SPOT_INCLUDE_DIR "${SPOT_INSTALL_DIR}/include"
+    CACHE PATH "Path to Spot headers")
+set(SPOT_LIB_DIR "${SPOT_INSTALL_DIR}/lib"
+    CACHE PATH "Path to Spot libraries")
+file(MAKE_DIRECTORY "${SPOT_INCLUDE_DIR}")
+set(SPOT_LIBRARIES
+    "${SPOT_LIB_DIR}/libspot.so"
+    "${SPOT_LIB_DIR}/libbddx.so")

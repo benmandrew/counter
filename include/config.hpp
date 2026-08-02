@@ -23,6 +23,16 @@ enum class SelectionScheme : std::uint8_t {
     Nsga2Replicate
 };
 
+/// Where LTL simplification happens. Libspot (the default) calls the linked
+/// library in process; Ltlfilt spawns the `ltlfilt --simplify` command as every
+/// other tool call does. The two produce identical output by construction --
+/// the in-process path asks for simplification level 3, which is what the
+/// command-line flag selects -- so this is a performance choice, not a
+/// behavioural one. An exec costs about 8 ms of process startup against about
+/// 0.02 ms of actual simplification, which is the whole reason the choice
+/// exists.
+enum class SimplifyEngine : std::uint8_t { Libspot, Ltlfilt };
+
 /// Metric turning the bounded trace counts into a semantic-similarity score.
 /// Direct takes the ratio of counts -- the fraction of one requirement's
 /// satisfying traces that also satisfy the other, a Sorensen-Dice overlap.
@@ -183,6 +193,13 @@ struct Config {
     // neighbours need. Raise it towards 16 for a single interactive run; 0
     // disables batching entirely.
     std::size_t ltlfilt_batchers = 4;
+    // Which of the two now applies: with the default Libspot engine
+    // simplification happens in process and never reaches ltlfilt at all, so
+    // ltlfilt_batchers above only takes effect under Ltlfilt. Kept as a choice
+    // rather than deleted because it is the A/B lever the in-process path was
+    // measured against, and the escape hatch if a future Spot disagrees with
+    // its own command-line tool.
+    SimplifyEngine simplify_engine = SimplifyEngine::Libspot;
     // A fitness function that throws (in practice an external tool failing on
     // one evolved formula) costs that individual rather than the whole run:
     // the search is stochastic, so one candidate lost out of a population is

@@ -8,6 +8,8 @@
 #include <cstddef>
 #include <string>
 
+#include "config.hpp"
+
 struct LtlfiltStats {
     inline static std::size_t n_cache_hits = 0;
     inline static std::size_t n_cache_misses = 0;
@@ -26,6 +28,12 @@ std::string ltlfilt_path();
 /// gives every call its own exec. Call once at startup, before any scoring
 /// thread runs: the pool is built on first use and not resized afterwards.
 void set_ltlfilt_batchers(std::size_t count);
+
+/// Selects where simplify_ltl does its work, from Config::simplify_engine.
+/// Under the default SimplifyEngine::Libspot nothing below reaches ltlfilt at
+/// all and set_ltlfilt_batchers has no effect. Call once at startup, for the
+/// same reason.
+void set_simplify_engine(SimplifyEngine engine);
 
 /// Returns the ltlfilt-simplified form of `formula` verbatim, including SPOT's
 /// boolean constants "0" (false) and "1" (true) when the formula reduces to

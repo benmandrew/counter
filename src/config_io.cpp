@@ -76,11 +76,12 @@ const KeySpec& config_key_spec() {
                   {{"intervals",
                     section({"dedup", "false_condition", "weakening", "bloat",
                              "vacuity", "well_separation"})}})},
-         {"runtime", section({"black_timeout_ms", "ltlsynt_timeout_ms",
-                              "ltl2tgba_timeout_ms", "parallel",
-                              "max_concurrent_realizability",
-                              "ltlfilt_batchers", "report_cpu_timing",
-                              "max_scoring_failure_rate", "dashboard"})}});
+         {"runtime",
+          section({"black_timeout_ms", "ltlsynt_timeout_ms",
+                   "ltl2tgba_timeout_ms", "parallel",
+                   "max_concurrent_realizability", "ltlfilt_batchers",
+                   "simplify_engine", "report_cpu_timing",
+                   "max_scoring_failure_rate", "dashboard"})}});
     return spec;
 }
 
@@ -298,6 +299,17 @@ void apply_filters(const toml::table& tbl, Config& cfg) {
     }
 }
 
+SimplifyEngine parse_simplify_engine(const std::string& name) {
+    if (name == "libspot") {
+        return SimplifyEngine::Libspot;
+    }
+    if (name == "ltlfilt") {
+        return SimplifyEngine::Ltlfilt;
+    }
+    throw std::runtime_error(
+        R"(config: runtime.simplify_engine must be "libspot" or "ltlfilt")");
+}
+
 void apply_runtime(const toml::table& tbl, Config& cfg) {
     if (auto val = tbl["black_timeout_ms"].value<int64_t>()) {
         if (*val < 0) {
@@ -332,6 +344,9 @@ void apply_runtime(const toml::table& tbl, Config& cfg) {
                 "config: runtime.ltlfilt_batchers must be >= 0");
         }
         cfg.ltlfilt_batchers = static_cast<std::size_t>(*val);
+    }
+    if (auto val = tbl["simplify_engine"].value<std::string>()) {
+        cfg.simplify_engine = parse_simplify_engine(*val);
     }
     if (auto val = tbl["max_concurrent_realizability"].value<int64_t>()) {
         if (*val < 0) {

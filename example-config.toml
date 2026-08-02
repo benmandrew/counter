@@ -135,6 +135,13 @@ black_timeout_ms = 1000  # timeout per black SAT query in milliseconds
 # four concurrent counter processes finish 12.6% sooner batched. Raise it
 # towards 16 for a single interactive run; 0 disables batching.
 # ltlfilt_batchers = 4
+
+# Where LTL simplification runs: "libspot" (default) in process through the
+# linked library, or "ltlfilt" by spawning the command-line tool. Identical
+# output; the exec costs about 8 ms of process startup per call that the
+# in-process path does not pay. ltlfilt_batchers above applies only to
+# "ltlfilt".
+# simplify_engine = "libspot"
 # parallel         = 8     # thread pool size (omit to use hardware concurrency)
 # Cap on ltlsynt processes running at once, independent of the thread pool. 0
 # (default) is unlimited; ltlsynt is multi-GB resident per call on hard specs,

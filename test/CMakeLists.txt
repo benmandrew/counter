@@ -3,6 +3,7 @@ add_executable(counter_tests
     runner/formaliser_tests.cpp
     runner/ganak_tests.cpp
     runner/ltlfilt_tests.cpp
+    runner/spot_simplify_tests.cpp
     runner/spot_tests.cpp
     filter/implication_tests.cpp
     filter/vacuity_tests.cpp
@@ -54,6 +55,7 @@ add_test(NAME counter_tests.black_runner COMMAND counter_tests black_runner)
 add_test(NAME counter_tests.formaliser_runner COMMAND counter_tests formaliser_runner)
 add_test(NAME counter_tests.ganak_runner COMMAND counter_tests ganak_runner)
 add_test(NAME counter_tests.ltlfilt_runner COMMAND counter_tests ltlfilt_runner)
+add_test(NAME counter_tests.spot_simplify COMMAND counter_tests spot_simplify)
 add_test(NAME counter_tests.spot_runner COMMAND counter_tests spot_runner)
 add_test(NAME counter_tests.crossover COMMAND counter_tests crossover)
 add_test(NAME counter_tests.generation COMMAND counter_tests generation)

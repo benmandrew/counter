@@ -31,6 +31,7 @@ void run_requirement_tests();
 void run_serialisation_tests();
 void run_config_io_tests();
 void run_dashboard_tests();
+void run_profile_tests();
 void run_tlsf_parser_tests();
 void run_tlsf_writer_tests();
 void run_tlsf_filter_tests();

@@ -1,10 +1,9 @@
 #include "profile.hpp"
 
-#include <time.h>
-
 #include <algorithm>
 #include <cstdlib>
 #include <cstring>
+#include <ctime>
 #include <deque>
 #include <fstream>
 #include <iomanip>
@@ -13,7 +12,9 @@
 #include <mutex>
 #include <ostream>
 #include <sstream>
+#include <string>
 #include <utility>
+#include <vector>
 
 namespace profile {
 
@@ -127,8 +128,8 @@ void report(std::ostream& out) {
                                      return entry->m_calls.load() == 0;
                                  }),
                   ordered.end());
-    std::sort(ordered.begin(), ordered.end(), [](const Site* a, const Site* b) {
-        return a->m_wall_ns.load() > b->m_wall_ns.load();
+    std::sort(ordered.begin(), ordered.end(), [](const Site* lhs, const Site* rhs) {
+        return lhs->m_wall_ns.load() > rhs->m_wall_ns.load();
     });
 
     out << "\nScope profile (COUNTER_PROFILE):\n";
@@ -179,7 +180,7 @@ void report_json(const std::string& path) {
         const std::scoped_lock lock(registry_mutex());
         ordered = site_registry();
     }
-    file << "{\n  \"sites\": [\n";
+    file << R"({)" "\n" R"(  "sites": [)" "\n";
     bool first = true;
     for (const Site* entry : ordered) {
         if (entry->m_calls.load() == 0) {
@@ -189,20 +190,20 @@ void report_json(const std::string& path) {
             file << ",\n";
         }
         first = false;
-        file << "    {\"name\": \"" << entry->m_name
-             << "\", \"calls\": " << entry->m_calls.load()
-             << ", \"wall_ns\": " << entry->m_wall_ns.load()
-             << ", \"cpu_ns\": " << entry->m_cpu_ns.load()
-             << ", \"max_wall_ns\": " << entry->m_max_wall_ns.load() << "}";
+        file << R"(    {"name": ")" << entry->m_name
+             << R"(", "calls": )" << entry->m_calls.load()
+             << R"(, "wall_ns": )" << entry->m_wall_ns.load()
+             << R"(, "cpu_ns": )" << entry->m_cpu_ns.load()
+             << R"(, "max_wall_ns": )" << entry->m_max_wall_ns.load() << "}";
     }
-    file << "\n  ],\n  \"counters\": {\n";
+    file << "\n" R"(  ],)" "\n" R"(  "counters": {)" "\n";
     first = true;
     for (const auto& [name, value] : counts()) {
         if (!first) {
             file << ",\n";
         }
         first = false;
-        file << "    \"" << name << "\": " << value;
+        file << R"(    ")" << name << R"(": )" << value;
     }
     file << "\n  }\n}\n";
 }

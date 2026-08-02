@@ -29,6 +29,7 @@ add_executable(counter_tests
     serialisation_tests.cpp
     config_io_tests.cpp
     dashboard_tests.cpp
+    profile_tests.cpp
     tlsf/parser_tests.cpp
     tlsf/writer_tests.cpp
     tlsf/filter_tests.cpp
@@ -47,6 +48,7 @@ else()
     target_compile_options(counter_tests PRIVATE -Wall -Wextra -Wpedantic)
 endif()
 
+add_test(NAME counter_tests.profile COMMAND counter_tests profile)
 add_test(NAME counter_tests.transfer_matrix COMMAND counter_tests transfer_matrix)
 add_test(NAME counter_tests.black_runner COMMAND counter_tests black_runner)
 add_test(NAME counter_tests.formaliser_runner COMMAND counter_tests formaliser_runner)

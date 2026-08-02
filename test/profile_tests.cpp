@@ -1,0 +1,109 @@
+// Tests over the scope profiler: that a Site records what a Scope measured,
+// that repeated names resolve to one Site rather than accumulating duplicates,
+// and that an interned name stays readable once the registry has grown past it.
+//
+// The interning test is the one worth having. Site holds a bare const char*
+// into the interned string, so backing the intern table with a vector rather
+// than a deque would leave every earlier Site pointing at freed memory the
+// first time it reallocated -- and the report only reads those pointers at
+// process exit, long after the corruption, where it would surface as garbage
+// site names rather than as a crash anyone could trace back here.
+
+#include <chrono>
+#include <cstdint>
+#include <string>
+#include <thread>
+#include <vector>
+
+#include "profile.hpp"
+#include "test_suite.hpp"
+#include "test_support.hpp"
+
+namespace {
+
+void test_scope_records_a_call() {
+    profile::Site& site = profile::site_interned("test/scope-records");
+    const std::uint64_t before = site.m_calls.load();
+    {
+        const profile::Scope scope(site);
+    }
+    // Accumulation is conditional on the profiler being enabled, which is an
+    // environment variable this suite deliberately does not set: assert the
+    // two consistent outcomes rather than forcing one.
+    const std::uint64_t after = site.m_calls.load();
+    if (profile::enabled()) {
+        expect(after == before + 1, "an executed scope records one call");
+    } else {
+        expect(after == before, "a disabled scope records nothing");
+    }
+}
+
+void test_repeated_names_share_one_site() {
+    profile::Site& first = profile::site_interned("test/shared-name");
+    profile::Site& second = profile::site_interned("test/shared-name");
+    expect(&first == &second, "the same name resolves to the same Site");
+
+    const std::string name = "test/shared-name";
+    profile::Site& third = profile::site_interned(name);
+    expect(&first == &third,
+           "a name from a different string object still resolves to one Site");
+}
+
+// Interns enough distinct names to force the intern table to grow several
+// times, then re-reads the name of the very first one.
+void test_interned_names_survive_registry_growth() {
+    std::vector<profile::Site*> sites;
+    constexpr int k_count = 200;
+    sites.reserve(k_count);
+    for (int i = 0; i < k_count; ++i) {
+        sites.push_back(
+            &profile::site_interned("test/growth-" + std::to_string(i)));
+    }
+    for (int i = 0; i < k_count; ++i) {
+        const std::string expected = "test/growth-" + std::to_string(i);
+        expect(std::string(sites[i]->m_name) == expected,
+               "an interned site name is still readable after the registry "
+               "grew past it");
+    }
+}
+
+void test_wall_and_cpu_are_measured_separately() {
+    // A sleeping thread accrues wall time but almost no CPU time, which is the
+    // distinction the whole profiler exists to draw. Only checkable when the
+    // profiler is on, since otherwise nothing is recorded at all.
+    if (!profile::enabled()) {
+        return;
+    }
+    profile::Site& site = profile::site_interned("test/sleep");
+    {
+        const profile::Scope scope(site);
+        std::this_thread::sleep_for(std::chrono::milliseconds(20));
+    }
+    expect(site.m_wall_ns.load() > 10'000'000ULL,
+           "a 20ms sleep records at least 10ms of wall time");
+    expect(site.m_cpu_ns.load() < site.m_wall_ns.load(),
+           "a sleeping scope records less CPU time than wall time");
+}
+
+void test_clocks_advance_monotonically() {
+    const std::uint64_t wall_before = profile::wall_ns();
+    const std::uint64_t cpu_before = profile::thread_cpu_ns();
+    std::uint64_t sink = 0;
+    for (std::uint64_t i = 0; i < 2'000'000; ++i) {
+        sink += i;
+    }
+    expect(sink > 0, "the busy loop was not optimised away");
+    expect(profile::wall_ns() >= wall_before, "wall_ns does not go backwards");
+    expect(profile::thread_cpu_ns() > cpu_before,
+           "thread_cpu_ns advances across a busy loop");
+}
+
+}  // namespace
+
+void run_profile_tests() {
+    test_scope_records_a_call();
+    test_repeated_names_share_one_site();
+    test_interned_names_survive_registry_growth();
+    test_wall_and_cpu_are_measured_separately();
+    test_clocks_advance_monotonically();
+}

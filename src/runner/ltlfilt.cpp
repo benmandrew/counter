@@ -7,8 +7,6 @@
 #include <sys/wait.h>
 #include <unistd.h>
 
-extern char** environ;
-
 #include <array>
 #include <cassert>
 #include <cerrno>

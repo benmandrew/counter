@@ -629,159 +629,6 @@ Spot offers `--enable-pthread`, and it does not help. It activates parallel vari
 algorithms; it does not make the parser globals or the formula-interning table reentrant, which is
 what the lock exists for. Removing the lock would need Spot to change, not this project.
 
-## Ranked targets
-
-**Batched tool calls — done for `ltlfilt`.** The largest lever on CPU, and the lever is eliminating
-per-spawn startup rather than keeping a process warm. It buys about 19% of total CPU and costs about
-5% of wall time; the design and the numbers are in "The batched simplifier" above. Two parts of this
-target are untouched. `black` accounts for 818
-execs on this workload and has no batch mode of its own, so nothing here applies to it. `ltlsynt` is
-still one exec per call; `ltl2tgba` no longer is, but by moving in process rather than by batching,
-so nothing in this entry applies to it either.
-
-**Link `libspot` in process — done for both tools that can move.** SPOT
-is already built from source, and `libspot.so` and its headers sit in the build tree.
-Simplification now runs in process whenever the shared lock can be taken within the cost of a spawn,
-and spawns otherwise, which takes `fsm` gen20/pop1000 from a median of 6.47 s to 5.10 s of whole-run
-wall, about 21%. The 1791 distinct formulae such a run simplifies cost 0.05 s in process against the
-11.82 s the exec path spent in `ltlfilt/batch-exec`, nearly all of which was startup; the design and
-the numbers are in "The in-process simplifier" above, and the reason it is conditional rather than
-unconditional is in "A regression the other specifications found". Counting-path translation followed it, but only when no per-call
-deadline is configured, which is the default; "The in-process translator" has that argument and its
-measurements. `ltlsynt` cannot move as things stand, because its per-call timeout and its memory cap
-both work by killing a separate process. Replacing the ability to abandon a call is a design
-question rather than an optimisation, and it is the thing to answer before that last tool moves.
-
-The top remaining in-process target is the lock the two moved tools now share. It is held for about
-1.05 s of a 4.6 s run, and the wait it imposes on callers is roughly 16 s of scope wall summed
-across twenty scoring threads; "The lock is now the limiting factor" has the figures. `black` is not
-part of any of this: 890 calls and 24.9 s on this workload, with no batch mode of its own and no
-library to link, so nothing here applies to it.
-
-**Thread-pool oversubscription — fixed.** `[runtime] parallel` was documented as the thread pool
-size and never reached the pool, so every run built a full-width one no matter what a campaign
-asked for. Honouring the key takes four concurrent `fsm` gen20/pop1000 runs from a median of 8.40 s
-to 6.94 s, about 17% sooner for the same work. The scaling table in "The thread pool ignored its own
-setting" says where that comes from: twenty workers buy 4.3 times the throughput of one in process,
-so campaign throughput comes from running more jobs with smaller pools rather than from widening any
-single run.
-
-**`dispatch/collect-one-ready` — done.** `run_bounded_async` polled each outstanding future with
-`wait_for(0ms)` in a loop and then slept 1 ms, which cost 0.372 s of CPU across 11,535 calls and put
-up to a millisecond in front of every completion. Workers now push their result onto a mutex and
-condition-variable queue and signal it, so the dispatcher blocks until there is something to
-collect. `run_bounded_async` takes the task rather than a future, since every call site was already
-wrapping its work in `global_thread_pool().submit(...)`, and moving that inside is what lets the
-wrapper attach the signal.
-
-The scope's CPU falls from 0.372 s to about 0.21 s. Its wall time barely moves and neither does the
-run's, which is the useful part of the result: the dispatcher was mostly blocked on work that had
-not finished, not on poll granularity. This pipeline is throughput-bound, so removing the poll buys
-CPU rather than latency.
-
-**Duplicated `execute_and_capture` implementations — done for four of the five.**
-`src/runner/spot.cpp`, `src/runner/black.cpp`, `src/runner/ltlfilt.cpp` and `src/runner/ganak.cpp`
-each carried a near-identical copy. That is not a performance problem in itself, but it is why both
-spawn-path fixes on this branch had to be repeated per copy — `posix_spawn` twice, `O_CLOEXEC` five
-times — and why one of them was easy to miss.
-
-They now share `run_subprocess` (`include/runner/subprocess.hpp`). The copies differed on exactly
-two axes, a timeout and whether the child must die with its parent, so both became options.
-`spot.cpp` is the only caller asking for the second, which is why it alone keeps `fork()`. Net
-effect on the runners is 507 lines removed for 21 added, against a roughly 190-line shared module.
-
-Two callers are deliberately left out. `src/runner/formaliser.cpp` keeps one long-lived `node`
-child rather than one per call, so it is a different shape entirely. `run_ltlfilt_batch` drives a
-bidirectional pipe pair, which `run_subprocess` does not cover — it only captures output — so it
-spawns and reaps for itself. Folding either in would mean widening the shared interface to fit one
-caller each.
-
-## Validation under ThreadSanitizer
-
-The batcher and the completion queue are both new concurrency, so the branch was checked under the
-`tsan` preset as well as the normal suite. The check earned its keep immediately: a whole `counter`
-run over `fsm` reported 41 data races, all of them in the new batching code.
-
-The cause is worth recording, because guarding it the obvious way did not fix it.
-`run_ltlfilt_batch` accumulated into `LtlfiltStats::total_cpu_s`, a static that `simplify_ltl`
-already updates under its cache lock. Giving the batch path a mutex of its own left two locks
-protecting one variable, which is no protection at all, and ThreadSanitizer went on reporting it.
-The batch now hands the child's CPU time back through an out-parameter and the leader books it
-against its own call, so there is one writer under one lock.
-
-After that fix: a full run is clean (0 races, exit 0), and the whole suite passes under `tsan`,
-38 of 38 with no warnings. No pre-existing race surfaced on either workload.
-
-The in-process simplifier was checked the same way, and needed to be: it puts a linked library with
-process-global state under every scoring thread, which is exactly the shape the spike showed can
-crash. A full `counter` run on `fsm` with `simplify_engine = "libspot"` reports 0 races and exits 0,
-and the suite passes 39 of 39 under `tsan` with no warnings, the extra suite being the concurrency
-test that drives eight callers through `spot_simplify` at once. This confirms on a real workload
-what the spike established in isolation: one shared simplifier behind one process-wide lock is
-enough, and nothing else is.
-
-Building the `tsan` preset in a worktree is cheap if `build-tsan/third_party` is symlinked to a
-tree that already has Spot and black built; otherwise it rebuilds both from source.
-
-## The thread pool ignored its own setting
-
-The intent was to measure how a run scales with worker count, by varying `[runtime] parallel` from 1
-to 20. The result looked like a finding. Wall time barely moved, and more workers were slightly
-*worse*: 4.24, 4.33, 4.80, 5.28 and 4.87 s at 1, 2, 4, 8 and 20 on the in-process path, and a flat
-6.93, 6.66, 6.88, 6.78, 6.45 s on the spawning one. Read at face value, that says the run is bound
-by something serial and parallelism is not the lever.
-
-It says nothing of the kind. `global_thread_pool()` was hard-coded to
-`std::thread::hardware_concurrency()` and never read `Config::parallel` at all. The key reached only
-`max_in_flight` in `score_population`, the bounded-async in-flight window. The experiment therefore
-varied the window, not the pool, and every one of those runs used a full-width pool of twenty. The
-lesson is the ordinary one: a knob that produces no effect is as likely to be disconnected as to be
-unimportant, and checking that it is wired takes less time than interpreting the result.
-
-Both `schemas/config-schema.json` and `example-config.toml` describe the key as "thread pool size",
-so this was a documented promise the code did not keep.
-
-It matters most where it was relied on. `scripts/run_experiments.py` writes `parallel = k` into each
-level's config for exactly this purpose — its own comment says it caps each run's internal thread
-pool so that jobs times parallel comes to about the core count. That never happened. On a 20-core
-machine a campaign with eight concurrent jobs ran eight full-width pools, so 160 workers contended
-for 20 cores. This does not put any archived campaign's *results* in doubt, but their recorded
-timings are timings of an oversubscribed machine.
-
-The fix is to read the key when the pool is first built, with zero meaning the hardware concurrency,
-so a caller that never sets it is unaffected.
-
-What it buys, measured on `fsm` gen20/pop1000, four concurrent runs, five interleaved repetitions:
-
-- pools of five, which is what `parallel = 5` now gives: 6.849, 6.930, 6.938, 6.988, 7.023 s, median
-  6.94 s;
-- full-width pools, which is what ran before: 8.377, 8.382, 8.398, 8.518, 8.524 s, median 8.40 s.
-
-The distributions do not overlap: about 17% sooner, for a machine doing the same work.
-
-With the key honoured, the scaling measurement can finally be taken, and it is the one that should
-have been there all along. One run, workers 1 through 20:
-
-| workers | in process | spawning |
-|---|---|---|
-| 1 | 18.69 s | 39.22 s |
-| 2 | 9.23 s | 18.99 s |
-| 4 | 6.00 s | 10.08 s |
-| 8 | 5.01 s | 8.42 s |
-| 20 | 4.36 s | 6.45 s |
-
-Two things are worth reading off it. Neither path scales anywhere near linearly — twenty workers buy
-4.3 times the throughput of one in process, and 6.1 times spawning — so a campaign is better served
-by many small pools than by one wide one, which is precisely what the broken key was trying to
-arrange. And the in-process path scales the worse of the two, which is the global libspot lock
-showing up exactly where the previous section predicts it would.
-
-The single-worker row is the cleanest comparison this document has of what removing the execs buys,
-because nothing contends at one worker: 18.69 s against 39.22 s, a little over half.
-
-Output is identical across pool sizes 1 and 20 for the same seed, so the key changes cost and not
-results.
-
 ## A regression the other specifications found
 
 Every measurement up to this point was taken on `fsm`. Repeating the comparison on the other
@@ -890,6 +737,65 @@ because the failure mode was measured on the other path and the two paths are th
 because anything here got faster — a change with no measured benefit should say so rather than
 borrow the credit of the one next to it.
 
+## The thread pool ignored its own setting
+
+The intent was to measure how a run scales with worker count, by varying `[runtime] parallel` from 1
+to 20. The result looked like a finding. Wall time barely moved, and more workers were slightly
+*worse*: 4.24, 4.33, 4.80, 5.28 and 4.87 s at 1, 2, 4, 8 and 20 on the in-process path, and a flat
+6.93, 6.66, 6.88, 6.78, 6.45 s on the spawning one. Read at face value, that says the run is bound
+by something serial and parallelism is not the lever.
+
+It says nothing of the kind. `global_thread_pool()` was hard-coded to
+`std::thread::hardware_concurrency()` and never read `Config::parallel` at all. The key reached only
+`max_in_flight` in `score_population`, the bounded-async in-flight window. The experiment therefore
+varied the window, not the pool, and every one of those runs used a full-width pool of twenty. The
+lesson is the ordinary one: a knob that produces no effect is as likely to be disconnected as to be
+unimportant, and checking that it is wired takes less time than interpreting the result.
+
+Both `schemas/config-schema.json` and `example-config.toml` describe the key as "thread pool size",
+so this was a documented promise the code did not keep.
+
+It matters most where it was relied on. `scripts/run_experiments.py` writes `parallel = k` into each
+level's config for exactly this purpose — its own comment says it caps each run's internal thread
+pool so that jobs times parallel comes to about the core count. That never happened. On a 20-core
+machine a campaign with eight concurrent jobs ran eight full-width pools, so 160 workers contended
+for 20 cores. This does not put any archived campaign's *results* in doubt, but their recorded
+timings are timings of an oversubscribed machine.
+
+The fix is to read the key when the pool is first built, with zero meaning the hardware concurrency,
+so a caller that never sets it is unaffected.
+
+What it buys, measured on `fsm` gen20/pop1000, four concurrent runs, five interleaved repetitions:
+
+- pools of five, which is what `parallel = 5` now gives: 6.849, 6.930, 6.938, 6.988, 7.023 s, median
+  6.94 s;
+- full-width pools, which is what ran before: 8.377, 8.382, 8.398, 8.518, 8.524 s, median 8.40 s.
+
+The distributions do not overlap: about 17% sooner, for a machine doing the same work.
+
+With the key honoured, the scaling measurement can finally be taken, and it is the one that should
+have been there all along. One run, workers 1 through 20:
+
+| workers | in process | spawning |
+|---|---|---|
+| 1 | 18.69 s | 39.22 s |
+| 2 | 9.23 s | 18.99 s |
+| 4 | 6.00 s | 10.08 s |
+| 8 | 5.01 s | 8.42 s |
+| 20 | 4.36 s | 6.45 s |
+
+Two things are worth reading off it. Neither path scales anywhere near linearly — twenty workers buy
+4.3 times the throughput of one in process, and 6.1 times spawning — so a campaign is better served
+by many small pools than by one wide one, which is precisely what the broken key was trying to
+arrange. And the in-process path scales the worse of the two, which is the global libspot lock
+showing up exactly where the previous section predicts it would.
+
+The single-worker row is the cleanest comparison this document has of what removing the execs buys,
+because nothing contends at one worker: 18.69 s against 39.22 s, a little over half.
+
+Output is identical across pool sizes 1 and 20 for the same seed, so the key changes cost and not
+results.
+
 ## Where a run's wall time goes now
 
 The `--dashboard` progress log already times every pipeline stage, so the breakdown below needs no
@@ -918,6 +824,33 @@ per-stage dependency inside stages that are already parallel.
 That also settles where `black` sits in the ranking. It is the tool this workload now spends most of
 its time inside, it has no batch mode and no library to link, and the two stages that call it are
 the two largest. Reducing the number of calls is the lever left, not making each one cheaper.
+
+## Validation under ThreadSanitizer
+
+The batcher and the completion queue are both new concurrency, so the branch was checked under the
+`tsan` preset as well as the normal suite. The check earned its keep immediately: a whole `counter`
+run over `fsm` reported 41 data races, all of them in the new batching code.
+
+The cause is worth recording, because guarding it the obvious way did not fix it.
+`run_ltlfilt_batch` accumulated into `LtlfiltStats::total_cpu_s`, a static that `simplify_ltl`
+already updates under its cache lock. Giving the batch path a mutex of its own left two locks
+protecting one variable, which is no protection at all, and ThreadSanitizer went on reporting it.
+The batch now hands the child's CPU time back through an out-parameter and the leader books it
+against its own call, so there is one writer under one lock.
+
+After that fix: a full run is clean (0 races, exit 0), and the whole suite passes under `tsan`,
+38 of 38 with no warnings. No pre-existing race surfaced on either workload.
+
+The in-process simplifier was checked the same way, and needed to be: it puts a linked library with
+process-global state under every scoring thread, which is exactly the shape the spike showed can
+crash. A full `counter` run on `fsm` with `simplify_engine = "libspot"` reports 0 races and exits 0,
+and the suite passes 39 of 39 under `tsan` with no warnings, the extra suite being the concurrency
+test that drives eight callers through `spot_simplify` at once. This confirms on a real workload
+what the spike established in isolation: one shared simplifier behind one process-wide lock is
+enough, and nothing else is.
+
+Building the `tsan` preset in a worktree is cheap if `build-tsan/third_party` is symlinked to a
+tree that already has Spot and black built; otherwise it rebuilds both from source.
 
 ## What the debug preset caught
 
@@ -990,6 +923,73 @@ that does not — an oversized formula, a failed allocation, a concurrent first-
 that fails its check, an unexpected library error. A clean sweep is evidence about the common case
 and very little about the rest, and performance work is unusually good at adding rare paths, because
 most of what it does is add a second way of doing something.
+
+## Ranked targets
+
+**Batched tool calls — done for `ltlfilt`.** The largest lever on CPU, and the lever is eliminating
+per-spawn startup rather than keeping a process warm. It buys about 19% of total CPU and costs about
+5% of wall time; the design and the numbers are in "The batched simplifier" above. Two parts of this
+target are untouched. `black` accounts for 818
+execs on this workload and has no batch mode of its own, so nothing here applies to it. `ltlsynt` is
+still one exec per call; `ltl2tgba` no longer is, but by moving in process rather than by batching,
+so nothing in this entry applies to it either.
+
+**Link `libspot` in process — done for both tools that can move.** SPOT
+is already built from source, and `libspot.so` and its headers sit in the build tree.
+Simplification now runs in process whenever the shared lock can be taken within the cost of a spawn,
+and spawns otherwise, which takes `fsm` gen20/pop1000 from a median of 6.47 s to 5.10 s of whole-run
+wall, about 21%. The 1791 distinct formulae such a run simplifies cost 0.05 s in process against the
+11.82 s the exec path spent in `ltlfilt/batch-exec`, nearly all of which was startup; the design and
+the numbers are in "The in-process simplifier" above, and the reason it is conditional rather than
+unconditional is in "A regression the other specifications found". Counting-path translation followed it, but only when no per-call
+deadline is configured, which is the default; "The in-process translator" has that argument and its
+measurements. `ltlsynt` cannot move as things stand, because its per-call timeout and its memory cap
+both work by killing a separate process. Replacing the ability to abandon a call is a design
+question rather than an optimisation, and it is the thing to answer before that last tool moves.
+
+The top remaining in-process target is the lock the two moved tools now share. It is held for about
+1.05 s of a 4.6 s run, and the wait it imposes on callers is roughly 16 s of scope wall summed
+across twenty scoring threads; "The lock is now the limiting factor" has the figures. `black` is not
+part of any of this: 890 calls and 24.9 s on this workload, with no batch mode of its own and no
+library to link, so nothing here applies to it.
+
+**Thread-pool oversubscription — fixed.** `[runtime] parallel` was documented as the thread pool
+size and never reached the pool, so every run built a full-width one no matter what a campaign
+asked for. Honouring the key takes four concurrent `fsm` gen20/pop1000 runs from a median of 8.40 s
+to 6.94 s, about 17% sooner for the same work. The scaling table in "The thread pool ignored its own
+setting" says where that comes from: twenty workers buy 4.3 times the throughput of one in process,
+so campaign throughput comes from running more jobs with smaller pools rather than from widening any
+single run.
+
+**`dispatch/collect-one-ready` — done.** `run_bounded_async` polled each outstanding future with
+`wait_for(0ms)` in a loop and then slept 1 ms, which cost 0.372 s of CPU across 11,535 calls and put
+up to a millisecond in front of every completion. Workers now push their result onto a mutex and
+condition-variable queue and signal it, so the dispatcher blocks until there is something to
+collect. `run_bounded_async` takes the task rather than a future, since every call site was already
+wrapping its work in `global_thread_pool().submit(...)`, and moving that inside is what lets the
+wrapper attach the signal.
+
+The scope's CPU falls from 0.372 s to about 0.21 s. Its wall time barely moves and neither does the
+run's, which is the useful part of the result: the dispatcher was mostly blocked on work that had
+not finished, not on poll granularity. This pipeline is throughput-bound, so removing the poll buys
+CPU rather than latency.
+
+**Duplicated `execute_and_capture` implementations — done for four of the five.**
+`src/runner/spot.cpp`, `src/runner/black.cpp`, `src/runner/ltlfilt.cpp` and `src/runner/ganak.cpp`
+each carried a near-identical copy. That is not a performance problem in itself, but it is why both
+spawn-path fixes on this branch had to be repeated per copy — `posix_spawn` twice, `O_CLOEXEC` five
+times — and why one of them was easy to miss.
+
+They now share `run_subprocess` (`include/runner/subprocess.hpp`). The copies differed on exactly
+two axes, a timeout and whether the child must die with its parent, so both became options.
+`spot.cpp` is the only caller asking for the second, which is why it alone keeps `fork()`. Net
+effect on the runners is 507 lines removed for 21 added, against a roughly 190-line shared module.
+
+Two callers are deliberately left out. `src/runner/formaliser.cpp` keeps one long-lived `node`
+child rather than one per call, so it is a different shape entirely. `run_ltlfilt_batch` drives a
+bidirectional pipe pair, which `run_subprocess` does not cover — it only captures output — so it
+spawns and reaps for itself. Folding either in would mean widening the shared interface to fit one
+caller each.
 
 ## Reproducing
 

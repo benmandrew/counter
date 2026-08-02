@@ -868,6 +868,19 @@ derived value therefore sits close to the empirical optimum on both, without hav
 either, which is the property worth having: a tuned constant would be tuned to whichever
 specification happened to be measured.
 
+### The translator gets the same budget, without a measurement to justify it
+
+Translation kept blocking on the lock for a while after simplification stopped, and that asymmetry
+was an accident rather than a decision: both calls contend on the same lock, so both can be starved
+the same way. Determinization can be arbitrarily expensive, so a specification whose translations
+cost what `lift`'s simplifications cost would serialise exactly as `lift` did.
+
+It is worth being clear that this change buys nothing measurable. Three interleaved repetitions on
+`fsm`, `lift` and `fsm-combined` overlap with the blocking translator in every case. It is kept
+because the failure mode was measured on the other path and the two paths are the same shape, not
+because anything here got faster — a change with no measured benefit should say so rather than
+borrow the credit of the one next to it.
+
 ## Where a run's wall time goes now
 
 The `--dashboard` progress log already times every pipeline stage, so the breakdown below needs no

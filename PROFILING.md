@@ -745,6 +745,35 @@ because nothing contends at one worker: 18.69 s against 39.22 s, a little over h
 Output is identical across pool sizes 1 and 20 for the same seed, so the key changes cost and not
 results.
 
+## Where a run's wall time goes now
+
+The `--dashboard` progress log already times every pipeline stage, so the breakdown below needs no
+extra instrumentation: run with `--dashboard` and sum the `stage` records in `progress.jsonl` by
+name. For `fsm` gen20/pop1000 at twenty workers, over the whole run:
+
+| stage | total | share |
+|---|---|---|
+| `weakening` | 1.83 s | 40.3% |
+| `score` | 1.76 s | 38.8% |
+| `vacuous-assumptions` | 0.60 s | 13.2% |
+| `breed` | 0.17 s | 3.6% |
+| `select` | 0.11 s | 2.5% |
+| the remaining seven stages | 0.05 s | 1.6% |
+
+The stages sum to 4.53 s, which is the run, so this accounts for all of it rather than a sample of
+it.
+
+Two things follow. Scoring is no longer the largest stage — `weakening` is, and it is not far off
+scoring and `vacuous-assumptions` combined. Both of those are `black` filters rather than fitness
+work, which puts the majority of a run's wall time in the satisfiability checker rather than in the
+search. And every stage above one percent is already dispatched through the pool, so the sublinear
+scaling recorded above is not an unparallelised stage waiting to be found; it is contention and
+per-stage dependency inside stages that are already parallel.
+
+That also settles where `black` sits in the ranking. It is the tool this workload now spends most of
+its time inside, it has no batch mode and no library to link, and the two stages that call it are
+the two largest. Reducing the number of calls is the lever left, not making each one cheaper.
+
 ## What the debug preset caught
 
 This branch was verified under `relwithdebinfo` and `tsan` throughout, and both were the wrong

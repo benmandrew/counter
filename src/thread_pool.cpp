@@ -1,5 +1,6 @@
 #include "thread_pool.hpp"
 
+#include <atomic>
 #include <thread>
 #include <utility>
 
@@ -40,8 +41,24 @@ void ThreadPool::worker_loop() {
     }
 }
 
+namespace {
+
+// 0 means "use the hardware concurrency", which is what a run that never calls
+// set_thread_pool_size gets. Read once, when the pool below is first touched.
+std::atomic<std::size_t> g_pool_size{0};
+
+}  // namespace
+
+void set_thread_pool_size(std::size_t size) { g_pool_size.store(size); }
+
 ThreadPool& global_thread_pool() {
-    const std::size_t hw_threads = std::thread::hardware_concurrency();
-    static ThreadPool pool(hw_threads > 0 ? hw_threads : 1);
+    static ThreadPool pool([] {
+        const std::size_t requested = g_pool_size.load();
+        if (requested > 0) {
+            return requested;
+        }
+        const std::size_t hw_threads = std::thread::hardware_concurrency();
+        return hw_threads > 0 ? hw_threads : 1;
+    }());
     return pool;
 }

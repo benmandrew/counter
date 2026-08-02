@@ -92,6 +92,41 @@ Every header file in `include/` must have a corresponding `.rst` page under `doc
 6. Apply final filters: dedup, then optional implication filter to keep only maximal specs.
 7. Score, sort, and write each maximal spec to `<output-dir>/repair_N.json`.
 
+## Profiling
+
+`COUNTER_PROFILE=<path>` turns on the scope profiler (`include/profile.hpp`) and
+writes a table to stderr plus JSON to `<path>`; `COUNTER_PROFILE=1` gives the
+table only. Off otherwise, at the cost of one relaxed atomic load per scope.
+`COUNTER_PROFILE_SCOPE("name")` times a block, recording calls, wall time,
+**per-thread CPU time** and the slowest call.
+
+Wall and CPU are recorded separately because that ratio is the whole diagnostic:
+a scope with large wall and near-zero CPU is blocked on a child process, not
+computing. The per-tool "Tool timing report" in `src/main.cpp` says how long each
+external tool took; this says where inside a call it went. Use
+`profile::site_interned` for a name only known at run time, and resolve it once
+rather than per call.
+
+`perf` and `gdb`/`strace` attach are unavailable on the dev box
+(`kernel.perf_event_paranoid=4`, yama `ptrace_scope`), which is why this is
+in-process instrumentation rather than sampling. `strace` still works when it
+*launches* the process rather than attaching to a running one.
+
+Findings and the ranked optimisation targets live in `PROFILING.md`. The short
+version: counter's own computation is not the bottleneck. Nearly all of a run is
+waiting on external tools, and over half of *that* is per-process startup —
+about 9ms and ~2700 minor page faults per exec, independent of formula
+difficulty, because each child demand-pages its own binary and libspot.
+
+Two traps recorded there. Do not build a streaming request/response protocol on
+a SPOT tool: `ltlfilt` does not answer one line per line, it flushes in
+irregular lumps and holds the rest until stdin hits EOF, and `stdbuf` cannot
+reach it because SPOT writes through C++ streams detached from stdio. Batch
+(write all, close stdin, read all) is the shape that works. And every tool pipe
+must be created `pipe2(..., O_CLOEXEC)`: without it a spawned child inherits
+other in-flight calls' pipes and holds their write ends open, so the reader
+never sees EOF.
+
 ## Live dashboard
 
 Opt-in, via `counter --dashboard` or `[runtime] dashboard = true` (the flag can

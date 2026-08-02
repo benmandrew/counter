@@ -14,6 +14,8 @@ Measured, reproducible, and load-bearing for everything below:
 - `ltlfilt`'s output flushing behaviour, taken from an `strace` and from interactive driving;
 - the parent-side central processing unit (CPU) cost difference between `fork()` and
   `posix_spawn()`, measured inside the spawn scope;
+- the split of cost across the four fitness objectives, and the fact that the pure-CPU inner
+  algorithms (`count_traces`, `guard_models`, `syntactic`, `halstead`) are cheap;
 - byte-identical output across all 12 `repair_N.json` files before and after every change.
 
 Not established: any whole-run wall-clock improvement from this pass. Repeat runs of the same
@@ -39,9 +41,18 @@ Instrumented so far:
 
 - the subprocess path in each runner, split into `proc/fork+exec`, `proc/read` and `proc/wait`;
 - `ltlfilt/simplify_ltl` and its cache lookup;
-- `dispatch/collect-one-ready` in `include/bounded_async.hpp`.
+- `dispatch/collect-one-ready` in `include/bounded_async.hpp`;
+- one scope per fitness objective, so each objective's cost is separated from the others;
+- `count/count_traces` (`src/fitness/model_counter.cpp`), `count/build_transfer_from_hoa` and
+  `count/guard_models` (`src/fitness/transfer_matrix.cpp`), and
+  `fitness/syntactic_similarity_spec` (`src/fitness/syntactic_similarity.cpp`).
 
-This complements the existing "Tool timing report" in `src/main.cpp` rather than replacing it. That
+The per-objective scopes need a second entry point. Objective names are known only at run time, so
+`profile::site_interned` *interns* a run-time name — it maps the string to a stable site once and
+returns a handle to it. The aggregate fitness function resolves its sites when it is constructed,
+not on every call, so an objective is never charged for the profiler's string handling.
+
+The profiler therefore covers the in-process side as well as the subprocesses. This complements the existing "Tool timing report" in `src/main.cpp` rather than replacing it. That
 report says how long each external tool took; it does not say where inside a call the time went.
 
 `perf record` is unavailable on this machine (`kernel.perf_event_paranoid=4`), which is why the
@@ -169,6 +180,45 @@ The payoff measured earlier is real, but it is available only in the *batch* sha
 formula, close stdin, then read every reply. That is what the 200-formula measurement did. Getting
 it needs a batch entry point rather than a drop-in replacement for `simplify_ltl`, which is called
 deep inside fitness evaluation where no batch of formulae exists to submit.
+
+## Where the in-process time goes
+
+The per-objective scopes answer a separate question: of the work `counter` does itself, what costs
+anything? Same workload as above — `fsm`, 20 generations, population 1000, seed 0. The run scored
+617 individuals.
+
+| site | calls | wall | cpu | wall/call |
+|---|---|---|---|---|
+| `fitness/status` | 617 | 17.741 s | 0.741 s | 28.75 ms |
+| `fitness/semantic` | 617 | 8.741 s | 0.621 s | 14.17 ms |
+| `count/build_transfer_from_hoa` | 511 | 0.985 s | 0.098 s | 1.93 ms |
+| `count/guard_models` | 511 | 0.930 s | 0.088 s | 1.82 ms |
+| `fitness/syntactic` | 617 | 0.448 s | 0.128 s | 0.73 ms |
+| `fitness/syntactic_similarity_spec` | 629 | 0.442 s | 0.125 s | 0.70 ms |
+| `fitness/halstead` | 617 | 0.250 s | 0.073 s | 0.41 ms |
+| `count/count_traces` | 511 | 0.001 s | 0.001 s | 0.003 ms |
+
+Whole-run figures for this measurement: 6.08 s wall, 19.17 s user CPU, 38.61 s system CPU. Output
+stayed byte-identical to the baseline's 12 `repair_N.json` files.
+
+`status` and `semantic` are 26.5 s of roughly 27.2 s of total objective wall time. Both are
+dominated by external tools — `ltlsynt` and `black` for `status`, `ltl2tgba` and Ganak for
+`semantic`. Both have a cpu/wall ratio near zero, so the scoring thread is blocked on a child
+process rather than computing.
+
+The two objectives that are pure in-process computation are `syntactic` and `halstead`. Together
+they account for under 0.7 s of wall time and about 0.2 s of CPU across the whole run. Optimising
+either would buy nothing.
+
+The algorithms that a static reading of the code flags as risky are not hot in practice.
+`count_traces` performs the repeated-squaring matrix power, which is cubic in state count, and costs
+1 ms across the entire run. `count/guard_models` is exponential in the number of atoms a transition
+guard does not mention, and costs 0.088 s of CPU. Measurement contradicts complexity analysis here,
+and the measurement is the one to trust: on current evidence neither should be touched.
+
+The wider result is that `counter`'s own computation is not the bottleneck. Nearly all of the run is
+spent waiting on external tools, and more than half of that wait is per-process startup rather than
+solving. This reinforces the top two ranked targets below instead of adding a third.
 
 ## Ranked remaining targets
 

@@ -39,13 +39,21 @@ void test_scope_records_a_call() {
 }
 
 void test_repeated_names_share_one_site() {
-    const profile::Site& first = profile::site_interned("test/shared-name");
-    const profile::Site& second = profile::site_interned("test/shared-name");
-    expect(&first == &second, "the same name resolves to the same Site");
+    // Named rather than passed as a literal: site_interned takes a
+    // std::string and returns a reference, so a temporary argument makes gcc's
+    // -Wdangling-reference suspect the result points into it. It does not --
+    // the Site outlives the process on purpose -- and taking the address
+    // rather than binding a reference says so without needing the warning
+    // suppressed. The literals here are the point of the test, so they stay:
+    // the third lookup below uses a distinct string object, and all three must
+    // land on one Site for interning to be by value rather than by pointer.
+    const profile::Site* first = &profile::site_interned("test/shared-name");
+    const profile::Site* second = &profile::site_interned("test/shared-name");
+    expect(first == second, "the same name resolves to the same Site");
 
     const std::string name = "test/shared-name";
-    const profile::Site& third = profile::site_interned(name);
-    expect(&first == &third,
+    const profile::Site* third = &profile::site_interned(name);
+    expect(first == third,
            "a name from a different string object still resolves to one Site");
 }
 

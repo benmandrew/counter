@@ -379,11 +379,22 @@ run's, which is the useful part of the result: the dispatcher was mostly blocked
 not finished, not on poll granularity. This pipeline is throughput-bound, so removing the poll buys
 CPU rather than latency.
 
-**Five duplicated `execute_and_capture` implementations.** `src/runner/spot.cpp`,
-`src/runner/black.cpp`, `src/runner/ltlfilt.cpp`, `src/runner/ganak.cpp` and
-`src/runner/formaliser.cpp` each carry a near-identical copy. This is not a performance problem in
-itself, but every fix to the spawn path has to be made five times, as both the `posix_spawn` change
-and the `O_CLOEXEC` fix did.
+**Duplicated `execute_and_capture` implementations — done for four of the five.**
+`src/runner/spot.cpp`, `src/runner/black.cpp`, `src/runner/ltlfilt.cpp` and `src/runner/ganak.cpp`
+each carried a near-identical copy. That is not a performance problem in itself, but it is why both
+spawn-path fixes on this branch had to be repeated per copy — `posix_spawn` twice, `O_CLOEXEC` five
+times — and why one of them was easy to miss.
+
+They now share `run_subprocess` (`include/runner/subprocess.hpp`). The copies differed on exactly
+two axes, a timeout and whether the child must die with its parent, so both became options.
+`spot.cpp` is the only caller asking for the second, which is why it alone keeps `fork()`. Net
+effect on the runners is 507 lines removed for 21 added, against a roughly 190-line shared module.
+
+Two callers are deliberately left out. `src/runner/formaliser.cpp` keeps one long-lived `node`
+child rather than one per call, so it is a different shape entirely. `run_ltlfilt_batch` drives a
+bidirectional pipe pair, which `run_subprocess` does not cover — it only captures output — so it
+spawns and reaps for itself. Folding either in would mean widening the shared interface to fit one
+caller each.
 
 ## Validation under ThreadSanitizer
 

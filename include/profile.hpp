@@ -52,6 +52,12 @@ bool enabled();
 /// source location rather than once per call.
 Site& site(const char* name);
 
+/// As site(), for a name only known at run time -- a fitness objective's
+/// registered name, say, rather than a source location. The string is interned
+/// and outlives the caller's copy, so the Site's name pointer stays valid.
+/// Call it once and keep the reference; it is not cheap enough for a hot loop.
+Site& site_interned(const std::string& name);
+
 /// Adds @p n to a free-standing counter (no timing). For quantities that are
 /// not durations: bytes read, cache entries, retries.
 void add_count(const char* name, std::uint64_t n = 1);

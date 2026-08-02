@@ -5,6 +5,7 @@
 #include <algorithm>
 #include <cstdlib>
 #include <cstring>
+#include <deque>
 #include <fstream>
 #include <iomanip>
 #include <iostream>
@@ -82,6 +83,22 @@ Site& site(const char* name) {
     auto* fresh = new Site(name);
     site_registry().push_back(fresh);
     return *fresh;
+}
+
+Site& site_interned(const std::string& name) {
+    // Interned in a deque, not a vector: Site holds a bare pointer into these
+    // strings, and a vector would invalidate every one of them when it grew.
+    static std::deque<std::string> interned;
+    {
+        const std::scoped_lock lock(registry_mutex());
+        for (Site* existing : site_registry()) {
+            if (name == existing->m_name) {
+                return *existing;
+            }
+        }
+        interned.push_back(name);
+    }
+    return site(interned.back().c_str());
 }
 
 void add_count(const char* name, std::uint64_t n) {

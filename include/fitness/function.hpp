@@ -14,6 +14,7 @@
 #include <vector>
 
 #include "config.hpp"
+#include "profile.hpp"
 #include "requirement.hpp"
 
 /// Default weight for WeightedFitnessFunction when not explicitly specified.
@@ -56,6 +57,10 @@ class AggregateWeightedFitnessFunctionT {
     mutable std::unordered_map<Spec, std::vector<double>> m_cache;
     mutable std::unique_ptr<std::mutex> m_cache_mutex =
         std::make_unique<std::mutex>();
+    /// One profiler site per objective, resolved once at construction: the
+    /// names are only known at run time, and interning them per call would
+    /// charge the objective for the profiler's own string handling.
+    std::vector<profile::Site*> m_profile_sites;
     const double m_total_weight;
 
     /// Returns the per-objective scores for @p spec, computing and caching
@@ -74,8 +79,9 @@ class AggregateWeightedFitnessFunctionT {
         }
         std::vector<double> values;
         values.reserve(m_fitness_functions.size());
-        for (const auto& wff : m_fitness_functions) {
-            values.push_back(wff.function(spec));
+        for (std::size_t i = 0; i < m_fitness_functions.size(); ++i) {
+            const profile::Scope scope(*m_profile_sites[i]);
+            values.push_back(m_fitness_functions[i].function(spec));
         }
         std::scoped_lock lock(*m_cache_mutex);
         return m_cache.emplace(spec, std::move(values)).first->second;
@@ -102,7 +108,13 @@ class AggregateWeightedFitnessFunctionT {
                   total += wff.weight;
               }
               return total;
-          }()) {}
+          }()) {
+        m_profile_sites.reserve(m_fitness_functions.size());
+        for (const auto& wff : m_fitness_functions) {
+            m_profile_sites.push_back(
+                &profile::site_interned("fitness/" + wff.name));
+        }
+    }
 
     /// Computes the weighted average fitness score for a given specification
     /// element, returning a cached value if it has been scored before.

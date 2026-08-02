@@ -42,16 +42,16 @@ gen20/pop1000, against the same binary configured to spawn both tools as it used
 | | spawning both | in process | |
 |---|---|---|---|
 | one run, three repetitions | 6.52 s | 5.15 s | 21% sooner |
-| four concurrent runs, five repetitions | 12.46 s | 8.33 s | 33% sooner |
+| four concurrent runs, five repetitions | 12.50 s | 8.98 s | 28% sooner |
 
-Both are medians, and neither pair of distributions overlaps. The single-run row is the in-process
-path as it now stands, with the 8 ms lock budget described under "Waiting only as long as a spawn
-would cost"; an earlier version of this section reported 6.54 s to 4.87 s over seven repetitions
-for the same workload, taken before that budget existed, and that pair is superseded. The
-concurrent row predates the budget and has not been re-measured. Almost all of the single-run gain
-is the simplifier; the translator adds CPU headroom rather than latency, which is why its own
-contribution shows up in the concurrent row and not the first. The batcher's own wall cost stands as
-measured, and now applies only when the exec engine is selected explicitly.
+Both are medians, and neither pair of distributions overlaps. Both rows are the in-process path as
+it now stands, with the 8 ms lock budget described under "Waiting only as long as a spawn would
+cost". Earlier versions of this section reported 6.54 s to 4.87 s and 12.46 s to 8.33 s, both taken
+before that budget existed; those pairs are superseded, and the small loss against them is the
+budget's price, paid to remove a regression elsewhere. Almost all of the single-run gain is the
+simplifier; the translator adds CPU headroom rather than latency, which is why its own contribution
+shows up in the concurrent row and not the first. The batcher's own wall cost stands as measured,
+and now applies only when the exec engine is selected explicitly.
 
 One specification is not enough to claim a general result, so the comparison was repeated on every
 other FRETISH example in the repository and on two TLSF ones, three interleaved repetitions each,

@@ -90,6 +90,11 @@ std::atomic<std::int64_t> g_ltlsynt_timeout_ms{0};
 // the run is torn down.
 std::atomic<std::int64_t> g_ltl2tgba_timeout_ms{0};
 
+// How long a caller waits for the libspot lock before spawning ltl2tgba
+// instead. Same reasoning and same value as the simplification path: a spawn
+// costs about this much, so past it queueing is the worse deal.
+constexpr std::chrono::milliseconds k_libspot_lock_budget{8};
+
 // RAII acquire/release around the ltlsynt exec, so a throwing execute call
 // (or parse) never leaks a permit and deadlocks the remaining workers.
 class GateGuard {
@@ -243,7 +248,7 @@ std::string run_ltl2tgba_for_counting(const std::string& formula) {
     // abandon a translation that does not terminate.
     if (timeout == std::chrono::milliseconds::zero()) {
         const SpotTranslation translation =
-            spot_translate_for_counting(formula);
+            spot_translate_for_counting(formula, k_libspot_lock_budget);
         const double in_process_elapsed =
             std::chrono::duration<double>(std::chrono::steady_clock::now() -
                                           start)
@@ -266,8 +271,10 @@ std::string run_ltl2tgba_for_counting(const std::string& formula) {
             cache.emplace(formula, *translation.m_hoa);
             return *translation.m_hoa;
         }
-        // Unparseable. Fall through to the exec so the failure is reported the
-        // way it always was, by ltl2tgba's own exit code.
+        // Either unparseable, or the lock was busy for longer than a spawn
+        // costs. Both fall through to the exec: the first so the failure is
+        // reported the way it always was, by ltl2tgba's own exit code, and the
+        // second because spawning is the cheaper of the two past that point.
     }
     const std::string binary = ltl2tgba_path();
     assert(access(binary.c_str(), F_OK) == 0);

@@ -155,7 +155,8 @@ void test_translation_matches_ltl2tgba() {
         "X(p) & G(q)",  "F(p)",  "G(p | !p)"};
     for (const std::string& formula : formulas) {
         const std::string in_process =
-            spot_translate_for_counting(formula).m_hoa.value_or(k_declined);
+            spot_translate_for_counting(formula, std::chrono::milliseconds(8))
+                .m_hoa.value_or(k_declined);
         std::string message = "spot-translate: ";
         message.append(formula).append(" should match ltl2tgba -D -S -H");
         expect(strip_name_line(in_process) ==
@@ -165,7 +166,8 @@ void test_translation_matches_ltl2tgba() {
 }
 
 void test_unparseable_formula_is_declined_by_translate() {
-    expect(!spot_translate_for_counting("G(").m_hoa.has_value(),
+    expect(!spot_translate_for_counting("G(", std::chrono::milliseconds(8))
+                .m_hoa.has_value(),
            "spot-translate: an unparseable formula should return no automaton "
            "so the caller can fall back to the exec");
 }
@@ -176,8 +178,8 @@ void test_unparseable_formula_is_declined_by_translate() {
 // a genuinely-true formula counts against the run's scoring-failure tolerance.
 void test_tautology_print_bug_is_reported() {
     // The same minimal trigger spot_tests.cpp uses for the exec path's exit 2.
-    const SpotTranslation translation =
-        spot_translate_for_counting("G((a & !((b & !c) -> d)) -> b)");
+    const SpotTranslation translation = spot_translate_for_counting(
+        "G((a & !((b & !c) -> d)) -> b)", std::chrono::milliseconds(8));
     expect(translation.m_tautology_print_bug,
            "spot-translate: a tautology should be reported as the "
            "prop_complete() print bug, not as a failure");

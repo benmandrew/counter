@@ -73,6 +73,12 @@ struct SpotTranslation {
     /// handled on both paths. The caller substitutes the universal automaton,
     /// exactly as it does for the exec's exit 2.
     bool m_tautology_print_bug = false;
+    /// True when the libspot lock could not be taken within the budget and
+    /// nothing was attempted, so the caller should spawn `ltl2tgba` instead.
+    /// The same trade as for simplification: past the cost of a spawn, spawning
+    /// is cheaper than queueing, and it keeps a workload with expensive
+    /// translations from serialising onto one thread.
+    bool m_lock_busy = false;
 };
 
 /// Translates @p formula into an automaton in HOA form, the in-process
@@ -90,4 +96,5 @@ struct SpotTranslation {
 /// Unlike the exec path this cannot be given a deadline: there is no process to
 /// kill, and C++ has no way to cancel a running call. A caller that needs one
 /// has to keep spawning `ltl2tgba`.
-SpotTranslation spot_translate_for_counting(const std::string& formula);
+SpotTranslation spot_translate_for_counting(const std::string& formula,
+                                            std::chrono::milliseconds budget);

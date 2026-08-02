@@ -62,9 +62,15 @@ SpotSimplification spot_try_simplify(const std::string& formula,
     return result;
 }
 
-SpotTranslation spot_translate_for_counting(const std::string& formula) {
+SpotTranslation spot_translate_for_counting(const std::string& formula,
+                                            std::chrono::milliseconds budget) {
     COUNTER_PROFILE_SCOPE("spot/libspot-translate");
-    const std::scoped_lock lock(spot_mutex());
+    std::unique_lock<std::timed_mutex> lock(spot_mutex(), std::defer_lock);
+    if (!lock.try_lock_for(budget)) {
+        SpotTranslation busy;
+        busy.m_lock_busy = true;
+        return busy;
+    }
     const spot::parsed_formula parsed = spot::parse_infix_psl(formula);
     if (!parsed.errors.empty() || !parsed.f) {
         return {};

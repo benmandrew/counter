@@ -31,6 +31,7 @@
 #include "runner/ganak.hpp"
 #include "runner/ltlfilt.hpp"
 #include "runner/spot.hpp"
+#include "runner/spot_inprocess.hpp"
 #include "serialisation.hpp"
 #include "status_line.hpp"
 #include "thread_pool.hpp"
@@ -161,6 +162,33 @@ void print_timing_report() {
     // The per-tool rows above say how long each tool took; the scope profile
     // says where inside a call that went. No-op unless COUNTER_PROFILE is set.
     profile::report_if_enabled();
+}
+
+// Ends the process, and is the only way this binary should.
+//
+// A translation that missed its deadline is abandoned rather than cancelled, so
+// it can still be running inside libspot when main returns. Returning would
+// then run static destructors -- including libspot's own -- underneath it. The
+// race is narrow: sampling 150 exits across the whole span of a 4.7-second
+// translation produced no failure. Narrow is not absent, though, and the run
+// has by then already done its work and written its output, so a crash here
+// would throw away a completed campaign job. Skipping destruction costs
+// nothing, because nothing this process owns needs releasing that the kernel
+// will not release anyway.
+//
+// Only this binary needs it. The other four never set an ltl2tgba deadline, so
+// they never take the path that can abandon anything.
+[[noreturn]] void leave(int status) {
+    if (spot_abandoned_workers() == 0) {
+        std::exit(status);
+    }
+    // std::_Exit runs no atexit handler, so the report the profiler registers
+    // has to be asked for here. It is idempotent, so the success path having
+    // already printed it above is not a problem.
+    profile::report_if_enabled();
+    std::cout.flush();
+    std::cerr.flush();
+    std::_Exit(status);
 }
 
 // Reports where CPU actually went: this process's own code (all threads) vs.
@@ -703,7 +731,7 @@ int main(int argc, const char* const argv[]) {
         }
     } catch (const std::exception& exc) {
         std::cerr << "fatal: " << exc.what() << "\n";
-        return 1;
+        leave(1);
     }
-    return 0;
+    leave(0);
 }

@@ -1,4 +1,5 @@
 #include <chrono>
+#include <cstddef>
 #include <string>
 #include <thread>
 #include <vector>
@@ -16,6 +17,11 @@ namespace {
 // formula can collide with it, so an assertion comparing against the tool's
 // answer catches a decline as well as a disagreement.
 const char* const k_declined = "<declined>";
+
+// The lock budget the callers use, and "no deadline" -- the default, and what
+// every test that is not about deadlines wants.
+constexpr std::chrono::milliseconds k_budget{8};
+constexpr std::chrono::milliseconds k_no_deadline{0};
 
 std::string via_ltlfilt(const std::string& formula) {
     const SubprocessResult result =
@@ -103,8 +109,7 @@ void test_concurrent_calls_agree() {
 // disagreement here would make which path a call took observable.
 void test_budgeted_simplify_agrees_when_uncontended() {
     const std::string formula = "b | G(Fe U Gc)";
-    const SpotSimplification budgeted =
-        spot_try_simplify(formula, std::chrono::milliseconds(8));
+    const SpotSimplification budgeted = spot_try_simplify(formula, k_budget);
     expect(!budgeted.m_lock_busy,
            "spot-simplify: an uncontended lock should not report busy");
     expect(budgeted.m_formula.value_or(k_declined) ==
@@ -114,8 +119,7 @@ void test_budgeted_simplify_agrees_when_uncontended() {
 }
 
 void test_budgeted_simplify_declines_unparseable() {
-    const SpotSimplification budgeted =
-        spot_try_simplify("G(", std::chrono::milliseconds(8));
+    const SpotSimplification budgeted = spot_try_simplify("G(", k_budget);
     expect(!budgeted.m_lock_busy,
            "spot-simplify: an unparseable formula is not a busy lock");
     expect(!budgeted.m_formula.has_value(),
@@ -155,7 +159,7 @@ void test_translation_matches_ltl2tgba() {
         "X(p) & G(q)",  "F(p)",  "G(p | !p)"};
     for (const std::string& formula : formulas) {
         const std::string in_process =
-            spot_translate_for_counting(formula, std::chrono::milliseconds(8))
+            spot_translate_for_counting(formula, k_budget, k_no_deadline)
                 .m_hoa.value_or(k_declined);
         std::string message = "spot-translate: ";
         message.append(formula).append(" should match ltl2tgba -D -S -H");
@@ -166,7 +170,7 @@ void test_translation_matches_ltl2tgba() {
 }
 
 void test_unparseable_formula_is_declined_by_translate() {
-    expect(!spot_translate_for_counting("G(", std::chrono::milliseconds(8))
+    expect(!spot_translate_for_counting("G(", k_budget, k_no_deadline)
                 .m_hoa.has_value(),
            "spot-translate: an unparseable formula should return no automaton "
            "so the caller can fall back to the exec");
@@ -179,12 +183,107 @@ void test_unparseable_formula_is_declined_by_translate() {
 void test_tautology_print_bug_is_reported() {
     // The same minimal trigger spot_tests.cpp uses for the exec path's exit 2.
     const SpotTranslation translation = spot_translate_for_counting(
-        "G((a & !((b & !c) -> d)) -> b)", std::chrono::milliseconds(8));
+        "G((a & !((b & !c) -> d)) -> b)", k_budget, k_no_deadline);
     expect(translation.m_tautology_print_bug,
            "spot-translate: a tautology should be reported as the "
            "prop_complete() print bug, not as a failure");
     expect(!translation.m_hoa.has_value(),
            "spot-translate: no automaton accompanies the tautology report");
+}
+
+// A deadline moves the work onto another thread, so the question this answers
+// is whether that changes any answer. It must not: which path a translation
+// took is meant to be invisible, and a disagreement here would show up in a
+// campaign only as counts that differ from a run configured slightly
+// differently -- with nothing to point at the cause.
+void test_a_deadline_does_not_change_the_answer() {
+    const std::vector<std::string> formulas = {
+        "G(p -> F(q))", "p & q", "G(F(p))",          "p U q",
+        "X(p) & G(q)",  "F(p)",  "G((a -> b) U !c)", "!(a U (b & Xc))"};
+    for (const std::string& formula : formulas) {
+        const SpotTranslation unbounded =
+            spot_translate_for_counting(formula, k_budget, k_no_deadline);
+        const SpotTranslation deadlined = spot_translate_for_counting(
+            formula, k_budget, std::chrono::seconds(60));
+        expect(!deadlined.m_timed_out,
+               "spot-translate: 60s is not a deadline any of these can miss");
+        expect(deadlined.m_hoa.value_or(k_declined) ==
+                   unbounded.m_hoa.value_or(k_declined),
+               "spot-translate: a deadline must not change the automaton for " +
+                   formula);
+    }
+}
+
+// Determinizing this takes about 4.7 seconds and 50MB, measured, and both
+// figures are why it is the one used here. It has to be slow enough to miss a
+// 250ms deadline on any machine -- a nineteenfold margin -- and it has to
+// finish soon enough afterwards for the recovery below to be checked rather
+// than merely waited out. Related shapes are far worse: the same formula over
+// four GF-implication pairs runs past three minutes, which would make this a
+// test that hangs the suite instead of one that measures it.
+const char* const k_slow_formula =
+    "!((G F a0) <-> (G F a1) <-> (G F a2) <-> (G F a3) <-> (G F a4) <-> "
+    "(G F a5))";
+
+// The whole point of the deadline, and of the three things it has to get right,
+// this is the second: the call returns. It cannot be cancelled, so returning
+// means abandoning, and what has to be checked is that abandoning is bounded --
+// that the process is left slower rather than stuck.
+//
+// Deliberately left as one test rather than three. Each stage is only
+// observable through the state the previous one left behind, and splitting them
+// would leave an abandoned worker running across test boundaries, which is
+// exactly the condition the last stage exists to clear.
+void test_a_missed_deadline_is_abandoned_and_then_recovered_from() {
+    const std::size_t before = spot_abandoned_workers();
+    const auto start = std::chrono::steady_clock::now();
+    const SpotTranslation translation = spot_translate_for_counting(
+        k_slow_formula, k_budget, std::chrono::milliseconds(250));
+    const auto waited = std::chrono::steady_clock::now() - start;
+
+    expect(translation.m_timed_out,
+           "spot-translate: a translation past its deadline must report a "
+           "timeout rather than an automaton");
+    expect(!translation.m_hoa.has_value(),
+           "spot-translate: a timed-out translation carries no automaton");
+    // The deadline is only worth anything if it is the caller's wall time and
+    // not the translation's. Ten seconds is far below the twenty-odd the
+    // formula needs and far above the 250ms asked for, so this fails only if
+    // the call actually waited for the work.
+    expect(waited < std::chrono::seconds(10),
+           "spot-translate: the caller must return on the deadline, not when "
+           "the abandoned translation finishes");
+    expect(spot_abandoned_workers() == before + 1,
+           "spot-translate: the abandoned worker should be counted, so the "
+           "process can tell it is running before it exits");
+
+    // The abandoned worker still holds libspot, so the fast path is gone for as
+    // long as it runs. It has to degrade to spawning the tool -- if the lock
+    // were instead waited on, one bad formula would stall every scoring thread
+    // in the process rather than just slowing it down.
+    const SpotSimplification during =
+        spot_try_simplify("G(p -> F(q))", k_budget);
+    expect(during.m_lock_busy,
+           "spot-simplify: while a worker is abandoned the lock must report "
+           "busy within the budget, sending callers to the tool");
+
+    // And it has to come back on its own. A worker that finished without
+    // releasing libspot would leave the process permanently on the slow path,
+    // which is a performance bug nothing else here would catch.
+    const auto deadline =
+        std::chrono::steady_clock::now() + std::chrono::seconds(120);
+    while (spot_abandoned_workers() != before &&
+           std::chrono::steady_clock::now() < deadline) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(50));
+    }
+    expect(spot_abandoned_workers() == before,
+           "spot-translate: an abandoned worker must eventually finish and "
+           "stop being counted");
+    const SpotSimplification after =
+        spot_try_simplify("G(p -> F(q))", k_budget);
+    expect(!after.m_lock_busy,
+           "spot-simplify: once the abandoned worker finishes, the in-process "
+           "path must be available again");
 }
 
 }  // namespace
@@ -199,4 +298,6 @@ void run_spot_inprocess_tests() {
     test_translation_matches_ltl2tgba();
     test_unparseable_formula_is_declined_by_translate();
     test_tautology_print_bug_is_reported();
+    test_a_deadline_does_not_change_the_answer();
+    test_a_missed_deadline_is_abandoned_and_then_recovered_from();
 }

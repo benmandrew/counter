@@ -240,19 +240,30 @@ std::string run_ltl2tgba_for_counting(const std::string& formula) {
     const auto start = std::chrono::steady_clock::now();
     const auto timeout =
         std::chrono::milliseconds(g_ltl2tgba_timeout_ms.load());
-    // In process when no deadline was asked for, which is the default. The
-    // translation itself measures about 0.16 ms against roughly 10 ms to spawn
-    // ltl2tgba for it, so this is almost entirely startup that is not paid.
-    // A configured timeout keeps the exec, because a deadline here is enforced
-    // by killing the process running the work and there is no other way to
-    // abandon a translation that does not terminate.
-    if (timeout == std::chrono::milliseconds::zero()) {
-        const SpotTranslation translation =
-            spot_translate_for_counting(formula, k_libspot_lock_budget);
+    // In process first, whatever the timeout. The translation itself measures
+    // about 0.16 ms against roughly 10 ms to spawn ltl2tgba for it, so this is
+    // almost entirely startup that is not paid. A configured timeout is
+    // honoured by abandoning the call rather than killing it -- see
+    // spot_translate_for_counting, which explains what that costs.
+    {
+        const SpotTranslation translation = spot_translate_for_counting(
+            formula, k_libspot_lock_budget, timeout);
         const double in_process_elapsed =
             std::chrono::duration<double>(std::chrono::steady_clock::now() -
                                           start)
                 .count();
+        if (translation.m_timed_out) {
+            // Reported exactly as the exec path reports a killed child: the
+            // individual is dropped and counted against
+            // max_scoring_failure_rate. Retrying on the exec would only spend
+            // the same budget again on a formula already known to exceed it,
+            // and would do so while the abandoned worker is still running.
+            std::scoped_lock lock(cache_mutex);
+            Ltl2tgbaStats::record_time(in_process_elapsed, 0.0);
+            Ltl2tgbaStats::n_timeouts++;
+            throw std::runtime_error("ltl2tgba timed out for formula: " +
+                                     formula);
+        }
         if (translation.m_tautology_print_bug) {
             // Same defect as the exec path's exit 2, and handled the same way:
             // the formula accepts every trace, so the universal automaton is

@@ -21,6 +21,7 @@
 /// of simplification or 0.16 ms of translation on real workloads.
 
 #include <chrono>
+#include <cstddef>
 #include <optional>
 #include <string>
 
@@ -62,7 +63,8 @@ SpotSimplification spot_try_simplify(const std::string& formula,
                                      std::chrono::milliseconds budget);
 
 /// The outcome of one translation. `m_hoa` holds the automaton, and is empty
-/// when the formula did not parse or when the tautology bug below fired.
+/// when the formula did not parse, when the tautology bug below fired, or when
+/// the deadline expired.
 struct SpotTranslation {
     std::optional<std::string> m_hoa;
     /// True when the formula is a tautology and SPOT 2.15.1 refused to print
@@ -79,6 +81,11 @@ struct SpotTranslation {
     /// is cheaper than queueing, and it keeps a workload with expensive
     /// translations from serialising onto one thread.
     bool m_lock_busy = false;
+    /// True when the deadline expired before the translation finished. The
+    /// automaton is not merely late but gone: the call was abandoned, and
+    /// nothing will ever deliver it. Treat it exactly as the exec path treats
+    /// a killed `ltl2tgba` -- drop the individual.
+    bool m_timed_out = false;
 };
 
 /// Translates @p formula into an automaton in HOA form, the in-process
@@ -93,8 +100,35 @@ struct SpotTranslation {
 /// carries over the propositions earlier formulae registered; a fresh one
 /// reproduces the tool's numbering.
 ///
-/// Unlike the exec path this cannot be given a deadline: there is no process to
-/// kill, and C++ has no way to cancel a running call. A caller that needs one
-/// has to keep spawning `ltl2tgba`.
+/// @p deadline bounds the translation itself, and zero (the default meaning of
+/// `ltl2tgba_timeout_ms`) means unbounded. Note what a deadline can and cannot
+/// mean here. The exec path enforces one by killing the process doing the work;
+/// in process there is nothing to kill, and C++ offers no way to cancel a call
+/// already running inside libspot. So the deadline is honoured by *abandoning*
+/// the call rather than stopping it: the work is handed to a worker thread that
+/// takes the libspot lock with it, and if the deadline passes the caller
+/// returns `m_timed_out` while that worker runs on.
+///
+/// The consequence is deliberate and is the reason this is safe to do at all.
+/// An abandoned worker keeps the lock, so every later call -- translation and
+/// simplification alike -- finds it busy within the budget and spawns the tool
+/// instead. One pathological formula therefore costs the process its in-process
+/// fast path until that formula finishes, and nothing more; it cannot stall the
+/// run, because no caller ever waits on it again. When the worker does finish
+/// it releases the lock and the fast path resumes on its own.
+///
+/// What is genuinely given up is a thread and whatever memory the translation
+/// holds, for as long as it runs. That is strictly worse than killing a child
+/// process, and it is the price of not paying ~10 ms of startup on every call.
+/// spot_abandoned_workers() reports how many are outstanding.
 SpotTranslation spot_translate_for_counting(const std::string& formula,
-                                            std::chrono::milliseconds budget);
+                                            std::chrono::milliseconds budget,
+                                            std::chrono::milliseconds deadline);
+
+/// How many translations have been abandoned and are still running.
+///
+/// Worth checking before the process exits: static destruction while one of
+/// these is inside libspot tears down state it is still using. Anything above
+/// zero also says the in-process fast path is currently disabled, since an
+/// abandoned worker holds the lock.
+std::size_t spot_abandoned_workers();

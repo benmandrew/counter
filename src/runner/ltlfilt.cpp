@@ -214,9 +214,9 @@ bool run_ltlfilt_batch(const std::string& binary,
             // holds a lock at its call site -- but it releases that lock before
             // calling this, precisely so the exec runs outside it. Blocking
             // here is the leader waiting on its own child, not on a mutex.
-            const ssize_t
-                bytes_read =  // NOLINT(clang-analyzer-unix.BlockInCriticalSection)
-                read(out_pipe[0], buf.data(), buf.size());
+            const ssize_t bytes_read =
+                read(  // NOLINT(clang-analyzer-unix.BlockInCriticalSection)
+                    out_pipe[0], buf.data(), buf.size());
             if (bytes_read > 0) {
                 output.append(buf.data(), static_cast<std::size_t>(bytes_read));
                 continue;

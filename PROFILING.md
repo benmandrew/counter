@@ -46,6 +46,21 @@ the simplifier; the translator adds CPU headroom rather than latency, which is w
 contribution shows up in the concurrent row and not the first. The batcher's own wall cost stands as
 measured, and now applies only when the exec engine is selected explicitly.
 
+That is one specification, so the result was repeated on every other FRETISH example in the
+repository, three interleaved repetitions each, same seed and configuration:
+
+| specification | spawning both | in process | |
+|---|---|---|---|
+| `fsm` | 6.54 s | 4.87 s | 25% sooner |
+| `fsm-timing` | 10.09 s | 8.58 s | 15% sooner |
+| `fsm-combined` | 16.10 s | 12.14 s | 25% sooner |
+| `takeoff` | 4.82 s | 4.14 s | 14% sooner |
+
+Medians again, and no pair overlaps. The gain is smallest on `takeoff` and `fsm-timing`, which is
+what should be expected: the saving is per exec, so it is proportionally smaller on a workload that
+spends more of its time inside `black` and `ltlsynt`, neither of which moved. Every one of the four
+produces byte-identical repairs either way, which is the more important half of the result.
+
 ## The harness
 
 `include/profile.hpp` and `src/profile.cpp` add a named-scope profiler. It is always compiled in

@@ -39,10 +39,11 @@ test* whose two configurations run alternately in one session, because two sets 
 different times cannot separate a real effect from run-to-run spread. Measured end to end on `fsm`
 gen20/pop1000, against the same binary configured to spawn both tools as it used to:
 
-| | spawning both | in process | |
+| | before | after | |
 |---|---|---|---|
 | one run, three repetitions | 6.47 s | 5.10 s | 21% sooner |
 | four concurrent runs, five repetitions | 12.50 s | 8.98 s | 28% sooner |
+| four concurrent runs as a campaign runs them, five repetitions | 12.36 s | 7.00 s | 43% sooner |
 
 Both are medians, and neither pair of distributions overlaps. Both rows are the in-process path as
 it now stands, with the 8 ms lock budget described under "Waiting only as long as a spawn would
@@ -51,7 +52,14 @@ before that budget existed; those pairs are superseded, and the small loss again
 budget's price, paid to remove a regression elsewhere. Every figure in this section was re-taken
 against the code as it finally stands, so none of them predates a later change. Almost all of the single-run gain is the
 simplifier; the translator adds CPU headroom rather than latency, which is why its own contribution
-shows up in the concurrent row and not the first. The batcher's own wall cost stands as measured,
+shows up in the concurrent row and not the first.
+
+The third row is the one that matters most in practice, because it is the shape a campaign runs in.
+`scripts/run_experiments.py` sets `parallel` per job so that jobs times workers comes to about the
+core count, so the comparison is four jobs with pools of five against what those runs previously
+did: pools of twenty each, because the key was ignored, and both tools spawned. That combines the
+two independent findings on this branch, and they compound -- 43% is close to the two effects
+multiplied rather than either alone. The batcher's own wall cost stands as measured,
 and now applies only when the exec engine is selected explicitly.
 
 One specification is not enough to claim a general result, so the comparison was repeated on every

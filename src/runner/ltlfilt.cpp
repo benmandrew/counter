@@ -135,7 +135,7 @@ ProcessResult execute_and_capture(const std::vector<std::string>& arguments) {
 // everything.
 bool run_ltlfilt_batch(const std::string& binary,
                        const std::vector<std::string>& formulas,
-                       std::vector<std::string>& out) {
+                       std::vector<std::string>& out, double& child_cpu_s) {
     COUNTER_PROFILE_SCOPE("ltlfilt/batch-exec");
     assert(!formulas.empty());
     std::string input;
@@ -236,7 +236,12 @@ bool run_ltlfilt_batch(const std::string& binary,
         [[maybe_unused]] const pid_t waited =
             wait4(child_pid, &wait_status, 0, &child_usage);
     }
-    LtlfiltStats::total_cpu_s += rusage_cpu_seconds(child_usage);
+    // Reported back rather than accumulated here. LtlfiltStats has no internal
+    // synchronisation and simplify_ltl already updates it under its cache lock;
+    // adding to it from this thread under any other lock is a data race on the
+    // same variable, which is exactly what ThreadSanitizer flagged. The leader
+    // books the whole batch's child CPU against its own call.
+    child_cpu_s = rusage_cpu_seconds(child_usage);
     if (!wrote) {
         return false;
     }
@@ -270,8 +275,12 @@ class SimplifyBatcher {
    public:
     // std::nullopt means "run it yourself": the batch failed its line-count
     // check, or ltlfilt could not be spawned.
+    // child_cpu_s receives the batch's child CPU when this caller ran the
+    // batch, and is left alone when another caller did, so the total is counted
+    // once.
     std::optional<std::string> simplify(const std::string& binary,
-                                        const std::string& formula) {
+                                        const std::string& formula,
+                                        double& child_cpu_s) {
         auto slot = std::make_shared<Slot>();
         slot->m_formula = formula;
         std::unique_lock<std::mutex> lock(m_mutex);
@@ -285,24 +294,28 @@ class SimplifyBatcher {
             std::vector<std::shared_ptr<Slot>> batch = take_batch();
             lock.unlock();
             std::vector<std::string> results;
-            std::vector<std::string> inputs;
-            inputs.reserve(batch.size());
-            for (const auto& queued : batch) {
-                inputs.push_back(queued->m_formula);
-            }
-            const bool batch_ok = run_ltlfilt_batch(binary, inputs, results);
-            lock.lock();
-            // Every slot in the batch is resolved before the leader steps
-            // down, including on failure: a slot left un-ready would park its
-            // caller on a condition variable nobody will signal again.
-            for (std::size_t i = 0; i < batch.size(); ++i) {
-                batch[i]->m_failed = !batch_ok;
-                if (batch_ok) {
-                    batch[i]->m_result = results[i];
+            bool batch_ok = false;
+            // Nothing here is expected to throw, but an exception escaping
+            // would leave m_leader set and every slot un-ready, which parks all
+            // the other callers on a condition variable nobody will ever signal
+            // again. A hang is a far worse failure than the exception itself,
+            // so resolve the batch first and rethrow after.
+            try {
+                std::vector<std::string> inputs;
+                inputs.reserve(batch.size());
+                for (const auto& queued : batch) {
+                    inputs.push_back(queued->m_formula);
                 }
-                batch[i]->m_ready = true;
+                batch_ok =
+                    run_ltlfilt_batch(binary, inputs, results, child_cpu_s);
+            } catch (...) {
+                lock.lock();
+                retire_batch(batch, false, results);
+                m_done.notify_all();
+                throw;
             }
-            m_leader = false;
+            lock.lock();
+            retire_batch(batch, batch_ok, results);
             m_done.notify_all();
         }
         if (slot->m_failed) {
@@ -324,6 +337,22 @@ class SimplifyBatcher {
     // next leader.
     static constexpr std::size_t k_max_batch_bytes = 16384;
     static constexpr std::size_t k_max_batch_count = 64;
+
+    // Marks every slot in the batch resolved and steps the leader down. The
+    // caller must hold m_mutex and must notify afterwards. A slot left un-ready
+    // would park its caller forever, so this runs on the failure paths too.
+    void retire_batch(const std::vector<std::shared_ptr<Slot>>& batch,
+                      bool batch_ok, const std::vector<std::string>& results) {
+        const bool usable = batch_ok && results.size() == batch.size();
+        for (std::size_t i = 0; i < batch.size(); ++i) {
+            batch[i]->m_failed = !usable;
+            if (usable) {
+                batch[i]->m_result = results[i];
+            }
+            batch[i]->m_ready = true;
+        }
+        m_leader = false;
+    }
 
     std::vector<std::shared_ptr<Slot>> take_batch() {
         std::vector<std::shared_ptr<Slot>> batch;
@@ -402,7 +431,8 @@ std::string simplify_ltl(const std::string& formula) {
     std::optional<std::string> batched;
     if (batchable) {
         COUNTER_PROFILE_SCOPE("ltlfilt/batched-request");
-        batched = batchers()[batcher_slot()].simplify(binary, formula);
+        batched =
+            batchers()[batcher_slot()].simplify(binary, formula, child_cpu_s);
     }
     if (batched.has_value()) {
         simplified = *batched;

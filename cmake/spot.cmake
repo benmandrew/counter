@@ -51,6 +51,14 @@ else()
             ${SPOT_MAKE_PROGRAM} -j ${CMAKE_BUILD_PARALLEL_LEVEL}
         INSTALL_COMMAND
             ${SPOT_MAKE_PROGRAM} install
+        # Required because counter_fitness now links these by absolute path.
+        # add_dependencies only orders the targets; under Ninja a file named as
+        # a link input must also have a rule that produces it, or the build
+        # fails with "missing and no known rule to make it" on any tree where
+        # Spot has not already been installed.
+        BUILD_BYPRODUCTS
+            "${SPOT_INSTALL_DIR}/lib/libspot.so"
+            "${SPOT_INSTALL_DIR}/lib/libbddx.so"
         LOG_CONFIGURE TRUE
         LOG_BUILD TRUE
         LOG_INSTALL TRUE

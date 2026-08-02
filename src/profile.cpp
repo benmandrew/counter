@@ -24,9 +24,15 @@ namespace {
 // be inside a Scope destructor while main() returns, and a Site destroyed under
 // it would be a use-after-free in the one build (release, long campaign run)
 // where the profiler is least welcome to crash.
+// Never destroyed, and that is the point. A worker thread can still be inside a
+// scope when static destruction starts, so both the registry and the Sites it
+// owns have to outlive it. Holding them behind a pointer that lives to exit
+// keeps them reachable as well as alive, which is the difference between an
+// intentional allocation and one LeakSanitizer reports: destroying the vector
+// would free its buffer and orphan every Site just before the leak check runs.
 std::vector<Site*>& site_registry() {
-    static std::vector<Site*> registry;
-    return registry;
+    static auto* registry = new std::vector<Site*>();
+    return *registry;
 }
 
 std::mutex& registry_mutex() {
@@ -101,7 +107,9 @@ Site& site(const char* name) {
 Site& site_interned(const std::string& name) {
     // Interned in a deque, not a vector: Site holds a bare pointer into these
     // strings, and a vector would invalidate every one of them when it grew.
-    static std::deque<std::string> interned;
+    // Never destroyed, for the same reason as the registry above -- the names
+    // it holds are what every Site's m_name points at.
+    static auto& interned = *new std::deque<std::string>();
     {
         const std::scoped_lock lock(registry_mutex());
         for (Site* existing : site_registry()) {

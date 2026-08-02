@@ -31,6 +31,7 @@
 #include "profile.hpp"
 #include "requirement.hpp"
 #include "runner/ltlfilt.hpp"
+#include "runner/subprocess.hpp"
 
 namespace {
 
@@ -97,198 +98,6 @@ class GateGuard {
     GateGuard& operator=(const GateGuard&) = delete;
 };
 
-struct ProcessResult {
-    int m_exit_code = 0;
-    std::string m_output;
-    double m_cpu_s = 0.0;
-    bool m_timed_out = false;
-};
-
-double rusage_cpu_seconds(const struct rusage& usage) {
-    const double user_s = static_cast<double>(usage.ru_utime.tv_sec) +
-                          (static_cast<double>(usage.ru_utime.tv_usec) / 1e6);
-    const double sys_s = static_cast<double>(usage.ru_stime.tv_sec) +
-                         (static_cast<double>(usage.ru_stime.tv_usec) / 1e6);
-    return user_s + sys_s;
-}
-
-void spawn_child_and_exec(char* const* argv, const char* executable,
-                          int write_fd) {
-    if (dup2(write_fd, STDOUT_FILENO) < 0 ||
-        dup2(write_fd, STDERR_FILENO) < 0) {
-        _exit(127);
-    }
-    close(write_fd);
-    // Never outlive the parent: if the counter process is killed (e.g. a
-    // campaign harness enforcing a wall/RAM budget) while this subprocess is
-    // mid-run, deliver SIGKILL instead of leaving a multi-GB ltl2tgba/ltlsynt
-    // orphan reparented to PID 1. getppid() closes the fork/prctl race where
-    // the parent died in the window before the request was registered. Every
-    // exec here is a short-lived query subprocess, so this is always desired.
-    prctl(PR_SET_PDEATHSIG, SIGKILL);
-    if (getppid() == 1) {
-        _exit(127);
-    }
-    execv(executable, argv);
-    _exit(127);
-}
-
-std::string read_from_fd(int read_fd) {
-    std::string output;
-    std::array<char, 4096> read_buf{};
-    while (true) {
-        const ssize_t bytes_read =
-            read(  // NOLINT(clang-analyzer-unix.BlockInCriticalSection)
-                read_fd, read_buf.data(), read_buf.size());
-        if (bytes_read > 0) {
-            output.append(read_buf.data(),
-                          static_cast<std::size_t>(bytes_read));
-            continue;
-        }
-        if (bytes_read == 0) {
-            break;
-        }
-        if (errno == EINTR) {
-            continue;
-        }
-        assert(false);
-        __builtin_unreachable();
-    }
-    return output;
-}
-
-// Reads from read_fd until the child closes it (EOF) or `timeout` elapses.
-// Returns the bytes read so far and whether the deadline was hit; the caller
-// kills and reaps the child on timeout. A zero timeout never expires, matching
-// the untimed read_from_fd.
-std::pair<std::string, bool> read_from_fd_timed(
-    int read_fd, std::chrono::milliseconds timeout) {
-    std::string output;
-    std::array<char, 4096> read_buf{};
-    const auto deadline = std::chrono::steady_clock::now() + timeout;
-    while (true) {
-        const auto now = std::chrono::steady_clock::now();
-        if (now >= deadline) {
-            return {output, true};
-        }
-        const auto remaining =
-            std::chrono::duration_cast<std::chrono::milliseconds>(deadline -
-                                                                  now)
-                .count();
-        struct pollfd pfd{read_fd, POLLIN, 0};
-        const int poll_result = poll(&pfd, 1, static_cast<int>(remaining));
-        if (poll_result < 0) {
-            if (errno == EINTR) {
-                continue;
-            }
-            assert(false);
-            __builtin_unreachable();
-        }
-        if (poll_result == 0) {
-            return {output, true};
-        }
-        const ssize_t bytes_read =
-            read(  // NOLINT(clang-analyzer-unix.BlockInCriticalSection)
-                read_fd, read_buf.data(), read_buf.size());
-        if (bytes_read > 0) {
-            output.append(read_buf.data(),
-                          static_cast<std::size_t>(bytes_read));
-            continue;
-        }
-        if (bytes_read == 0) {
-            return {output, false};
-        }
-        if (errno == EINTR) {
-            continue;
-        }
-        assert(false);
-        __builtin_unreachable();
-    }
-}
-
-int wait_for_child(pid_t child_pid, double& cpu_s_out) {
-    int wait_status = 0;
-    struct rusage child_usage{};
-    [[maybe_unused]] const pid_t waited =
-        wait4(child_pid, &wait_status, 0, &child_usage);
-    assert(waited >= 0);
-    cpu_s_out = rusage_cpu_seconds(child_usage);
-    if (WIFEXITED(wait_status)) {
-        return WEXITSTATUS(wait_status);
-    }
-    if (WIFSIGNALED(wait_status)) {
-        return 128 + WTERMSIG(wait_status);
-    }
-    return -1;
-}
-
-ProcessResult execute_and_capture(
-    const std::vector<std::string>& arguments,
-    std::chrono::milliseconds timeout = std::chrono::milliseconds::zero()) {
-    assert(!arguments.empty());
-    // Build argv before forking: heap allocation inside the child between
-    // fork() and execv() can deadlock if another thread held the allocator
-    // lock at the moment of the fork (e.g. under ASAN's allocator).
-    std::vector<char*> argv(arguments.size() + 1);
-    for (std::size_t arg_idx = 0; arg_idx < arguments.size(); ++arg_idx) {
-        argv[arg_idx] = const_cast<char*>(arguments[arg_idx].c_str());
-    }
-    argv[arguments.size()] = nullptr;
-    std::array<int, 2> pipe_fds = {-1, -1};
-    [[maybe_unused]] const int pipe_result = pipe2(pipe_fds.data(), O_CLOEXEC);
-    assert(pipe_result == 0);
-    pid_t child_pid = -1;
-    {
-        // Timed separately from the read and wait below: this scope is the
-        // parent's share of process creation (page-table copy for fork, plus
-        // the child's exec until it detaches), which is the part a cheaper
-        // spawn primitive would remove. The read/wait scopes are the child's
-        // actual work and would not move.
-        COUNTER_PROFILE_SCOPE("proc/fork+exec");
-        child_pid = fork();
-        if (child_pid < 0) {
-            close(pipe_fds[0]);
-            close(pipe_fds[1]);
-            assert(false);
-            __builtin_unreachable();
-        }
-        if (child_pid == 0) {
-            close(pipe_fds[0]);
-            spawn_child_and_exec(argv.data(), arguments[0].c_str(),
-                                 pipe_fds[1]);
-        }
-    }
-    close(pipe_fds[1]);
-    bool timed_out = false;
-    std::string output;
-    {
-        // The child's own runtime: the parent sits in read()/poll() until the
-        // tool closes its stdout. Wall greatly exceeding CPU here is expected
-        // and healthy — it means the parent is blocked, not spinning.
-        COUNTER_PROFILE_SCOPE("proc/read");
-        if (timeout > std::chrono::milliseconds::zero()) {
-            std::tie(output, timed_out) =
-                read_from_fd_timed(pipe_fds[0], timeout);
-            if (timed_out) {
-                // The child is still running (or its pipe still open); kill it
-                // so wait_for_child reaps immediately instead of blocking on
-                // the very query the timeout exists to abandon.
-                kill(child_pid, SIGKILL);
-            }
-        } else {
-            output = read_from_fd(pipe_fds[0]);
-        }
-    }
-    close(pipe_fds[0]);
-    double cpu_s = 0.0;
-    int exit_code = 0;
-    {
-        COUNTER_PROFILE_SCOPE("proc/wait");
-        exit_code = wait_for_child(child_pid, cpu_s);
-    }
-    return {exit_code, output, cpu_s, timed_out};
-}
-
 std::string join_comma(const std::vector<std::string>& items) {
     std::string result;
     bool first = true;
@@ -350,13 +159,13 @@ constexpr const char* k_universal_hoa =
 // reduces to a tautology (the printed automaton is universal, hence complete,
 // but its prop_complete() flag was left unset). The signature is stable across
 // the invocation's binary-path prefix.
-bool is_tautology_print_error(const ProcessResult& result) {
+bool is_tautology_print_error(const SubprocessResult& result) {
     return result.m_exit_code == 2 &&
            result.m_output.find("automaton is complete but prop_complete()") !=
                std::string::npos;
 }
 
-bool parse_realizability_output(const ProcessResult& result) {
+bool parse_realizability_output(const SubprocessResult& result) {
     if (result.m_output.find("UNREALIZABLE") != std::string::npos) {
         return false;
     }
@@ -426,8 +235,9 @@ std::string run_ltl2tgba_for_counting(const std::string& formula) {
     const auto start = std::chrono::steady_clock::now();
     const auto timeout =
         std::chrono::milliseconds(g_ltl2tgba_timeout_ms.load());
-    const ProcessResult result =
-        execute_and_capture({binary, "-D", "-S", "-H", "-f", formula}, timeout);
+    const SubprocessResult result =
+        run_subprocess({binary, "-D", "-S", "-H", "-f", formula},
+                       {timeout, /*m_die_with_parent=*/true});
     const double elapsed =
         std::chrono::duration<double>(std::chrono::steady_clock::now() - start)
             .count();
@@ -510,13 +320,13 @@ bool RealizabilityChecker::check_realizability_ltl(
     }
     const auto timeout = std::chrono::milliseconds(g_ltlsynt_timeout_ms.load());
     const auto start = std::chrono::steady_clock::now();
-    ProcessResult result;
+    SubprocessResult result;
     {
         // Hold a permit only for the exec: the child's multi-GB footprint is
         // freed once execute_and_capture reaps it, so parsing and cache updates
         // run outside the gate.
         const GateGuard gate_guard;
-        result = execute_and_capture(command, timeout);
+        result = run_subprocess(command, {timeout, /*m_die_with_parent=*/true});
     }
     const double elapsed =
         std::chrono::duration<double>(std::chrono::steady_clock::now() - start)

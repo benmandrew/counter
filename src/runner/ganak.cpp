@@ -24,22 +24,9 @@
 
 #include "prop_formula.hpp"
 #include "runner/ltlfilt.hpp"
+#include "runner/subprocess.hpp"
 
 namespace {
-
-struct ProcessResult {
-    int m_exit_code = 0;
-    std::string m_output;
-    double m_cpu_s = 0.0;
-};
-
-double rusage_cpu_seconds(const struct rusage& usage) {
-    const double user_s = static_cast<double>(usage.ru_utime.tv_sec) +
-                          (static_cast<double>(usage.ru_utime.tv_usec) / 1e6);
-    const double sys_s = static_cast<double>(usage.ru_stime.tv_sec) +
-                         (static_cast<double>(usage.ru_stime.tv_usec) / 1e6);
-    return user_s + sys_s;
-}
 
 std::string temp_directory() {
     try {
@@ -66,72 +53,6 @@ std::string write_temporary_dimacs(const std::string& contents) {
     dimacs_file.close();
     assert(static_cast<bool>(dimacs_file));
     return dimacs_path;
-}
-
-ProcessResult execute_and_capture(const std::vector<std::string>& arguments) {
-    assert(!arguments.empty());
-    // Build argv before forking: heap allocation inside the child between
-    // fork() and execv() can deadlock if another thread held the allocator
-    // lock at the moment of the fork (e.g. under ASAN's allocator).
-    std::vector<char*> argv(arguments.size() + 1);
-    for (std::size_t arg_idx = 0; arg_idx < arguments.size(); ++arg_idx) {
-        argv[arg_idx] = const_cast<char*>(arguments[arg_idx].c_str());
-    }
-    argv[arguments.size()] = nullptr;
-    std::array<int, 2> pipe_fds = {-1, -1};
-    [[maybe_unused]] const int pipe_result = pipe2(pipe_fds.data(), O_CLOEXEC);
-    assert(pipe_result == 0);
-    const pid_t child_pid = fork();
-    if (child_pid < 0) {
-        close(pipe_fds[0]);
-        close(pipe_fds[1]);
-        assert(false);
-        __builtin_unreachable();
-    }
-    if (child_pid == 0) {
-        close(pipe_fds[0]);
-        if (dup2(pipe_fds[1], STDOUT_FILENO) < 0 ||
-            dup2(pipe_fds[1], STDERR_FILENO) < 0) {
-            _exit(127);
-        }
-        close(pipe_fds[1]);
-        execv(arguments[0].c_str(), argv.data());
-        _exit(127);
-    }
-    close(pipe_fds[1]);
-    std::string output;
-    std::array<char, 4096> read_buf{};
-    while (true) {
-        const ssize_t bytes_read =
-            read(pipe_fds[0], read_buf.data(), read_buf.size());
-        if (bytes_read > 0) {
-            output.append(read_buf.data(),
-                          static_cast<std::size_t>(bytes_read));
-            continue;
-        }
-        if (bytes_read == 0) {
-            break;
-        }
-        if (errno == EINTR) {
-            continue;
-        }
-        close(pipe_fds[0]);
-        assert(false);
-        __builtin_unreachable();
-    }
-    close(pipe_fds[0]);
-    int wait_status = 0;
-    struct rusage child_usage{};
-    [[maybe_unused]] const pid_t waited =
-        wait4(child_pid, &wait_status, 0, &child_usage);
-    assert(waited >= 0);
-    int exit_code = -1;
-    if (WIFEXITED(wait_status)) {
-        exit_code = WEXITSTATUS(wait_status);
-    } else if (WIFSIGNALED(wait_status)) {
-        exit_code = 128 + WTERMSIG(wait_status);
-    }
-    return {exit_code, output, rusage_cpu_seconds(child_usage)};
 }
 
 Count parse_ganak_exact_count(const std::string& output) {
@@ -182,7 +103,7 @@ Count run_ganak_on_dimacs(const std::string& dimacs_path, unsigned seed,
         std::to_string(seed),
         dimacs_path,
     };
-    const ProcessResult result = execute_and_capture(command);
+    const SubprocessResult result = run_subprocess(command);
     if (cpu_s_out != nullptr) {
         *cpu_s_out = result.m_cpu_s;
     }

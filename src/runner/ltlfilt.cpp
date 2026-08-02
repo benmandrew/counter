@@ -23,104 +23,19 @@
 
 #include "profile.hpp"
 #include "runner/spot.hpp"
+#include "runner/subprocess.hpp"
 
 namespace {
 
-struct ProcessResult {
-    int m_exit_code = 0;
-    std::string m_output;
-    double m_cpu_s = 0.0;
-};
-
+// run_ltlfilt_batch drives a bidirectional pipe pair, which run_subprocess does
+// not cover (it only captures output), so it spawns and reaps for itself and
+// needs this.
 double rusage_cpu_seconds(const struct rusage& usage) {
     const double user_s = static_cast<double>(usage.ru_utime.tv_sec) +
                           (static_cast<double>(usage.ru_utime.tv_usec) / 1e6);
     const double sys_s = static_cast<double>(usage.ru_stime.tv_sec) +
                          (static_cast<double>(usage.ru_stime.tv_usec) / 1e6);
     return user_s + sys_s;
-}
-
-ProcessResult execute_and_capture(const std::vector<std::string>& arguments) {
-    assert(!arguments.empty());
-    // Build argv before forking: heap allocation inside the child between
-    // fork() and execv() can deadlock if another thread held the allocator
-    // lock at the moment of the fork (e.g. under ASAN's allocator).
-    std::vector<char*> argv(arguments.size() + 1);
-    for (std::size_t arg_idx = 0; arg_idx < arguments.size(); ++arg_idx) {
-        argv[arg_idx] = const_cast<char*>(arguments[arg_idx].c_str());
-    }
-    argv[arguments.size()] = nullptr;
-    std::array<int, 2> pipe_fds = {-1, -1};
-    [[maybe_unused]] const int pipe_result = pipe2(pipe_fds.data(), O_CLOEXEC);
-    assert(pipe_result == 0);
-    pid_t child_pid = -1;
-    {
-        // posix_spawn, not fork: glibc implements it with
-        // clone(CLONE_VM|CLONE_VFORK), which neither copies the page tables nor
-        // write-protects the parent's address space. fork() does both, and the
-        // scoring pool writes from every worker thread immediately afterwards,
-        // so each fork triggered a copy-on-write storm across the whole working
-        // set -- measured at ~3.5k minor faults per spawn, the dominant term in
-        // this process's system time. Nothing here needs a real child address
-        // space: the child only redirects its fds and execs.
-        COUNTER_PROFILE_SCOPE("proc/fork+exec");
-        posix_spawn_file_actions_t actions;
-        posix_spawn_file_actions_init(&actions);
-        posix_spawn_file_actions_addclose(&actions, pipe_fds[0]);
-        posix_spawn_file_actions_adddup2(&actions, pipe_fds[1], STDOUT_FILENO);
-        posix_spawn_file_actions_adddup2(&actions, pipe_fds[1], STDERR_FILENO);
-        posix_spawn_file_actions_addclose(&actions, pipe_fds[1]);
-        const int spawn_result =
-            posix_spawn(&child_pid, arguments[0].c_str(), &actions, nullptr,
-                        argv.data(), environ);
-        posix_spawn_file_actions_destroy(&actions);
-        if (spawn_result != 0) {
-            close(pipe_fds[0]);
-            close(pipe_fds[1]);
-            assert(false);
-            __builtin_unreachable();
-        }
-    }
-    close(pipe_fds[1]);
-    std::string output;
-    {
-        COUNTER_PROFILE_SCOPE("proc/read");
-        std::array<char, 4096> read_buf{};
-        while (true) {
-            const ssize_t bytes_read =
-                read(pipe_fds[0], read_buf.data(), read_buf.size());
-            if (bytes_read > 0) {
-                output.append(read_buf.data(),
-                              static_cast<std::size_t>(bytes_read));
-                continue;
-            }
-            if (bytes_read == 0) {
-                break;
-            }
-            if (errno == EINTR) {
-                continue;
-            }
-            close(pipe_fds[0]);
-            assert(false);
-            __builtin_unreachable();
-        }
-    }
-    close(pipe_fds[0]);
-    int wait_status = 0;
-    struct rusage child_usage{};
-    {
-        COUNTER_PROFILE_SCOPE("proc/wait");
-        [[maybe_unused]] const pid_t waited =
-            wait4(child_pid, &wait_status, 0, &child_usage);
-        assert(waited >= 0);
-    }
-    int exit_code = -1;
-    if (WIFEXITED(wait_status)) {
-        exit_code = WEXITSTATUS(wait_status);
-    } else if (WIFSIGNALED(wait_status)) {
-        exit_code = 128 + WTERMSIG(wait_status);
-    }
-    return {exit_code, output, rusage_cpu_seconds(child_usage)};
 }
 
 // Runs one ltlfilt over @p formulas, writing each on its own line and reading
@@ -462,8 +377,8 @@ std::string simplify_ltl(const std::string& formula) {
         simplified = *batched;
     } else {
         COUNTER_PROFILE_SCOPE("ltlfilt/one-shot-exec");
-        const ProcessResult result =
-            execute_and_capture({binary, "--simplify", "-f", formula});
+        const SubprocessResult result =
+            run_subprocess({binary, "--simplify", "-f", formula});
         child_cpu_s = result.m_cpu_s;
         if (result.m_exit_code == 0 && !result.m_output.empty()) {
             simplified = result.m_output;
@@ -499,8 +414,8 @@ bool ltl_equivalent(const std::string& lhs, const std::string& rhs) {
     if (access(binary.c_str(), F_OK) != 0) {
         return true;
     }
-    const ProcessResult result =
-        execute_and_capture({binary, "--equivalent-to=" + rhs, "-f", lhs});
+    const SubprocessResult result =
+        run_subprocess({binary, "--equivalent-to=" + rhs, "-f", lhs});
     // ltlfilt's filter convention: exit 0 means the input formula (lhs)
     // matched (i.e. is equivalent to rhs); exit 1 means it didn't. Any other
     // status (parse error, crash) is inconclusive, not a mismatch.

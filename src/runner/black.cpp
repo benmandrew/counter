@@ -28,15 +28,9 @@
 
 #include "profile.hpp"
 #include "runner/ltlfilt.hpp"
+#include "runner/subprocess.hpp"
 
 namespace {
-
-struct ProcessResult {
-    int m_exit_code = 0;
-    std::string m_output;
-    bool m_timed_out = false;
-    double m_cpu_s = 0.0;
-};
 
 bool is_identifier_char(char chr) {
     return std::isalnum(static_cast<unsigned char>(chr)) != 0 || chr == '_';
@@ -79,133 +73,6 @@ std::string to_black_constants(const std::string& formula) {
         }
     }
     return out;
-}
-
-double rusage_cpu_seconds(const struct rusage& usage) {
-    const double user_s = static_cast<double>(usage.ru_utime.tv_sec) +
-                          (static_cast<double>(usage.ru_utime.tv_usec) / 1e6);
-    const double sys_s = static_cast<double>(usage.ru_stime.tv_sec) +
-                         (static_cast<double>(usage.ru_stime.tv_usec) / 1e6);
-    return user_s + sys_s;
-}
-
-// Reads from fd until EOF or deadline, killing child_pid on timeout.
-// Returns {output, timed_out}.
-std::pair<std::string, bool> read_with_timeout(
-    int read_fd, pid_t child_pid,
-    std::chrono::steady_clock::time_point deadline) {
-    std::string output;
-    std::array<char, 4096> read_buf{};
-    while (true) {
-        const auto now = std::chrono::steady_clock::now();
-        if (now >= deadline) {
-            kill(child_pid, SIGKILL);
-            return {output, true};
-        }
-        const auto remaining_ms =
-            std::chrono::duration_cast<std::chrono::milliseconds>(deadline -
-                                                                  now)
-                .count();
-        const int poll_ms = remaining_ms > std::numeric_limits<int>::max()
-                                ? std::numeric_limits<int>::max()
-                                : static_cast<int>(remaining_ms);
-        struct pollfd pfd{};
-        pfd.fd = read_fd;
-        pfd.events = POLLIN;
-        const int poll_ret = poll(&pfd, 1, poll_ms);
-        if (poll_ret < 0) {
-            if (errno == EINTR) {
-                continue;
-            }
-            assert(false);
-            __builtin_unreachable();
-        }
-        if (poll_ret == 0) {
-            kill(child_pid, SIGKILL);
-            return {output, true};
-        }
-        const ssize_t bytes_read =
-            read(read_fd, read_buf.data(), read_buf.size());
-        if (bytes_read > 0) {
-            output.append(read_buf.data(),
-                          static_cast<std::size_t>(bytes_read));
-            continue;
-        }
-        if (bytes_read == 0) {
-            return {output, false};
-        }
-        if (errno == EINTR) {
-            continue;
-        }
-        assert(false);
-        __builtin_unreachable();
-    }
-}
-
-ProcessResult execute_and_capture(const std::vector<std::string>& arguments,
-                                  std::chrono::milliseconds timeout) {
-    assert(!arguments.empty());
-    // Build argv before forking: heap allocation inside the child between
-    // fork() and execv() can deadlock if another thread held the allocator
-    // lock at the moment of the fork (e.g. under ASAN's allocator).
-    std::vector<char*> argv(arguments.size() + 1);
-    for (std::size_t arg_idx = 0; arg_idx < arguments.size(); ++arg_idx) {
-        argv[arg_idx] = const_cast<char*>(arguments[arg_idx].c_str());
-    }
-    argv[arguments.size()] = nullptr;
-    std::array<int, 2> pipe_fds = {-1, -1};
-    [[maybe_unused]] const int pipe_result = pipe2(pipe_fds.data(), O_CLOEXEC);
-    assert(pipe_result == 0);
-    pid_t child_pid = -1;
-    {
-        // posix_spawn rather than fork: see the matching comment in
-        // src/runner/ltlfilt.cpp. fork() write-protects the parent's whole
-        // address space, and the scoring pool's other worker threads then fault
-        // it all back in copy-on-write; posix_spawn's clone(CLONE_VM) does not.
-        COUNTER_PROFILE_SCOPE("proc/fork+exec");
-        posix_spawn_file_actions_t actions;
-        posix_spawn_file_actions_init(&actions);
-        posix_spawn_file_actions_addclose(&actions, pipe_fds[0]);
-        posix_spawn_file_actions_adddup2(&actions, pipe_fds[1], STDOUT_FILENO);
-        posix_spawn_file_actions_adddup2(&actions, pipe_fds[1], STDERR_FILENO);
-        posix_spawn_file_actions_addclose(&actions, pipe_fds[1]);
-        const int spawn_result =
-            posix_spawn(&child_pid, arguments[0].c_str(), &actions, nullptr,
-                        argv.data(), environ);
-        posix_spawn_file_actions_destroy(&actions);
-        if (spawn_result != 0) {
-            close(pipe_fds[0]);
-            close(pipe_fds[1]);
-            assert(false);
-            __builtin_unreachable();
-        }
-    }
-    close(pipe_fds[1]);
-    const auto deadline = std::chrono::steady_clock::now() + timeout;
-    std::string output;
-    bool timed_out = false;
-    {
-        COUNTER_PROFILE_SCOPE("proc/read");
-        std::tie(output, timed_out) =
-            read_with_timeout(pipe_fds[0], child_pid, deadline);
-    }
-    close(pipe_fds[0]);
-    int wait_status = 0;
-    struct rusage child_usage{};
-    {
-        COUNTER_PROFILE_SCOPE("proc/wait");
-        [[maybe_unused]] const pid_t waited =
-            wait4(child_pid, &wait_status, 0, &child_usage);
-        assert(waited >= 0);
-    }
-    int exit_code = -1;
-    if (WIFEXITED(wait_status)) {
-        exit_code = WEXITSTATUS(wait_status);
-    } else if (WIFSIGNALED(wait_status)) {
-        exit_code = 128 + WTERMSIG(wait_status);
-    }
-    return {exit_code, std::move(output), timed_out,
-            rusage_cpu_seconds(child_usage)};
 }
 
 }  // namespace
@@ -266,7 +133,7 @@ std::optional<bool> SatisfiabilityChecker::check_satisfiability(
         "-t",  std::to_string(timeout_s),
         "-f",  to_black_constants(ltl_formula)};
     const auto start = std::chrono::steady_clock::now();
-    const ProcessResult result = execute_and_capture(command, m_timeout);
+    const SubprocessResult result = run_subprocess(command, {m_timeout, false});
     const double elapsed =
         std::chrono::duration<double>(std::chrono::steady_clock::now() - start)
             .count();

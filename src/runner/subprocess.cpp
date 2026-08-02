@@ -15,7 +15,9 @@
 #include <csignal>
 #include <cstddef>
 #include <limits>
+#include <string>
 #include <utility>
+#include <vector>
 
 #include "profile.hpp"
 

@@ -290,6 +290,21 @@ because the cores the baseline spent demand-paging `ltlfilt` are the same cores 
 needed. This is the case the default is for. A single interactive run is better served by 16
 batchers, or by the baseline.
 
+The same holds on the TLSF path, with smaller numbers. Single runs of three TLSF specs, medians of
+two repetitions each:
+
+| spec | wall | system CPU | minor faults |
+|---|---|---|---|
+| minepump | +4.8% | −19.2% | −11.8% |
+| detector | +14.4% | −27.2% | −21.1% |
+| lift | +10.1% | −33.2% | −22.2% |
+
+The wall cost is larger here than on FRETISH and so is the CPU saving. Four concurrent runs of
+`detector.tlsf` still come out ahead — 21.41 s baseline against 20.46 s batched by median, every
+one of three repetitions favouring the batched build — but by 4.4% rather than the 12.6% seen on
+`fsm`. That is the expected shape: TLSF runs are dominated by `ltlsynt`, which is not batched, so
+there is proportionally less `ltlfilt` startup to recover.
+
 One reporting artefact comes with this. The "Tool timing report" `ltlfilt` row now measures each
 caller's wait, which includes time spent queued behind a leader, so its per-call figure is no longer
 the cost of an `ltlfilt` exec.

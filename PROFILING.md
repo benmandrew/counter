@@ -18,6 +18,13 @@ Measured, reproducible, and load-bearing for everything below:
   algorithms (`count_traces`, `guard_models`, `syntactic`, `halstead`) are cheap;
 - that batching `ltlfilt` calls trades about 5% of wall time for about 19% of total CPU, with
   byte-identical output;
+- the cost of in-process simplification through a linked `libspot` — 0.011 ms per formula, measured
+  with a spike that compiles, links and runs against the build tree's own library;
+- that the per-call timeouts on `ltl2tgba` and `ltlsynt`, and `ltlsynt`'s memory cap, work only
+  because those tools are separate processes that can be killed;
+- that in-process simplification is a drop-in — byte-identical to `ltlfilt --simplify` on 300
+  formulae — but is only thread-safe behind a single process-wide lock, since the state it contends
+  on is SPOT's global parser and formula-interning tables rather than anything per-simplifier;
 - byte-identical output across all 12 `repair_N.json` files before and after every change.
 
 Not established: any whole-run wall-clock improvement from this pass. There is none. The batcher
@@ -351,6 +358,69 @@ The wider result is that `counter`'s own computation is not the bottleneck. Near
 spent waiting on external tools, and more than half of that wait is per-process startup rather than
 solving. This reinforces the top two ranked targets below instead of adding a third.
 
+## Linking `libspot` in process
+
+Removing the process boundary was an untried idea until now. A *spike* — a standalone program
+written to answer one question and then thrown away — settles the measurement half of it. The spike
+compiles against the `libspot` the build tree already produces (`-I<spot>/include -lspot -lbddx`)
+and calls `spot::parse_infix_psl`, `spot::tl_simplifier::simplify` and `spot::str_psl` in sequence,
+which is the in-process equivalent of `ltlfilt --simplify`. It links and runs with no dependency
+beyond what the build already makes.
+
+The same 200 formulae used above, timed three ways alongside each other:
+
+| approach | wall | minor faults |
+|---|---|---|
+| 200 separate `ltlfilt` execs | 1800 ms | 551,349 |
+| one batched `ltlfilt` exec | 20 ms | 2786 |
+| in process via `libspot` | 2.25 ms | none — same process |
+
+That is 0.011 ms per formula of actual simplification. Everything above that figure in the other two
+rows is process overhead rather than logic. Scaled to a real workload, the 2165 distinct
+simplifications a 20-generation, population-1000 `fsm` run performs would cost about 24 ms in
+process, against the 12.6 s that run currently spends in `ltlfilt` execs.
+
+The blocker is not the linking. It is the timeout, and it splits the target in two.
+
+`ltlfilt --simplify` has no timeout in this codebase today: `simplify_ltl` never passes one. Moving
+it in process therefore gives up nothing that currently exists. `ltl2tgba` and `ltlsynt` both have
+per-call timeouts (`g_ltl2tgba_timeout_ms`, `g_ltlsynt_timeout_ms`), and `ltlsynt` also has a
+concurrency cap that bounds peak memory. Those exist because *determinization* and synthesis can run
+unbounded on formulae the search generates, and they work only because the work sits in a separate
+process that can be killed. In process there is nothing to kill. C++ has no cancellation, so a
+runaway call leaves the choice between letting the thread run forever and killing the whole process.
+
+So this is two targets, not one.
+
+Thread safety was the remaining unknown, and it has now been tested rather than assumed. SPOT's
+headers make no claim either way, and scoring runs on every pool worker at once, so the spike was
+extended to drive 16 threads over 400 formulae each under ThreadSanitizer, in four configurations:
+
+| configuration | result |
+|---|---|
+| one simplifier per thread, no lock | 6 data races, then SEGV |
+| one shared simplifier, no lock | SEGV |
+| one shared simplifier, global lock | exit 0, no races, no mismatches |
+| one simplifier per thread, global lock | SEGV |
+
+The naive expectation — that giving each thread its own simplifier avoids sharing — is wrong, and
+the race reports say why. The contended state is not inside `tl_simplifier` at all. It is
+process-global and sits underneath: SPOT's Bison and Flex parser globals (`tlyyfree`, the parser's
+`value_type`), and the global `robin_hood` table that interns `fnode` formula nodes. A per-thread
+simplifier still reaches all of it.
+
+That the fourth row also crashes is the sharp part of the result. With every `simplify` call under
+the lock, the only thing left running unserialised is *constructing* and destroying the per-thread
+simplifiers — so construction itself is unsafe, not just use.
+
+The rule that follows is therefore narrow and worth writing down: one simplifier, constructed once,
+with every libspot call serialised behind a single process-wide lock. Nothing per-thread, and no
+unlocked construction.
+
+Serialising costs almost nothing at this scale. At 0.011 ms per call over the 2165 cache misses a
+whole run performs, even fully serialised the work is on the order of 24 ms, against the 12.6 s
+currently spent in `ltlfilt/batch-exec`.
+
 ## Ranked targets
 
 **Batched tool calls — done for `ltlfilt`.** The largest lever on CPU, and the lever is eliminating
@@ -360,11 +430,15 @@ target are untouched. `black` accounts for 818
 execs on this workload and has no batch mode of its own, so nothing here applies to it. `ltl2tgba`
 and `ltlsynt` are still one exec per call.
 
-**Link libspot in process.** SPOT is already built from source, and `libspot.so` and its headers
-sit in the build tree. This removes the `ltlfilt`, `ltl2tgba` and `ltlsynt` spawns outright rather
-than amortising them, and it sidesteps the flushing problem entirely by removing the process
-boundary — which now counts in its favour. It is a much larger change, and `ltlsynt`'s timeout and
-memory-cap behaviour would have to be rebuilt in-process.
+**Link `libspot` in process — measured for simplification, blocked for the other two tools.** SPOT
+is already built from source, and `libspot.so` and its headers sit in the build tree. A linked spike
+puts in-process simplification at 0.011 ms per formula against roughly 9 ms for one exec, and about
+24 ms across a whole `fsm` run against 12.6 s of `ltlfilt` execs; the spike and its numbers are in
+"Linking `libspot` in process" above. Simplification can move, has no timeout to give up, and is
+where most of the remaining startup cost sits. `ltl2tgba` and `ltlsynt` cannot move as things stand,
+because their per-call timeouts and `ltlsynt`'s memory cap work by killing a separate process.
+Replacing the ability to abandon a call is a design question rather than an optimisation, and it is
+the thing to answer before this target goes any further.
 
 **`dispatch/collect-one-ready` — done.** `run_bounded_async` polled each outstanding future with
 `wait_for(0ms)` in a loop and then slept 1 ms, which cost 0.372 s of CPU across 11,535 calls and put

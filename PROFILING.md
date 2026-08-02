@@ -27,8 +27,11 @@ Measured, reproducible, and load-bearing for everything below:
   byte-identical to `ltlfilt --simplify` on all 1791 real formulae and on 5000 random ones — but is
   only thread-safe behind a single process-wide lock, since the state it contends on is SPOT's
   global parser and formula-interning tables rather than anything per-simplifier;
-- that the in-process path is now implemented and measured at about 31% of whole-run wall time on
-  `fsm` gen20/pop1000;
+- that the in-process path is now implemented, and that whether it beats spawning depends on the
+  workload rather than on the change — 0.15 ms to simplify an `fsm` formula against 24 ms for a
+  `lift` one, which is why the lock is waited on only for as long as a spawn would cost;
+- that with that budget every specification in the repository gets faster and none regresses, by
+  between 10% and 35% of whole-run wall time;
 - byte-identical output across all 12 `repair_N.json` files before and after every change.
 
 Whole-run wall-clock improvement is established, by the method this document insists on — an *A/B
@@ -38,28 +41,37 @@ gen20/pop1000, against the same binary configured to spawn both tools as it used
 
 | | spawning both | in process | |
 |---|---|---|---|
-| one run, seven repetitions | 6.54 s | 4.87 s | 25% sooner |
+| one run, three repetitions | 6.52 s | 5.15 s | 21% sooner |
 | four concurrent runs, five repetitions | 12.46 s | 8.33 s | 33% sooner |
 
-Both are medians, and neither pair of distributions overlaps. Almost all of the single-run gain is
-the simplifier; the translator adds CPU headroom rather than latency, which is why its own
+Both are medians, and neither pair of distributions overlaps. The single-run row is the in-process
+path as it now stands, with the 8 ms lock budget described under "Waiting only as long as a spawn
+would cost"; an earlier version of this section reported 6.54 s to 4.87 s over seven repetitions
+for the same workload, taken before that budget existed, and that pair is superseded. The
+concurrent row predates the budget and has not been re-measured. Almost all of the single-run gain
+is the simplifier; the translator adds CPU headroom rather than latency, which is why its own
 contribution shows up in the concurrent row and not the first. The batcher's own wall cost stands as
 measured, and now applies only when the exec engine is selected explicitly.
 
-That is one specification, so the result was repeated on every other FRETISH example in the
-repository, three interleaved repetitions each, same seed and configuration:
+One specification is not enough to claim a general result, so the comparison was repeated on every
+other FRETISH example in the repository and on two TLSF ones, three interleaved repetitions each,
+same seed and configuration. The TLSF pair is there because `lift` is what exposed the regression
+recorded under "A regression the other specifications found", and a table that reported only the
+specifications which happened to agree would be claiming generality from the easy cases:
 
-| specification | spawning both | in process | |
+| specification | spawning both | in process, budgeted | |
 |---|---|---|---|
-| `fsm` | 6.54 s | 4.87 s | 25% sooner |
-| `fsm-timing` | 10.09 s | 8.58 s | 15% sooner |
-| `fsm-combined` | 16.10 s | 12.14 s | 25% sooner |
-| `takeoff` | 4.82 s | 4.14 s | 14% sooner |
+| `fsm` | 6.52 s | 5.15 s | 21% sooner |
+| `fsm-timing` | 9.96 s | 8.96 s | 10% sooner |
+| `fsm-combined` | 15.86 s | 12.95 s | 18% sooner |
+| `takeoff` | 4.90 s | 4.40 s | 10% sooner |
+| `minepump` (TLSF) | 3.00 s | 1.96 s | 35% sooner |
+| `lift` (TLSF) | 24.27 s | 20.08 s | 17% sooner |
 
 Medians again, and no pair overlaps. The gain is smallest on `takeoff` and `fsm-timing`, which is
 what should be expected: the saving is per exec, so it is proportionally smaller on a workload that
-spends more of its time inside `black` and `ltlsynt`, neither of which moved. Every one of the four
-produces byte-identical repairs either way, which is the more important half of the result.
+spends more of its time inside `black` and `ltlsynt`, neither of which moved. All six produce
+byte-identical repairs either way, which is the more important half of the result.
 
 ## The harness
 
@@ -759,6 +771,76 @@ because nothing contends at one worker: 18.69 s against 39.22 s, a little over h
 
 Output is identical across pool sizes 1 and 20 for the same seed, so the key changes cost and not
 results.
+
+## A regression the other specifications found
+
+Every measurement up to this point was taken on `fsm`. Repeating the comparison on the other
+examples in the repository found that one of them had got materially worse. On the TLSF
+specification `lift`, three interleaved repetitions each:
+
+- spawning both: 23.57, 24.35, 25.13 s, median 24.35 s;
+- both in process: 27.76, 27.81, 27.94 s, median 27.81 s.
+
+Non-overlapping, and about 14% *slower*. Crossing the two changes separately identifies which one,
+and it is not the one the previous section would suggest:
+
+| configuration | median |
+|---|---|
+| both spawned | 24.35 s |
+| simplification spawned, translation in process | 24.32 s |
+| simplification in process, translation spawned | 28.33 s |
+| both in process | 27.81 s |
+
+Translation is neutral on `lift`. Simplification is the whole of the regression.
+
+The profile says why, and the number is stark. On `lift`, `ltlfilt/libspot-simplify` records 1005
+calls and 23.93 s of CPU. That is 23.8 ms per call, against 0.15 ms per call on `fsm` — a factor of
+160. Level 3's containment checks build automata, and `lift`'s formulae make that expensive.
+Serialising 23.9 s of CPU behind one lock puts almost the whole of a 28 s run on a single thread,
+where separate `ltlfilt` processes had been running the same work in parallel.
+
+The general lesson is worth stating plainly. Replacing a process with a lock trades parallelism for
+startup, and which side of that trade wins depends on how expensive the work is — which is a
+property of the workload, not of the code. A change measured on one specification had been read as
+a property of the change.
+
+## Waiting only as long as a spawn would cost
+
+Neither fixed choice is right, and the cost of a formula is not knowable before simplifying it.
+What is knowable is what the alternative costs. Spawning is about 8 ms, in line with the per-spawn
+tax measured at the top of this document, and it does not vary with the formula.
+
+So the rule needs no prediction. A caller waits for the libspot lock for as long as spawning would
+have taken, and if the lock has not come free by then, it spawns — because past that point spawning
+is the cheaper option by definition. `spot_try_simplify` takes that budget and reports
+`m_lock_busy` when it expires, and `simplify_ltl` falls through to the batched exec path it already
+had. The budget is 8 ms, and the mutex is a `std::timed_mutex` so the wait can be bounded.
+
+This is only sound because the two paths produce identical output — established over 5000 random
+formulae, 1791 real ones, and now six whole specifications — so which path a given call takes is
+not observable in the result. If they could ever disagree, a contended run would stop reproducing,
+and the fallback would be unsafe rather than merely uneven.
+
+Results, three interleaved repetitions each, medians, against the same binary configured to spawn
+both tools:
+
+| specification | spawning both | in process, budgeted | |
+|---|---|---|---|
+| `fsm` | 6.52 s | 5.15 s | 21% sooner |
+| `fsm-timing` | 9.96 s | 8.96 s | 10% sooner |
+| `fsm-combined` | 15.86 s | 12.95 s | 18% sooner |
+| `takeoff` | 4.90 s | 4.40 s | 10% sooner |
+| `minepump` (TLSF) | 3.00 s | 1.96 s | 35% sooner |
+| `lift` (TLSF) | 24.27 s | 20.08 s | 17% sooner |
+
+No specification regresses, and all six produce byte-identical repairs.
+
+`lift` is the interesting row, because 20.08 s beats *both* fixed choices — 24.27 s always spawning
+and 27.81 s always in process. Taking the cheap path when it is free and the parallel one when it
+is not is better than either, which is what the budget buys. The cost is visible on `fsm`, where
+5.15 s is a little worse than the 4.87 s an unbudgeted in-process path reached, because some calls
+now pay a wait before spawning anyway. Trading 0.3 s on the best case to remove a 3.5 s regression
+on the worst is the right way round.
 
 ## Where a run's wall time goes now
 

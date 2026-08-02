@@ -366,8 +366,16 @@ std::string simplify_ltl(const std::string& formula) {
     // formula ltlfilt could not parse: the formula is returned unchanged.
     if (g_simplify_engine.load(std::memory_order_relaxed) ==
         SimplifyEngine::Libspot) {
-        const SpotSimplification in_process =
+        SpotSimplification in_process =
             spot_try_simplify(formula, k_libspot_lock_budget);
+        // Falling back needs something to fall back to. Without the binary the
+        // exec path below returns the formula unsimplified, which would make a
+        // busy lock silently change the answer, so wait for the lock instead.
+        if (in_process.m_lock_busy &&
+            access(ltlfilt_path().c_str(), F_OK) != 0) {
+            in_process.m_formula = spot_simplify(formula);
+            in_process.m_lock_busy = false;
+        }
         // Busy means another thread is inside libspot and this one would wait
         // longer than a spawn costs, so it spawns instead. Everything below is
         // the exec path, unchanged.

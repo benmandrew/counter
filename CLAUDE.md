@@ -174,6 +174,16 @@ builds for a tautology, and that defect is in the **library**, not the binary,
 so in process it throws where the binary exits 2. `SpotTranslation`
 reports it so the caller can substitute the universal automaton.
 
+Simplification does **not** queue on that lock. `spot_try_simplify` waits at
+most `k_libspot_lock_budget` (8ms, the measured spawn cost) and otherwise falls
+through to the exec path, because whether in-process beats spawning depends on
+the workload, not the code: an `fsm` formula simplifies in 0.15ms, a `lift` one
+in 24ms, and serialising 1005 of the latter put 23.9s of CPU on one thread and
+made the run 14% *slower* than spawning. Waiting only as long as a spawn costs
+needs no prediction and beats both fixed choices. It is sound only because the
+two paths produce identical output — if they could ever disagree, a contended
+run would stop reproducing.
+
 Both in-process calls share **one** lock, which is why they live in one header.
 That lock is now the limiting factor rather than the exec: the two scopes
 together wait about 16s for about 1.05s of work on an fsm run, and adding

@@ -107,6 +107,14 @@ external tool took; this says where inside a call it went. Use
 `profile::site_interned` for a name only known at run time, and resolve it once
 rather than per call.
 
+Anything touching the scoring pool's concurrency should be checked under the
+`tsan` preset, not just `ctest`. It caught a real race in the batcher that
+review had missed, and the fix was not the obvious one: `LtlfiltStats` is
+written under `simplify_ltl`'s cache lock, so giving another writer its own
+mutex leaves two locks over one variable and no protection. Symlink
+`build-tsan/third_party` at a tree that already has Spot and black built, or the
+preset rebuilds both from source.
+
 `perf` and `gdb`/`strace` attach are unavailable on the dev box
 (`kernel.perf_event_paranoid=4`, yama `ptrace_scope`), which is why this is
 in-process instrumentation rather than sampling. `strace` still works when it

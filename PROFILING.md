@@ -323,6 +323,25 @@ CPU rather than latency.
 itself, but every fix to the spawn path has to be made five times, as both the `posix_spawn` change
 and the `O_CLOEXEC` fix did.
 
+## Validation under ThreadSanitizer
+
+The batcher and the completion queue are both new concurrency, so the branch was checked under the
+`tsan` preset as well as the normal suite. The check earned its keep immediately: a whole `counter`
+run over `fsm` reported 41 data races, all of them in the new batching code.
+
+The cause is worth recording, because guarding it the obvious way did not fix it.
+`run_ltlfilt_batch` accumulated into `LtlfiltStats::total_cpu_s`, a static that `simplify_ltl`
+already updates under its cache lock. Giving the batch path a mutex of its own left two locks
+protecting one variable, which is no protection at all, and ThreadSanitizer went on reporting it.
+The batch now hands the child's CPU time back through an out-parameter and the leader books it
+against its own call, so there is one writer under one lock.
+
+After that fix: a full run is clean (0 races, exit 0), and the whole suite passes under `tsan`,
+38 of 38 with no warnings. No pre-existing race surfaced on either workload.
+
+Building the `tsan` preset in a worktree is cheap if `build-tsan/third_party` is symlinked to a
+tree that already has Spot and black built; otherwise it rebuilds both from source.
+
 ## Reproducing
 
 ```sh

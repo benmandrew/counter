@@ -112,6 +112,13 @@ external tool took; this says where inside a call it went. Use
 `profile::site_interned` for a name only known at run time, and resolve it once
 rather than per call.
 
+Check performance work under the **`debug` preset too**, not only
+`relwithdebinfo` and `tsan`. It is the only one with ASAN and UBSAN on, and it
+caught two failures the others structurally could not: a LeakSanitizer report on
+the profiler's registry, and a missing `BUILD_BYPRODUCTS` on Spot's libraries
+that only shows up in a tree where `third_party` is not a symlink to an
+already-built one.
+
 Anything touching the scoring pool's concurrency should be checked under the
 `tsan` preset, not just `ctest`. It caught a real race in the batcher that
 review had missed, and the fix was not the obvious one: `LtlfiltStats` is

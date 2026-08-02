@@ -678,6 +678,31 @@ enough, and nothing else is.
 Building the `tsan` preset in a worktree is cheap if `build-tsan/third_party` is symlinked to a
 tree that already has Spot and black built; otherwise it rebuilds both from source.
 
+## What the debug preset caught
+
+This branch was verified under `relwithdebinfo` and `tsan` throughout, and both were the wrong
+place to look for two of its defects. The `debug` preset is the only one with AddressSanitizer and
+UndefinedBehaviorSanitizer on, and running it at the end failed eight tests and one build.
+
+The build failure is a consequence of linking `libspot`. `counter_fitness` names
+`libspot.so` and `libbddx.so` as link inputs by absolute path, and `ExternalProject_Add` had not
+declared them as `BUILD_BYPRODUCTS`. `add_dependencies` orders the targets but does not tell Ninja
+what produces a file, so a tree where Spot was not already installed failed with "missing and no
+known rule to make it". Every tree used during the work symlinked a `third_party` that was already
+built, which is exactly why it went unnoticed.
+
+The eight test failures are a LeakSanitizer report against the profiler. Its `Site` objects are
+deliberately never freed, because a worker thread can still be inside a scope when static
+destruction begins. The registry holding them was not: a function-local static vector, whose buffer
+was freed at exit, orphaning every `Site` a moment before the leak check ran. The fix is not to stop
+leaking but to keep the leak *reachable* -- holding the registry and the interned names behind
+pointers that live to exit. That distinction, between an allocation that is intentional and one that
+is merely lost, is the whole of what LeakSanitizer is reporting.
+
+Neither defect is about performance, and both were introduced by this branch. The lesson worth
+carrying is the narrow one: a preset that is convenient to iterate under is not the one that checks
+the work.
+
 ## Reproducing
 
 ```sh

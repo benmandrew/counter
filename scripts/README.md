@@ -433,3 +433,30 @@ It produces:
 
 Sweep C is displayed only if its results are present in the CSV, which they are
 unless the run was narrowed with `--sweeps`.
+
+## Checking engine parity
+
+`check_engine_parity.py` is not part of the campaign workflow. It answers a
+narrower question: whether the same run, configured every way that changes which
+`libspot` path it takes, produces the same repairs.
+
+```sh
+scripts/check_engine_parity.py --binary build-release/counter
+scripts/check_engine_parity.py --examples fsm takeoff --generations 10
+```
+
+Six configurations per example, at one seed: `simplify_engine` `libspot` against
+`ltlfilt`, a configured `ltl2tgba_timeout_ms` against none, `parallel` 1 against
+8, and a deliberate repeat of the first, so that a difference which is not about
+engines at all cannot be misread as one. FRETISH (`spec.json`) and TLSF
+(`spec.tlsf`) examples are both covered. Repairs are compared byte for byte and
+nothing is tolerated: two configurations that disagree are a finding, whichever
+is right.
+
+Run it after touching `src/runner/spot_inprocess.cpp`, `src/runner/ltlfilt.cpp`
+or `src/runner/spot.cpp`. The reason it exists is that the in-process paths
+share one SPOT formula-interning table for the life of the process, and SPOT
+prints commutative operands in the order that table assigned their ids — so
+their output depends on what the process did earlier in a way a freshly spawned
+`ltlfilt` never did. `PROFILING.md` records the measurements; this is what keeps
+checking that the difference does not reach a repair.

@@ -174,11 +174,22 @@ formula-interning table), so a per-thread instance crashes even when every call
 is locked, because construction alone is unsafe. `counter_tests.spot_inprocess`
 pins both.
 
-`run_ltl2tgba_for_counting` moves the same way, but **only when
-`ltl2tgba_timeout_ms` is 0** (the default). A per-call deadline here is enforced
-by killing the process doing the work, so a configured timeout keeps the exec
-rather than silently losing the guarantee it asks for. `ltlsynt` never moves,
-for that reason plus its memory cap. Two traps on that path: translate against a
+`run_ltl2tgba_for_counting` moves the same way, whatever
+`ltl2tgba_timeout_ms` says. A deadline cannot be enforced in process — there is
+nothing to kill and C++ cannot cancel a running call — so it is honoured by
+**abandoning**: the work goes to a worker thread that carries the libspot lock
+with it, and past the deadline the caller reports a timeout while that worker
+runs on. Because it keeps the lock, every later call finds it busy within the
+budget and spawns instead, so one pathological formula costs the fast path until
+it finishes and nothing more; the lock comes back on its own.
+`spot_abandoned_workers()` reports outstanding ones, and **`main` must leave
+through `leave()`**, which `_Exit`s while any are running — returning normally
+would run libspot's static destructors underneath a thread still inside them.
+The libspot mutex and simplifier are leaked for the same reason. The cost is
+200us per call, of which only 20us is the thread; a persistent worker would
+recover most of it and is not worth the stall it could hide. `ltlsynt` never
+moves, for the original reason plus its memory cap. Two further traps on that
+path: translate against a
 **fresh `bdd_dict` per call** (a shared one renumbers atomic propositions,
 because it carries over what earlier formulae registered), and handle the
 tautology print bug — Spot 2.15.1 refuses to print the universal automaton it
@@ -194,8 +205,31 @@ in 24ms, and serialising 1005 of the latter put 23.9s of CPU on one thread and
 made the run 14% *slower* than spawning. Waiting only as long as a spawn costs
 needs no prediction and beats both fixed choices — a sweep puts 8ms at the
 optimum on `lift` and within 7% of it on `fsm`. It is sound only because the two
-paths produce identical output; if they could ever disagree, a contended run
-would stop reproducing. The translator's budget is protective rather than
+paths produce equivalent output; if they could ever disagree, a contended run
+would stop reproducing.
+
+They are **equivalent, not byte-identical**, and that is the one thing to know
+before trusting either. Spot prints commutative operands in formula-node id
+order, ids are handed out on first interning, and the intern table is global to
+the *process* — so `ltlfilt` looked like a pure function only because each call
+got a fresh one. A cold process reproduces the tool exactly; after a few
+unrelated calls about a fifth of a random corpus prints differently, and the
+translated automaton lists `AP:` in a different order with every guard
+renumbered. Both are renamings, never different answers. It has not been
+observed to reach a repair: identical outputs across engines, across `parallel`
+1 to 16, and across repeated same-seed runs. Do not assume — re-check with
+`scripts/check_engine_parity.py` after touching either path, and note that the
+`determinism` suite pins the RNG stream, not the simplified strings, so it
+cannot catch this.
+
+`counter_tests.differential` (`test/runner/differential_tests.cpp`) is what
+guards it: a generated `randltl` corpus checked for equivalence against
+`ltlfilt --simplify`, for the difference being ordering alone, for language
+equivalence against `ltl2tgba` via `autfilt`, and for the deadline and
+concurrent paths agreeing with the inline and serial ones. Raise
+`COUNTER_DIFFERENTIAL_N` (default 400) to run it heavy. Its first version
+asserted byte-equality and failed on 89 of 417 formulae, which is how the above
+was found. The translator's budget is protective rather than
 measured — it buys no speedup on any workload here, but it shares the lock, so
 it shares the failure mode.
 

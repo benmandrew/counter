@@ -1,5 +1,6 @@
 add_executable(counter_tests
     runner/black_tests.cpp
+    runner/differential_tests.cpp
     runner/formaliser_tests.cpp
     runner/ganak_tests.cpp
     runner/ltlfilt_tests.cpp
@@ -63,6 +64,13 @@ add_test(NAME counter_tests.formaliser_runner COMMAND counter_tests formaliser_r
 add_test(NAME counter_tests.ganak_runner COMMAND counter_tests ganak_runner)
 add_test(NAME counter_tests.ltlfilt_runner COMMAND counter_tests ltlfilt_runner)
 add_test(NAME counter_tests.spot_inprocess COMMAND counter_tests spot_inprocess)
+# Differential: the in-process libspot paths against the tools they replaced,
+# over a generated corpus. Every comparison costs an exec, so the registered
+# run is a regression guard at the default corpus size rather than the whole
+# argument -- raise it deliberately with
+#   COUNTER_DIFFERENTIAL_N=5000 ./test/counter_tests differential
+add_test(NAME counter_tests.differential COMMAND counter_tests differential)
+set_tests_properties(counter_tests.differential PROPERTIES TIMEOUT 900)
 add_test(NAME counter_tests.spot_runner COMMAND counter_tests spot_runner)
 add_test(NAME counter_tests.crossover COMMAND counter_tests crossover)
 add_test(NAME counter_tests.generation COMMAND counter_tests generation)

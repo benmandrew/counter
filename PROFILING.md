@@ -557,16 +557,18 @@ Two implementation details are worth recording, because the obvious choice is wr
   The reader for the *Hanoi Omega-Automata* (HOA) format resolves guards through the
   atomic-proposition name list, so the renumbering would have been internally consistent, and
   therefore invisible until something else depended on it.
-- Output matches the tool exactly apart from the `name:` line, which `ltl2tgba` fills with its own
-  simplified rendering of the formula and which nothing in this project reads.
+- Output matches the tool apart from the `name:` line, which `ltl2tgba` fills with its own
+  simplified rendering of the formula and which nothing in this project reads. It also matches only
+  up to the ordering of `AP:`, which is not a detail and is the subject of "The output depends on
+  what the process did earlier" below. That was not known when this section was first written.
 
-The move is conditional. It happens only when `ltl2tgba_timeout_ms` is zero, which is the default. A
-per-call deadline in this project is enforced by killing the process doing the work; in process
-there is nothing to kill, and C++ cannot cancel a running call. A configured timeout therefore keeps
-the exec rather than silently losing the guarantee it was asked for. This is the split that "Linking
-`libspot` in process" predicted, resolved rather than dodged: the tool moves where the guarantee
-does not exist, and stays where it does. `ltlsynt` still cannot move at all, for the same reason
-plus its memory cap.
+The move was at first conditional: it happened only when `ltl2tgba_timeout_ms` was zero, which is
+the default. A per-call deadline in this project is enforced by killing the process doing the work;
+in process there is nothing to kill, and C++ cannot cancel a running call, so a configured timeout
+kept the exec rather than silently losing the guarantee it was asked for. `ltlsynt` still cannot
+move at all, for the same reason plus its memory cap. The condition has since been lifted — see "A
+deadline you cannot enforce, only honour" — but the reasoning that put it there is the reasoning the
+replacement had to answer.
 
 One real surprise came out of this, and the existing `spot_runner` test suite is what caught it.
 Spot 2.15.1 refuses to print the *universal automaton* it builds for a tautology, reporting that the
@@ -965,6 +967,210 @@ The general point is the one the review pass above already made from the other d
 measurements in this document are load-bearing and were taken carefully; the tests around them are
 thinner than their names suggest, and anyone extending this work should believe the numbers before
 the suite.
+
+Two of those three gaps have since closed, and the third has moved.
+`test_a_missed_deadline_is_abandoned_and_then_recovered_from` asserts `m_lock_busy` directly, since
+an abandoned worker is a reliable way to hold the lock; the same test then waits for the lock to
+come back, which pins the recovery as well as the fallback. The timeout-driven choice no longer
+exists — "A deadline you cannot enforce, only honour" replaced it, and the deadline path is compared
+against the inline one over the whole corpus. Both assertions were confirmed by mutation rather than
+assumed: ignoring the deadline fails the first, and a worker that never releases the lock fails the
+last. What remains untested is the missing-`ltlfilt` fallback, `set_thread_pool_size`, and the claim
+the lock rests on — `test_concurrent_calls_agree` would still pass with the lock removed.
+
+## A deadline you cannot enforce, only honour
+
+The in-process translator ran only when `ltl2tgba_timeout_ms` was 0, because a deadline in this
+project is enforced by killing the process doing the work, and in process there is no process to
+kill. Any run that configured a timeout therefore paid roughly 10 ms of process startup on every
+counting translation, to keep a guarantee it usually never called on.
+
+A running libspot call cannot be cancelled, so the deadline is honoured by *abandoning* the call
+rather than stopping it. The work goes to a worker thread, which takes the process-wide libspot lock
+itself and holds it for the duration. The caller waits on a condition variable, and on expiry it
+reports `m_timed_out` and returns while the worker runs on.
+
+The obvious design is for the *caller* to take the lock and hand it over — `unique_lock::release()`
+keeps the mutex locked while dropping ownership, so the worker inherits it and unlocks it when it
+finishes. That is what was written first, and it is undefined behaviour: `std::timed_mutex` may only
+be unlocked by the thread that locked it, and past the deadline the caller is gone, so the worker is
+necessarily the wrong thread. ThreadSanitizer names it exactly — "unlock of an unlocked mutex (or by
+a wrong thread)", once in the `spot_inprocess` suite and 25 times in the differential one. Nothing
+else caught it: the suites passed, the results were correct, and the release build showed nothing.
+Having the worker acquire the lock costs a thread that turns out not to be needed when the lock is
+busy, and the caller then has to wait `budget + deadline` rather than `deadline`, since up to the
+budget goes on acquiring it. Against an 8 ms budget neither is worth avoiding.
+
+That is bounded rather than reckless, and the lock is what bounds it. An abandoned worker still
+holds the lock, so every later call — translation and simplification alike — finds it busy within
+the 8 ms budget and spawns the tool instead. One pathological formula costs the process its
+in-process fast path until that formula finishes, and nothing beyond that. No caller ever waits on
+it again. When the worker finishes it releases the lock and the fast path resumes with no
+intervention. What is genuinely given up is a thread and its memory for the duration, which is
+strictly worse than killing a child process, and that is the trade;
+`spot_abandoned_workers()` makes it observable rather than invisible.
+
+The cost was measured over 400 interleaved translations, deadline path against inline path, medians
+of three repetitions:
+
+- inline: 502, 511, 520 µs;
+- deadline: 711, 727, 751 µs;
+- overhead: 209, 217, 232 µs.
+
+About 20 µs of that overhead is the thread and the handoff. Measured separately over 2000
+repetitions, creating a detached thread alone costs 7–11 µs by median, and a spawn plus a
+condition-variable round trip costs 17–21 µs. It is also not glibc's per-thread malloc arenas: under
+`MALLOC_ARENA_MAX=1` the overhead is unchanged at 195–202 µs. The remainder is the translation
+running on a cold thread, so a persistent worker thread is where the rest of it would be recovered,
+at the cost of a job queue on the one path where a stall is hardest to diagnose. That was not taken.
+On an `fsm-combined` run the translation cache absorbs all but 55 calls, so the whole saving would
+be about 11 ms. Against the roughly 10 ms exec it replaces, the deadline path is still about
+fourteen times cheaper.
+
+One instrumentation change came with it, and it is worth recording because the profiler read the
+change backwards. A scope measures the thread it runs on, so once the work moved off the caller the
+translate site reported wall time against almost no CPU — which is precisely the profiler's signal
+for "blocked", and exactly the wrong conclusion here. Before the fix the caller site read a cpu/wall
+ratio of 0.03. The worker now has its own scope, `spot/libspot-translate-worker`, which reads 0.93,
+while the caller site still reads 0.03 — which is now the truth, because it is waiting.
+
+## The output depends on what the process did earlier
+
+This is the most important finding of the whole exercise, and it corrects a claim made twice above.
+"Linking `libspot` in process" reported in-process simplification as byte-identical to `ltlfilt
+--simplify`, and "The in-process translator" reported that output matches the tool exactly. Both
+hold only of a process that has done nothing else first.
+
+SPOT prints the operands of commutative operators in formula-node id order. Ids are assigned when a
+node is first *interned*, into a `robin_hood` table that is global to the process and lives as long
+as the process does. `ltlfilt` and `ltl2tgba` look like pure functions of their input only because
+every call gets a fresh process and therefore a fresh table. In process, one table is shared by
+every call for the life of the run.
+
+This was demonstrated directly, on `(G(a) | F(b)) U (c & X(d))`:
+
+- a cold process simplifies it to `(Ga | Fb) U (c & Xd)`, byte-identical to `ltlfilt --simplify`;
+- the same call in the same binary, after simplifying seven unrelated formulae first, gives
+  `(Fb | Ga) U (c & Xd)`.
+
+It reaches the automaton too. Translated cold, the same formula gives `AP: 4 "a" "b" "c" "d"` and
+matches `ltl2tgba` byte for byte, modulo the `name:` line. Translated warm, it gives
+`AP: 4 "b" "a" "c" "d"` and renumbers every edge guard to match. That is a renaming rather than a
+different automaton, and `autfilt --equivalent-to` confirms the two accept the same language.
+
+The scale of it, over a generated corpus of 417 formulae — `randltl` across four alphabet sizes and
+tree-size ranges at fixed seeds, plus the shapes this project builds itself — is that 89 of them
+print differently from the tool once the table is warm, about a fifth. Every one is logically
+equivalent to the tool's answer, checked with `ltlfilt --equivalent-to`, and every difference is
+ordering alone: re-simplifying the tool's answer in the same process lands exactly on the in-process
+answer, which it would not if one side were applying a rewrite rule the other was not.
+
+It matters because the simplified LTL string is part of `Requirement`'s identity. A reordering makes
+two otherwise-identical requirements compare unequal, and changes what the dedup filter removes.
+And because the intern order depends on which scoring thread interns which formula first, the
+exposure is not only engine against engine but run against run.
+
+Why it does not matter in practice, so far, is measured rather than assumed:
+
+- six runs of `fsm-combined` at the same seed produce byte-identical repairs, 6 of 6;
+- `fsm`, `fsm-timing` and `takeoff` at a fixed seed with `parallel` set to 1, 2, 4, 8 and 16 produce
+  byte-identical repairs at every thread count, which is the strongest available evidence that
+  thread scheduling does not perturb the result;
+- `fsm`, `fsm-timing`, `fsm-combined` and `takeoff` at a fixed seed under
+  `simplify_engine = "libspot"` against `"ltlfilt"` produce byte-identical repairs.
+
+The honest summary is that the in-process paths guarantee logical equivalence and in-run
+determinism, not byte-equality with a fresh-process tool, and that the difference has not been
+observed to reach a repair. `scripts/check_engine_parity.py` exists to go on checking that.
+
+## What a separate process was containing
+
+A child process supplied several bounds for free, and moving simplification and counting-path
+translation in process gives every one of them up. Each is enumerated below with what replaces it.
+Each was tested rather than reasoned about, and one of the tests found a real defect.
+
+- **Deadline.** Was: `SIGKILL` on expiry. Now: abandonment, as described above. Bounded, tested and
+  self-healing.
+- **Memory exhaustion.** Was: the child died, the parent read a failed exit code and carried on.
+  Now: the allocation happens in `counter`'s own heap. Tested by capping address space at 40 MB
+  against a formula that needs about 51 MB. This found a real defect. `translate_locked` caught only
+  `std::runtime_error`, so `std::bad_alloc` propagated — and the two paths then behaved
+  *differently*, because the worker thread's `catch (...)` swallowed it while the inline path let it
+  escape. A formula that ran out of memory therefore dropped the individual when no deadline was
+  set, and fell back to the exec when one was. The fix catches `...` in the shared translation body,
+  so both paths fall back to the tool, whose own address space may well have the room this one has
+  run out of. Verified: both paths now survive the 40 MB cap and return no automaton. What cannot be
+  fixed is that a genuine out-of-memory (OOM) kill now targets `counter` rather than a child.
+- **Signals.** Was: the parent stayed responsive while the child worked. Now: threads are inside
+  libspot. Tested by signalling a running `counter` mid-run — `SIGINT` and `SIGTERM` each terminate
+  it in about 1 ms, leaving no orphaned tool processes behind. No regression.
+- **Static destruction.** This is a new hazard rather than a replaced one. An abandoned worker can
+  still be inside libspot when `main` returns, and returning runs libspot's own static destructors
+  underneath it. Sampling 150 process exits across the whole 4.7 s span of an abandoned translation
+  produced no failure. Narrow is not absent, and by that point the run has already written its
+  output, so `main` now leaves through `leave()`, which calls `std::_Exit` when
+  `spot_abandoned_workers()` is non-zero. The libspot mutex and the `tl_simplifier` are leaked
+  rather than destroyed for the same reason.
+- **Unbounded wait with no fallback.** One place remained where an abandoned worker could hang a run
+  outright. `simplify_ltl` blocks on the lock rather than spawning when there is no `ltlfilt` binary
+  to spawn, because falling back without one would silently return the formula unsimplified. With a
+  worker abandoned, that block never ends. It now waits in one-second slices and throws with a
+  message naming the cause, which `max_scoring_failure_rate` treats like any other failed
+  individual. It is not covered by a test: reaching it requires the SPOT install tree to be missing,
+  which the build guarantees against.
+- **File descriptors.** Was: a pipe pair per call. Now: none. A straight improvement, and the reason
+  the earlier `O_CLOEXEC` bug cannot recur on these two paths.
+- **Thread-pool starvation.** Considered and not a problem. The libspot lock means at most one
+  thread is ever inside it, and every other caller falls back to spawning after 8 ms.
+
+## Differential testing
+
+The rest of the suite pins behaviour on formulae someone thought of, which catches a path that is
+broken but not one that is subtly different — and subtly different is the failure mode a drop-in
+replacement actually has. A simplifier that disagrees on one formula in a thousand fails nothing. It
+changes fitness scores, the run still finishes and still writes repairs, and it surfaces months
+later as numbers that do not match an earlier campaign's. *Differential testing* — comparing two
+implementations over generated input rather than checking one against fixed expectations — is the
+shape that catches it.
+
+`test/runner/differential_tests.cpp` is registered as `counter_tests.differential`. Its corpus is
+generated rather than written: `randltl` at fixed seeds across four alphabet sizes and tree-size
+ranges, plus the shapes this project builds and random generation rarely produces — deep nested `X`
+from long `WithinTicks` horizons, `W` from the Continual condition type, and the trivially-true and
+trivially-false formulae a mutation lands on. Size comes from `COUNTER_DIFFERENTIAL_N`, defaulting
+to 400 because every comparison costs an exec of the tool being compared against. The default is a
+regression guard, and the number is meant to be raised deliberately.
+
+Four properties are pinned:
+
+- in-process simplification is logically equivalent to `ltlfilt --simplify` over the whole corpus;
+- the difference from the tool is ordering alone, checked by re-simplifying the tool's answer and
+  requiring it to land on the in-process answer — equivalence alone would not catch a simplifier
+  that quietly stopped applying a rule;
+- in-process translation accepts the same language as `ltl2tgba -D -S -H`, checked with `autfilt
+  --equivalent-to`, because byte comparison fails on the `AP:` reordering while still missing an
+  automaton that had genuinely lost a state;
+- the deadline path and the inline path produce the same automaton, and eight threads simplifying
+  the whole corpus concurrently agree with a single-threaded pass.
+
+The first version of this suite asserted byte-equality with the tool and failed immediately, on 89
+of 417 formulae. That failure is what uncovered the intern-table finding above.
+
+The translate comparison is worth following, because it demonstrates the finding by accident. On
+that first run it passed byte-for-byte, 105 of 105. Replacing the simplify assertion with the two
+above added a second pass over the corpus, and so a great deal more interning before the translate
+comparison ran — at which point 18 of the same 105 failed. Nothing about the translator had changed.
+The test had simply been moved further from a cold process, which is the whole finding restated as
+an accident.
+
+Complementing it, `scripts/check_engine_parity.py` runs whole repairs rather than single calls,
+across six configurations — `libspot` against `ltlfilt`, a configured `ltl2tgba` timeout against
+none, `parallel` 1 against 8, and a deliberate repeat of the first configuration, so that a
+difference which is not about engines at all cannot be misread as one. It covers FRETISH
+(`spec.json`) and TLSF (`spec.tlsf`) examples alike.
+
+The generated corpus found in one run what the hand-written suite had not found in a branch's worth
+of work, and what it found was not a defect in the new code but a false claim about the old tool.
 
 ## Ranked targets
 

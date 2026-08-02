@@ -29,9 +29,26 @@
 /// Returns std::nullopt when the formula does not parse -- the caller should
 /// then leave it alone, as the exec path does.
 ///
-/// The result is byte-identical to the tool, which needs simplification level 3
-/// rather than the library default; the two disagree on about 5% of formulae,
-/// so the level is not a detail that can be left to the default.
+/// Simplification runs at level 3, which is what `--simplify` selects; the
+/// library default is weaker and disagrees on about 5% of formulae, so the
+/// level is not a detail that can be left alone.
+///
+/// The result is *equivalent* to the tool's, not byte-identical to it, and the
+/// difference is worth understanding before relying on either. SPOT prints the
+/// operands of commutative operators in formula-node id order, and ids are
+/// assigned when a node is first interned -- into a table that is global to the
+/// process and lives as long as it does. `ltlfilt` looked like a pure function
+/// of its input only because every call got a fresh process, and so a fresh
+/// table. In process, the same formula can print as `Ga | Fb` or `Fb | Ga`
+/// depending on what was simplified before it.
+///
+/// Measured: a cold process reproduces the tool byte for byte; after a handful
+/// of unrelated calls, about a fifth of a random corpus prints differently. The
+/// two are always logically equivalent, and always differ only by that
+/// ordering -- both pinned over a corpus in test/runner/differential_tests.cpp,
+/// and checked end-to-end across engines, thread counts and repeated runs by
+/// scripts/check_engine_parity.py, which has yet to find a difference that
+/// reaches a repair.
 std::optional<std::string> spot_simplify(const std::string& formula);
 
 /// The outcome of a simplification that was only willing to wait so long.
@@ -91,9 +108,13 @@ struct SpotTranslation {
 /// Translates @p formula into an automaton in HOA form, the in-process
 /// equivalent of `ltl2tgba -D -S -H -f <formula>`.
 ///
-/// The output matches the tool exactly apart from the `name:` line, which the
-/// tool fills with its own simplified rendering of the formula and which
-/// nothing in this project reads.
+/// The output matches the tool apart from the `name:` line, which the tool
+/// fills with its own simplified rendering of the formula and which nothing in
+/// this project reads -- and apart from the ordering of `AP:`, for the reason
+/// spot_simplify describes above. A warm intern table lists the atomic
+/// propositions in a different order and renumbers every edge label to match,
+/// which is a renaming rather than a different automaton: the two accept the
+/// same language, and the trace counts taken from them are the same.
 ///
 /// Each call translates against a fresh `bdd_dict`. Sharing one across calls is
 /// measurably no faster and renumbers atomic propositions, since a dictionary

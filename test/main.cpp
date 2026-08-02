@@ -93,34 +93,49 @@ bool run_tlsf_suite(std::string_view suite_name) {
     return false;
 }
 
-void run_suite(std::string_view suite_name,
-               const std::chrono::milliseconds& timeout) {
+// The runner suites that take no argument, split out for the same reason as
+// run_genetic_suite and run_tlsf_suite below: one `if` per suite in run_suite
+// puts its cognitive complexity over the lint threshold, and the list only ever
+// grows. black_runner stays behind, because it needs the timeout.
+bool run_runner_suite(std::string_view suite_name) {
     if (suite_name == "transfer_matrix") {
         run_transfer_matrix_tests();
-        return;
+        return true;
     }
+    if (suite_name == "formaliser_runner") {
+        run_formaliser_runner_tests();
+        return true;
+    }
+    if (suite_name == "ganak_runner") {
+        run_ganak_runner_tests();
+        return true;
+    }
+    if (suite_name == "differential") {
+        run_differential_tests();
+        return true;
+    }
+    if (suite_name == "spot_inprocess") {
+        run_spot_inprocess_tests();
+        return true;
+    }
+    if (suite_name == "ltlfilt_runner") {
+        run_ltlfilt_runner_tests();
+        return true;
+    }
+    if (suite_name == "spot_runner") {
+        run_spot_runner_tests();
+        return true;
+    }
+    return false;
+}
+
+void run_suite(std::string_view suite_name,
+               const std::chrono::milliseconds& timeout) {
     if (suite_name == "black_runner") {
         run_black_runner_tests(timeout);
         return;
     }
-    if (suite_name == "formaliser_runner") {
-        run_formaliser_runner_tests();
-        return;
-    }
-    if (suite_name == "ganak_runner") {
-        run_ganak_runner_tests();
-        return;
-    }
-    if (suite_name == "spot_inprocess") {
-        run_spot_inprocess_tests();
-        return;
-    }
-    if (suite_name == "ltlfilt_runner") {
-        run_ltlfilt_runner_tests();
-        return;
-    }
-    if (suite_name == "spot_runner") {
-        run_spot_runner_tests();
+    if (run_runner_suite(suite_name)) {
         return;
     }
     if (run_genetic_suite(suite_name)) {
@@ -214,6 +229,7 @@ int main(int argc, const char* const argv[]) {
             run_ganak_runner_tests();
             run_ltlfilt_runner_tests();
             run_spot_inprocess_tests();
+            run_differential_tests();
             run_spot_runner_tests();
             run_crossover_tests();
             run_generation_tests();

@@ -100,6 +100,11 @@ table only. Off otherwise, at the cost of one relaxed atomic load per scope.
 `COUNTER_PROFILE_SCOPE("name")` times a block, recording calls, wall time,
 **per-thread CPU time** and the slowest call.
 
+Every binary reports, not just `counter`: the report is registered with
+`atexit` the first time a scope runs, so `realize`, `mucs` and `compare` need no
+wiring of their own. A binary that executes no instrumented scope prints
+nothing, which is the honest answer rather than an empty table.
+
 Wall and CPU are recorded separately because that ratio is the whole diagnostic:
 a scope with large wall and near-zero CPU is blocked on a child process, not
 computing. The per-tool "Tool timing report" in `src/main.cpp` says how long each

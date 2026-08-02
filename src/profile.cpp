@@ -56,7 +56,19 @@ std::string format_ns(std::uint64_t nanos) {
 }  // namespace
 
 bool enabled() {
-    static const bool is_enabled = profile_target() != nullptr;
+    // Registering the report here rather than asking each main() to call it
+    // means every binary -- compare, realize, mucs, ltl as well as counter --
+    // reports without further wiring. Reading the sites at exit is safe because
+    // they are deliberately leaked, so nothing has destroyed them by then, and
+    // report_if_enabled is idempotent, so counter's own explicit call at the
+    // end of its timing report still prints exactly once.
+    static const bool is_enabled = [] {
+        const bool on = profile_target() != nullptr;
+        if (on) {
+            std::atexit([] { report_if_enabled(); });
+        }
+        return on;
+    }();
     return is_enabled;
 }
 

@@ -41,14 +41,15 @@ gen20/pop1000, against the same binary configured to spawn both tools as it used
 
 | | spawning both | in process | |
 |---|---|---|---|
-| one run, three repetitions | 6.52 s | 5.15 s | 21% sooner |
+| one run, three repetitions | 6.47 s | 5.10 s | 21% sooner |
 | four concurrent runs, five repetitions | 12.50 s | 8.98 s | 28% sooner |
 
 Both are medians, and neither pair of distributions overlaps. Both rows are the in-process path as
 it now stands, with the 8 ms lock budget described under "Waiting only as long as a spawn would
 cost". Earlier versions of this section reported 6.54 s to 4.87 s and 12.46 s to 8.33 s, both taken
 before that budget existed; those pairs are superseded, and the small loss against them is the
-budget's price, paid to remove a regression elsewhere. Almost all of the single-run gain is the
+budget's price, paid to remove a regression elsewhere. Every figure in this section was re-taken
+against the code as it finally stands, so none of them predates a later change. Almost all of the single-run gain is the
 simplifier; the translator adds CPU headroom rather than latency, which is why its own contribution
 shows up in the concurrent row and not the first. The batcher's own wall cost stands as measured,
 and now applies only when the exec engine is selected explicitly.
@@ -61,12 +62,12 @@ specifications which happened to agree would be claiming generality from the eas
 
 | specification | spawning both | in process, budgeted | |
 |---|---|---|---|
-| `fsm` | 6.52 s | 5.15 s | 21% sooner |
-| `fsm-timing` | 9.96 s | 8.96 s | 10% sooner |
-| `fsm-combined` | 15.86 s | 12.95 s | 18% sooner |
-| `takeoff` | 4.90 s | 4.40 s | 10% sooner |
-| `minepump` (TLSF) | 3.00 s | 1.96 s | 35% sooner |
-| `lift` (TLSF) | 24.27 s | 20.08 s | 17% sooner |
+| `fsm` | 6.47 s | 5.10 s | 21% sooner |
+| `fsm-timing` | 10.19 s | 8.86 s | 13% sooner |
+| `fsm-combined` | 16.00 s | 12.76 s | 20% sooner |
+| `takeoff` | 4.87 s | 4.32 s | 11% sooner |
+| `minepump` (TLSF) | 3.06 s | 1.87 s | 39% sooner |
+| `lift` (TLSF) | 23.73 s | 20.96 s | 12% sooner |
 
 Medians again, and no pair overlaps. The gain is smallest on `takeoff` and `fsm-timing`, which is
 what should be expected: the saving is per exec, so it is proportionally smaller on a workload that

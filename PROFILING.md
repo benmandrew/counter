@@ -268,6 +268,10 @@ baseline while the CPU saving shrinks. Fewer batchers mean the opposite. The rel
 and there is no setting that gets both: 16 batchers reach wall parity but save 4.2% of total CPU,
 four save 19.3% of total CPU but cost 5.2% of wall.
 
+Because the right setting depends on how the machine is being used rather than on anything intrinsic
+to the code, it is a configuration key rather than a constant: `[runtime] ltlfilt_batchers`, default
+four, with zero switching batching off entirely and restoring one exec per call.
+
 Four stays the default, and the campaign regime it is chosen for was measured rather than assumed.
 Running four `counter` processes at once on the same 20-core machine — which is what a campaign
 does, and what makes the machine CPU-saturated rather than latency-bound — and timing the whole

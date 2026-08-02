@@ -76,11 +76,11 @@ const KeySpec& config_key_spec() {
                   {{"intervals",
                     section({"dedup", "false_condition", "weakening", "bloat",
                              "vacuity", "well_separation"})}})},
-         {"runtime",
-          section({"black_timeout_ms", "ltlsynt_timeout_ms",
-                   "ltl2tgba_timeout_ms", "parallel",
-                   "max_concurrent_realizability", "report_cpu_timing",
-                   "max_scoring_failure_rate", "dashboard"})}});
+         {"runtime", section({"black_timeout_ms", "ltlsynt_timeout_ms",
+                              "ltl2tgba_timeout_ms", "parallel",
+                              "max_concurrent_realizability",
+                              "ltlfilt_batchers", "report_cpu_timing",
+                              "max_scoring_failure_rate", "dashboard"})}});
     return spec;
 }
 
@@ -325,6 +325,13 @@ void apply_runtime(const toml::table& tbl, Config& cfg) {
             throw std::runtime_error("config: runtime.parallel must be >= 1");
         }
         cfg.parallel = static_cast<std::size_t>(*val);
+    }
+    if (auto val = tbl["ltlfilt_batchers"].value<int64_t>()) {
+        if (*val < 0) {
+            throw std::runtime_error(
+                "config: runtime.ltlfilt_batchers must be >= 0");
+        }
+        cfg.ltlfilt_batchers = static_cast<std::size_t>(*val);
     }
     if (auto val = tbl["max_concurrent_realizability"].value<int64_t>()) {
         if (*val < 0) {

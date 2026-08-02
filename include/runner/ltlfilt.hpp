@@ -5,6 +5,7 @@
 ///        canonical form, improving cache hit rates across tool invocations
 ///        and deciding formulae that reduce to a boolean constant outright.
 
+#include <cstddef>
 #include <string>
 
 struct LtlfiltStats {
@@ -18,6 +19,13 @@ struct LtlfiltStats {
 
 /// Returns the full filesystem path to the ltlfilt binary.
 std::string ltlfilt_path();
+
+/// Sets how many ltlfilt batches may run concurrently, from
+/// Config::ltlfilt_batchers. Concurrent simplify_ltl misses are coalesced into
+/// one exec per batcher, trading latency for CPU; zero disables batching and
+/// gives every call its own exec. Call once at startup, before any scoring
+/// thread runs: the pool is built on first use and not resized afterwards.
+void set_ltlfilt_batchers(std::size_t count);
 
 /// Returns the ltlfilt-simplified form of `formula` verbatim, including SPOT's
 /// boolean constants "0" (false) and "1" (true) when the formula reduces to

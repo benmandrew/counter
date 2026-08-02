@@ -379,23 +379,42 @@ class SimplifyBatcher {
 // simplification in the process behind one exec at a time. Each batcher runs
 // its own exec concurrently, so throughput stays parallel while each exec still
 // amortises its startup over a whole batch.
-constexpr std::size_t k_batcher_count = 4;
+// How many is a latency-versus-CPU trade with no free setting, so it is
+// configurable rather than fixed; see Config::ltlfilt_batchers.
+std::atomic<std::size_t> g_batcher_count{4};
 
-std::array<SimplifyBatcher, k_batcher_count>& batchers() {
-    static std::array<SimplifyBatcher, k_batcher_count> pool;
+// Built once, on the first simplification, and never resized: scoring threads
+// index into it without a lock, so growing it underneath them would be a race.
+// set_ltlfilt_batchers therefore has to run before any scoring starts.
+std::vector<std::unique_ptr<SimplifyBatcher>>& batchers() {
+    static std::vector<std::unique_ptr<SimplifyBatcher>> pool = [] {
+        std::vector<std::unique_ptr<SimplifyBatcher>> built;
+        const std::size_t count = g_batcher_count.load();
+        built.reserve(count);
+        for (std::size_t i = 0; i < count; ++i) {
+            built.push_back(std::make_unique<SimplifyBatcher>());
+        }
+        return built;
+    }();
     return pool;
 }
 
-std::size_t batcher_slot() {
+// count must be positive: it is a modulus. Callers check the pool is non-empty
+// first, since a zero pool means batching is switched off rather than that
+// slot 0 should be used.
+std::size_t batcher_slot(std::size_t count) {
+    assert(count > 0);
     static std::atomic<std::size_t> next{0};
     thread_local const std::size_t slot =
         next.fetch_add(1, std::memory_order_relaxed);
-    return slot % k_batcher_count;
+    return slot % count;
 }
 
 }  // namespace
 
 std::string ltlfilt_path() { return spot_bin_dir() + "/ltlfilt"; }
+
+void set_ltlfilt_batchers(std::size_t count) { g_batcher_count.store(count); }
 
 std::string simplify_ltl(const std::string& formula) {
     COUNTER_PROFILE_SCOPE("ltlfilt/simplify_ltl");
@@ -429,10 +448,15 @@ std::string simplify_ltl(const std::string& formula) {
         formula.find('\n') == std::string::npos &&
         formula.find_first_not_of(" \t\r") != std::string::npos;
     std::optional<std::string> batched;
-    if (batchable) {
+    // An empty pool is ltlfilt_batchers = 0, which turns batching off: every
+    // call gets its own exec, as it did before batching existed. The emptiness
+    // check has to come first -- batcher_slot takes the pool size as a modulus,
+    // so reaching it with an empty pool is a division by zero.
+    const std::size_t pool_size = batchers().size();
+    if (batchable && pool_size > 0) {
         COUNTER_PROFILE_SCOPE("ltlfilt/batched-request");
-        batched =
-            batchers()[batcher_slot()].simplify(binary, formula, child_cpu_s);
+        batched = batchers()[batcher_slot(pool_size)]->simplify(binary, formula,
+                                                                child_cpu_s);
     }
     if (batched.has_value()) {
         simplified = *batched;

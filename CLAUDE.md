@@ -143,9 +143,9 @@ which is the right side of the trade for campaigns, measured rather than
 assumed: four concurrent `counter` processes on a 20-core box finish 12.6%
 sooner batched (14.14s -> 12.36s median). The sign of the effect reverses with
 concurrency, because the cores the baseline spends demand-paging `ltlfilt` are
-the ones its neighbours need. `k_batcher_count`
-in that file is the knob: more batchers approach baseline wall with less CPU
-saved, fewer do the opposite, and it is monotonic. Measure A/B interleaved, not
+the ones its neighbours need. `[runtime]
+ltlfilt_batchers` is the knob: more batchers approach baseline wall with less
+CPU saved, fewer do the opposite, it is monotonic, and 0 turns batching off. Measure A/B interleaved, not
 as two separate batches of runs — machine load drifts, and that mistake made
 this change look free when it is not.
 

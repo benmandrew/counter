@@ -842,6 +842,31 @@ is not is better than either, which is what the budget buys. The cost is visible
 now pay a wait before spawning anyway. Trading 0.3 s on the best case to remove a 3.5 s regression
 on the worst is the right way round.
 
+### Checking the budget against a sweep
+
+The 8 ms figure is derived rather than tuned — it is what a spawn costs — so it is worth asking
+whether the derivation lands anywhere near the best value. Sweeping it over the two specifications
+that disagree most, one run each:
+
+| budget | `fsm` | `lift` |
+|---|---|---|
+| 0 ms, never wait | 5.47 s | 20.15 s |
+| 2 ms | 5.41 s | 19.90 s |
+| 8 ms | 5.19 s | 19.28 s |
+| 32 ms | 4.84 s | 21.80 s |
+| unbounded, always wait | 5.22 s | 27.92 s |
+
+These are single runs rather than medians, so small differences between neighbouring rows should not
+be read closely; the shape is what matters, and it is clear enough.
+
+Both extremes are worse than the middle, which is the useful part. Never waiting gives up the
+in-process path even when the lock is free and is the worse choice on both. Always waiting is
+catastrophic on `lift` and no better on `fsm`. Between them, 8 ms is the best value measured on
+`lift` and within 7% of the best on `fsm`, where 32 ms edges it — and 32 ms costs `lift` 13%. The
+derived value therefore sits close to the empirical optimum on both, without having been fitted to
+either, which is the property worth having: a tuned constant would be tuned to whichever
+specification happened to be measured.
+
 ## Where a run's wall time goes now
 
 The `--dashboard` progress log already times every pipeline stage, so the breakdown below needs no

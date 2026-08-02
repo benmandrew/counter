@@ -52,6 +52,11 @@ class ThreadPool {
         return result;
     }
 
+    /// How many workers this pool runs. Filters use it to size their own
+    /// in-flight windows, so that one setting governs concurrency rather than
+    /// each site reaching for the hardware concurrency independently.
+    [[nodiscard]] std::size_t size() const { return m_workers.size(); }
+
    private:
     void worker_loop();
 

@@ -249,7 +249,7 @@ void run_and_report(const std::vector<RepairMeta>& repairs,
     const std::size_t n_repairs = repairs.size();
     const std::size_t n_ideals = ideal_names.size();
     const std::size_t n_tasks = n_repairs * n_ideals;
-    const std::size_t n_hw = std::thread::hardware_concurrency();
+    const std::size_t n_hw = global_thread_pool().size();
     const std::size_t max_in_flight = n_hw > 0 ? n_hw * 2 : 1;
 
     struct BestResult {

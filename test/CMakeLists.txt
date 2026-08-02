@@ -50,6 +50,13 @@ else()
 endif()
 
 add_test(NAME counter_tests.profile COMMAND counter_tests profile)
+# Again with the profiler switched on. The suite branches on
+# profile::enabled(), so registering it only once meant every assertion about
+# actually recording anything was skipped -- the suite passed by testing that a
+# disabled profiler does nothing, which is the half that cannot regress.
+add_test(NAME counter_tests.profile_enabled COMMAND counter_tests profile)
+set_tests_properties(counter_tests.profile_enabled PROPERTIES
+    ENVIRONMENT "COUNTER_PROFILE=1")
 add_test(NAME counter_tests.transfer_matrix COMMAND counter_tests transfer_matrix)
 add_test(NAME counter_tests.black_runner COMMAND counter_tests black_runner)
 add_test(NAME counter_tests.formaliser_runner COMMAND counter_tests formaliser_runner)

@@ -924,6 +924,43 @@ that fails its check, an unexpected library error. A clean sweep is evidence abo
 and very little about the rest, and performance work is unusually good at adding rare paths, because
 most of what it does is add a second way of doing something.
 
+## What the tests are actually worth
+
+A third review looked only at the tests this branch added, asking of each one whether it would fail
+if the behaviour it claims to pin were broken. Several would not, and that is worth recording
+plainly, because a test that cannot fail is worse than no test: it is a claim of coverage that
+nothing backs.
+
+The one fixed here is the profiler's own suite. It branches on `profile::enabled()` and asserts the
+two consistent outcomes, which was a reasonable shape — but `COUNTER_PROFILE` is not set anywhere in
+the ctest registration, so only the disabled branch ever ran. Every assertion about the profiler
+actually recording a call was skipped on every run, and the suite passed by confirming that a
+switched-off profiler does nothing. The suite is now registered twice, the second with
+`COUNTER_PROFILE=1`. That this matters was checked by mutation rather than by assertion: deleting
+the `fetch_add` that records a call leaves `counter_tests.profile` passing and fails
+`counter_tests.profile_enabled`, which is exactly the failure the single registration could not
+produce.
+
+Three weaknesses are recorded rather than fixed, and should be treated as gaps rather than coverage:
+
+- `test_concurrent_calls_agree` would pass with the libspot lock removed. It computes its expected
+  value single-threaded first, which constructs the simplifier and warms its cache before any thread
+  starts, so the unsafe construction never runs concurrently; and eight threads making one
+  microsecond-long call each, with no barrier, are unlikely to overlap at all. The lock's
+  justification rests on the four-configuration spike recorded above, not on this test.
+- `test_clocks_advance_monotonically` pins nothing a different clock would fail. Swapping
+  `CLOCK_THREAD_CPUTIME_ID` for the process-wide clock — which would negate the per-thread CPU
+  measurement the whole harness is built on — passes it.
+- Nothing observes the lock budget's fallback: no test ever sees `m_lock_busy` set, so the path that
+  spawns instead of queueing is exercised only by whole-run measurement. The same is true of the
+  missing-`ltlfilt` fallback, of `set_thread_pool_size`, and of the timeout-driven choice between
+  translating in process and spawning.
+
+The general point is the one the review pass above already made from the other direction. The
+measurements in this document are load-bearing and were taken carefully; the tests around them are
+thinner than their names suggest, and anyone extending this work should believe the numbers before
+the suite.
+
 ## Ranked targets
 
 **Batched tool calls — done for `ltlfilt`.** The largest lever on CPU, and the lever is eliminating

@@ -63,11 +63,11 @@ bool enabled() {
     // report_if_enabled is idempotent, so counter's own explicit call at the
     // end of its timing report still prints exactly once.
     static const bool is_enabled = [] {
-        const bool on = profile_target() != nullptr;
-        if (on) {
+        const bool requested = profile_target() != nullptr;
+        if (requested) {
             std::atexit([] { report_if_enabled(); });
         }
-        return on;
+        return requested;
     }();
     return is_enabled;
 }

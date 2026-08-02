@@ -17,6 +17,7 @@
 #include <memory>
 #include <mutex>
 #include <optional>
+#include <stdexcept>
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -310,6 +311,13 @@ std::atomic<SimplifyEngine> g_simplify_engine{SimplifyEngine::Libspot};
 // point where waiting stops being the cheaper of the two.
 constexpr std::chrono::milliseconds k_libspot_lock_budget{8};
 
+// How long to hold the lock open for when there is no ltlfilt to spawn instead.
+// Not a deadline -- the wait repeats for as long as the lock is legitimately
+// contended -- only how often the reason for waiting is re-examined. A second
+// is short enough that a run cannot sit on a dead lock for meaningfully longer
+// than that, and long enough that re-checking costs nothing.
+constexpr std::chrono::milliseconds k_no_fallback_wait_slice{1000};
+
 // Built once, on the first simplification, and never resized: scoring threads
 // index into it without a lock, so growing it underneath them would be a race.
 // set_ltlfilt_batchers therefore has to run before any scoring starts.
@@ -374,10 +382,24 @@ std::string simplify_ltl(const std::string& formula) {
         // Falling back needs something to fall back to. Without the binary the
         // exec path below returns the formula unsimplified, which would make a
         // busy lock silently change the answer, so wait for the lock instead.
-        if (in_process.m_lock_busy &&
-            access(ltlfilt_path().c_str(), F_OK) != 0) {
-            in_process.m_formula = spot_simplify(formula);
-            in_process.m_lock_busy = false;
+        //
+        // Waiting in slices rather than blocking outright, because the lock is
+        // not always going to come free. A translation that missed its deadline
+        // holds it for as long as it keeps running, and with no ltlfilt to
+        // spawn there is nothing else to do -- so a plain block here is the one
+        // place on this path that can hang a run outright. Re-checking each
+        // slice turns that into a failed individual with a message naming the
+        // cause, which max_scoring_failure_rate then treats like any other.
+        while (in_process.m_lock_busy &&
+               access(ltlfilt_path().c_str(), F_OK) != 0) {
+            if (spot_abandoned_workers() > 0) {
+                throw std::runtime_error(
+                    "cannot simplify \"" + formula +
+                    "\": libspot is held by an abandoned translation, and "
+                    "there is no ltlfilt at " +
+                    ltlfilt_path() + " to fall back to");
+            }
+            in_process = spot_try_simplify(formula, k_no_fallback_wait_slice);
         }
         // Busy means another thread is inside libspot and this one would wait
         // longer than a spawn costs, so it spawns instead. Everything below is

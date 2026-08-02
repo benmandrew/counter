@@ -86,6 +86,19 @@ SpotTranslation translate_locked(const std::string& formula) {
         // translation from ever being the worse of the two: whatever ltl2tgba
         // makes of the formula, including failing, is what happens.
         return {};
+    } catch (...) {
+        // std::bad_alloc above all, which is not hypothetical: this formula
+        // family reaches tens of megabytes and the exec path never spent them
+        // out of *this* process's heap. Handled identically to a libspot error
+        // -- fall back to the tool, whose own address space may well have the
+        // room this one has run out of.
+        //
+        // Catching it here rather than only in the worker below is what keeps
+        // the two paths the same. Letting it propagate meant a formula that ran
+        // out of memory dropped the individual when no deadline was set and
+        // fell back to the exec when one was, which is a behavioural difference
+        // no caller asked for and nothing would have reported.
+        return {};
     }
     // print_hoa leaves off the trailing newline the tool emits after --END--.
     SpotTranslation translation;
@@ -104,13 +117,26 @@ struct TranslationSlot {
     SpotTranslation m_result;
 };
 
-// Runs the translation on its own thread, taking over the already-held libspot
-// lock, and waits @p deadline for it. The lock is released by whoever finishes
-// the work, which past the deadline is nobody this call can still see.
+// Runs the translation on its own thread and waits @p deadline for it.
+//
+// The worker takes the libspot lock itself rather than being handed one the
+// caller already held. Handing it over is the obvious design and it is wrong:
+// std::timed_mutex may only be unlocked by the thread that locked it, and the
+// worker is by definition the thread that has to do the unlocking, since past
+// the deadline the caller is gone. ThreadSanitizer reports the handover as
+// "unlock of an unlocked mutex (or by a wrong thread)", which is exactly what
+// it is. Locking here costs a thread that turns out not to be needed when the
+// lock is busy, which against an 8ms budget is not worth avoiding.
+//
+// The caller therefore waits @p budget as well as @p deadline: up to the first
+// is spent getting the lock, and only then does the translation start. By the
+// time the two have elapsed the worker has either taken the lock or given up,
+// so a timeout here always means a translation that ran and did not finish.
 SpotTranslation translate_with_deadline(const std::string& formula,
+                                        std::chrono::milliseconds budget,
                                         std::chrono::milliseconds deadline) {
     auto slot = std::make_shared<TranslationSlot>();
-    std::thread worker([slot, formula] {
+    std::thread worker([slot, formula, budget] {
         // The caller's scope around this call measures the caller's thread, so
         // once the work moves here its CPU stops being attributed to it -- the
         // translate site would report wall with almost no CPU, which is the
@@ -120,17 +146,20 @@ SpotTranslation translate_with_deadline(const std::string& formula,
         COUNTER_PROFILE_SCOPE("spot/libspot-translate-worker");
         SpotTranslation result;
         {
-            // adopt_lock, not lock: the mutex was taken by the caller and
-            // handed over unlocked-by-nobody. Holding it in a guard means it is
-            // released even if the translation throws -- a std::bad_alloc on a
-            // formula large enough to exhaust memory is exactly the case where
-            // leaving libspot permanently locked would be worst.
-            const std::unique_lock<std::timed_mutex> guard(spot_mutex(),
-                                                           std::adopt_lock);
-            try {
-                result = translate_locked(formula);
-            } catch (...) {
-                result = SpotTranslation{};
+            // Held in a guard so the lock is released even if the translation
+            // throws. A std::bad_alloc on a formula large enough to exhaust
+            // memory is exactly the case where leaving libspot permanently
+            // locked would be worst.
+            std::unique_lock<std::timed_mutex> guard(spot_mutex(),
+                                                     std::defer_lock);
+            if (!guard.try_lock_for(budget)) {
+                result.m_lock_busy = true;
+            } else {
+                try {
+                    result = translate_locked(formula);
+                } catch (...) {
+                    result = SpotTranslation{};
+                }
             }
         }
         bool was_abandoned = false;
@@ -148,7 +177,7 @@ SpotTranslation translate_with_deadline(const std::string& formula,
     worker.detach();
 
     std::unique_lock<std::mutex> wait(slot->m_mutex);
-    if (slot->m_ready.wait_for(wait, deadline,
+    if (slot->m_ready.wait_for(wait, budget + deadline,
                                [&slot] { return slot->m_done; })) {
         return std::move(slot->m_result);
     }
@@ -190,23 +219,21 @@ SpotTranslation spot_translate_for_counting(
     const std::string& formula, std::chrono::milliseconds budget,
     std::chrono::milliseconds deadline) {
     COUNTER_PROFILE_SCOPE("spot/libspot-translate");
+    if (deadline != std::chrono::milliseconds::zero()) {
+        // The worker takes the lock itself, so this must not take it first --
+        // see translate_with_deadline for why handing one over is not an
+        // option.
+        return translate_with_deadline(formula, budget, deadline);
+    }
     std::unique_lock<std::timed_mutex> lock(spot_mutex(), std::defer_lock);
     if (!lock.try_lock_for(budget)) {
         SpotTranslation busy;
         busy.m_lock_busy = true;
         return busy;
     }
-    if (deadline == std::chrono::milliseconds::zero()) {
-        // No deadline asked for, so nothing to enforce and no reason to pay a
-        // thread for it: run here, exactly as an unbounded exec would have.
-        return translate_locked(formula);
-    }
-    // Hands the lock to the worker without unlocking it. From here the mutex is
-    // held by a thread that is not this one, and only that thread may release
-    // it -- which is what keeps an abandoned translation from being joined by a
-    // second one on the same libspot state.
-    lock.release();
-    return translate_with_deadline(formula, deadline);
+    // No deadline asked for, so nothing to enforce and no reason to pay a
+    // thread for it: run here, exactly as an unbounded exec would have.
+    return translate_locked(formula);
 }
 
 std::size_t spot_abandoned_workers() {

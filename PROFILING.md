@@ -31,12 +31,20 @@ Measured, reproducible, and load-bearing for everything below:
   `fsm` gen20/pop1000;
 - byte-identical output across all 12 `repair_N.json` files before and after every change.
 
-One whole-run wall-clock improvement is established, and one only: the in-process simplifier takes
-`fsm` gen20/pop1000 from a median of 6.57 s to 4.52 s. It is established by the method this
-document insists on — an *A/B test* whose two engines run alternately in one session — because two
-sets of runs taken at different times cannot separate a real effect from run-to-run spread. The
-batcher's own wall cost stands as measured, and now applies only when the exec engine is selected
-explicitly.
+Whole-run wall-clock improvement is established, by the method this document insists on — an *A/B
+test* whose two configurations run alternately in one session, because two sets of runs taken at
+different times cannot separate a real effect from run-to-run spread. Measured end to end on `fsm`
+gen20/pop1000, against the same binary configured to spawn both tools as it used to:
+
+| | spawning both | in process | |
+|---|---|---|---|
+| one run, seven repetitions | 6.54 s | 4.87 s | 25% sooner |
+| four concurrent runs, five repetitions | 12.46 s | 8.33 s | 33% sooner |
+
+Both are medians, and neither pair of distributions overlaps. Almost all of the single-run gain is
+the simplifier; the translator adds CPU headroom rather than latency, which is why its own
+contribution shows up in the concurrent row and not the first. The batcher's own wall cost stands as
+measured, and now applies only when the exec engine is selected explicitly.
 
 ## The harness
 
@@ -493,25 +501,125 @@ specifically, using `b | G(Fe U Gc)`, which level 3 simplifies to `b | (Fe U Gc)
 options leave the `G` in place; pins the decline path for an unparseable formula; and drives eight
 concurrent callers to check that they agree.
 
+## The in-process translator
+
+The counting path spawned `ltl2tgba -D -S -H -f <formula>` once per formula. Dumping every cache
+miss on that path gives the 241 distinct formulae an `fsm` gen20/pop1000 run translates, and
+translating those two ways gives the split:
+
+- serialised in process: 0.03, 0.04, 0.03 s;
+- one exec per formula, as the code did: 2.06, 2.51, 2.68 s.
+
+That is about 80 times more process than work. Startup dominates again. It is also why serialising
+every translation behind the libspot lock still costs less than the execs it removes.
+
+Two implementation details are worth recording, because the obvious choice is wrong in each case.
+
+- Each call translates against a *fresh* `bdd_dict`. Sharing one across calls is no faster — 0.04 s
+  over the same 241 formulae — and it renumbers atomic propositions, because a dictionary carries
+  over the propositions earlier formulae registered. A fresh one reproduces the tool's numbering.
+  The reader for the *Hanoi Omega-Automata* (HOA) format resolves guards through the
+  atomic-proposition name list, so the renumbering would have been internally consistent, and
+  therefore invisible until something else depended on it.
+- Output matches the tool exactly apart from the `name:` line, which `ltl2tgba` fills with its own
+  simplified rendering of the formula and which nothing in this project reads.
+
+The move is conditional. It happens only when `ltl2tgba_timeout_ms` is zero, which is the default. A
+per-call deadline in this project is enforced by killing the process doing the work; in process
+there is nothing to kill, and C++ cannot cancel a running call. A configured timeout therefore keeps
+the exec rather than silently losing the guarantee it was asked for. This is the split that "Linking
+`libspot` in process" predicted, resolved rather than dodged: the tool moves where the guarantee
+does not exist, and stays where it does. `ltlsynt` still cannot move at all, for the same reason
+plus its memory cap.
+
+One real surprise came out of this, and the existing `spot_runner` test suite is what caught it.
+Spot 2.15.1 refuses to print the *universal automaton* it builds for a tautology, reporting that the
+automaton is complete while its `prop_complete()` flag is unset. That defect had been recorded in
+this project as an `ltl2tgba` *binary* bug — exit 2 with that message on stderr. It is not. It is in
+the *library*, and in process it surfaces as a thrown exception instead.
+`SpotTranslation::m_tautology_print_bug` reports it, so the caller substitutes the universal
+automaton exactly as it already did for the exec's exit 2, and a genuinely-true formula still does
+not count against the run's scoring-failure tolerance.
+
+Results, measured interleaved as this document insists. Single run, `fsm` gen20/pop1000, seven
+repetitions of each engine, alternating:
+
+- in process: 4.55, 4.57, 4.74, 4.80, 4.80, 4.82, 4.89 s, median 4.80 s;
+- spawning: 4.52, 4.53, 4.58, 4.60, 4.64, 4.80, 4.83 s, median 4.60 s.
+
+These two distributions overlap almost completely, and the in-process median is the slower of the
+two. There is no wall-clock gain for a single run. Total CPU does fall, from about 39.7 s to about
+34.2 s of user plus system time, roughly 14%.
+
+Four concurrent runs, five repetitions each, alternating:
+
+- in process: 8.246, 8.285, 8.287, 8.311, 8.356 s, median 8.287 s;
+- spawning: 8.914, 8.916, 9.079, 9.083, 9.234 s, median 9.079 s.
+
+Those do not overlap: the in-process build finishes about 8.7% sooner. This is the same shape as the
+batcher's result and it has the same cause — the CPU the exec path burns demand-paging its children
+is the CPU a neighbouring `counter` needs. The case for this change rests on the concurrent
+measurement, not on the single-run one.
+
+Repairs are byte-identical to the exec path, the suite passes 39 of 39, and ThreadSanitizer reports
+no races on a full run or on the suite.
+
+## The lock is now the limiting factor
+
+This is the negative result that explains why single-run wall time did not move. Profile of an `fsm`
+gen20/pop1000 run, seed 1, after the change:
+
+- `proc/read`: 1472 calls, 32.19 s wall;
+- `ltlfilt/libspot-simplify`: 2129 calls, 8.28 s wall, 0.32 s CPU;
+- `spot/libspot-translate`: 475 calls, 7.67 s wall, 0.73 s CPU.
+
+The exec count has come down in stages across this branch: 3442 calls and 42.31 s of `proc/read`
+before any of it, 1901 calls and 37.13 s after simplification moved, and 1472 calls and 32.19 s now.
+
+The two in-process scopes are the finding. Together they account for roughly 16 s of caller wall
+time for roughly 1.05 s of actual work. Before translation was added, `ltlfilt/libspot-simplify`
+alone was 1874 calls, 1.68 s of wall against 0.29 s of CPU. Putting translation on the *same* lock
+pushed simplification's wait from 1.68 s to 8.28 s. The lock is held for about 1.05 s of a 4.6 s
+run, and twenty scoring threads queue behind it.
+
+So the process boundary has been traded for a lock, and on a single run the trade is roughly even.
+The bottleneck moved rather than vanished. What was gained is real, but it is CPU rather than
+latency, which is why the concurrent measurement is the one that shows a win.
+
+These are single-run profile figures, and wall time attributed to a scope under lock contention is
+noisy between runs. The interleaved medians above are the reliable numbers, not these.
+
+Spot offers `--enable-pthread`, and it does not help. It activates parallel variants of some
+algorithms; it does not make the parser globals or the formula-interning table reentrant, which is
+what the lock exists for. Removing the lock would need Spot to change, not this project.
+
 ## Ranked targets
 
 **Batched tool calls — done for `ltlfilt`.** The largest lever on CPU, and the lever is eliminating
 per-spawn startup rather than keeping a process warm. It buys about 19% of total CPU and costs about
 5% of wall time; the design and the numbers are in "The batched simplifier" above. Two parts of this
 target are untouched. `black` accounts for 818
-execs on this workload and has no batch mode of its own, so nothing here applies to it. `ltl2tgba`
-and `ltlsynt` are still one exec per call.
+execs on this workload and has no batch mode of its own, so nothing here applies to it. `ltlsynt` is
+still one exec per call; `ltl2tgba` no longer is, but by moving in process rather than by batching,
+so nothing in this entry applies to it either.
 
-**Link `libspot` in process — done for simplification, blocked for the other two tools.** SPOT
+**Link `libspot` in process — done for both tools that can move.** SPOT
 is already built from source, and `libspot.so` and its headers sit in the build tree.
-Simplification now runs in process behind one lock, and takes `fsm` gen20/pop1000 from a median of
-6.57 s to 4.52 s of whole-run wall, about 31%. The 1791 distinct formulae such a run simplifies cost
-0.05 s in process against the 11.82 s the exec path spent in `ltlfilt/batch-exec`, nearly all of
-which was startup; the design and the numbers are in "The in-process simplifier" above.
-`ltl2tgba` and `ltlsynt` cannot move as things stand,
-because their per-call timeouts and `ltlsynt`'s memory cap work by killing a separate process.
-Replacing the ability to abandon a call is a design question rather than an optimisation, and it is
-the thing to answer before this target goes any further.
+Simplification now runs in process unconditionally, behind one lock, and takes `fsm` gen20/pop1000
+from a median of 6.57 s to 4.52 s of whole-run wall, about 31%. The 1791 distinct formulae such a
+run simplifies cost 0.05 s in process against the 11.82 s the exec path spent in
+`ltlfilt/batch-exec`, nearly all of which was startup; the design and the numbers are in "The
+in-process simplifier" above. Counting-path translation followed it, but only when no per-call
+deadline is configured, which is the default; "The in-process translator" has that argument and its
+measurements. `ltlsynt` cannot move as things stand, because its per-call timeout and its memory cap
+both work by killing a separate process. Replacing the ability to abandon a call is a design
+question rather than an optimisation, and it is the thing to answer before that last tool moves.
+
+The top remaining in-process target is the lock the two moved tools now share. It is held for about
+1.05 s of a 4.6 s run, and the wait it imposes on callers is roughly 16 s of scope wall summed
+across twenty scoring threads; "The lock is now the limiting factor" has the figures. `black` is not
+part of any of this: 890 calls and 24.9 s on this workload, with no batch mode of its own and no
+library to link, so nothing here applies to it.
 
 **`dispatch/collect-one-ready` — done.** `run_bounded_async` polled each outstanding future with
 `wait_for(0ms)` in a loop and then slept 1 ms, which cost 0.372 s of CPU across 11,535 calls and put

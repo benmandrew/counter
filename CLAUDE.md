@@ -146,6 +146,27 @@ formula-interning table), so a per-thread instance crashes even when every call
 is locked, because construction alone is unsafe. `counter_tests.spot_simplify`
 pins both.
 
+`run_ltl2tgba_for_counting` moves the same way, but **only when
+`ltl2tgba_timeout_ms` is 0** (the default). A per-call deadline here is enforced
+by killing the process doing the work, so a configured timeout keeps the exec
+rather than silently losing the guarantee it asks for. `ltlsynt` never moves,
+for that reason plus its memory cap. Two traps on that path: translate against a
+**fresh `bdd_dict` per call** (a shared one renumbers atomic propositions,
+because it carries over what earlier formulae registered), and handle the
+tautology print bug — Spot 2.15.1 refuses to print the universal automaton it
+builds for a tautology, and that defect is in the **library**, not the binary,
+so in process it throws where the binary exits 2. `SpotTranslation`
+reports it so the caller can substitute the universal automaton.
+
+Both in-process calls share **one** lock, which is why they live in one header.
+That lock is now the limiting factor rather than the exec: the two scopes
+together wait about 16s for about 1.05s of work on an fsm run, and adding
+translation pushed simplification's wait from 1.68s to 8.28s. Single-run wall is
+therefore unchanged by the ltl2tgba move; the gain is 14% of CPU, which shows up
+as 8.7% under four-way concurrency. Spot's `--enable-pthread` does not lift
+this — it parallelises some algorithms, it does not make the parser globals or
+the intern table reentrant.
+
 Setting `simplify_engine = "ltlfilt"` selects the older exec path, kept as the
 A/B lever and escape hatch; `ltlfilt_batchers` applies only under it. On that
 path concurrent cache misses are coalesced by a leader

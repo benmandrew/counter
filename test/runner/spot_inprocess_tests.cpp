@@ -1,3 +1,4 @@
+#include <chrono>
 #include <string>
 #include <thread>
 #include <vector>
@@ -97,6 +98,30 @@ void test_concurrent_calls_agree() {
     }
 }
 
+// Uncontended, the budgeted entry point must behave exactly like the blocking
+// one. The fallback it enables is only sound because the two paths agree, so a
+// disagreement here would make which path a call took observable.
+void test_budgeted_simplify_agrees_when_uncontended() {
+    const std::string formula = "b | G(Fe U Gc)";
+    const SpotSimplification budgeted =
+        spot_try_simplify(formula, std::chrono::milliseconds(8));
+    expect(!budgeted.m_lock_busy,
+           "spot-simplify: an uncontended lock should not report busy");
+    expect(budgeted.m_formula.value_or(k_declined) ==
+               spot_simplify(formula).value_or(k_declined),
+           "spot-simplify: the budgeted path should agree with the blocking "
+           "one");
+}
+
+void test_budgeted_simplify_declines_unparseable() {
+    const SpotSimplification budgeted =
+        spot_try_simplify("G(", std::chrono::milliseconds(8));
+    expect(!budgeted.m_lock_busy,
+           "spot-simplify: an unparseable formula is not a busy lock");
+    expect(!budgeted.m_formula.has_value(),
+           "spot-simplify: an unparseable formula should yield no result");
+}
+
 // Everything the HOA reader consumes has to match the tool. The `name:` line is
 // the one exception -- ltl2tgba fills it with its own simplified rendering of
 // the formula, and nothing in this project reads it -- so it is dropped before
@@ -167,6 +192,8 @@ void run_spot_inprocess_tests() {
     test_simplification_level_matches_the_flag();
     test_unparseable_formula_is_declined();
     test_concurrent_calls_agree();
+    test_budgeted_simplify_agrees_when_uncontended();
+    test_budgeted_simplify_declines_unparseable();
     test_translation_matches_ltl2tgba();
     test_unparseable_formula_is_declined_by_translate();
     test_tautology_print_bug_is_reported();

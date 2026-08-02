@@ -302,6 +302,12 @@ std::atomic<std::size_t> g_batcher_count{4};
 
 std::atomic<SimplifyEngine> g_simplify_engine{SimplifyEngine::Libspot};
 
+// How long a caller will wait for the libspot lock before spawning ltlfilt
+// instead. Set to roughly what a spawn costs (measured at 8-9 ms, dominated by
+// the child demand-paging its own executable), because that is exactly the
+// point where waiting stops being the cheaper of the two.
+constexpr std::chrono::milliseconds k_libspot_lock_budget{8};
+
 // Built once, on the first simplification, and never resized: scoring threads
 // index into it without a lock, so growing it underneath them would be a race.
 // set_ltlfilt_batchers therefore has to run before any scoring starts.
@@ -360,15 +366,22 @@ std::string simplify_ltl(const std::string& formula) {
     // formula ltlfilt could not parse: the formula is returned unchanged.
     if (g_simplify_engine.load(std::memory_order_relaxed) ==
         SimplifyEngine::Libspot) {
-        const std::optional<std::string> in_process = spot_simplify(formula);
-        const double elapsed = std::chrono::duration<double>(
-                                   std::chrono::steady_clock::now() - start)
-                                   .count();
-        std::scoped_lock lock(cache_mutex);
-        LtlfiltStats::total_time_s += elapsed;
-        const std::string& simplified = in_process.value_or(formula);
-        cache.emplace(formula, simplified);
-        return simplified;
+        const SpotSimplification in_process =
+            spot_try_simplify(formula, k_libspot_lock_budget);
+        // Busy means another thread is inside libspot and this one would wait
+        // longer than a spawn costs, so it spawns instead. Everything below is
+        // the exec path, unchanged.
+        if (!in_process.m_lock_busy) {
+            const double elapsed = std::chrono::duration<double>(
+                                       std::chrono::steady_clock::now() - start)
+                                       .count();
+            std::scoped_lock lock(cache_mutex);
+            LtlfiltStats::total_time_s += elapsed;
+            const std::string& simplified =
+                in_process.m_formula.value_or(formula);
+            cache.emplace(formula, simplified);
+            return simplified;
+        }
     }
     const std::string binary = ltlfilt_path();
     if (access(binary.c_str(), F_OK) != 0) {

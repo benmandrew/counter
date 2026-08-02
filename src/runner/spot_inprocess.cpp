@@ -1,5 +1,6 @@
 #include "runner/spot_inprocess.hpp"
 
+#include <chrono>
 #include <mutex>
 #include <optional>
 #include <sstream>
@@ -15,23 +16,18 @@
 
 namespace {
 
-std::mutex& spot_mutex() {
-    static std::mutex mutex;
+std::timed_mutex& spot_mutex() {
+    static std::timed_mutex mutex;
     return mutex;
 }
 
-}  // namespace
-
-std::optional<std::string> spot_simplify(const std::string& formula) {
-    // Outside the lock deliberately, so the recorded wall time includes waiting
-    // for it. Wall far above CPU here would be the signal that serialising has
-    // started to cost something.
-    COUNTER_PROFILE_SCOPE("ltlfilt/libspot-simplify");
-    const std::scoped_lock lock(spot_mutex());
-    // Inside the lock, not at namespace scope: constructing a tl_simplifier
-    // touches the same SPOT globals its use does, and doing that unserialised
-    // crashes. The function-local static's own guard orders construction, but
-    // does not order it against another thread already simplifying.
+// Runs the simplification. The caller must already hold spot_mutex().
+std::optional<std::string> simplify_locked(const std::string& formula) {
+    // Constructed here rather than at namespace scope: building a
+    // tl_simplifier touches the same SPOT globals its use does, and doing that
+    // unserialised crashes. The function-local static's own guard orders
+    // construction, but does not order it against another thread already
+    // simplifying, so it has to sit inside the lock.
     // Level 3 matches `ltlfilt --simplify`; the default options do not.
     static spot::tl_simplifier simplifier{spot::tl_simplifier_options(3)};
     const spot::parsed_formula parsed = spot::parse_infix_psl(formula);
@@ -39,6 +35,31 @@ std::optional<std::string> spot_simplify(const std::string& formula) {
         return std::nullopt;
     }
     return spot::str_psl(simplifier.simplify(parsed.f));
+}
+
+}  // namespace
+
+std::optional<std::string> spot_simplify(const std::string& formula) {
+    // Outside the lock deliberately, so the recorded wall time includes waiting
+    // for it. Wall far above CPU here is the signal that serialising has begun
+    // to cost something.
+    COUNTER_PROFILE_SCOPE("ltlfilt/libspot-simplify");
+    const std::scoped_lock lock(spot_mutex());
+    return simplify_locked(formula);
+}
+
+SpotSimplification spot_try_simplify(const std::string& formula,
+                                     std::chrono::milliseconds budget) {
+    COUNTER_PROFILE_SCOPE("ltlfilt/libspot-simplify");
+    std::unique_lock<std::timed_mutex> lock(spot_mutex(), std::defer_lock);
+    if (!lock.try_lock_for(budget)) {
+        SpotSimplification result;
+        result.m_lock_busy = true;
+        return result;
+    }
+    SpotSimplification result;
+    result.m_formula = simplify_locked(formula);
+    return result;
 }
 
 SpotTranslation spot_translate_for_counting(const std::string& formula) {

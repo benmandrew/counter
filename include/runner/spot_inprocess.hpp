@@ -20,6 +20,7 @@
 /// what is serialised: about 8 ms of process startup per call, against 0.02 ms
 /// of simplification or 0.16 ms of translation on real workloads.
 
+#include <chrono>
 #include <optional>
 #include <string>
 
@@ -31,6 +32,34 @@
 /// rather than the library default; the two disagree on about 5% of formulae,
 /// so the level is not a detail that can be left to the default.
 std::optional<std::string> spot_simplify(const std::string& formula);
+
+/// The outcome of a simplification that was only willing to wait so long.
+struct SpotSimplification {
+    /// The simplified formula; empty when the formula did not parse, or when
+    /// the attempt was abandoned.
+    std::optional<std::string> m_formula;
+    /// True when the lock could not be taken within the budget and nothing was
+    /// attempted, so the caller should spawn `ltlfilt` instead.
+    bool m_lock_busy = false;
+};
+
+/// As spot_simplify, but gives up if the process-wide libspot lock cannot be
+/// taken within @p budget.
+///
+/// This exists because in-process simplification is not always the cheaper
+/// option, and which one wins depends on the workload rather than on anything
+/// knowable in advance. Simplifying `fsm`'s formulae takes about 0.15 ms, so
+/// serialising is free and skipping the spawn is a clear gain. Simplifying
+/// `lift`'s takes about 24 ms, and serialising those puts more work on one
+/// thread than the whole run has to spare, while separate `ltlfilt` processes
+/// would have run them in parallel.
+///
+/// The budget resolves that without having to predict the cost: wait roughly as
+/// long as spawning would have taken, and if the lock has not come free by
+/// then, spawning is the better deal by definition. Both paths produce
+/// identical output, so which one a call takes does not affect the result.
+SpotSimplification spot_try_simplify(const std::string& formula,
+                                     std::chrono::milliseconds budget);
 
 /// The outcome of one translation. `m_hoa` holds the automaton, and is empty
 /// when the formula did not parse or when the tautology bug below fired.

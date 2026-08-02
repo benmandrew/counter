@@ -508,7 +508,7 @@ to fill a batch. And the 11.82 s is essentially all startup, because the same 23
 about 0.05 s of actual simplification. Callers see 29.25 s rather than 11.82 s, since followers
 block waiting on a leader's exec.
 
-`spot_simplify` (`include/runner/spot_simplify.hpp`, `src/runner/spot_simplify.cpp`) implements the
+`spot_simplify` (`include/runner/spot_inprocess.hpp`, `src/runner/spot_inprocess.cpp`) implements the
 rule above. One shared `spot::tl_simplifier`, built with `spot::tl_simplifier_options(3)` and
 constructed inside the same process-wide mutex that guards every call. A formula that does not
 parse returns `std::nullopt` and the caller returns it unchanged, which is what the exec path did
@@ -531,7 +531,7 @@ The two distributions do not overlap: the slowest in-process run is faster than 
 run. That is about 31% of whole-run wall time. Both engines produce identical repair output from the
 same seed, with `diff -r` over the two output directories clean.
 
-`test/runner/spot_simplify_tests.cpp` is registered as the ctest suite `counter_tests.spot_simplify`.
+`test/runner/spot_inprocess_tests.cpp` is registered as the ctest suite `counter_tests.spot_inprocess`.
 It pins agreement with `ltlfilt --simplify` over a set of formulae; pins the level-3 requirement
 specifically, using `b | G(Fe U Gc)`, which level 3 simplifies to `b | (Fe U Gc)` while the default
 options leave the `G` in place; pins the decline path for an unparseable formula; and drives eight

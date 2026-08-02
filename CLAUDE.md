@@ -149,17 +149,18 @@ difficulty, because each child demand-pages its own binary and libspot.
 
 `simplify_ltl` acts on that by not spawning at all. `[runtime] simplify_engine`
 defaults to `libspot`, which simplifies in process through the linked library
-(`spot_simplify`, `src/runner/spot_simplify.cpp`) instead of running `ltlfilt
+(`spot_simplify`, `src/runner/spot_inprocess.cpp`) instead of running `ltlfilt
 --simplify`. On fsm gen20/pop1000 that removes 1494 execs and 11.8s of exec
 wall, against about 0.05s of simplification those calls actually performed, and
-cuts whole-run wall 31% (6.57s to 4.52s, medians of seven interleaved runs).
+cuts whole-run wall 21% (6.47s to 5.10s, medians of three interleaved runs;
+every FRETISH and TLSF example in the repo gains 10-39%).
 Two things are load-bearing and neither is optional. The simplifier must be
 asked for **level 3** — that is what `--simplify` selects, and the library
 default disagrees with the tool on about 5% of formulae. And **one** simplifier,
 constructed and used under **one** process-wide lock: the contended state is
 process-global underneath `tl_simplifier` (SPOT's parser globals and the
 formula-interning table), so a per-thread instance crashes even when every call
-is locked, because construction alone is unsafe. `counter_tests.spot_simplify`
+is locked, because construction alone is unsafe. `counter_tests.spot_inprocess`
 pins both.
 
 `run_ltl2tgba_for_counting` moves the same way, but **only when

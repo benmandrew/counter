@@ -137,9 +137,17 @@ batch (`SimplifyBatcher` in `src/runner/ltlfilt.cpp`). Batch composition varies
 run to run, so this is only safe because the result does not depend on it —
 `--skip-errors` guarantees one reply line per request line, and a batch whose
 reply count does not match falls back to a per-formula exec rather than risk
-misattributing a simplification. Worth about a quarter of total CPU at unchanged
-wall time, which is what campaigns (many concurrent `counter` processes) are
-bound by.
+misattributing a simplification. It trades about 5% of wall time for about 19%
+of total CPU (a caller now waits for a leader rather than running its own exec),
+which is the right side of the trade for campaigns, measured rather than
+assumed: four concurrent `counter` processes on a 20-core box finish 12.6%
+sooner batched (14.14s -> 12.36s median). The sign of the effect reverses with
+concurrency, because the cores the baseline spends demand-paging `ltlfilt` are
+the ones its neighbours need. `k_batcher_count`
+in that file is the knob: more batchers approach baseline wall with less CPU
+saved, fewer do the opposite, and it is monotonic. Measure A/B interleaved, not
+as two separate batches of runs — machine load drifts, and that mistake made
+this change look free when it is not.
 
 Two traps recorded there. Do not build a streaming request/response protocol on
 a SPOT tool: `ltlfilt` does not answer one line per line, it flushes in

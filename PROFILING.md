@@ -16,12 +16,14 @@ Measured, reproducible, and load-bearing for everything below:
   `posix_spawn()`, measured inside the spawn scope;
 - the split of cost across the four fitness objectives, and the fact that the pure-CPU inner
   algorithms (`count_traces`, `guard_models`, `syntactic`, `halstead`) are cheap;
-- that batching `ltlfilt` calls cuts about a quarter of total CPU at unchanged wall time, with
+- that batching `ltlfilt` calls trades about 5% of wall time for about 19% of total CPU, with
   byte-identical output;
 - byte-identical output across all 12 `repair_N.json` files before and after every change.
 
-Not established: any whole-run wall-clock improvement from this pass. Repeat runs of the same
-binary vary by more than the effect being looked for, so no such claim is made here.
+Not established: any whole-run wall-clock improvement from this pass. There is none. The batcher
+makes wall time worse by a measured amount, and nothing else here moves it outside run-to-run
+spread. Separating a real effect from that spread needs an *A/B test* whose two binaries run
+alternately in one session; two sets of runs taken at different times cannot do it.
 
 ## The harness
 
@@ -214,35 +216,75 @@ above, point by point.
   fail the count check. The blank case is reachable — it is the specification formula of a candidate
   with no guarantees.
 
-Results on `fsm` at 20 generations and population 1000, seed 0, three runs each, means:
+Results on `fsm` at 20 generations and population 1000, seed 0. The two binaries ran alternately in
+one session, five repetitions each; the figures are medians.
 
 | | baseline | batched | change |
 |---|---|---|---|
-| wall | 6.23 s | 6.17 s | unchanged |
-| user CPU | 20.06 s | 17.08 s | −15% |
-| system CPU | 42.11 s | 29.60 s | −30% |
-| minor page faults | 14.10 M | 11.78 M | −16% |
+| wall | 6.18 s | 6.50 s | +5.2% |
+| user CPU | 19.80 s | 17.99 s | −9.1% |
+| system CPU | 41.29 s | 31.32 s | −24.1% |
+| minor page faults | 14.03 M | 11.80 M | −15.9% |
+
+The two wall-time distributions do not overlap. Baseline: 6.09, 6.22, 6.18, 6.26, 6.15 s. Batched:
+6.50, 6.51, 6.66, 6.41, 6.32 s. Every batched run is slower than every baseline run.
+
+An earlier version of this section claimed wall time was unchanged. That claim was wrong. It rested
+on three runs of one binary and three of the other, taken at different times on a machine whose load
+varied, so the two sets were never comparable. Interleaving the runs removes that.
+
+Batching therefore trades about 5% of wall time for about 19% of total CPU. The wall cost is
+inherent to coalescing, not an implementation defect: a caller now waits for a leader to finish a
+batch instead of running its own exec immediately. That wait is the mechanism that produces the CPU
+saving, so no amount of tuning removes one and keeps the other.
 
 Total spawns across the run fell from 4045 to 3262, and 2206 simplification requests were served by
 1424 execs. All 12 `repair_N.json` outputs stayed byte-identical on every run.
 
-What this buys is worth stating plainly. Wall-clock time is unchanged, because the run is bound by
-tools that still have to do their work; the saving is about a quarter of total CPU. That matters for
-campaigns, which run many `counter` processes concurrently on one machine and are therefore
-CPU-bound rather than latency-bound. It does not matter for a single interactive run.
+The direction holds on other specs. These are one run of each build per spec rather than a careful
+A/B, so they are indicative and nothing more:
 
-The number of batchers is a genuine trade-off, so the sweep behind the setting is recorded here.
-Fewer batchers give bigger batches and less CPU, but serialise more:
+| spec | wall, base → batched | system CPU, base → batched | faults, base → batched |
+|---|---|---|---|
+| `fsm` | 6.12 → 6.70 s | 41.70 → 33.05 s | 14.10 → 11.84 M |
+| `takeoff` | 4.61 → 5.08 s | 25.32 → 23.91 s | 9.29 → 8.50 M |
+| `fsm-timing` | 8.61 → 9.22 s | 56.53 → 43.86 s | 20.13 → 17.44 M |
 
-| batchers | execs | system CPU | minor faults | wall |
+Outputs were identical between the two builds on all three specs.
+
+The number of batchers moves both figures along one curve, so the sweep behind the setting is
+recorded here. Baseline and four batchers come from the five-repetition A/B; eight and 16 come from
+three repetitions each. All figures are medians.
+
+| batchers | wall | user CPU | system CPU | minor faults |
 |---|---|---|---|---|
-| baseline | 2165 | 38.6 s | 13.96 M | ~6.2 s |
-| 4 | 1424 | 30.4 s | 11.76 M | 6.45 s |
-| 2 | 898 | 27.4 s | 10.38 M | 6.52 s |
-| 1 | 521 | 25.1 s | 9.38 M | 6.61 s |
+| baseline | 6.18 s | 19.80 s | 41.29 s | 14.03 M |
+| 16 | 6.17 s | 19.48 s | 39.05 s | 13.83 M |
+| 8 | 6.34 s | 19.12 s | 35.45 s | 13.22 M |
+| 4 | 6.50 s | 17.99 s | 31.32 s | 11.80 M |
 
-Four is the setting chosen: the largest CPU saving that costs no wall time. A campaign wanting
-minimum CPU could justify one or two instead.
+More batchers mean less waiting behind a leader and smaller batches, so wall time approaches the
+baseline while the CPU saving shrinks. Fewer batchers mean the opposite. The relation is monotonic
+and there is no setting that gets both: 16 batchers reach wall parity but save 4.2% of total CPU,
+four save 19.3% of total CPU but cost 5.2% of wall.
+
+Four stays the default, and the campaign regime it is chosen for was measured rather than assumed.
+Running four `counter` processes at once on the same 20-core machine — which is what a campaign
+does, and what makes the machine CPU-saturated rather than latency-bound — and timing the whole
+batch, three repetitions each:
+
+| repetition | baseline | batched |
+|---|---|---|
+| 1 | 13.97 s | 12.36 s |
+| 2 | 14.16 s | 12.49 s |
+| 3 | 14.14 s | 12.25 s |
+
+Median 14.14 s against 12.36 s: the batched build finishes the batch **12.6% sooner**, with no
+overlap between the two sets. The sign of the effect reverses with concurrency. A single run pays
+5% more wall for the CPU it gives back; four concurrent runs get that CPU back as throughput,
+because the cores the baseline spent demand-paging `ltlfilt` are the same cores its neighbours
+needed. This is the case the default is for. A single interactive run is better served by 16
+batchers, or by the baseline.
 
 One reporting artefact comes with this. The "Tool timing report" `ltlfilt` row now measures each
 caller's wait, which includes time spent queued behind a leader, so its per-call figure is no longer
@@ -292,9 +334,10 @@ solving. This reinforces the top two ranked targets below instead of adding a th
 
 ## Ranked targets
 
-**Batched tool calls — done for `ltlfilt`.** The largest lever, and the lever is eliminating
-per-spawn startup rather than keeping a process warm. The batching design and its numbers are in
-"The batched simplifier" above. Two parts of this target are untouched. `black` accounts for 818
+**Batched tool calls — done for `ltlfilt`.** The largest lever on CPU, and the lever is eliminating
+per-spawn startup rather than keeping a process warm. It buys about 19% of total CPU and costs about
+5% of wall time; the design and the numbers are in "The batched simplifier" above. Two parts of this
+target are untouched. `black` accounts for 818
 execs on this workload and has no batch mode of its own, so nothing here applies to it. `ltl2tgba`
 and `ltlsynt` are still one exec per call.
 
@@ -356,6 +399,8 @@ variable to `1` or `-` gives the table alone.
 
 The instructive part of this pass was how far a plausible explanation survived without being
 checked: `fork()` and copy-on-write faults fit the baseline numbers well enough that fixing them
-felt like the obvious next step, and the fix returned 3%. The same pattern repeated twice more —
-once in a whole-run figure taken from a single sample, once in a worker pool built on the
-assumption that a line in means a line out.
+felt like the obvious next step, and the fix returned 3%. The same pattern repeated three times more
+— once in a whole-run figure taken from a single sample, once in a worker pool built on the
+assumption that a line in means a line out, and once in the claim that batching cost no wall time.
+That last one compared two sets of runs taken at different times instead of interleaving them. It is
+the single-sample mistake again, made a second time after it had already been caught once.

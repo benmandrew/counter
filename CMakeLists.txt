@@ -65,6 +65,7 @@ target_sources(counter_fitness PRIVATE
     src/runner/formaliser.cpp
     src/runner/ganak.cpp
     src/runner/ltlfilt.cpp
+    src/runner/simplify_batcher.cpp
     src/runner/spot.cpp
     src/runner/spot_inprocess.cpp
     src/runner/subprocess.cpp

@@ -23,17 +23,11 @@ struct LtlfiltStats {
 /// Returns the full filesystem path to the ltlfilt binary.
 std::string ltlfilt_path();
 
-/// Sets how many ltlfilt batches may run concurrently, from
-/// Config::ltlfilt_batchers. Concurrent simplify_ltl misses are coalesced into
-/// one exec per batcher, trading latency for CPU; zero disables batching and
-/// gives every call its own exec. Call once at startup, before any scoring
-/// thread runs: the pool is built on first use and not resized afterwards.
-void set_ltlfilt_batchers(std::size_t count);
-
 /// Selects where simplify_ltl does its work, from Config::simplify_engine.
 /// Under the default SimplifyEngine::Libspot nothing below reaches ltlfilt at
-/// all and set_ltlfilt_batchers has no effect. Call once at startup, for the
-/// same reason.
+/// all, so nothing batches either and set_ltlfilt_batchers
+/// (runner/simplify_batcher.hpp) has no effect. Call once at startup, before
+/// any scoring thread runs.
 void set_simplify_engine(SimplifyEngine engine);
 
 /// Sets the per-formula wall-clock budget for one simplification, from

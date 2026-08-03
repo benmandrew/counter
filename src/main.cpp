@@ -30,6 +30,7 @@
 #include "runner/black.hpp"
 #include "runner/ganak.hpp"
 #include "runner/ltlfilt.hpp"
+#include "runner/simplify_batcher.hpp"
 #include "runner/spot.hpp"
 #include "runner/spot_inprocess.hpp"
 #include "serialisation.hpp"

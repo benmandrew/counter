@@ -82,6 +82,7 @@ functions, and anonymous namespaces, with source browsing and call graphs.
    api/runner/formaliser
    api/runner/ganak
    api/runner/ltlfilt
+   api/runner/simplify_batcher
    api/runner/spot
    api/runner/spot_inprocess
    api/runner/subprocess

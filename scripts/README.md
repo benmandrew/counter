@@ -457,8 +457,8 @@ timeout that legitimately fires changes the answer by design. FRETISH
 compared byte for byte and nothing is tolerated: two configurations that
 disagree are a finding, whichever is right.
 
-Run it after touching `src/runner/spot_inprocess.cpp`, `src/runner/ltlfilt.cpp`
-or `src/runner/spot.cpp`. The reason it exists is that the in-process paths
+Run it after touching `src/runner/spot_inprocess.cpp`, `src/runner/ltlfilt.cpp`,
+`src/runner/simplify_batcher.cpp` or `src/runner/spot.cpp`. The reason it exists is that the in-process paths
 share one SPOT formula-interning table for the life of the process, and SPOT
 prints commutative operands in the order that table assigned their ids — so
 their output depends on what the process did earlier in a way a freshly spawned

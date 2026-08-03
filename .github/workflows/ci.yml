@@ -274,9 +274,18 @@ jobs:
             fi
           '
 
-  # Emit the build-and-test matrix as JSON so pull requests run a lean
-  # debug+release pair while pushes to main and manual dispatch add the gcc
-  # (portability) and tsan (data-race) configurations.
+  # Emit the build-and-test matrix as JSON so pull requests run debug, release
+  # and tsan while pushes to main and manual dispatch add gcc (portability).
+  #
+  # tsan is on pull requests because the failures it finds are invisible to
+  # everything else: the in-process libspot paths have produced three races and
+  # lifetime bugs so far, and every one of them passed ctest and returned
+  # correct results. Catching those on the merge commit means catching them
+  # after review, on a branch nobody is looking at any more.
+  #
+  # It costs runner minutes and no wall clock: the matrix runs concurrently and
+  # tsan finishes inside debug's time (167s against 194s on the last full run),
+  # so a pull request waits exactly as long as it did.
   #
   # Not on the schedule: a scheduled run only reaches here over a commit that
   # was pushed to main, and that push already built and tested all four
@@ -299,7 +308,7 @@ jobs:
           gcc='{"preset":"debug","build_dir":"build","compiler":"gcc","cmake_args":"-DCMAKE_C_COMPILER=gcc -DCMAKE_CXX_COMPILER=g++"}'
           tsan='{"preset":"tsan","build_dir":"build-tsan"}'
           if [ "${{ github.event_name }}" = "pull_request" ]; then
-            include="$debug,$release"
+            include="$debug,$release,$tsan"
           else
             include="$debug,$gcc,$release,$tsan"
           fi

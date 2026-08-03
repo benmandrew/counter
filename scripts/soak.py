@@ -232,7 +232,11 @@ class Sampler(threading.Thread):
     as well as the maximum.
     """
 
-    def __init__(self, pid: int, writer, flush, tags: dict, interval=1.0,
+    # A quarter second because the shortest runs finish in about one, and a
+    # sampler that starts after the process has gone records a peak of zero.
+    # It is still possible to miss one; the long runs are what the series is
+    # for, and they cannot be missed.
+    def __init__(self, pid: int, writer, flush, tags: dict, interval=0.25,
                  series_every=5.0):
         super().__init__(daemon=True)
         self.pid = pid

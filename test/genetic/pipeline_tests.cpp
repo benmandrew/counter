@@ -86,11 +86,14 @@ const StageObservation& stage(const std::vector<StageObservation>& observations,
 
 void test_pipeline_reports_every_fixed_stage() {
     const std::vector<std::string> names = stage_names(observe_generation({}));
-    for (const std::string& expected :
-         {"order-parents", "breed", "filter-fallback", "restore-elites", "pad",
-          "score", "select"}) {
+    // const char*, not const std::string&: the braced list holds string
+    // literals, so a string reference would bind to a temporary built for each
+    // one, which gcc rejects under -Wrange-loop-construct.
+    for (const char* expected : {"order-parents", "breed", "filter-fallback",
+                                 "restore-elites", "pad", "score", "select"}) {
         expect(contains(names, expected),
-               "pipeline: the observer should see the " + expected + " stage");
+               std::string("pipeline: the observer should see the ") +
+                   expected + " stage");
     }
     expect(names.size() == 7,
            "pipeline: a generation with no filters should report exactly the "

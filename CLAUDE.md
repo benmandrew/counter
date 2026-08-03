@@ -95,188 +95,75 @@ Every header file in `include/` must have a corresponding `.rst` page under `doc
 ## Profiling
 
 `COUNTER_PROFILE=<path>` turns on the scope profiler (`include/profile.hpp`) and
-writes a table to stderr plus JSON to `<path>`; `COUNTER_PROFILE=1` gives the
-table only. Off otherwise, at the cost of one relaxed atomic load per scope.
-`COUNTER_PROFILE_SCOPE("name")` times a block, recording calls, wall time,
-**per-thread CPU time** and the slowest call.
+writes a stderr table plus JSON there; `COUNTER_PROFILE=1` gives the table
+alone. Every binary reports — it registers with `atexit` on the first scope, so
+`realize`, `mucs` and `compare` need no wiring of their own. Wall against
+per-thread central processing unit (CPU) time is the diagnostic: large wall with
+near-zero CPU means blocked on a child process, not computing.
 
-Every binary reports, not just `counter`: the report is registered with
-`atexit` the first time a scope runs, so `realize`, `mucs` and `compare` need no
-wiring of their own. A binary that executes no instrumented scope prints
-nothing, which is the honest answer rather than an empty table.
+The bottleneck is not `counter`'s own computation. Nearly all of a run waits on
+external tools, and over half of *that* is per-process startup — about 9ms and
+~2700 minor page faults per exec. Findings and the ranked optimisation targets
+are in @PROFILING.md.
 
-Wall and CPU are recorded separately because that ratio is the whole diagnostic:
-a scope with large wall and near-zero CPU is blocked on a child process, not
-computing. The per-tool "Tool timing report" in `src/main.cpp` says how long each
-external tool took; this says where inside a call it went. Use
-`profile::site_interned` for a name only known at run time, and resolve it once
-rather than per call.
+Linking libspot has two consequences. *Every binary needs `third_party/spot/lib`
+at load time*, including the ones that make no Spot calls, so a binary staged to
+av2/av3 without that directory fails before `main()`. And *libspot is not
+sanitiser-instrumented*, so ThreadSanitizer (TSan) cannot see a race that lives
+inside Spot. Check performance work under `debug`, the only preset with ASAN and
+UBSAN on, and under `tsan`, not `relwithdebinfo` alone; symlink
+`build-tsan/third_party` at a tree with Spot and black already built, or `tsan`
+rebuilds both from source. `perf` and `gdb`/`strace` attach are unavailable on
+the dev box (`kernel.perf_event_paranoid=4`, yama `ptrace_scope`), hence
+in-process instrumentation; `strace` works only by launching the process.
 
-`[runtime] parallel` sizes `global_thread_pool()` (via `set_thread_pool_size`,
-called once at startup; 0 means hardware concurrency). It did not until
-recently — the pool was hard-coded to `hardware_concurrency()` and the key only
-reached the bounded-async in-flight window — so every campaign ran each of its
-jobs with a full-width pool. `run_experiments.py` writes `parallel = k` to
-prevent exactly that. Honouring it makes four concurrent fsm runs 17% faster.
-Scaling is strongly sublinear (20 workers buy 4.3x over 1), so campaign
-throughput comes from more jobs with smaller pools, not from widening one run.
+`[runtime] simplify_engine` defaults to `libspot`, which simplifies through the
+linked library (`spot_simplify`, `src/runner/spot_inprocess.cpp`). Two rules are
+load-bearing: ask for *level 3*, which is what `--simplify` selects and what the
+library default disagrees with on about 5% of formulae; and keep *one*
+simplifier under *one* process-wide lock, because the contended state is SPOT's
+parser globals and intern table, so a per-thread instance crashes even when
+every call is locked. `counter_tests.spot_inprocess` pins both.
 
-Linking libspot has two consequences worth knowing. **Every binary now needs
-`third_party/spot/lib` at load time** — `counter`, `compare`, `realize`, `ltl`
-and `mucs` all carry `NEEDED libspot.so.0`, including the two that make no
-in-process Spot calls, so a binary copied to another host without that directory
-fails before `main()` (relevant when staging to av2/av3). And **libspot is not
-sanitiser-instrumented**: `cmake/spot.cmake` passes only `CXX=` to Spot's
-configure, so under the `tsan` and `debug` presets the library is
-uninstrumented. TSan therefore cannot see a race that lives entirely inside
-Spot, which is the reason the thread-safety rule below was established with a
-separately compiled spike rather than by trusting a clean run.
+`run_ltl2tgba_for_counting` runs in process too. A deadline cannot be enforced
+there — nothing to kill — so it is honoured by *abandoning*: the work goes to a
+worker carrying the libspot lock, the caller reports a timeout past the
+deadline, and later calls find the lock busy within the budget and spawn
+instead. The lock frees itself. *`main` must leave through `leave()`*, which
+`_Exit`s while workers are outstanding (`spot_abandoned_workers()` counts them),
+or libspot's static destructors run underneath a thread still inside them. The
+mutex and the simplifier are leaked for the same reason.
 
-Check performance work under the **`debug` preset too**, not only
-`relwithdebinfo` and `tsan`. It is the only one with ASAN and UBSAN on, and it
-caught two failures the others structurally could not: a LeakSanitizer report on
-the profiler's registry, and a missing `BUILD_BYPRODUCTS` on Spot's libraries
-that only shows up in a tree where `third_party` is not a symlink to an
-already-built one.
+`simplify_timeout_ms` costs the simplification alone, the formula being used
+unsimplified, while `ltl2tgba_timeout_ms` drops the individual; that asymmetry
+is the trap. `ltlsynt` never moves in process, because of its memory cap.
+Translate against a *fresh `bdd_dict` per call* or atomic propositions get
+renumbered, and expect the tautology print bug to throw rather than exit 2: the
+defect is in the *library*, not the binary, and `SpotTranslation` reports it.
 
-Anything touching the scoring pool's concurrency should be checked under the
-`tsan` preset, not just `ctest`. It caught a real race in the batcher that
-review had missed, and the fix was not the obvious one: `LtlfiltStats` is
-written under `simplify_ltl`'s cache lock, so giving another writer its own
-mutex leaves two locks over one variable and no protection. Symlink
-`build-tsan/third_party` at a tree that already has Spot and black built, or the
-preset rebuilds both from source.
+Neither in-process call queues: both wait at most `k_libspot_lock_budget` (8ms,
+the measured spawn cost) and then fall through to the exec, because whether
+in-process wins depends on the workload. The two paths are *equivalent, not
+byte-identical* — Spot prints commutative operands in intern order, and that
+table is process-global, so output depends on process history. Re-check with
+`scripts/check_engine_parity.py` after touching either path; the `determinism`
+suite pins the RNG stream, not the simplified strings. The guard is
+`counter_tests.differential`, run heavy with `COUNTER_DIFFERENTIAL_N` (400).
 
-`perf` and `gdb`/`strace` attach are unavailable on the dev box
-(`kernel.perf_event_paranoid=4`, yama `ptrace_scope`), which is why this is
-in-process instrumentation rather than sampling. `strace` still works when it
-*launches* the process rather than attaching to a running one.
+`[runtime] parallel` sizes the thread pool, and scaling is strongly sublinear
+(twenty workers buy 4.3x the throughput of one), so campaign throughput comes
+from more jobs with smaller pools rather than wider ones.
+`simplify_engine = "ltlfilt"` is the *A/B* lever and the escape hatch;
+`ltlfilt_batchers` applies only to it, and only to
+`src/runner/simplify_batcher.cpp`. Two batching traps. Never build a
+streaming request/response protocol on a SPOT tool: it flushes in irregular
+lumps and holds the rest until stdin reaches end of file, and `stdbuf` cannot
+reach it, so batch is the shape that works. And every tool pipe must be created
+`pipe2(..., O_CLOEXEC)`, or a child inherits and holds open another call's
+pipes. Measure A/B interleaved, never as two separate batches of runs.
 
-Findings and the ranked optimisation targets live in `PROFILING.md`. The short
-version: counter's own computation is not the bottleneck. Nearly all of a run is
-waiting on external tools, and over half of *that* is per-process startup —
-about 9ms and ~2700 minor page faults per exec, independent of formula
-difficulty, because each child demand-pages its own binary and libspot.
-
-`simplify_ltl` acts on that by not spawning at all. `[runtime] simplify_engine`
-defaults to `libspot`, which simplifies in process through the linked library
-(`spot_simplify`, `src/runner/spot_inprocess.cpp`) instead of running `ltlfilt
---simplify`. On fsm gen20/pop1000 that removes 1494 execs and 11.8s of exec
-wall, against about 0.05s of simplification those calls actually performed, and
-cuts whole-run wall 21% (6.47s to 5.10s, medians of three interleaved runs;
-every FRETISH and TLSF example in the repo gains 10-39%).
-Two things are load-bearing and neither is optional. The simplifier must be
-asked for **level 3** — that is what `--simplify` selects, and the library
-default disagrees with the tool on about 5% of formulae. And **one** simplifier,
-constructed and used under **one** process-wide lock: the contended state is
-process-global underneath `tl_simplifier` (SPOT's parser globals and the
-formula-interning table), so a per-thread instance crashes even when every call
-is locked, because construction alone is unsafe. `counter_tests.spot_inprocess`
-pins both.
-
-`run_ltl2tgba_for_counting` moves the same way, whatever
-`ltl2tgba_timeout_ms` says. A deadline cannot be enforced in process — there is
-nothing to kill and C++ cannot cancel a running call — so it is honoured by
-**abandoning**: the work goes to a worker thread that carries the libspot lock
-with it, and past the deadline the caller reports a timeout while that worker
-runs on. Because it keeps the lock, every later call finds it busy within the
-budget and spawns instead, so one pathological formula costs the fast path until
-it finishes and nothing more; the lock comes back on its own.
-`simplify_timeout_ms` bounds one simplification the same way, sharing the
-`run_with_deadline` template with the translator and applying to both engines —
-out of process it kills the child instead. Unlike the translate deadline it does
-not drop the individual: the formula is used unsimplified, which is logically
-the same formula, so it costs the simplification and not the candidate.
-`spot_abandoned_workers()` reports outstanding ones, and **`main` must leave
-through `leave()`**, which `_Exit`s while any are running — returning normally
-would run libspot's static destructors underneath a thread still inside them.
-The libspot mutex and simplifier are leaked for the same reason. The cost is
-200us per call, of which only 20us is the thread; a persistent worker would
-recover most of it and is not worth the stall it could hide. `ltlsynt` never
-moves, for the original reason plus its memory cap. Two further traps on that
-path: translate against a
-**fresh `bdd_dict` per call** (a shared one renumbers atomic propositions,
-because it carries over what earlier formulae registered), and handle the
-tautology print bug — Spot 2.15.1 refuses to print the universal automaton it
-builds for a tautology, and that defect is in the **library**, not the binary,
-so in process it throws where the binary exits 2. `SpotTranslation`
-reports it so the caller can substitute the universal automaton.
-
-Neither in-process call queues on that lock. Both wait at most
-`k_libspot_lock_budget` (8ms, the measured spawn cost) and otherwise fall
-through to their exec path, because whether in-process beats spawning depends on
-the workload, not the code: an `fsm` formula simplifies in 0.15ms, a `lift` one
-in 24ms, and serialising 1005 of the latter put 23.9s of CPU on one thread and
-made the run 14% *slower* than spawning. Waiting only as long as a spawn costs
-needs no prediction and beats both fixed choices — a sweep puts 8ms at the
-optimum on `lift` and within 7% of it on `fsm`. It is sound only because the two
-paths produce equivalent output; if they could ever disagree, a contended run
-would stop reproducing.
-
-They are **equivalent, not byte-identical**, and that is the one thing to know
-before trusting either. Spot prints commutative operands in formula-node id
-order, ids are handed out on first interning, and the intern table is global to
-the *process* — so `ltlfilt` looked like a pure function only because each call
-got a fresh one. A cold process reproduces the tool exactly; after a few
-unrelated calls about a fifth of a random corpus prints differently, and the
-translated automaton lists `AP:` in a different order with every guard
-renumbered. Both are renamings, never different answers. It has not been
-observed to reach a repair: identical outputs across engines, across `parallel`
-1 to 16, and across repeated same-seed runs. Do not assume — re-check with
-`scripts/check_engine_parity.py` after touching either path, and note that the
-`determinism` suite pins the RNG stream, not the simplified strings, so it
-cannot catch this.
-
-`counter_tests.differential` (`test/runner/differential_tests.cpp`) is what
-guards it: a generated `randltl` corpus checked for equivalence against
-`ltlfilt --simplify`, for the difference being ordering alone, for language
-equivalence against `ltl2tgba` via `autfilt`, and for the deadline and
-concurrent paths agreeing with the inline and serial ones. Raise
-`COUNTER_DIFFERENTIAL_N` (default 400) to run it heavy. Its first version
-asserted byte-equality and failed on 89 of 417 formulae, which is how the above
-was found. Verified at `N=4000` (4017 formulae, 1005 translations) with no
-disagreement, and by the parity script over all six examples above including
-both TLSF ones — 36 runs, no configuration differing from any other. The translator's budget is protective rather than
-measured — it buys no speedup on any workload here, but it shares the lock, so
-it shares the failure mode.
-
-Both in-process calls share **one** lock, which is why they live in one header.
-That lock is now the limiting factor rather than the exec: the two scopes
-together wait about 16s for about 1.05s of work on an fsm run, and adding
-translation pushed simplification's wait from 1.68s to 8.28s. Single-run wall is
-therefore unchanged by the ltl2tgba move; the gain is 14% of CPU, which shows up
-as 8.7% under four-way concurrency. Spot's `--enable-pthread` does not lift
-this — it parallelises some algorithms, it does not make the parser globals or
-the intern table reentrant.
-
-Setting `simplify_engine = "ltlfilt"` selects the older exec path, kept as the
-A/B lever and escape hatch; `ltlfilt_batchers` applies only under it. On that
-path concurrent cache misses are coalesced by a leader
-thread into one `ltlfilt --simplify --skip-errors -F -` exec over the whole
-batch (`SimplifyBatcher` in `src/runner/ltlfilt.cpp`). Batch composition varies
-run to run, so this is only safe because the result does not depend on it —
-`--skip-errors` guarantees one reply line per request line, and a batch whose
-reply count does not match falls back to a per-formula exec rather than risk
-misattributing a simplification. It trades about 5% of wall time for about 19%
-of total CPU (a caller now waits for a leader rather than running its own exec),
-which is the right side of the trade for campaigns, measured rather than
-assumed: four concurrent `counter` processes on a 20-core box finish 12.6%
-sooner batched (14.14s -> 12.36s median). The sign of the effect reverses with
-concurrency, because the cores the baseline spends demand-paging `ltlfilt` are
-the ones its neighbours need. `[runtime]
-ltlfilt_batchers` is the knob: more batchers approach baseline wall with less
-CPU saved, fewer do the opposite, it is monotonic, and 0 turns batching off. Measure A/B interleaved, not
-as two separate batches of runs — machine load drifts, and that mistake made
-this change look free when it is not.
-
-Two traps recorded there. Do not build a streaming request/response protocol on
-a SPOT tool: `ltlfilt` does not answer one line per line, it flushes in
-irregular lumps and holds the rest until stdin hits EOF, and `stdbuf` cannot
-reach it because SPOT writes through C++ streams detached from stdio. Batch
-(write all, close stdin, read all) is the shape that works. And every tool pipe
-must be created `pipe2(..., O_CLOEXEC)`: without it a spawned child inherits
-other in-flight calls' pipes and holds their write ends open, so the reader
-never sees EOF.
+The process boundary was traded for a lock rather than removed, which is why the
+remaining wins on these paths are CPU rather than latency.
 
 ## Live dashboard
 

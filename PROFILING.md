@@ -86,7 +86,8 @@ byte-identical repairs either way, which is the more important half of the resul
 
 `include/profile.hpp` and `src/profile.cpp` add a named-scope profiler. It is always compiled in
 and inert unless the `COUNTER_PROFILE` environment variable is set. Set it to a file path to get a
-JSON report as well as the table; set it to `1` or `-` for the stderr table only.
+JSON report as well as the table; set it to `1` or `-` for the stderr table only. Switched off, it
+costs one relaxed atomic load per scope.
 
 `COUNTER_PROFILE_SCOPE("name")` is a *resource acquisition is initialisation* (RAII) timer. Each
 site records four things: call count, total wall time, total per-thread CPU time from

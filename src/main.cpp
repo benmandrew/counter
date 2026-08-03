@@ -613,6 +613,7 @@ int main(int argc, const char* const argv[]) {
     set_ltl2tgba_timeout(cfg.ltl2tgba_timeout);
     set_ltlfilt_batchers(cfg.ltlfilt_batchers);
     set_simplify_engine(cfg.simplify_engine);
+    set_simplify_timeout(cfg.simplify_timeout);
     set_thread_pool_size(cfg.parallel);
     const std::optional<std::string> input_path =
         parse_string_arg(argc, argv, "--input");

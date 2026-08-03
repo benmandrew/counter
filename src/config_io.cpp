@@ -78,7 +78,7 @@ const KeySpec& config_key_spec() {
                              "vacuity", "well_separation"})}})},
          {"runtime",
           section({"black_timeout_ms", "ltlsynt_timeout_ms",
-                   "ltl2tgba_timeout_ms", "parallel",
+                   "ltl2tgba_timeout_ms", "simplify_timeout_ms", "parallel",
                    "max_concurrent_realizability", "ltlfilt_batchers",
                    "simplify_engine", "report_cpu_timing",
                    "max_scoring_failure_rate", "dashboard"})}});
@@ -331,6 +331,13 @@ void apply_runtime(const toml::table& tbl, Config& cfg) {
                 "config: runtime.ltl2tgba_timeout_ms must be >= 0");
         }
         cfg.ltl2tgba_timeout = std::chrono::milliseconds{*val};
+    }
+    if (auto val = tbl["simplify_timeout_ms"].value<int64_t>()) {
+        if (*val < 0) {
+            throw std::runtime_error(
+                "config: runtime.simplify_timeout_ms must be >= 0");
+        }
+        cfg.simplify_timeout = std::chrono::milliseconds{*val};
     }
     if (auto val = tbl["parallel"].value<int64_t>()) {
         if (*val <= 0) {

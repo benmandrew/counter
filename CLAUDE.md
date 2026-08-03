@@ -182,6 +182,11 @@ with it, and past the deadline the caller reports a timeout while that worker
 runs on. Because it keeps the lock, every later call finds it busy within the
 budget and spawns instead, so one pathological formula costs the fast path until
 it finishes and nothing more; the lock comes back on its own.
+`simplify_timeout_ms` bounds one simplification the same way, sharing the
+`run_with_deadline` template with the translator and applying to both engines —
+out of process it kills the child instead. Unlike the translate deadline it does
+not drop the individual: the formula is used unsimplified, which is logically
+the same formula, so it costs the simplification and not the candidate.
 `spot_abandoned_workers()` reports outstanding ones, and **`main` must leave
 through `leave()`**, which `_Exit`s while any are running — returning normally
 would run libspot's static destructors underneath a thread still inside them.

@@ -83,49 +83,28 @@ bool spawn_child(char* const* argv, const char* executable,
     return spawn_result == 0;
 }
 
-// Drains read_fd until EOF, or until the deadline if there is one. Returns the
-// bytes read so far and whether the deadline expired.
-std::pair<std::string, bool> read_until_eof(int read_fd,
-                                            std::chrono::milliseconds timeout) {
-    COUNTER_PROFILE_SCOPE("proc/read");
-    const bool timed = timeout > std::chrono::milliseconds::zero();
-    const auto deadline = std::chrono::steady_clock::now() + timeout;
-    std::string output;
-    std::array<char, 4096> buf{};
+// Waits for read_fd to become readable, or for @p deadline, whichever comes
+// first. False means the deadline expired with nothing to read.
+bool wait_readable(int read_fd,
+                   std::chrono::steady_clock::time_point deadline) {
     while (true) {
-        if (timed) {
-            const auto remaining =
-                std::chrono::duration_cast<std::chrono::milliseconds>(
-                    deadline - std::chrono::steady_clock::now())
-                    .count();
-            if (remaining <= 0) {
-                return {output, true};
-            }
-            const int poll_ms = remaining > std::numeric_limits<int>::max()
-                                    ? std::numeric_limits<int>::max()
-                                    : static_cast<int>(remaining);
-            struct pollfd pfd{read_fd, POLLIN, 0};
-            const int ready = poll(&pfd, 1, poll_ms);
-            if (ready < 0) {
-                if (errno == EINTR) {
-                    continue;
-                }
-                assert(false);
-                __builtin_unreachable();
-            }
-            if (ready == 0) {
-                return {output, true};
-            }
+        const auto remaining =
+            std::chrono::duration_cast<std::chrono::milliseconds>(
+                deadline - std::chrono::steady_clock::now())
+                .count();
+        if (remaining <= 0) {
+            return false;
         }
-        const ssize_t bytes_read =
-            read(  // NOLINT(clang-analyzer-unix.BlockInCriticalSection)
-                read_fd, buf.data(), buf.size());
-        if (bytes_read > 0) {
-            output.append(buf.data(), static_cast<std::size_t>(bytes_read));
-            continue;
+        const int poll_ms = remaining > std::numeric_limits<int>::max()
+                                ? std::numeric_limits<int>::max()
+                                : static_cast<int>(remaining);
+        struct pollfd pfd{read_fd, POLLIN, 0};
+        const int ready = poll(&pfd, 1, poll_ms);
+        if (ready > 0) {
+            return true;
         }
-        if (bytes_read == 0) {
-            return {output, false};
+        if (ready == 0) {
+            return false;
         }
         if (errno == EINTR) {
             continue;
@@ -153,6 +132,35 @@ int reap(pid_t child_pid, double& cpu_s_out) {
 }
 
 }  // namespace
+
+std::pair<std::string, bool> read_until_eof(int read_fd,
+                                            std::chrono::milliseconds timeout) {
+    COUNTER_PROFILE_SCOPE("proc/read");
+    const bool timed = timeout > std::chrono::milliseconds::zero();
+    const auto deadline = std::chrono::steady_clock::now() + timeout;
+    std::string output;
+    std::array<char, 4096> buf{};
+    while (true) {
+        if (timed && !wait_readable(read_fd, deadline)) {
+            return {output, true};
+        }
+        const ssize_t bytes_read =
+            read(  // NOLINT(clang-analyzer-unix.BlockInCriticalSection)
+                read_fd, buf.data(), buf.size());
+        if (bytes_read > 0) {
+            output.append(buf.data(), static_cast<std::size_t>(bytes_read));
+            continue;
+        }
+        if (bytes_read == 0) {
+            return {output, false};
+        }
+        if (errno == EINTR) {
+            continue;
+        }
+        assert(false);
+        __builtin_unreachable();
+    }
+}
 
 SubprocessResult run_subprocess(const std::vector<std::string>& arguments,
                                 const SubprocessOptions& options) {

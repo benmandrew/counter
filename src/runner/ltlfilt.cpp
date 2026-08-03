@@ -13,6 +13,8 @@
 #include <cerrno>
 #include <chrono>
 #include <condition_variable>
+#include <csignal>
+#include <cstdint>
 #include <cstring>
 #include <memory>
 #include <mutex>
@@ -20,6 +22,7 @@
 #include <stdexcept>
 #include <string>
 #include <unordered_map>
+#include <utility>
 #include <vector>
 
 #include "config.hpp"
@@ -53,7 +56,8 @@ double rusage_cpu_seconds(const struct rusage& usage) {
 // everything.
 bool run_ltlfilt_batch(const std::string& binary,
                        const std::vector<std::string>& formulas,
-                       std::vector<std::string>& out, double& child_cpu_s) {
+                       std::vector<std::string>& out, double& child_cpu_s,
+                       std::chrono::milliseconds timeout) {
     COUNTER_PROFILE_SCOPE("ltlfilt/batch-exec");
     assert(!formulas.empty());
     std::string input;
@@ -123,27 +127,20 @@ bool run_ltlfilt_batch(const std::string& binary,
     }
     close(in_pipe[1]);
 
-    std::string output;
-    {
-        COUNTER_PROFILE_SCOPE("proc/read");
-        std::array<char, 4096> buf{};
-        while (true) {
-            // The analyser reaches here from SimplifyBatcher::simplify, which
-            // holds a lock at its call site -- but it releases that lock before
-            // calling this, precisely so the exec runs outside it. Blocking
-            // here is the leader waiting on its own child, not on a mutex.
-            const ssize_t bytes_read =
-                read(  // NOLINT(clang-analyzer-unix.BlockInCriticalSection)
-                    out_pipe[0], buf.data(), buf.size());
-            if (bytes_read > 0) {
-                output.append(buf.data(), static_cast<std::size_t>(bytes_read));
-                continue;
-            }
-            if (bytes_read < 0 && errno == EINTR) {
-                continue;
-            }
-            break;
-        }
+    // The analyser reaches here from SimplifyBatcher::simplify, which holds a
+    // lock at its call site -- but it releases that lock before calling this,
+    // precisely so the exec runs outside it. Blocking here is the leader
+    // waiting on its own child, not on a mutex.
+    auto [output, timed_out] =
+        read_until_eof(  // NOLINT(clang-analyzer-unix.BlockInCriticalSection)
+            out_pipe[0], timeout);
+    if (timed_out) {
+        // Killed before the wait below, which would otherwise block on exactly
+        // the child that has run out of time. Every formula in the batch is
+        // then reported as a failure and retried one at a time, each under its
+        // own copy of the same deadline, so the one that overran is the only
+        // one that ends up unsimplified.
+        kill(child_pid, SIGKILL);
     }
     close(out_pipe[0]);
 
@@ -160,7 +157,7 @@ bool run_ltlfilt_batch(const std::string& binary,
     // same variable, which is exactly what ThreadSanitizer flagged. The leader
     // books the whole batch's child CPU against its own call.
     child_cpu_s = rusage_cpu_seconds(child_usage);
-    if (!wrote) {
+    if (!wrote || timed_out) {
         return false;
     }
 
@@ -204,7 +201,8 @@ class SimplifyBatcher {
     // once.
     std::optional<std::string> simplify(const std::string& binary,
                                         const std::string& formula,
-                                        double& child_cpu_s) {
+                                        double& child_cpu_s,
+                                        std::chrono::milliseconds timeout) {
         auto slot = std::make_shared<Slot>();
         slot->m_formula = formula;
         std::unique_lock<std::mutex> lock(m_mutex);
@@ -230,8 +228,17 @@ class SimplifyBatcher {
                 for (const auto& queued : batch) {
                     inputs.push_back(queued->m_formula);
                 }
-                batch_ok =
-                    run_ltlfilt_batch(binary, inputs, results, child_cpu_s);
+                // The configured budget is per formula, so a batch of n gets
+                // n times it: charging a whole batch of cheap formulae one
+                // formula's worth would kill work making normal progress.
+                // That makes the batch's own bound looser than the key asks
+                // for, and the fallback tightens it back up -- a batch that
+                // overruns fails, and each of its formulae is then retried
+                // alone under exactly one budget, so only the formula that
+                // actually overran goes unsimplified.
+                batch_ok = run_ltlfilt_batch(
+                    binary, inputs, results, child_cpu_s,
+                    timeout * static_cast<std::int64_t>(batch.size()));
             } catch (...) {
                 lock.lock();
                 retire_batch(batch, false, results);
@@ -305,6 +312,13 @@ std::atomic<std::size_t> g_batcher_count{4};
 
 std::atomic<SimplifyEngine> g_simplify_engine{SimplifyEngine::Libspot};
 
+// Per-formula wall-clock budget for a simplification, in milliseconds; 0
+// disables it. Set once at startup from Config::simplify_timeout, read by every
+// scoring worker, hence atomic. Applies to both engines, because the hazard is
+// the same on both: `--simplify` has no internal bound and blows up
+// super-exponentially on deeply nested-X conjunctions.
+std::atomic<std::int64_t> g_simplify_timeout_ms{0};
+
 // How long a caller will wait for the libspot lock before spawning ltlfilt
 // instead. Set to roughly what a spawn costs (measured at 8-9 ms, dominated by
 // the child demand-paging its own executable), because that is exactly the
@@ -355,6 +369,10 @@ void set_simplify_engine(SimplifyEngine engine) {
     g_simplify_engine.store(engine);
 }
 
+void set_simplify_timeout(std::chrono::milliseconds timeout) {
+    g_simplify_timeout_ms.store(timeout.count());
+}
+
 std::string simplify_ltl(const std::string& formula) {
     COUNTER_PROFILE_SCOPE("ltlfilt/simplify_ltl");
     static std::unordered_map<std::string, std::string> cache;
@@ -370,6 +388,8 @@ std::string simplify_ltl(const std::string& formula) {
         LtlfiltStats::n_cache_misses++;
     }
     const auto start = std::chrono::steady_clock::now();
+    const auto timeout =
+        std::chrono::milliseconds(g_simplify_timeout_ms.load());
     // The in-process engine needs no binary on disk and spawns nothing, so it
     // is tried before the ltlfilt path is even looked for. A formula it cannot
     // parse is cached and returned unchanged rather than sent to the exec:
@@ -378,7 +398,7 @@ std::string simplify_ltl(const std::string& formula) {
     if (g_simplify_engine.load(std::memory_order_relaxed) ==
         SimplifyEngine::Libspot) {
         SpotSimplification in_process =
-            spot_try_simplify(formula, k_libspot_lock_budget);
+            spot_try_simplify(formula, k_libspot_lock_budget, timeout);
         // Falling back needs something to fall back to. Without the binary the
         // exec path below returns the formula unsimplified, which would make a
         // busy lock silently change the answer, so wait for the lock instead.
@@ -395,12 +415,21 @@ std::string simplify_ltl(const std::string& formula) {
             if (spot_abandoned_workers() > 0) {
                 throw std::runtime_error(
                     "cannot simplify \"" + formula +
-                    "\": libspot is held by an abandoned translation, and "
+                    "\": libspot is held by an abandoned call, and "
                     "there is no ltlfilt at " +
                     ltlfilt_path() + " to fall back to");
             }
-            in_process = spot_try_simplify(formula, k_no_fallback_wait_slice);
+            in_process =
+                spot_try_simplify(formula, k_no_fallback_wait_slice, timeout);
         }
+        // A timed-out simplification reports neither a formula nor a busy
+        // lock, so it falls into the branch below and caches the formula
+        // unchanged. That is deliberate rather than incidental: unsimplified
+        // is what this function already returns when there is no ltlfilt to
+        // run, it is logically the same formula, and sending it to the exec
+        // instead would spend the same budget again on a formula already known
+        // to exceed it.
+        //
         // Busy means another thread is inside libspot and this one would wait
         // longer than a spawn costs, so it spawns instead. Everything below is
         // the exec path, unchanged.
@@ -450,15 +479,18 @@ std::string simplify_ltl(const std::string& formula) {
     const std::size_t pool_size = batchers().size();
     if (batchable && pool_size > 0) {
         COUNTER_PROFILE_SCOPE("ltlfilt/batched-request");
-        batched = batchers()[batcher_slot(pool_size)]->simplify(binary, formula,
-                                                                child_cpu_s);
+        batched = batchers()[batcher_slot(pool_size)]->simplify(
+            binary, formula, child_cpu_s, timeout);
     }
     if (batched.has_value()) {
         simplified = *batched;
     } else {
         COUNTER_PROFILE_SCOPE("ltlfilt/one-shot-exec");
-        const SubprocessResult result =
-            run_subprocess({binary, "--simplify", "-f", formula});
+        // A killed child exits non-zero, so a timeout lands on the same branch
+        // as any other ltlfilt failure and leaves the formula unsimplified --
+        // the same answer the in-process path gives when its deadline expires.
+        const SubprocessResult result = run_subprocess(
+            {binary, "--simplify", "-f", formula}, SubprocessOptions{timeout});
         // Added, not assigned. Reaching here after leading a batch means the
         // batch ran and then failed its line-count check, and its child CPU is
         // already in child_cpu_s; overwriting it would drop a whole exec from

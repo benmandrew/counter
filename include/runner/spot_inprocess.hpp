@@ -59,25 +59,42 @@ struct SpotSimplification {
     /// True when the lock could not be taken within the budget and nothing was
     /// attempted, so the caller should spawn `ltlfilt` instead.
     bool m_lock_busy = false;
+    /// True when the deadline expired before the simplification finished. The
+    /// call was abandoned and nothing will ever deliver its answer, so the
+    /// caller should use the formula unsimplified -- which is what it already
+    /// does when there is no `ltlfilt` to fall back to. Unlike a translation,
+    /// a simplification that does not arrive costs only the size of a formula,
+    /// never its meaning.
+    bool m_timed_out = false;
 };
 
 /// As spot_simplify, but gives up if the process-wide libspot lock cannot be
-/// taken within @p budget.
+/// taken within @p budget, or if the simplification itself outruns
+/// @p deadline (zero, the default meaning of `simplify_timeout_ms`, being
+/// unbounded).
 ///
-/// This exists because in-process simplification is not always the cheaper
-/// option, and which one wins depends on the workload rather than on anything
-/// knowable in advance. Simplifying `fsm`'s formulae takes about 0.15 ms, so
-/// serialising is free and skipping the spawn is a clear gain. Simplifying
-/// `lift`'s takes about 24 ms, and serialising those puts more work on one
-/// thread than the whole run has to spare, while separate `ltlfilt` processes
-/// would have run them in parallel.
+/// The budget exists because in-process simplification is not always the
+/// cheaper option, and which one wins depends on the workload rather than on
+/// anything knowable in advance. Simplifying `fsm`'s formulae takes about
+/// 0.15 ms, so serialising is free and skipping the spawn is a clear gain.
+/// Simplifying `lift`'s takes about 24 ms, and serialising those puts more work
+/// on one thread than the whole run has to spare, while separate `ltlfilt`
+/// processes would have run them in parallel.
 ///
 /// The budget resolves that without having to predict the cost: wait roughly as
 /// long as spawning would have taken, and if the lock has not come free by
 /// then, spawning is the better deal by definition. Both paths produce
-/// identical output, so which one a call takes does not affect the result.
+/// equivalent output, so which one a call takes does not affect the result.
+///
+/// The deadline covers the other half: how long the work may run once it has
+/// the lock. Simplification has no internal bound and `--simplify` blows up
+/// super-exponentially on deeply nested-X conjunctions -- about a second at 12
+/// ticks, twenty at 15 -- which is the shape this search builds. Enforcing it
+/// costs a thread and abandons the call; see spot_translate_for_counting for
+/// what abandoning means and why it is safe.
 SpotSimplification spot_try_simplify(const std::string& formula,
-                                     std::chrono::milliseconds budget);
+                                     std::chrono::milliseconds budget,
+                                     std::chrono::milliseconds deadline);
 
 /// The outcome of one translation. `m_hoa` holds the automaton, and is empty
 /// when the formula did not parse, when the tautology bug below fired, or when
@@ -146,7 +163,8 @@ SpotTranslation spot_translate_for_counting(const std::string& formula,
                                             std::chrono::milliseconds budget,
                                             std::chrono::milliseconds deadline);
 
-/// How many translations have been abandoned and are still running.
+/// How many calls -- translations or simplifications -- have been abandoned
+/// and are still running.
 ///
 /// Worth checking before the process exits: static destruction while one of
 /// these is inside libspot tears down state it is still using. Anything above

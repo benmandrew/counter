@@ -109,7 +109,8 @@ void test_concurrent_calls_agree() {
 // disagreement here would make which path a call took observable.
 void test_budgeted_simplify_agrees_when_uncontended() {
     const std::string formula = "b | G(Fe U Gc)";
-    const SpotSimplification budgeted = spot_try_simplify(formula, k_budget);
+    const SpotSimplification budgeted =
+        spot_try_simplify(formula, k_budget, k_no_deadline);
     expect(!budgeted.m_lock_busy,
            "spot-simplify: an uncontended lock should not report busy");
     expect(budgeted.m_formula.value_or(k_declined) ==
@@ -119,7 +120,8 @@ void test_budgeted_simplify_agrees_when_uncontended() {
 }
 
 void test_budgeted_simplify_declines_unparseable() {
-    const SpotSimplification budgeted = spot_try_simplify("G(", k_budget);
+    const SpotSimplification budgeted =
+        spot_try_simplify("G(", k_budget, k_no_deadline);
     expect(!budgeted.m_lock_busy,
            "spot-simplify: an unparseable formula is not a busy lock");
     expect(!budgeted.m_formula.has_value(),
@@ -214,6 +216,25 @@ void test_a_deadline_does_not_change_the_answer() {
     }
 }
 
+// The same question for simplification, which took the deadline later and by
+// the same mechanism, so it is worth asking separately rather than assuming the
+// two share more than the machinery.
+void test_a_deadline_does_not_change_a_simplification() {
+    const std::vector<std::string> formulas = {
+        "G(p -> F(q))", "b | G(Fe U Gc)", "p & !p",
+        "G(F(p))",      "q & p",          "a <-> F(a | GX!Fa)"};
+    for (const std::string& formula : formulas) {
+        const SpotSimplification deadlined =
+            spot_try_simplify(formula, k_budget, std::chrono::seconds(60));
+        expect(!deadlined.m_timed_out,
+               "spot-simplify: 60s is not a deadline any of these can miss");
+        expect(deadlined.m_formula.value_or(k_declined) ==
+                   spot_simplify(formula).value_or(k_declined),
+               "spot-simplify: a deadline must not change the result for " +
+                   formula);
+    }
+}
+
 // Determinizing this takes about 4.7 seconds and 50MB, measured, and both
 // figures are why it is the one used here. It has to be slow enough to miss a
 // 250ms deadline on any machine -- a nineteenfold margin -- and it has to
@@ -262,7 +283,7 @@ void test_a_missed_deadline_is_abandoned_and_then_recovered_from() {
     // were instead waited on, one bad formula would stall every scoring thread
     // in the process rather than just slowing it down.
     const SpotSimplification during =
-        spot_try_simplify("G(p -> F(q))", k_budget);
+        spot_try_simplify("G(p -> F(q))", k_budget, k_no_deadline);
     expect(during.m_lock_busy,
            "spot-simplify: while a worker is abandoned the lock must report "
            "busy within the budget, sending callers to the tool");
@@ -280,9 +301,70 @@ void test_a_missed_deadline_is_abandoned_and_then_recovered_from() {
            "spot-translate: an abandoned worker must eventually finish and "
            "stop being counted");
     const SpotSimplification after =
-        spot_try_simplify("G(p -> F(q))", k_budget);
+        spot_try_simplify("G(p -> F(q))", k_budget, k_no_deadline);
     expect(!after.m_lock_busy,
            "spot-simplify: once the abandoned worker finishes, the in-process "
+           "path must be available again");
+}
+
+// Simplifying this takes about 0.25 seconds, measured, which is the same
+// balance k_slow_formula strikes: twenty-five times the deadline below, and
+// short enough that the recovery is checked rather than waited out. The shape
+// is the documented one -- `--simplify` is super-exponential in nested-X depth,
+// so eight X's rather than seven already takes 1.3 seconds and eleven runs past
+// a minute.
+const char* const k_slow_simplify_formula =
+    "G(b0 -> ((a0) | X(a0) | XX(a0) | XXX(a0) | XXXX(a0) | XXXXX(a0) | "
+    "XXXXXX(a0))) & G(b1 -> ((a1) | X(a1) | XX(a1) | XXX(a1) | XXXX(a1) | "
+    "XXXXX(a1) | XXXXXX(a1))) & G(b2 -> ((a2) | X(a2) | XX(a2) | XXX(a2) | "
+    "XXXX(a2) | XXXXX(a2) | XXXXXX(a2)))";
+
+// As the translation test above, and left whole for the same reason. The one
+// difference worth pinning is the last check: an abandoned simplification takes
+// the lock away from *translation* too, because there is only one lock. That is
+// the property that makes either deadline safe -- whatever is abandoned, every
+// other caller degrades to spawning rather than waiting.
+void test_a_missed_simplify_deadline_is_abandoned_and_recovered_from() {
+    const std::size_t before = spot_abandoned_workers();
+    const auto start = std::chrono::steady_clock::now();
+    const SpotSimplification simplification = spot_try_simplify(
+        k_slow_simplify_formula, k_budget, std::chrono::milliseconds(10));
+    const auto waited = std::chrono::steady_clock::now() - start;
+
+    expect(simplification.m_timed_out,
+           "spot-simplify: a simplification past its deadline must report a "
+           "timeout");
+    expect(!simplification.m_lock_busy,
+           "spot-simplify: this one had the lock and ran out of time, which is "
+           "not the same outcome as never getting it");
+    expect(!simplification.m_formula.has_value(),
+           "spot-simplify: a timed-out simplification carries no formula");
+    expect(waited < std::chrono::seconds(5),
+           "spot-simplify: the caller must return on the deadline, not when "
+           "the abandoned simplification finishes");
+    expect(spot_abandoned_workers() == before + 1,
+           "spot-simplify: the abandoned worker should be counted, so the "
+           "process can tell it is running before it exits");
+
+    const SpotTranslation during =
+        spot_translate_for_counting("G(p -> F(q))", k_budget, k_no_deadline);
+    expect(during.m_lock_busy,
+           "spot-translate: an abandoned simplification holds the one libspot "
+           "lock, so translation must degrade to the tool as well");
+
+    const auto give_up =
+        std::chrono::steady_clock::now() + std::chrono::seconds(120);
+    while (spot_abandoned_workers() != before &&
+           std::chrono::steady_clock::now() < give_up) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(50));
+    }
+    expect(spot_abandoned_workers() == before,
+           "spot-simplify: an abandoned worker must eventually finish and stop "
+           "being counted");
+    const SpotTranslation after =
+        spot_translate_for_counting("G(p -> F(q))", k_budget, k_no_deadline);
+    expect(!after.m_lock_busy,
+           "spot-translate: once the abandoned worker finishes, the in-process "
            "path must be available again");
 }
 
@@ -299,5 +381,7 @@ void run_spot_inprocess_tests() {
     test_unparseable_formula_is_declined_by_translate();
     test_tautology_print_bug_is_reported();
     test_a_deadline_does_not_change_the_answer();
+    test_a_deadline_does_not_change_a_simplification();
     test_a_missed_deadline_is_abandoned_and_then_recovered_from();
+    test_a_missed_simplify_deadline_is_abandoned_and_recovered_from();
 }

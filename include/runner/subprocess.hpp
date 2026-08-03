@@ -14,6 +14,7 @@
 
 #include <chrono>
 #include <string>
+#include <utility>
 #include <vector>
 
 struct SubprocessResult {
@@ -50,3 +51,14 @@ struct SubprocessOptions {
 /// so would stop that call's reader ever seeing EOF.
 SubprocessResult run_subprocess(const std::vector<std::string>& arguments,
                                 const SubprocessOptions& options = {});
+
+/// Drains @p read_fd until EOF, or until @p timeout expires; zero never
+/// expires. Returns the bytes read so far and whether the deadline expired.
+///
+/// Exposed for run_ltlfilt_batch, which drives a bidirectional pipe pair that
+/// run_subprocess does not cover and so spawns for itself. Its read loop needs
+/// the same deadline handling, and a second copy of it is exactly the
+/// duplication this file exists to remove. Killing the child on expiry is the
+/// caller's job here, since only the caller knows the pid.
+std::pair<std::string, bool> read_until_eof(int read_fd,
+                                            std::chrono::milliseconds timeout);

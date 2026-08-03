@@ -32,6 +32,13 @@ std::timed_mutex& spot_mutex() {
     return mutex;
 }
 
+// Read by anything about to tear down state an abandoned worker may still be
+// using -- main's leave(), and the tests that wait for one to finish. That is
+// why the decrement is a release and the load an acquire rather than both being
+// relaxed: relaxed makes the count temporally right and formally useless, since
+// a reader seeing zero would still have no ordering against the libspot the
+// worker had been walking. ThreadSanitizer says so directly, reporting SPOT's
+// intern table being destroyed at exit against the worker's last read of it.
 std::atomic<std::size_t> g_abandoned_workers{0};
 
 // Runs the simplification. The caller must already hold spot_mutex().
@@ -109,15 +116,22 @@ SpotTranslation translate_locked(const std::string& formula) {
 // Where an abandoned worker leaves its answer for a caller that may no longer
 // be there to read it. Held by shared_ptr so the worker keeps it alive on its
 // own: after the deadline the caller is gone and this is all that remains.
-struct TranslationSlot {
+template <typename Result>
+struct DeadlineSlot {
     std::mutex m_mutex;
     std::condition_variable m_ready;
     bool m_done = false;
     bool m_abandoned = false;
-    SpotTranslation m_result;
+    Result m_result;
 };
 
-// Runs the translation on its own thread and waits @p deadline for it.
+// Runs @p work on its own thread, holding the libspot lock, and waits
+// @p deadline for it. @p Result is whichever outcome struct the call returns;
+// it needs an m_lock_busy and an m_timed_out.
+//
+// One copy for both entry points on purpose. What is delicate here is the
+// handover, not the work, and a second copy would be a second chance to get it
+// wrong in a way only ThreadSanitizer notices.
 //
 // The worker takes the libspot lock itself rather than being handed one the
 // caller already held. Handing it over is the obvious design and it is wrong:
@@ -129,36 +143,32 @@ struct TranslationSlot {
 // lock is busy, which against an 8ms budget is not worth avoiding.
 //
 // The caller therefore waits @p budget as well as @p deadline: up to the first
-// is spent getting the lock, and only then does the translation start. By the
-// time the two have elapsed the worker has either taken the lock or given up,
-// so a timeout here always means a translation that ran and did not finish.
-SpotTranslation translate_with_deadline(const std::string& formula,
-                                        std::chrono::milliseconds budget,
-                                        std::chrono::milliseconds deadline) {
-    auto slot = std::make_shared<TranslationSlot>();
-    std::thread worker([slot, formula, budget] {
-        // The caller's scope around this call measures the caller's thread, so
-        // once the work moves here its CPU stops being attributed to it -- the
-        // translate site would report wall with almost no CPU, which is the
-        // profiler's signal for "blocked", and would be exactly wrong. This
-        // site is where the CPU actually goes; the caller's remains the wall
-        // time a scoring thread lost, deadline wait included.
-        COUNTER_PROFILE_SCOPE("spot/libspot-translate-worker");
-        SpotTranslation result;
+// is spent getting the lock, and only then does the work start. By the time the
+// two have elapsed the worker has either taken the lock or given up, so a
+// timeout here always means a call that ran and did not finish.
+//
+// @p work is copied into the worker, and must own everything it touches: past
+// the deadline the caller has returned and its locals are gone.
+template <typename Result, typename Work>
+Result run_with_deadline(std::chrono::milliseconds budget,
+                         std::chrono::milliseconds deadline, const Work& work) {
+    auto slot = std::make_shared<DeadlineSlot<Result>>();
+    std::thread worker([slot, work, budget] {
+        Result result;
         {
-            // Held in a guard so the lock is released even if the translation
-            // throws. A std::bad_alloc on a formula large enough to exhaust
-            // memory is exactly the case where leaving libspot permanently
-            // locked would be worst.
+            // Held in a guard so the lock is released even if the work throws.
+            // A std::bad_alloc on a formula large enough to exhaust memory is
+            // exactly the case where leaving libspot permanently locked would
+            // be worst.
             std::unique_lock<std::timed_mutex> guard(spot_mutex(),
                                                      std::defer_lock);
             if (!guard.try_lock_for(budget)) {
                 result.m_lock_busy = true;
             } else {
                 try {
-                    result = translate_locked(formula);
+                    result = work();
                 } catch (...) {
-                    result = SpotTranslation{};
+                    result = Result{};
                 }
             }
         }
@@ -171,7 +181,7 @@ SpotTranslation translate_with_deadline(const std::string& formula,
         }
         slot->m_ready.notify_one();
         if (was_abandoned) {
-            g_abandoned_workers.fetch_sub(1, std::memory_order_relaxed);
+            g_abandoned_workers.fetch_sub(1, std::memory_order_release);
         }
     });
     worker.detach();
@@ -185,7 +195,7 @@ SpotTranslation translate_with_deadline(const std::string& formula,
     // where both sides believe the other owns the result.
     slot->m_abandoned = true;
     g_abandoned_workers.fetch_add(1, std::memory_order_relaxed);
-    SpotTranslation abandoned;
+    Result abandoned;
     abandoned.m_timed_out = true;
     return abandoned;
 }
@@ -202,14 +212,33 @@ std::optional<std::string> spot_simplify(const std::string& formula) {
 }
 
 SpotSimplification spot_try_simplify(const std::string& formula,
-                                     std::chrono::milliseconds budget) {
+                                     std::chrono::milliseconds budget,
+                                     std::chrono::milliseconds deadline) {
     COUNTER_PROFILE_SCOPE("ltlfilt/libspot-simplify");
+    if (deadline != std::chrono::milliseconds::zero()) {
+        return run_with_deadline<SpotSimplification>(
+            budget, deadline, [formula] {
+                // The caller's scope above measures the caller's thread, so
+                // once the work moves here its CPU stops being attributed to
+                // it -- the simplify site would report wall with almost no
+                // CPU, which is the profiler's signal for "blocked", and would
+                // be exactly wrong. This site is where the CPU actually goes;
+                // the caller's remains the wall time a scoring thread lost,
+                // deadline wait included.
+                COUNTER_PROFILE_SCOPE("ltlfilt/libspot-simplify-worker");
+                SpotSimplification result;
+                result.m_formula = simplify_locked(formula);
+                return result;
+            });
+    }
     std::unique_lock<std::timed_mutex> lock(spot_mutex(), std::defer_lock);
     if (!lock.try_lock_for(budget)) {
         SpotSimplification result;
         result.m_lock_busy = true;
         return result;
     }
+    // No deadline asked for, so nothing to enforce and no reason to pay a
+    // thread for it: run here, exactly as an unbounded exec would have.
     SpotSimplification result;
     result.m_formula = simplify_locked(formula);
     return result;
@@ -221,9 +250,12 @@ SpotTranslation spot_translate_for_counting(
     COUNTER_PROFILE_SCOPE("spot/libspot-translate");
     if (deadline != std::chrono::milliseconds::zero()) {
         // The worker takes the lock itself, so this must not take it first --
-        // see translate_with_deadline for why handing one over is not an
-        // option.
-        return translate_with_deadline(formula, budget, deadline);
+        // see run_with_deadline for why handing one over is not an option.
+        return run_with_deadline<SpotTranslation>(budget, deadline, [formula] {
+            // Where the CPU actually goes; see the note in spot_try_simplify.
+            COUNTER_PROFILE_SCOPE("spot/libspot-translate-worker");
+            return translate_locked(formula);
+        });
     }
     std::unique_lock<std::timed_mutex> lock(spot_mutex(), std::defer_lock);
     if (!lock.try_lock_for(budget)) {
@@ -237,5 +269,5 @@ SpotTranslation spot_translate_for_counting(
 }
 
 std::size_t spot_abandoned_workers() {
-    return g_abandoned_workers.load(std::memory_order_relaxed);
+    return g_abandoned_workers.load(std::memory_order_acquire);
 }

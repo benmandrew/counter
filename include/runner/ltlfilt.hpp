@@ -5,6 +5,7 @@
 ///        canonical form, improving cache hit rates across tool invocations
 ///        and deciding formulae that reduce to a boolean constant outright.
 
+#include <chrono>
 #include <cstddef>
 #include <string>
 
@@ -35,13 +36,23 @@ void set_ltlfilt_batchers(std::size_t count);
 /// same reason.
 void set_simplify_engine(SimplifyEngine engine);
 
+/// Sets the per-formula wall-clock budget for one simplification, from
+/// Config::simplify_timeout; zero (the default) is unbounded. Call once at
+/// startup, for the same reason.
+///
+/// Applies to whichever engine is selected, since the hazard belongs to the
+/// operation rather than to where it runs. A formula that exceeds it is left
+/// unsimplified -- see simplify_ltl, whose contract already covers that.
+void set_simplify_timeout(std::chrono::milliseconds timeout);
+
 /// Returns the ltlfilt-simplified form of `formula` verbatim, including SPOT's
 /// boolean constants "0" (false) and "1" (true) when the formula reduces to
 /// one. A constant result settles satisfiability outright, so callers able to
 /// act on it can skip a solver entirely; callers that must hand the result to
 /// a downstream tool want normalize_ltl instead. The result is memoised: the
 /// subprocess is launched at most once per unique input string. Returns
-/// `formula` unchanged if the binary is inaccessible or exits non-zero.
+/// `formula` unchanged if the binary is inaccessible, exits non-zero, or runs
+/// past set_simplify_timeout.
 std::string simplify_ltl(const std::string& formula);
 
 /// Returns the ltlfilt-simplified canonical form of `formula`. The result is

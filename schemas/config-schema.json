@@ -105,6 +105,7 @@
         "black_timeout_ms":  { "type": "integer", "minimum": 0, "description": "Timeout per black SAT query in milliseconds." },
         "ltlsynt_timeout_ms": { "type": "integer", "minimum": 0, "description": "Per-call ltlsynt realizability timeout in milliseconds. 0 (default) is no timeout; a call exceeding it is killed and treated as unrealizable." },
         "ltl2tgba_timeout_ms": { "type": "integer", "minimum": 0, "description": "Per-call ltl2tgba automaton-construction timeout in milliseconds. 0 (default) is no timeout." },
+        "simplify_timeout_ms": { "type": "integer", "minimum": 0, "description": "Per-formula LTL simplification timeout in milliseconds, on whichever engine simplify_engine selects. A formula exceeding it is used unsimplified rather than dropped. 0 (default) is no timeout." },
         "parallel":          { "type": "integer", "minimum": 1, "description": "Thread pool size. Omit to use hardware concurrency." },
         "max_concurrent_realizability": { "type": "integer", "minimum": 0, "description": "Cap on ltlsynt processes running at once, independent of the thread pool. 0 (default) is unlimited; a positive value bounds peak RAM." },
         "ltlfilt_batchers": { "type": "integer", "minimum": 0, "description": "How many ltlfilt batches may run at once. Coalescing concurrent simplify calls trades latency for CPU; 4 (default) suits campaigns, higher approaches baseline wall time, 0 disables batching." },

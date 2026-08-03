@@ -423,7 +423,7 @@ void test_concurrent_simplification_agrees_with_serial() {
                 // threads use: under this much contention most calls will find
                 // the lock busy, so this also covers the path that gives up.
                 SpotSimplification result =
-                    spot_try_simplify(formula, k_budget);
+                    spot_try_simplify(formula, k_budget, k_no_deadline);
                 if (result.m_lock_busy) {
                     result.m_formula = spot_simplify(formula);
                 }

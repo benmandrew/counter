@@ -422,6 +422,7 @@ well_separation = 6
 black_timeout_ms             = 500
 ltlsynt_timeout_ms           = 30000
 ltl2tgba_timeout_ms          = 1000
+simplify_timeout_ms          = 5000
 parallel                     = 4
 max_concurrent_realizability = 6
 report_cpu_timing            = true

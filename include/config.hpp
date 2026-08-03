@@ -106,6 +106,15 @@ struct Config {
     // max_scoring_failure_rate). 0 (the default) disables the timeout,
     // preserving prior behaviour; the heavy TLSF specs set it.
     std::chrono::milliseconds ltl2tgba_timeout{0};
+    // Per-formula wall-clock budget for one LTL simplification, on whichever
+    // engine simplify_engine selects. Simplification has no internal bound
+    // either, and `--simplify` blows up super-exponentially on the deeply
+    // nested-X conjunctions this search builds -- about a second at 12 ticks,
+    // twenty at 15. Unlike the two above, exceeding it costs nothing but the
+    // simplification: the formula is used unsimplified, which is what already
+    // happens when there is no ltlfilt to run and is logically the same
+    // formula. 0 (the default) disables the timeout.
+    std::chrono::milliseconds simplify_timeout{0};
     // When true, print the CPU-attribution report (your code vs. the external
     // CLI tools, via getrusage + per-tool wait4). Opt-in: off leaves output
     // identical to before.

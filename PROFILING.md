@@ -1110,7 +1110,11 @@ Each was tested rather than reasoned about, and one of the tests found a real de
   produced no failure. Narrow is not absent, and by that point the run has already written its
   output, so `main` now leaves through `leave()`, which calls `std::_Exit` when
   `spot_abandoned_workers()` is non-zero. The libspot mutex and the `tl_simplifier` are leaked
-  rather than destroyed for the same reason.
+  rather than destroyed for the same reason. ThreadSanitizer then found the defect in the counter
+  itself: `g_abandoned_workers` was decremented with relaxed ordering, so a reader seeing zero —
+  `main`'s `leave()`, and the tests that wait a worker out — had no happens-before edge against the
+  libspot state that worker had been walking, and TSan reported SPOT's intern table being destroyed
+  at exit against the worker's last read of it. The decrement is now release and the load acquire.
 - **Unbounded wait with no fallback.** One place remained where an abandoned worker could hang a run
   outright. `simplify_ltl` blocks on the lock rather than spawning when there is no `ltlfilt` binary
   to spawn, because falling back without one would silently return the formula unsimplified. With a
@@ -1118,16 +1122,25 @@ Each was tested rather than reasoned about, and one of the tests found a real de
   message naming the cause, which `max_scoring_failure_rate` treats like any other failed
   individual. It is not covered by a test: reaching it requires the SPOT install tree to be missing,
   which the build guarantees against.
-- **Simplification's own runtime.** Not fixed, and stated here so the audit is not read as
-  complete. `simplify_ltl` bounds how long it will wait for the lock, at 8 ms, but nothing bounds
-  the simplification once it has it. That is not a regression — `run_subprocess` was called without
-  a timeout on that path too, so the exec was equally unbounded — but in process the call is also
-  uncancellable and holds the lock while it runs. It is reachable in principle: `ltlfilt --simplify`
-  is known to blow up super-exponentially on deeply nested-`X` conjunctions, which is why it was
-  dropped from the `ltl2tgba` and `ltlsynt` paths and kept only on the `black` and Ganak ones.
-  Giving it a deadline means giving it a configuration key it has never had, and the abandonment
-  machinery with it, so it is left alone rather than half-done. What the lock buys meanwhile is that
-  the damage stays a slowdown: everyone else falls back to spawning after 8 ms.
+- **Simplification's own runtime.** Was: unbounded on both sides. `simplify_ltl` bounded how long
+  it would wait for the lock, at 8 ms, but nothing bounded the simplification once it had it, and
+  `run_subprocess` was called without a timeout on that path too. In process the call is also
+  uncancellable and holds the lock while it runs, and `ltlfilt --simplify` blows up
+  super-exponentially on the deeply nested-`X` conjunctions this search builds: about 1 s at 12
+  ticks, 21 s at 15, unbounded by 20. Now: `[runtime] simplify_timeout_ms` (default 0, meaning no
+  timeout) is a per-formula wall-clock budget on one simplification, honoured by both engines,
+  because the hazard belongs to the operation rather than to where it runs. In process it abandons,
+  through the same `run_with_deadline` template the translator now uses; out of process it kills the
+  child, charging a batch of *n* formulae *n* budgets and retrying each formula of a failed batch
+  alone under exactly one, so only the formula that actually overran goes unsimplified. Exceeding it
+  costs the simplification and not the candidate: unlike `ltl2tgba_timeout_ms` and
+  `ltlsynt_timeout_ms` it does not drop the individual, and the formula is used unsimplified, which
+  is what `simplify_ltl` already returns when there is no `ltlfilt` binary to run and is the same
+  formula. Measured on `lift` (TLSF, generations 6, population 60, seed 3) under `COUNTER_PROFILE`,
+  at 0 against 1: the caller-side `ltlfilt/libspot-simplify` fell from a worst call of 270.71 ms to
+  10.52 ms — the 8 ms lock budget plus the 1 ms deadline — while the new
+  `ltlfilt/libspot-simplify-worker` recorded a worst call of 318.20 ms. The work was not stopped,
+  only taken off the caller's thread. Both runs produced byte-identical repairs.
 - **File descriptors.** Was: a pipe pair per call. Now: none. A straight improvement, and the reason
   the earlier `O_CLOEXEC` bug cannot recur on these two paths.
 - **Thread-pool starvation.** Considered and not a problem. The libspot lock means at most one

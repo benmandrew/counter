@@ -127,6 +127,14 @@ black_timeout_ms = 1000  # timeout per black SAT query in milliseconds
 # ltlsynt has no internal one, so on hard specs a single synthesis query can run
 # for minutes. A call exceeding this is killed and treated as unrealizable.
 # ltlsynt_timeout_ms = 30000
+# Per-formula LTL simplification timeout in ms, applying to whichever engine
+# simplify_engine selects below. 0 (default) is no timeout; `--simplify` has no
+# internal one and blows up super-exponentially on the deeply nested-X
+# conjunctions this search builds (about a second at 12 ticks, twenty at 15).
+# A formula that exceeds this is used unsimplified -- the same answer this
+# already gives when there is no ltlfilt to run -- so unlike the timeouts above
+# it costs the simplification and not the individual.
+# simplify_timeout_ms = 5000
 # How many ltlfilt batches may run at once. Concurrent LTL-simplification
 # misses are coalesced into one ltlfilt exec per batcher, which trades latency
 # for CPU: a caller waits for a leader rather than spawning its own process.

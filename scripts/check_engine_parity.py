@@ -7,14 +7,20 @@ which is where a difference would actually be noticed -- and where it would be
 hardest to attribute, because a campaign's numbers moving is not an error
 anyone can point at a line for.
 
-Four things are varied, each of which routes work differently:
+Five things are varied, each of which routes work differently:
 
   simplify_engine   libspot (in process) vs ltlfilt (spawned)
   ltl2tgba timeout  absent (translate inline) vs set (translate on a worker)
+  simplify timeout  absent (simplify inline) vs set (simplify on a worker)
   parallel          1 vs 8, which changes the order threads first intern
                     formulae, and so the order SPOT assigns node ids
   repetition        the same configuration twice, which catches anything
                     varying that none of the above explains
+
+Both timeouts are set far above what any of these examples needs, so they never
+fire. That is the point: a timeout that expires legitimately changes the answer,
+and what is being checked here is that merely *configuring* one does not -- it
+moves the work to another thread, and nothing else about it may differ.
 
 The third is the one worth having. SPOT prints commutative operands in node-id
 order, ids are assigned on first interning, and the in-process paths share one
@@ -50,6 +56,14 @@ CONFIGURATIONS = {
     "libspot-timeout": {
         "simplify_engine": '"libspot"',
         "ltl2tgba_timeout_ms": "30000",
+    },
+    "libspot-simplify-timeout": {
+        "simplify_engine": '"libspot"',
+        "simplify_timeout_ms": "30000",
+    },
+    "ltlfilt-simplify-timeout": {
+        "simplify_engine": '"ltlfilt"',
+        "simplify_timeout_ms": "30000",
     },
     "libspot-serial": {"simplify_engine": '"libspot"', "parallel": "1"},
     "libspot-wide": {"simplify_engine": '"libspot"', "parallel": "8"},

@@ -445,13 +445,17 @@ scripts/check_engine_parity.py --binary build-release/counter
 scripts/check_engine_parity.py --examples fsm takeoff --generations 10
 ```
 
-Six configurations per example, at one seed: `simplify_engine` `libspot` against
-`ltlfilt`, a configured `ltl2tgba_timeout_ms` against none, `parallel` 1 against
-8, and a deliberate repeat of the first, so that a difference which is not about
-engines at all cannot be misread as one. FRETISH (`spec.json`) and TLSF
-(`spec.tlsf`) examples are both covered. Repairs are compared byte for byte and
-nothing is tolerated: two configurations that disagree are a finding, whichever
-is right.
+Eight configurations per example, at one seed: `simplify_engine` `libspot`
+against `ltlfilt`, a configured `ltl2tgba_timeout_ms` against none, a
+`simplify_timeout_ms` under each of the two engines, `parallel` 1 against 8, and
+a deliberate repeat of the first, so that a difference which is not about engines
+at all cannot be misread as one. The two simplification timeouts are set far
+above anything these examples need, and never fire on purpose: configuring one
+moves the work to another thread, and nothing else about it may differ, whereas a
+timeout that legitimately fires changes the answer by design. FRETISH
+(`spec.json`) and TLSF (`spec.tlsf`) examples are both covered. Repairs are
+compared byte for byte and nothing is tolerated: two configurations that
+disagree are a finding, whichever is right.
 
 Run it after touching `src/runner/spot_inprocess.cpp`, `src/runner/ltlfilt.cpp`
 or `src/runner/spot.cpp`. The reason it exists is that the in-process paths

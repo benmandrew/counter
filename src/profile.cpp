@@ -40,9 +40,17 @@ std::mutex& registry_mutex() {
     return mutex;
 }
 
+// Leaked for the same reason as site_registry above, and it was not, which is a
+// bug this fixes rather than a style choice. The report is registered with
+// atexit on the first scope, so a registry constructed after that point is
+// destroyed before the report reads it. Sites survived that because they are
+// already leaked; these keys are std::strings, and the report was printing
+// their freed buffers -- short names came out as the pointers that had been
+// written over their small-string storage, and long ones as a prefix of
+// whatever replaced them. Silent, and only in the JSON's counters block.
 std::map<std::string, std::uint64_t>& counter_registry() {
-    static std::map<std::string, std::uint64_t> counters;
-    return counters;
+    static auto* counters = new std::map<std::string, std::uint64_t>();
+    return *counters;
 }
 
 // COUNTER_PROFILE's value, or nullptr when unset. Captured once: a run that

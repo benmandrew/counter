@@ -9,14 +9,21 @@
 // process exit, long after the corruption, where it would surface as garbage
 // site names rather than as a crash anyone could trace back here.
 
+#include <unistd.h>
+
 #include <atomic>
 #include <chrono>
 #include <cstdint>
+#include <cstdlib>
+#include <filesystem>
+#include <fstream>
+#include <iterator>
 #include <string>
 #include <thread>
 #include <vector>
 
 #include "profile.hpp"
+#include "runner/subprocess.hpp"
 #include "test_suite.hpp"
 #include "test_support.hpp"
 
@@ -146,6 +153,46 @@ void test_thread_cpu_excludes_other_threads() {
            "thread burns almost none of its own, whatever the process does");
 }
 
+void test_a_counter_name_survives_the_exit_report() {
+    // Same defect as the interning one above, one registry over: the report is
+    // registered with atexit on the first scope, so everything it reads has to
+    // outlive static destruction. Sites are leaked for that reason; the
+    // counter registry was not, and the report printed its keys' freed buffers
+    // -- names short enough for the small-string optimisation came out as the
+    // pointers written over them, longer ones as a prefix of whatever replaced
+    // them.
+    //
+    // Nothing in this process can see that. The report it would have to read
+    // is not written until after every test has finished, which is why this is
+    // a second process reading the first's. The child skips the spawn by
+    // finding COUNTER_PROFILE already set, so it recurses exactly once.
+    const bool is_the_child = std::getenv("COUNTER_PROFILE") != nullptr;
+    profile::add_count("test/counter-name-survives");
+    if (is_the_child) {
+        return;
+    }
+    const std::filesystem::path report =
+        std::filesystem::temp_directory_path() /
+        ("counter-profile-" + std::to_string(getpid()) + ".json");
+    // The parent latched COUNTER_PROFILE as unset when the first scope above
+    // ran, so setting it here reaches the child and cannot turn profiling on
+    // in this process -- which would have it write over the file being read.
+    setenv("COUNTER_PROFILE", report.c_str(), 1);
+    const SubprocessResult child = run_subprocess({"/proc/self/exe", "profile"},
+                                                  {std::chrono::seconds(300)});
+    unsetenv("COUNTER_PROFILE");
+    expect(child.m_exit_code == 0,
+           "profile: the child test run should pass, or the report below says "
+           "nothing about the registry");
+    std::ifstream file(report);
+    const std::string json((std::istreambuf_iterator<char>(file)),
+                           std::istreambuf_iterator<char>());
+    std::filesystem::remove(report);
+    expect(json.find(R"("test/counter-name-survives": 1)") != std::string::npos,
+           "profile: the exit report should name the counter that was added, "
+           "not the freed bytes of its key");
+}
+
 }  // namespace
 
 void run_profile_tests() {
@@ -155,4 +202,6 @@ void run_profile_tests() {
     test_wall_and_cpu_are_measured_separately();
     test_clocks_advance_monotonically();
     test_thread_cpu_excludes_other_threads();
+    // Last, so the scopes above have already latched COUNTER_PROFILE as unset.
+    test_a_counter_name_survives_the_exit_report();
 }

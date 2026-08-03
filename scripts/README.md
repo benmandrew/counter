@@ -464,3 +464,50 @@ prints commutative operands in the order that table assigned their ids — so
 their output depends on what the process did earlier in a way a freshly spawned
 `ltlfilt` never did. `PROFILING.md` records the measurements; this is what keeps
 checking that the difference does not reach a repair.
+
+## Soaking the in-process paths
+
+`soak.py` is outside the campaign workflow too. It runs the in-process
+`libspot` paths for about 24 hours to reach the three things neither the
+differential suite nor `check_engine_parity.py` covers: timeouts that actually
+fire, concurrency at campaign scale, and resource behaviour over hours.
+
+Two arms, meant for separate hosts so neither competes with the other for cores
+or memory:
+
+```sh
+scripts/soak.py --arm control  --out ~/soak-control  --hours 24   # host 1
+scripts/soak.py --arm deadline --out ~/soak-deadline --hours 24   # host 2
+```
+
+`control` sets no timeouts at all, so both in-process calls run inline on the
+calling thread. `deadline` cycles three tiers per round: `tight` (5ms/5ms, so
+essentially every call is abandoned and the single libspot lock is never free),
+`mid` (100ms/50ms, around the knee), and `loose` (60s/60s, far above the worst
+call measured, so it must never fire). `loose` against `control` is the
+correctness check — configuring a timeout moves the work to a worker thread and
+must not change a repair — and repairs are hashed with the same digest function
+the parity script uses, so the two are comparable. `tight` is the resource
+check: an abandoned call keeps the lock, so later calls find it busy and spawn
+instead, and the optimisation reverts to the spawning it replaced with wall
+time as the only symptom.
+
+Each round runs every example short (10 generations, population 300, 5-minute
+cap) and then one example long (40 generations, population 1000, 90-minute
+cap), rotating the long one. Both arms walk the same list in the same order at
+the same seeds, so an arm killed early is still comparable on its prefix, and
+re-running resumes past whatever is already recorded.
+
+Three files land in the output directory: `runs.csv` (one row per run — wall
+time, repair count and digest, peak resident set, threads and descriptors,
+orphaned tool processes, and the profile's lock-busy and timeout counters),
+`samples.csv` (the resource series behind those peaks, because a peak taken at
+exit cannot say whether the numbers climbed), and `manifest.json` (arm, host,
+binary `--version`, tiers and run shapes).
+
+`--examples` narrows the corpus and `--rounds` bounds the number of rounds,
+which is how the script is smoke-tested before a real launch:
+
+```sh
+scripts/soak.py --arm deadline --out /tmp/soak --examples fsm --rounds 1
+```

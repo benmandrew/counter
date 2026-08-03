@@ -359,6 +359,17 @@ std::size_t batcher_slot(std::size_t count) {
     return slot % count;
 }
 
+// Counted because nothing else tells the two apart. A timed-out simplification
+// caches the formula unchanged and the run carries on, so a simplify_timeout_ms
+// set too tight has no symptom at all beyond a search quietly working on
+// unsimplified formulae. A free function rather than a branch at the call site,
+// which is already at the cognitive-complexity limit.
+void count_simplify_timeout(const SpotSimplification& result) {
+    if (result.m_timed_out) {
+        profile::add_count("libspot/simplify-timed-out");
+    }
+}
+
 }  // namespace
 
 std::string ltlfilt_path() { return spot_bin_dir() + "/ltlfilt"; }
@@ -434,6 +445,7 @@ std::string simplify_ltl(const std::string& formula) {
         // longer than a spawn costs, so it spawns instead. Everything below is
         // the exec path, unchanged.
         if (!in_process.m_lock_busy) {
+            count_simplify_timeout(in_process);
             const double elapsed = std::chrono::duration<double>(
                                        std::chrono::steady_clock::now() - start)
                                        .count();
@@ -444,6 +456,11 @@ std::string simplify_ltl(const std::string& formula) {
             cache.emplace(formula, simplified);
             return simplified;
         }
+        // Past here the in-process path was skipped and a spawn pays for it.
+        // The rate is what says whether the one lock has become the
+        // bottleneck: the optimisation turns itself off under contention, and
+        // this is the only place that shows it happening.
+        profile::add_count("libspot/simplify-lock-busy");
     }
     const std::string binary = ltlfilt_path();
     if (access(binary.c_str(), F_OK) != 0) {

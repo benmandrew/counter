@@ -258,6 +258,7 @@ std::string run_ltl2tgba_for_counting(const std::string& formula) {
             // max_scoring_failure_rate. Retrying on the exec would only spend
             // the same budget again on a formula already known to exceed it,
             // and would do so while the abandoned worker is still running.
+            profile::add_count("libspot/translate-timed-out");
             std::scoped_lock lock(cache_mutex);
             Ltl2tgbaStats::record_time(in_process_elapsed, 0.0);
             Ltl2tgbaStats::n_timeouts++;
@@ -286,6 +287,14 @@ std::string run_ltl2tgba_for_counting(const std::string& formula) {
         // costs. Both fall through to the exec: the first so the failure is
         // reported the way it always was, by ltl2tgba's own exit code, and the
         // second because spawning is the cheaper of the two past that point.
+        //
+        // Only the second is counted, and the rate is what says whether the one
+        // lock has become the bottleneck: under contention the optimisation
+        // turns itself back into the spawning it replaced, and nothing else
+        // reports that it has.
+        if (translation.m_lock_busy) {
+            profile::add_count("libspot/translate-lock-busy");
+        }
     }
     const std::string binary = ltl2tgba_path();
     assert(access(binary.c_str(), F_OK) == 0);

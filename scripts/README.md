@@ -511,3 +511,53 @@ which is how the script is smoke-tested before a real launch:
 ```sh
 scripts/soak.py --arm deadline --out /tmp/soak --examples fsm --rounds 1
 ```
+
+## Reading a soak's two arms
+
+`analyse_soak.py` takes both arms' output directories and prints eight
+sections: campaign shape, the loose-against-control digest comparison, how
+often the firing tiers change the answer, peak resident set per run by tier,
+drift in six-hour buckets, lock contention and firing counts, throughput, and
+harness health.
+
+```sh
+scripts/analyse_soak.py --control ~/soak-control --deadline ~/soak-deadline
+```
+
+Two traps are encoded in it, and a reader needs both. A run killed at the wall
+cap dies on `SIGKILL`, which skips the `atexit` profile report, so it writes no
+repairs and hashes to the empty-set digest `e3b0c44298fc1c14` — the comparison
+therefore skips any pair where either side was capped, since two equal empty
+digests say only that both runs were killed. And wall-clock figures do not
+compare between arms, because the arms ran on different hosts. Only digests and
+resource figures are.
+
+## Reproducing one run
+
+`reproduce_run.py` exists because the soak walks a fresh seed every round. No
+configuration is ever run twice on one host, so when the 24-hour soak found two
+`lift` runs whose digests differed between the arms, there was no way to tell
+that apart from a run that would not have reproduced against itself. This
+repeats one example, seed, shape and tier on one machine, and alternates tiers
+inside each repeat, so a machine that drifts mid-run drifts across both tiers
+rather than under one of them.
+
+```sh
+scripts/reproduce_run.py --binary build-release/counter --out ~/repro \
+    --example lift --seed 20260819 --repeats 5 --tiers none,loose
+```
+
+Reading repeats of one tier against a second tier on the same host separates
+three causes. Repeats of one tier disagreeing means the run is nondeterministic
+on its own, and a cross-arm difference proves nothing. Each tier
+self-reproducing while the tiers disagree means the configuration changes the
+answer. Everything agreeing means the soak's difference was the host, most
+likely a `black` or `ltlsynt` timeout landing differently under load.
+
+Runs are sequential on purpose: these are the largest runs in the corpus and
+peak resident set reached 56 GB in the soak, so overlapping them trades the
+question for an out-of-memory kill. The output is the same `runs.csv` /
+`samples.csv` / `manifest.json` shape as the soak, with a `repeat` column in
+place of the soak's `round` and `kind`, so one reader handles both. The soak
+asks whether the in-process paths behave over hours; this asks whether any one
+of its answers meant anything.

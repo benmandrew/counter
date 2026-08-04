@@ -42,6 +42,22 @@ void require_nonnegative(double value, const char* name) {
     }
 }
 
+// Reads a non-negative [runtime] count into `out`, leaving it alone when the
+// key is absent. A free function because apply_runtime is a list of these and
+// the nested range check in each one counts against its cognitive complexity.
+void read_runtime_count(const toml::table& tbl, const char* key,
+                        std::size_t& out) {
+    auto val = tbl[key].value<int64_t>();
+    if (!val) {
+        return;
+    }
+    if (*val < 0) {
+        throw std::runtime_error(std::string("config: runtime.") + key +
+                                 " must be >= 0");
+    }
+    out = static_cast<std::size_t>(*val);
+}
+
 // Mirrors the keys the apply_* functions below read, so that a typo in a
 // config file is reported rather than silently ignored. Adding a key to an
 // apply_* function means adding it here too; config_io_tests holds a config
@@ -81,12 +97,12 @@ const KeySpec& config_key_spec() {
                   {{"intervals",
                     section({"dedup", "false_condition", "weakening", "bloat",
                              "vacuity", "well_separation"})}})},
-         {"runtime",
-          section({"black_timeout_ms", "ltlsynt_timeout_ms",
-                   "ltl2tgba_timeout_ms", "ltlfilt_timeout_ms",
-                   "ganak_timeout_ms", "parallel",
-                   "max_concurrent_realizability", "report_cpu_timing",
-                   "max_scoring_failure_rate", "dashboard"})}});
+         {"runtime", section({"black_timeout_ms", "ltlsynt_timeout_ms",
+                              "ltl2tgba_timeout_ms", "ltlfilt_timeout_ms",
+                              "ganak_timeout_ms", "parallel",
+                              "max_concurrent_realizability",
+                              "ltlfilt_batchers", "report_cpu_timing",
+                              "max_scoring_failure_rate", "dashboard"})}});
     return spec;
 }
 
@@ -346,13 +362,9 @@ void apply_runtime(const toml::table& tbl, Config& cfg) {
         }
         cfg.parallel = static_cast<std::size_t>(*val);
     }
-    if (auto val = tbl["max_concurrent_realizability"].value<int64_t>()) {
-        if (*val < 0) {
-            throw std::runtime_error(
-                "config: runtime.max_concurrent_realizability must be >= 0");
-        }
-        cfg.max_concurrent_realizability = static_cast<std::size_t>(*val);
-    }
+    read_runtime_count(tbl, "max_concurrent_realizability",
+                       cfg.max_concurrent_realizability);
+    read_runtime_count(tbl, "ltlfilt_batchers", cfg.ltlfilt_batchers);
     if (auto val = tbl["dashboard"].value<bool>()) {
         cfg.dashboard = *val;
     }

@@ -1,6 +1,5 @@
 #include "runner/formaliser.hpp"
 
-#include <fcntl.h>
 #include <unistd.h>
 
 #include <array>
@@ -74,68 +73,23 @@ void PersistentProcess::ensure_spawned() {
     if (m_spawned) {
         return;
     }
-    // Build argv before forking: heap allocation inside the child between
-    // fork() and execvp() can deadlock if another thread held the allocator
-    // lock at the moment of the fork (e.g. under ASAN's allocator).
-    std::vector<char*> argv(m_command.size() + 1);
-    for (std::size_t arg_idx = 0; arg_idx < m_command.size(); ++arg_idx) {
-        argv[arg_idx] = const_cast<char*>(m_command[arg_idx].c_str());
-    }
-    argv[m_command.size()] = nullptr;
-
-    std::array<int, 2> stdin_pipe = {-1, -1};
-    std::array<int, 2> stdout_pipe = {-1, -1};
-    // O_CLOEXEC on both halves. This pair is the one that stays open for the
-    // process's life, so a one-shot tool forked by any other thread would
-    // otherwise inherit it and hold the formaliser's stdin write end open,
-    // leaving node waiting on a request that has already been answered.
-    [[maybe_unused]] const int stdin_pipe_result =
-        pipe2(stdin_pipe.data(), O_CLOEXEC);
-    assert(stdin_pipe_result == 0);
-    [[maybe_unused]] const int stdout_pipe_result =
-        pipe2(stdout_pipe.data(), O_CLOEXEC);
-    assert(stdout_pipe_result == 0);
-
-    const pid_t child_pid = fork();
-    if (child_pid < 0) {
-        close(stdin_pipe[0]);
-        close(stdin_pipe[1]);
-        close(stdout_pipe[0]);
-        close(stdout_pipe[1]);
-        assert(false);
-        __builtin_unreachable();
-    }
-    if (child_pid == 0) {
-        close(stdin_pipe[1]);
-        close(stdout_pipe[0]);
-        if (dup2(stdin_pipe[0], STDIN_FILENO) < 0 ||
-            dup2(stdout_pipe[1], STDOUT_FILENO) < 0) {
-            _exit(127);
-        }
-        close(stdin_pipe[0]);
-        close(stdout_pipe[1]);
-        // Own process group, so teardown can kill this child and anything it
-        // spawned with one signal. Deliberately *without* PDEATHSIG, unlike
-        // the one-shot tools: this child is spawned lazily by whichever
-        // worker thread formalises first and then serves every later caller,
-        // and PDEATHSIG would have the kernel kill it the moment that one
-        // thread returned. The concurrency test catches exactly that, as a
-        // second worker reading a response from a node process that is already
-        // dead. The cost is that an abnormally killed counter leaves this
-        // child behind; the destructor covers the normal path.
-        harden_child_after_fork(ParentDeathPolicy::SurviveParentThread);
-        // execvp (not execv): `node` is a general system interpreter looked
-        // up on PATH, not a tool CMake resolves to an absolute path at build
-        // time like ltl2tgba/ganak/black.
-        execvp(m_command[0].c_str(), argv.data());
-        _exit(127);
-    }
-    adopt_child_process_group(child_pid);
-    close(stdin_pipe[0]);
-    close(stdout_pipe[1]);
-    m_pid = child_pid;
-    m_write_fd = stdin_pipe[1];
-    m_read_fd = stdout_pipe[0];
+    // SurviveParentThread, unlike the one-shot tools: this child is spawned
+    // lazily by whichever worker thread formalises first and then serves every
+    // later caller, and PDEATHSIG would have the kernel kill it the moment that
+    // one thread returned. The concurrency test catches exactly that, as a
+    // second worker reading a response from a node process that is already
+    // dead. The cost is that an abnormally killed counter leaves this child
+    // behind; the destructor covers the normal path.
+    //
+    // SearchPath, because `node` is a general system interpreter looked up on
+    // PATH, not a tool CMake resolves to an absolute path at build time like
+    // ltl2tgba/ganak/black.
+    const PipedChild child =
+        spawn_piped_child(m_command, ParentDeathPolicy::SurviveParentThread,
+                          ExecutableLookup::SearchPath);
+    m_pid = child.m_pid;
+    m_write_fd = child.m_write_fd;
+    m_read_fd = child.m_read_fd;
     m_spawned = true;
 }
 

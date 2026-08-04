@@ -164,6 +164,70 @@ int reap(pid_t pid, const std::optional<Clock::time_point>& deadline,
 
 }  // namespace
 
+PipedChild spawn_piped_child(const std::vector<std::string>& arguments,
+                             ParentDeathPolicy policy,
+                             ExecutableLookup lookup) {
+    assert(!arguments.empty());
+    COUNTER_PROFILE_SCOPE("proc/fork+exec");
+    // Built before forking: heap allocation inside the child between fork() and
+    // exec() can deadlock if another thread held the allocator lock at the
+    // moment of the fork (e.g. under ASAN's allocator).
+    std::vector<char*> argv(arguments.size() + 1);
+    for (std::size_t arg_idx = 0; arg_idx < arguments.size(); ++arg_idx) {
+        argv[arg_idx] = const_cast<char*>(arguments[arg_idx].c_str());
+    }
+    argv[arguments.size()] = nullptr;
+    std::array<int, 2> stdin_pipe = {-1, -1};
+    std::array<int, 2> stdout_pipe = {-1, -1};
+    [[maybe_unused]] const int stdin_pipe_result =
+        pipe2(stdin_pipe.data(), O_CLOEXEC);
+    assert(stdin_pipe_result == 0);
+    [[maybe_unused]] const int stdout_pipe_result =
+        pipe2(stdout_pipe.data(), O_CLOEXEC);
+    assert(stdout_pipe_result == 0);
+    const pid_t child_pid = fork();
+    if (child_pid < 0) {
+        close(stdin_pipe[0]);
+        close(stdin_pipe[1]);
+        close(stdout_pipe[0]);
+        close(stdout_pipe[1]);
+        assert(false);
+        __builtin_unreachable();
+    }
+    if (child_pid == 0) {
+        close(stdin_pipe[1]);
+        close(stdout_pipe[0]);
+        // The dup2 copies clear O_CLOEXEC, which is what lets the child keep
+        // exactly the two descriptors it needs across the exec.
+        if (dup2(stdin_pipe[0], STDIN_FILENO) < 0 ||
+            dup2(stdout_pipe[1], STDOUT_FILENO) < 0) {
+            _exit(127);
+        }
+        close(stdin_pipe[0]);
+        close(stdout_pipe[1]);
+        harden_child_after_fork(policy);
+        if (lookup == ExecutableLookup::SearchPath) {
+            execvp(arguments[0].c_str(), argv.data());
+        } else {
+            execv(arguments[0].c_str(), argv.data());
+        }
+        _exit(127);
+    }
+    adopt_child_process_group(child_pid);
+    close(stdin_pipe[0]);
+    close(stdout_pipe[1]);
+    return {child_pid, stdin_pipe[1], stdout_pipe[0]};
+}
+
+std::pair<std::string, bool> read_until_eof(int read_fd,
+                                            std::chrono::milliseconds timeout) {
+    std::optional<Clock::time_point> deadline;
+    if (timeout > std::chrono::milliseconds::zero()) {
+        deadline = Clock::now() + timeout;
+    }
+    return read_until(read_fd, deadline);
+}
+
 void harden_child_after_fork(ParentDeathPolicy policy) {
     // Own process group, so one killpg reaches this child *and anything it
     // spawns*. A bare kill(pid) hits only the direct child and strands every

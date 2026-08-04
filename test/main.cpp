@@ -112,6 +112,10 @@ bool run_infrastructure_suite(std::string_view suite_name) {
         run_thread_pool_tests();
         return true;
     }
+    if (suite_name == "simplify_batcher") {
+        run_simplify_batcher_tests();
+        return true;
+    }
     return false;
 }
 
@@ -259,6 +263,11 @@ int main(int argc, const char* const argv[]) {
             run_tlsf_mucs_tests();
             run_tlsf_genetic_tests();
             run_tlsf_pipeline_tests();
+            // run_simplify_batcher_tests() is deliberately absent, for the
+            // same reason as run_thread_pool_tests() below: the batcher pool
+            // is built on first use and never resized, so sizing it here would
+            // pin it for every later suite that simplifies a formula.
+            //
             // run_thread_pool_tests() is deliberately absent. It sizes the
             // global pool, which is a function-local static built on first use
             // and never resized, so running it here would pin the width of the

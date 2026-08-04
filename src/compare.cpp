@@ -240,8 +240,9 @@ Relation classify(std::optional<bool> fwd, std::optional<bool> rev) {
 
 // Runs the n_repairs x n_ideals implication grid and prints, for each repair,
 // its strongest relation to any ideal plus a summary. `spawn(rep, ide)` returns
-// a std::future<Relation> for that pair, so the FRETISH and TLSF paths differ
-// only in which spec type and implication function they close over.
+// a callable that computes that pair's relation when the dispatcher runs it, so
+// the FRETISH and TLSF paths differ only in which spec type and implication
+// function they close over.
 template <typename Spawn>
 void run_and_report(const std::vector<RepairMeta>& repairs,
                     const std::vector<std::string>& ideal_names, Spawn spawn) {

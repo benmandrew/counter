@@ -93,6 +93,28 @@ bool run_tlsf_suite(std::string_view suite_name) {
     return false;
 }
 
+// Handles the suites over the process-wide plumbing rather than the repair
+// itself. Split out of run_suite for the same reason as run_tlsf_suite above.
+bool run_infrastructure_suite(std::string_view suite_name) {
+    if (suite_name == "config_io") {
+        run_config_io_tests();
+        return true;
+    }
+    if (suite_name == "dashboard") {
+        run_dashboard_tests();
+        return true;
+    }
+    if (suite_name == "profile") {
+        run_profile_tests();
+        return true;
+    }
+    if (suite_name == "thread_pool") {
+        run_thread_pool_tests();
+        return true;
+    }
+    return false;
+}
+
 void run_suite(std::string_view suite_name,
                const std::chrono::milliseconds& timeout) {
     if (suite_name == "transfer_matrix") {
@@ -177,16 +199,7 @@ void run_suite(std::string_view suite_name,
         run_serialisation_tests();
         return;
     }
-    if (suite_name == "config_io") {
-        run_config_io_tests();
-        return;
-    }
-    if (suite_name == "dashboard") {
-        run_dashboard_tests();
-        return;
-    }
-    if (suite_name == "profile") {
-        run_profile_tests();
+    if (run_infrastructure_suite(suite_name)) {
         return;
     }
     if (run_tlsf_suite(suite_name)) {
@@ -246,6 +259,11 @@ int main(int argc, const char* const argv[]) {
             run_tlsf_mucs_tests();
             run_tlsf_genetic_tests();
             run_tlsf_pipeline_tests();
+            // run_thread_pool_tests() is deliberately absent. It sizes the
+            // global pool, which is a function-local static built on first use
+            // and never resized, so running it here would pin the width of the
+            // pool every later suite scores in. It runs as its own ctest
+            // process instead: `counter_tests thread_pool`.
             return 0;
         }
         if (argc != 2) {

@@ -31,6 +31,7 @@ add_executable(counter_tests
     config_io_tests.cpp
     dashboard_tests.cpp
     profile_tests.cpp
+    thread_pool_tests.cpp
     tlsf/parser_tests.cpp
     tlsf/writer_tests.cpp
     tlsf/filter_tests.cpp
@@ -57,6 +58,15 @@ add_test(NAME counter_tests.profile COMMAND counter_tests profile)
 add_test(NAME counter_tests.profile_enabled COMMAND counter_tests profile)
 set_tests_properties(counter_tests.profile_enabled PROPERTIES
     ENVIRONMENT "COUNTER_PROFILE=1")
+add_test(NAME counter_tests.thread_pool_default COMMAND counter_tests thread_pool)
+# And again with a size requested. The global pool is built once per process and
+# never resized, so the default and the requested width cannot both be observed
+# in one run -- each case needs a process of its own, which is what two
+# registrations buy. For the same reason the suite is not in the no-argument
+# run-everything path in main.cpp.
+add_test(NAME counter_tests.thread_pool_sized COMMAND counter_tests thread_pool)
+set_tests_properties(counter_tests.thread_pool_sized PROPERTIES
+    ENVIRONMENT "COUNTER_TEST_POOL_SIZE=3")
 add_test(NAME counter_tests.transfer_matrix COMMAND counter_tests transfer_matrix)
 add_test(NAME counter_tests.black_runner COMMAND counter_tests black_runner)
 add_test(NAME counter_tests.formaliser_runner COMMAND counter_tests formaliser_runner)

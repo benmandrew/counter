@@ -26,6 +26,16 @@ from 2026-07-14 onwards).
 | `2026-07-23-arbiter-hp` | Sweep-W arms on the arbiter family — zero repairs in every cell (null result). |
 | `2026-07-23-arbiter-padd` | p_add 0.1→0.8 × filter arms on arbiter — zero repairs in every cell; rules out p_add as the arbiter unlock. |
 | `2026-07-24-ablation` | 2×2×2 factorial (selection × metric × Halstead) on FRETISH (4 specs, 40 seeds) + TLSF (19 families, 20 seeds), plus the AuRUS head-to-head (12 families, 30 repeats, ltlsynt-validated). First campaign with recorded rather than inferred provenance. Also archived with the paper (`~/projects/writing/counter-paper/data/ablation-2026-07/`). |
+| `2026-08-03-libspot-soak` | Not a repair campaign — a 24-hour soak of the in-process libspot paths, two arms on two hosts (2,656 runs). See the note below. |
+
+The soak is the one entry that does not fit the description above. It has no
+config grid, no run directories, no ideal comparison and no notebook: its CSVs
+are one row per run of `scripts/soak.py`, carrying wall time, a repair digest,
+resource peaks and profile counters instead of scoring columns. Nothing in it
+is comparable with the campaigns above it, `merge_experiments.py` does not read
+it, and the scoring-vintage and commit-attribution sections below do not apply
+to it. `scripts/analyse_soak.py` is its reader; its `PROVENANCE.json` records
+what it found and, more importantly, what it left open.
 
 ## Scoring vintage
 

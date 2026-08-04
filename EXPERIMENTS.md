@@ -13,6 +13,201 @@ at least one repair *equivalent to* or *stronger than* an ideal.
 
 ---
 
+## 2026-07-31 — nsga2 vs nsga2-replicate as the selection default
+
+**What changed.** Three arms, paired by seed, ask whether `nsga2-replicate`
+should replace `nsga2` as the shipped selection scheme: **A** — `nsga2`, sweep
+R, generations=40 / population_size=1000; **B** — `nsga2-replicate` at the same
+operating point; **C** — a *compute-matched control*, `nsga2` at sweep S,
+generations=120, being A's budget scaled by 3.0, the measured median cost ratio
+of B over A. Each arm
+crosses `elitism_rate` 0 and 0.1. A weakening-off cross repeats sweep R on `fsm`
+and `fsm-combined`, the two specifications with quality headroom. FRETISH side:
+`fsm`, `fsm-combined`, `fsm-timing`, `takeoff`, 200 seeds each. TLSF half: 5
+specifications × 2 schemes × 2 elitism levels × 60 seeds. **Why:** replicate
+deduplicates the survivor pool before sorting and replicates the distinct
+survivors back up to `population_size`, buying diversity at a price nobody had
+measured against the obvious alternative — spending that same price on more
+generations of plain NSGA-II.
+
+**Run.** 7,600 rows, closed 2026-08-02. The decision rule was **pre-registered**
+in section 5 of the campaign's `PLAN.md`, before any row was analysed, so the
+analysis could not be steered by its own result. `nsga2-replicate` becomes the
+default only if all four criteria hold: pooled `implies_ideal` confidence
+interval (CI) lower bound above −0.02; it beats arm C, not merely arm A;
+`found_repair` and `n_repairs` both improve; median paired wall-time ratio at
+most 2.0.
+
+### Result: the rule fails, and replicate stays opt-in
+
+| criterion | bound | measured | outcome |
+|---|---|---|---|
+| 1. non-inferior `implies_ideal` | CI lower bound > −0.02 | B−A = +0.004, 95% CI [−0.015, +0.024] | **pass** |
+| 2. beats the compute-matched control | B > C | B−C = −0.156, 95% CI [−0.178, −0.135] | **fail** |
+| 3. `found_repair` and `n_repairs` improve | no regression | `n_repairs` +35.358; `found_repair` −2 in 1600 | **fail** |
+| 4. wall-time cost | median paired ratio ≤ 2.0 | B/A = 3.037 | **fail** |
+
+Criterion 1 passes on a margin of 0.005. It is *non-inferiority* — replicate is
+not worse than plain NSGA-II at the same operating point — and nothing more.
+Pooled McNemar for B against A is p=7.016e-01, a null. Criterion 2 fails
+decisively: Cochran–Mantel–Haenszel (CMH) odds ratio (OR) 0.148 [0.112, 0.195],
+p < 1e-45. Criterion 4 fails by half again over the bound. Criterion 3 fails on a
+reading the next-but-one section takes apart.
+
+### Arm C is both better and cheaper than the arm it controls for
+
+Per-specification `implies_ideal`, weakening on, 400 pairs per specification:
+
+| Specification | A (`nsga2`) | B (replicate) | C (compute-matched) |
+|---|---|---|---|
+| **fsm** | 0.443 | 0.517 | **0.823** |
+| **fsm-combined** | 0.080 | 0.025 | **0.343** |
+| fsm-timing | 1.000 | 0.998 | 1.000 |
+| takeoff | 1.000 | 1.000 | 1.000 |
+| pooled | 0.631 | 0.635 | **0.791** |
+
+B beats A on `fsm` (McNemar p=4.307e-02) and loses to it on `fsm-combined`
+(p=4.720e-04, against B), which is how a pooled null arises from two moving
+specifications. Against C, replicate loses everywhere there is headroom: pooled
+McNemar p=3.445e-46. Spending the budget on more `nsga2` generations beats
+spending it on replicate's diversity, and it does not even cost as much — the
+median paired B/C wall ratio is 1.885. The control arm is better *and* cheaper
+than the arm it was built to control for. That is the campaign's decisive
+finding, and it only exists because the control was pre-registered rather than
+added after the A-versus-B comparison came out flat.
+
+### Cost: only `takeoff` comes near the bound
+
+| Specification | median paired B/A `wall_time_s` ratio |
+|---|---|
+| fsm | 3.477 |
+| fsm-combined | 2.461 |
+| fsm-timing | 5.715 |
+| takeoff | 1.981 |
+| pooled | **3.037** |
+
+Wilcoxon signed-rank p=4.471e-258. One specification of four clears 2.0, by
+0.019.
+
+### Criterion 3 is ambiguous, and is recorded as ambiguous
+
+`n_repairs` improves hugely: pooled mean 6.327 under A against 41.684 under B,
+a gain of +35.358, Wilcoxon p=4.709e-263. `found_repair` regresses by two runs
+in 1600, 1.000 to 0.999 (n01=0, n10=2, McNemar p=0.500), and both of those are
+`nsga2-replicate` runs that hit the 3600 s cap. Read as "no regression allowed",
+the criterion fails. Read as "no *significant* regression", it turns on
+`n_repairs` alone and passes. Neither reading is more faithful to the
+pre-registered wording than the other, so the criterion is logged unresolved.
+
+The deeper problem is that nothing in these columns separates 6.6× more distinct
+repairs from 6.6× more duplicates. That distinction matters here more than
+anywhere else, because duplicate-heavy output is exactly what replicate's own
+mechanism — copying distinct survivors back up to full population size —
+produces by construction.
+
+### The weakening-off cross reverses the sign
+
+Weakening off, `fsm` and `fsm-combined` only, 400 pairs each:
+
+| Specification | A (`nsga2`) | B (replicate) | McNemar |
+|---|---|---|---|
+| **fsm** | 0.600 | **1.000** | n01=160, n10=0, p=1.368e-48 |
+| fsm-combined | 0.085 | 0.107 | p=3.135e-01 (ns) |
+
+Pooled B−A = +0.211, 95% CI [+0.178, +0.245], CMH OR 6.569 [4.599, 9.384]. With
+the weakening filter off, replicate is perfect on `fsm` — 400 of 400 — where
+with the filter on it manages 0.517. The filter is not a neutral background
+condition; it suppresses the effect under test. This is the strongest signal in
+the campaign, and it is not what the campaign set out to measure.
+
+### TLSF: the arbiter unlock, and its lily02 mirror image
+
+5 specifications × 2 schemes × 2 elitism levels × 60 seeds, 1,200 rows.
+
+| Specification | `found_repair` nsga2 / replicate | `implies_ideal` nsga2 / replicate |
+|---|---|---|
+| **arbiter** | 0/120 / **120/120** | 0.000 / **0.375** (45/120) |
+| **lily02** | — | **120/120** / 53/120 (0.442) |
+| gyro-var1 | 120/120 / 120/120 | 0.000 / 0.000 |
+| lift | 120/120 / 120/120 | 0.000 / 0.000 |
+| minepump | 120/120 / 120/120 | 0.000 / 0.000 |
+| pooled | 480/600 / 600/600 | 120/600 / 98/600 |
+
+`arbiter`'s two arms are completely disjoint: every replicate run finds a repair
+and no `nsga2` run does. This is the lever the earlier `arbiter-hp` and
+`arbiter-padd` campaigns were hunting and did not find
+([[arbiter-hp-campaign]]). `lily02` is the exact mirror image, and it costs more
+`implies_ideal` than `arbiter` gains — the pooled TLSF quality figure moves the
+wrong way. The three remaining specifications have no headroom in either arm and
+carry no information.
+
+Median replicate/nsga2 wall ratios are `arbiter` 1.733, `gyro-var1` 1.235,
+`lift` 1.606, `lily02` 1.291, `minepump` 1.560. The TLSF path is far cheaper
+than FRETISH's 3.037, because the cost is FRETISH's serial vacuity filter rather
+than the search itself ([[replicate-cost-is-serial-filters]]).
+
+### What this campaign cannot answer
+
+- **Whether `1 / (1 + rank)` is the right replication weighting.** One weighting
+  was tested, not a family.
+- **Whether replicate's extra repairs are distinct or duplicated.**
+  `n_repairs` cannot tell those apart, and criterion 3 rests on it.
+- **Anything about `fsm-timing` or `takeoff` under weakening-on.** Both sit at
+  the ceiling in every arm (1.000, or 0.998 with the timeouts). `takeoff` has
+  zero discordant pairs and `fsm-timing` has one, so the whole pooled FRETISH
+  result is driven by `fsm` and `fsm-combined`.
+- **Whether the `arbiter` unlock generalises.** It is one specification in a
+  corpus of five, and the TLSF half has no compute-matched control at all, so
+  criteria 1, 2 and 4 are not evaluable there.
+
+### Method notes worth keeping
+
+- **A cap sized off one arm censors that arm's rival, not the noise.** Caps of
+  900 s (1500 s for `fsm-combined`) were sized off `nsga2`'s costs and cut 379 of
+  sweep R's 3200 rows — every one of them `nsga2-replicate`, none `nsga2`. On
+  `fsm-timing` this manufactured a decisive result: pooled McNemar read p≈5e-37
+  with the censored rows in and p=0.68 without them. A cap set from one arm's
+  costs is a one-sided filter on the response, not a neutral loss of data.
+  `drop_censored_rows.py` deleted those rows and their run directories, and the
+  `replicate-recap` profile re-ran exactly that set at 3600 s.
+- **`compare`'s timeout had the same shape.** Its cost scales with `n_repairs` ×
+  `n_ideals`, so the arm producing the most repairs was the most likely to time
+  out, and a timeout scored `implies_ideal = 0`. It now records
+  `compare_timed_out` in its own column. Zero rows hit it in the final data.
+- **Three rows survive with `timed_out=1`**, all `nsga2-replicate`, all at the
+  3600 s cap. They were retained. They account for the entire `found_repair` gap
+  that decides criterion 3, which is why that criterion is ambiguous rather than
+  clear.
+- **The CSV holds two binaries by row.** See the campaign's `PROVENANCE.json`.
+- **CMH discards the pairing McNemar uses.** Both were prescribed and both are
+  reported; where their emphasis differs, McNemar is the paired-correct test.
+- **Where the data is.** The merged local copy no longer exists. Both hosts hold
+  their halves at `~/projects/counter/experiments/results-replicate*.csv` (av2
+  seeds 0–99, av3 seeds 100–199, disjoint, so concatenating reconstructs the
+  merge). The archive directory in the repo holds only the tracked files.
+  Reproduce the analysis with the project venv at `.venv/bin/python`, the only
+  interpreter here carrying pandas, scipy and statsmodels — neither the system
+  python nor the nix dev shell has them.
+
+### Scripts and launch
+
+Profiles `replicate`, `replicate-recap`, `replicate-wkoff` and `replicate-tlsf`
+in `run_experiments.py`; configs from `gen_configs.py` with the
+`nsga2-replicate` scheme, `elitism_rate` and `--compute-match-factor`. Seeds
+partition by host: av2 0–99 and av3 100–199 for FRETISH, av2 0–29 and av3 30–59
+for TLSF. The vendored drivers and the pre-registered plan are in
+`experiments/2026-07-31-replicate/`.
+
+**Verdict: `nsga2-replicate` stays opt-in, and the compute-matched control is
+the reason.** Replicate matches plain NSGA-II at equal generations, costs 3.037×
+the wall time to do it, and loses to the same compute spent on 120 generations
+of `nsga2` by 0.156 `implies_ideal`. The two results worth carrying forward are
+incidental to that verdict: the weakening filter is suppressing a large effect
+rather than sitting neutrally underneath it, and `arbiter` — unrepairable under
+every configuration tried for two campaigns — falls to replicate on all 120 runs.
+
+---
+
 ## 2026-07-24 — Ideals expansion and SYNTCOMP promotion (mid-campaign)
 
 **What.** 15 hand-written ideal repairs landed while the TLSF calibration seed

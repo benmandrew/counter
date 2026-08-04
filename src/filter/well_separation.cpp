@@ -96,9 +96,12 @@ bool specification_is_not_well_separated(const Specification& specification,
                                            specification.m_out_atoms);
 }
 
-FilterFunction make_well_separation_filter(RealizabilityChecker& checker) {
+FilterFunction make_well_separation_filter(RealizabilityChecker& checker,
+                                           std::size_t max_in_flight) {
     return make_predicate_filter(
-        "not-well-separated", [&checker](const Specification& spec) {
+        "not-well-separated",
+        [&checker](const Specification& spec) {
             return !specification_is_not_well_separated(spec, checker);
-        });
+        },
+        max_in_flight);
 }

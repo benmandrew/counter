@@ -16,6 +16,7 @@
 
 #include <nlohmann/json.hpp>
 
+#include "bounded_async.hpp"
 #include "config.hpp"
 #include "config_io.hpp"
 #include "crash/crash_handler.hpp"
@@ -420,16 +421,40 @@ run_evolution(const Config& cfg, std::vector<ScoredSpecification> population,
 }
 
 std::vector<Specification> collect_realizable_specifications(
-    const std::vector<ScoredSpecification>& population) {
+    const Config& cfg, const std::vector<ScoredSpecification>& population) {
+    // Each check is a `black` and an `ltlsynt` query, and the whole final
+    // population is checked, so a serial sweep here costs a subprocess per
+    // distinct candidate -- the more diverse the population, the worse. Results
+    // are collected by index and the survivors rebuilt in population order, so
+    // the output matches a serial sweep exactly.
+    const std::size_t max_in_flight = cfg.parallel > 0 ? cfg.parallel * 4 : 1;
+    std::vector<char> keep(population.size(), 0);
+    // The per-generation filter only screens offspring during evolution, so a
+    // false-condition result from the final generation would otherwise never be
+    // re-screened before being reported here. The same applies to
+    // vacuously-realizable candidates: elites bypass the offspring filters
+    // entirely, so one can reach the output unscreened.
+    if (max_in_flight <= 1) {
+        for (std::size_t idx = 0; idx < population.size(); ++idx) {
+            keep[idx] =
+                is_realizable_repair(population[idx].specification) ? 1 : 0;
+        }
+    } else {
+        run_bounded_async(
+            population.size(), max_in_flight,
+            [&population](std::size_t idx) {
+                return [&spec = population[idx].specification] {
+                    return is_realizable_repair(spec);
+                };
+            },
+            [&keep](std::size_t idx, bool realizable) {
+                keep[idx] = realizable ? 1 : 0;
+            });
+    }
     std::vector<Specification> realizable_vec;
-    for (const ScoredSpecification& scored : population) {
-        // The per-generation filter only screens offspring during evolution,
-        // so a false-condition result from the final generation would
-        // otherwise never be re-screened before being reported here. The same
-        // applies to vacuously-realizable candidates: elites bypass the
-        // offspring filters entirely, so one can reach the output unscreened.
-        if (is_realizable_repair(scored.specification)) {
-            realizable_vec.push_back(scored.specification);
+    for (std::size_t idx = 0; idx < population.size(); ++idx) {
+        if (keep[idx] != 0) {
+            realizable_vec.push_back(population[idx].specification);
         }
     }
     return realizable_vec;
@@ -671,7 +696,7 @@ int main(int argc, const char* const argv[]) {
                           filter_functions, random_source, dashboard);
         population = std::move(population_result);
         const std::vector<Specification> realizable_vec =
-            collect_realizable_specifications(population);
+            collect_realizable_specifications(cfg, population);
         const std::vector<Specification> maximal =
             filter_maximal_specifications(cfg, realizable_vec);
         const std::vector<ScoredSpecification> scored_maximal =

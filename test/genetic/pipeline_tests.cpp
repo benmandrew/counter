@@ -1,8 +1,8 @@
 // Tests over the generation pipeline as an observable list of stages: that a
 // consumer sees every stage without knowing which stages exist, that adding a
-// filter adds a stage, and that the reported population sizes track the real
-// ones. The draw stream the pipeline must preserve is pinned separately, in
-// determinism_tests.cpp.
+// filter adds a stage, and that the reported population sizes and distinct
+// counts track the real ones. The draw stream the pipeline must preserve is
+// pinned separately, in determinism_tests.cpp.
 
 #include <algorithm>
 #include <cstddef>
@@ -40,15 +40,18 @@ AggregateWeightedFitnessFunction constant_fitness() {
         {{[](const Specification&) { return 0.5; }, 1.0, "constant"}});
 }
 
+std::vector<Specification> distinct_specs() {
+    return {make_spec("a", "x"), make_spec("b", "y"), make_spec("a", "y"),
+            make_spec("b", "x")};
+}
+
 std::vector<StageObservation> observe_generation(
-    const std::vector<FilterFunction>& filters) {
+    const std::vector<FilterFunction>& filters,
+    const std::vector<Specification>& specs = distinct_specs()) {
     const Config cfg;
     const AggregateWeightedFitnessFunction fns = constant_fitness();
     const std::vector<ScoredSpecification> pop =
-        score_population(cfg,
-                         {make_spec("a", "x"), make_spec("b", "y"),
-                          make_spec("a", "y"), make_spec("b", "x")},
-                         fns);
+        score_population(cfg, specs, fns);
     std::vector<StageObservation> seen;
     evolve_generation(
         cfg, pop, k_target_size, k_elitism_size, fns, filters, make_source(),
@@ -146,6 +149,31 @@ void test_pipeline_sizes_track_the_population() {
            "pipeline: selection should report exactly target_size survivors");
 }
 
+void test_pipeline_reports_distinct_alongside_size() {
+    const std::vector<StageObservation> seen = observe_generation({});
+    for (const StageObservation& obs : seen) {
+        expect(obs.distinct <= obs.n_out,
+               "pipeline: a stage cannot hold more distinct specifications "
+               "than it holds specifications");
+    }
+    expect(stage(seen, "order-parents").distinct == 4,
+           "pipeline: four distinct parents should be reported as four");
+}
+
+void test_pipeline_distinct_sees_through_a_duplicated_population() {
+    // The real generation 0: original_population seeds the run with
+    // population_size byte-identical copies of the input specification, so
+    // every size the pipeline reports is 4 while the population holds one
+    // specification. distinct is the only field that can tell those apart.
+    const std::vector<StageObservation> seen =
+        observe_generation({}, {make_spec("a", "x"), make_spec("a", "x"),
+                                make_spec("a", "x"), make_spec("a", "x")});
+    expect(stage(seen, "order-parents").n_out == 4 &&
+               stage(seen, "order-parents").distinct == 1,
+           "pipeline: a population of four copies of one specification should "
+           "report size 4 and one distinct individual");
+}
+
 void test_pipeline_filter_fallback_restores_rejected_offspring() {
     const std::vector<FilterFunction> filters = {make_predicate_filter(
         "reject-all", [](const Specification&) { return false; })};
@@ -165,5 +193,7 @@ void run_pipeline_tests() {
     test_pipeline_stages_run_in_dependency_order();
     test_pipeline_derives_one_stage_per_filter();
     test_pipeline_sizes_track_the_population();
+    test_pipeline_reports_distinct_alongside_size();
+    test_pipeline_distinct_sees_through_a_duplicated_population();
     test_pipeline_filter_fallback_restores_rejected_offspring();
 }

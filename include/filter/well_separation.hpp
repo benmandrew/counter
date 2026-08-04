@@ -50,4 +50,10 @@ bool specification_is_not_well_separated(const Specification& specification,
 /// Returns a filter dropping specifications that are not well-separated: ones
 /// the system can vacuously satisfy by forcing its own assumptions to fail.
 /// @p checker is captured by reference and must outlive the returned filter.
-FilterFunction make_well_separation_filter(RealizabilityChecker& checker);
+///
+/// @param checker       Realizability checker for the ltlsynt query; must be
+///                      thread-safe when max_in_flight exceeds 1
+/// @param max_in_flight Concurrent checks. Each is a full ltlsynt query, itself
+///                      gated by Config::max_concurrent_realizability.
+FilterFunction make_well_separation_filter(RealizabilityChecker& checker,
+                                           std::size_t max_in_flight = 1);

@@ -62,6 +62,11 @@ semantics.txt
 !/experiments/*/
 /experiments/*/*
 !/experiments/*/PROVENANCE.json
+# A campaign's pre-registered plan, where one was written before it launched.
+# Worth tracking only because the decision rule has to be checkable against the
+# result it was meant to bind; the root PLAN.md is ignored for the opposite
+# reason, being a working file with no such claim on it.
+!/experiments/*/PLAN.md
 # Retrofitted copies of the drivers each campaign ran, recovered from history.
 # Same problem one level down: re-open descent into scripts/ before negating,
 # then re-exclude its contents so only the .py files come back.
@@ -73,5 +78,7 @@ semantics.txt
 .merge_tmp/
 results/
 
-# Experiment planning (not committed)
-PLAN.md
+# Experiment planning (not committed). Anchored: unanchored, it matches at every
+# depth and silently outranks the campaign-plan negation above, which is later in
+# the file only by accident of grouping.
+/PLAN.md

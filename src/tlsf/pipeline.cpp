@@ -172,6 +172,9 @@ bool is_realizable(const Specification& spec) {
 // interval.
 std::vector<FilterFunctionT<Specification>> build_per_gen_filters(
     const Specification& spec, const Config& cfg) {
+    // Matches score_population's dispatch width, the other per-generation stage
+    // that fans candidates out over the shared pool.
+    const std::size_t max_in_flight = cfg.parallel > 0 ? cfg.parallel * 4 : 1;
     std::vector<FilterFunctionT<Specification>> filters;
     FilterFunctionT<Specification> dedup = tlsf_make_dedup_filter();
     dedup.set_interval(cfg.dedup_filter_interval);
@@ -180,7 +183,7 @@ std::vector<FilterFunctionT<Specification>> build_per_gen_filters(
     bloat.set_interval(cfg.bloat_filter_interval);
     filters.push_back(std::move(bloat));
     FilterFunctionT<Specification> assumption_sat =
-        tlsf_make_assumption_sat_filter();
+        tlsf_make_assumption_sat_filter(max_in_flight);
     assumption_sat.set_interval(cfg.false_condition_filter_interval);
     filters.push_back(std::move(assumption_sat));
     if (cfg.run_weakening_filter) {
@@ -191,7 +194,8 @@ std::vector<FilterFunctionT<Specification>> build_per_gen_filters(
     }
     if (cfg.run_well_separation_filter) {
         FilterFunctionT<Specification> well_separation =
-            tlsf_make_well_separation_filter(global_real_checker());
+            tlsf_make_well_separation_filter(global_real_checker(),
+                                             max_in_flight);
         well_separation.set_interval(cfg.well_separation_filter_interval);
         filters.push_back(std::move(well_separation));
     }

@@ -90,6 +90,7 @@ void DashboardWriter::stage(std::size_t gen, std::size_t index,
                           {"name", observation.name},
                           {"n_in", observation.n_in},
                           {"n_out", observation.n_out},
+                          {"distinct", observation.distinct},
                           {"elapsed_s", observation.elapsed_s}};
     if (muc_iter > 0) {
         record["muc_iter"] = muc_iter;

@@ -12,6 +12,7 @@
 #include <string>
 #include <vector>
 
+#include "profile.hpp"
 #include "prop_formula.hpp"
 #include "requirement.hpp"
 #include "runner/ganak.hpp"
@@ -146,6 +147,7 @@ std::size_t count_mentioned_aps(const std::string& label, std::size_t n_aps) {
 Count count_guard_models(const std::string& label,
                          const std::vector<std::string>& aps,
                          std::size_t n_total_atoms) {
+    COUNTER_PROFILE_SCOPE("count/guard_models");
     if (label == "f") {
         return 0;
     }
@@ -300,6 +302,7 @@ HoaAutomaton parse_hoa(const std::string& hoa_text) {
 // Buchi automata set the mask from the per-state acceptance flags.
 TransferSystem build_transfer_system_from_hoa(const HoaAutomaton& hoa,
                                               std::size_t n_total_atoms) {
+    COUNTER_PROFILE_SCOPE("count/build_transfer_from_hoa");
     if (hoa.m_n_states == 0) {
         // A malformed or empty HOA document (e.g. a failed ltl2tgba
         // invocation) parses to a default-constructed HoaAutomaton with no

@@ -3,6 +3,8 @@
 #include <cassert>
 #include <string>
 
+#include "profile.hpp"
+
 namespace {
 
 Count checked_add(Count lhs, Count rhs) {
@@ -98,6 +100,7 @@ CountMatrix matrix_power(const CountMatrix& matrix, std::size_t exponent) {
 }  // namespace
 
 Count count_traces(const TransferSystem& system, std::size_t step_count) {
+    COUNTER_PROFILE_SCOPE("count/count_traces");
     const CountMatrix weighted_transition = weighted_transition_matrix(system);
     assert(weighted_transition.rows() == weighted_transition.cols());
     assert(weighted_transition.rows() != 0);

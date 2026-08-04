@@ -20,6 +20,8 @@
 #include <utility>
 #include <vector>
 
+#include "profile.hpp"
+
 namespace {
 
 using Clock = std::chrono::steady_clock;
@@ -57,6 +59,10 @@ std::optional<int> poll_timeout_ms(
 // only returns on EOF.
 std::pair<std::string, bool> read_until(
     int read_fd, const std::optional<Clock::time_point>& deadline) {
+    // The child's own runtime: the parent sits in poll()/read() until the tool
+    // closes its stdout. Wall greatly exceeding CPU here is expected and
+    // healthy -- it means the parent is blocked, not spinning.
+    COUNTER_PROFILE_SCOPE("proc/read");
     std::string output;
     std::array<char, 4096> read_buf{};
     while (true) {
@@ -102,6 +108,13 @@ std::pair<std::string, bool> read_until(
 // status in ProcessResult's encoding.
 int reap(pid_t pid, const std::optional<Clock::time_point>& deadline,
          double& cpu_s_out, bool& timed_out) {
+    // Only the reap, not the kill that may precede it: this is the wait for a
+    // child that has already closed its stdout. On the common path the first
+    // WNOHANG collects it and the wall time is near zero, so a large total
+    // here means tools are lingering after their last write rather than
+    // exiting -- which is the failure the deadline on this loop exists to
+    // bound.
+    COUNTER_PROFILE_SCOPE("proc/wait");
     int wait_status = 0;
     struct rusage child_usage{};
     // Unwrapped once here rather than dereferenced in the loop: the polling
@@ -213,39 +226,51 @@ ProcessResult execute_and_capture(const std::vector<std::string>& arguments,
     }
     argv[arguments.size()] = nullptr;
     std::array<int, 2> pipe_fds = {-1, -1};
-    // O_CLOEXEC, because these runners are called from many scoring-pool
-    // threads at once. Without it a fork here inherits every pipe another
-    // call has open, and holds the write end past its own exec, so that
-    // call's reader never sees end of file. pipe2 sets the flag atomically;
-    // pipe followed by fcntl would race a concurrent fork. The dup2 onto
-    // stdout and stderr below clears the flag on the copies, which is what
-    // lets the child keep those two.
-    [[maybe_unused]] const int pipe_result = pipe2(pipe_fds.data(), O_CLOEXEC);
-    assert(pipe_result == 0);
-    const pid_t child_pid = fork();
-    if (child_pid < 0) {
-        close(pipe_fds[0]);
-        close(pipe_fds[1]);
-        assert(false);
-        __builtin_unreachable();
-    }
-    if (child_pid == 0) {
-        close(pipe_fds[0]);
-        if (dup2(pipe_fds[1], STDOUT_FILENO) < 0 ||
-            dup2(pipe_fds[1], STDERR_FILENO) < 0) {
+    pid_t child_pid = -1;
+    {
+        // Timed separately from the read and wait below: this scope is the
+        // parent's share of process creation -- the pipe, the fork's page
+        // table copy, and the group setup -- which is the part a cheaper spawn
+        // primitive removes. It is work the parent does itself, so unlike
+        // proc/read it should show CPU close to its wall time. The child's own
+        // runtime is not in here: the parent leaves this scope as soon as fork
+        // returns.
+        COUNTER_PROFILE_SCOPE("proc/fork+exec");
+        // O_CLOEXEC, because these runners are called from many scoring-pool
+        // threads at once. Without it a fork here inherits every pipe another
+        // call has open, and holds the write end past its own exec, so that
+        // call's reader never sees end of file. pipe2 sets the flag
+        // atomically; pipe followed by fcntl would race a concurrent fork. The
+        // dup2 onto stdout and stderr below clears the flag on the copies,
+        // which is what lets the child keep those two.
+        [[maybe_unused]] const int pipe_result =
+            pipe2(pipe_fds.data(), O_CLOEXEC);
+        assert(pipe_result == 0);
+        child_pid = fork();
+        if (child_pid < 0) {
+            close(pipe_fds[0]);
+            close(pipe_fds[1]);
+            assert(false);
+            __builtin_unreachable();
+        }
+        if (child_pid == 0) {
+            close(pipe_fds[0]);
+            if (dup2(pipe_fds[1], STDOUT_FILENO) < 0 ||
+                dup2(pipe_fds[1], STDERR_FILENO) < 0) {
+                _exit(127);
+            }
+            close(pipe_fds[1]);
+            harden_child_after_fork(ParentDeathPolicy::KillWithParentThread);
+            if (lookup == ExecutableLookup::SearchPath) {
+                execvp(arguments[0].c_str(), argv.data());
+            } else {
+                execv(arguments[0].c_str(), argv.data());
+            }
             _exit(127);
         }
+        adopt_child_process_group(child_pid);
         close(pipe_fds[1]);
-        harden_child_after_fork(ParentDeathPolicy::KillWithParentThread);
-        if (lookup == ExecutableLookup::SearchPath) {
-            execvp(arguments[0].c_str(), argv.data());
-        } else {
-            execv(arguments[0].c_str(), argv.data());
-        }
-        _exit(127);
     }
-    adopt_child_process_group(child_pid);
-    close(pipe_fds[1]);
     std::optional<Clock::time_point> deadline;
     if (timeout > std::chrono::milliseconds::zero()) {
         deadline = Clock::now() + timeout;

@@ -34,4 +34,12 @@ bool specification_has_unsatisfiable_assumptions(
 /// Returns a filter dropping specifications that are vacuously realizable
 /// because their assumptions are jointly unsatisfiable. @p checker is captured
 /// by reference and must outlive the returned filter.
-FilterFunction make_vacuity_filter(SatisfiabilityChecker& checker);
+///
+/// @param checker       Satisfiability checker for the assumption query; must
+///                      be thread-safe when max_in_flight exceeds 1
+/// @param max_in_flight Concurrent checks. Each cache miss is a `black`
+///                      subprocess, and the miss rate rises with population
+///                      diversity, so evaluating serially makes this filter the
+///                      dominant cost of a diverse run.
+FilterFunction make_vacuity_filter(SatisfiabilityChecker& checker,
+                                   std::size_t max_in_flight = 1);

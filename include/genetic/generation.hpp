@@ -93,11 +93,20 @@ using ScoredSpecification = Scored<Specification>;
 
 /// Wraps a per-element predicate as a population-level FilterFunction.
 ///
-/// @param name      Display name used in diagnostic output
-/// @param predicate A predicate returning true for specifications to keep
-/// @return          A FilterFunction that applies the predicate element-wise
+/// A predicate that shells out to a solver costs a whole subprocess per
+/// cache-missing candidate, and the miss rate rises with population diversity,
+/// so those filters should pass a max_in_flight above 1. Structural predicates
+/// are cheaper than a thread-pool dispatch and should leave it at the default.
+/// Either way the survivors and their order are identical.
+///
+/// @param name          Display name used in diagnostic output
+/// @param predicate     A predicate returning true for specifications to keep
+/// @param max_in_flight Concurrent predicate evaluations; 1 evaluates serially
+/// @return              A FilterFunction that applies the predicate
+/// element-wise
 FilterFunction make_predicate_filter(
-    std::string name, std::function<bool(const Specification&)> predicate);
+    std::string name, std::function<bool(const Specification&)> predicate,
+    std::size_t max_in_flight = 1);
 
 /// Scores each specification using a weighted average of all fitness functions:
 ///   fitness = sum(fn_i(spec) * w_i) / sum(w_i)

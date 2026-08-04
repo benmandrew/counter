@@ -2,7 +2,6 @@
 
 #include <atomic>
 #include <cstdint>
-#include <thread>
 #include <unordered_map>
 #include <unordered_set>
 #include <utility>
@@ -87,7 +86,7 @@ std::vector<uint8_t> compute_subsumed(
     for (auto& flag : subsumed_reps) {
         flag.store(0, std::memory_order_relaxed);
     }
-    const std::size_t n_hw = std::thread::hardware_concurrency();
+    const std::size_t n_hw = global_thread_pool().size();
     const std::size_t max_in_flight = n_hw > 0 ? n_hw * 2 : 1;
     std::size_t completed = 0;
     run_bounded_async(
@@ -157,7 +156,7 @@ FilterFunction make_weakening_filter(Specification original,
                 for (auto& flag : keep) {
                     flag.store(0, std::memory_order_relaxed);
                 }
-                const std::size_t n_hw = std::thread::hardware_concurrency();
+                const std::size_t n_hw = global_thread_pool().size();
                 const std::size_t max_in_flight = n_hw > 0 ? n_hw * 2 : 1;
                 run_bounded_async(
                     pop_size, max_in_flight,

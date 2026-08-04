@@ -95,12 +95,11 @@ std::vector<uint8_t> compute_subsumed(
          &pairs](std::size_t idx) {
             const std::size_t a_pos = pairs[idx].first;
             const std::size_t b_pos = pairs[idx].second;
-            return global_thread_pool().submit([&checker, &pop,
-                                                &representatives,
-                                                &subsumed_reps, a_pos, b_pos] {
+            return [&checker, &pop, &representatives, &subsumed_reps, a_pos,
+                    b_pos] {
                 check_pair(pop, representatives, subsumed_reps, checker, a_pos,
                            b_pos);
-            });
+            };
         },
         [&on_progress, &completed, total = pairs.size()](std::size_t) {
             if (on_progress) {
@@ -161,14 +160,12 @@ FilterFunction make_weakening_filter(Specification original,
                 run_bounded_async(
                     pop_size, max_in_flight,
                     [&checker, &pop, &original, &keep](std::size_t idx) {
-                        return global_thread_pool().submit(
-                            [&checker, &pop, &original, &keep, idx] {
-                                if (spec_implies(original, pop[idx], checker)
-                                        .value_or(true)) {
-                                    keep[idx].store(1,
-                                                    std::memory_order_relaxed);
-                                }
-                            });
+                        return [&checker, &pop, &original, &keep, idx] {
+                            if (spec_implies(original, pop[idx], checker)
+                                    .value_or(true)) {
+                                keep[idx].store(1, std::memory_order_relaxed);
+                            }
+                        };
                     },
                     [](std::size_t) {});
                 std::vector<Specification> survivors;

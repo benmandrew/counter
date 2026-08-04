@@ -77,3 +77,10 @@ void set_thread_pool_size(std::size_t size);
 /// dispatch sites, sized by set_thread_pool_size or, failing that, to the
 /// hardware concurrency.
 ThreadPool& global_thread_pool();
+
+/// The in-flight window every bounded-async dispatch site should pass to
+/// run_bounded_async: twice the global pool's worker count. The window is
+/// queue depth ahead of the pool, not extra concurrency -- the pool still runs
+/// at most size() tasks at once -- so 2x keeps every worker fed across task
+/// completions without queuing unboundedly.
+std::size_t dispatch_window();

@@ -421,13 +421,13 @@ run_evolution(const Config& cfg, std::vector<ScoredSpecification> population,
 }
 
 std::vector<Specification> collect_realizable_specifications(
-    const Config& cfg, const std::vector<ScoredSpecification>& population) {
+    const std::vector<ScoredSpecification>& population) {
     // Each check is a `black` and an `ltlsynt` query, and the whole final
     // population is checked, so a serial sweep here costs a subprocess per
     // distinct candidate -- the more diverse the population, the worse. Results
     // are collected by index and the survivors rebuilt in population order, so
     // the output matches a serial sweep exactly.
-    const std::size_t max_in_flight = cfg.parallel > 0 ? cfg.parallel * 4 : 1;
+    const std::size_t max_in_flight = dispatch_window();
     std::vector<char> keep(population.size(), 0);
     // The per-generation filter only screens offspring during evolution, so a
     // false-condition result from the final generation would otherwise never be
@@ -696,7 +696,7 @@ int main(int argc, const char* const argv[]) {
                           filter_functions, random_source, dashboard);
         population = std::move(population_result);
         const std::vector<Specification> realizable_vec =
-            collect_realizable_specifications(cfg, population);
+            collect_realizable_specifications(population);
         const std::vector<Specification> maximal =
             filter_maximal_specifications(cfg, realizable_vec);
         const std::vector<ScoredSpecification> scored_maximal =

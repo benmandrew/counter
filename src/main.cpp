@@ -32,6 +32,7 @@
 #include "runner/spot.hpp"
 #include "serialisation.hpp"
 #include "status_line.hpp"
+#include "thread_pool.hpp"
 #include "tlsf/pipeline.hpp"
 #include "version.hpp"
 
@@ -576,6 +577,7 @@ int main(int argc, const char* const argv[]) {
     cfg.dashboard = cfg.dashboard || has_flag(argc, argv, "--dashboard");
     apply_tool_timeouts(cfg);
     RealizabilityChecker::set_max_concurrency(cfg.max_concurrent_realizability);
+    set_thread_pool_size(cfg.parallel);
     const std::optional<std::string> input_path =
         parse_string_arg(argc, argv, "--input");
     const std::optional<std::string> output_dir =

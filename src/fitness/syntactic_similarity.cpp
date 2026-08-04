@@ -7,6 +7,7 @@
 #include <variant>
 #include <vector>
 
+#include "profile.hpp"
 #include "prop_formula.hpp"
 #include "requirement.hpp"
 
@@ -253,6 +254,7 @@ double syntactic_similarity(const Requirement& requirement,
 double syntactic_similarity(const Specification& specification,
                             const Specification& other_specification,
                             const Config& cfg) {
+    COUNTER_PROFILE_SCOPE("fitness/syntactic_similarity_spec");
     assert((!specification.m_assumptions.empty() ||
             !specification.m_guarantees.empty()) &&
            (!other_specification.m_assumptions.empty() ||

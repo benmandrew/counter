@@ -9,6 +9,7 @@
 #include <string>
 #include <unordered_map>
 
+#include "profile.hpp"
 #include "runner/process.hpp"
 #include "runner/spot.hpp"
 
@@ -39,9 +40,11 @@ void set_ltlfilt_timeout(std::chrono::milliseconds timeout) {
 std::string ltlfilt_path() { return spot_bin_dir() + "/ltlfilt"; }
 
 std::string simplify_ltl(const std::string& formula) {
+    COUNTER_PROFILE_SCOPE("ltlfilt/simplify_ltl");
     static std::unordered_map<std::string, std::string> cache;
     static std::mutex cache_mutex;
     {
+        COUNTER_PROFILE_SCOPE("ltlfilt/simplify_ltl:cache-lookup");
         std::scoped_lock lock(cache_mutex);
         const auto found = cache.find(formula);
         if (found != cache.end()) {

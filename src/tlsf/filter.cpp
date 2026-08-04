@@ -7,7 +7,6 @@
 #include <cstdint>
 #include <optional>
 #include <string>
-#include <thread>
 #include <unordered_map>
 #include <unordered_set>
 #include <utility>
@@ -169,7 +168,7 @@ std::vector<uint8_t> compute_subsumed(
     for (auto& flag : subsumed) {
         flag.store(0, std::memory_order_relaxed);
     }
-    const std::size_t n_hw = std::thread::hardware_concurrency();
+    const std::size_t n_hw = global_thread_pool().size();
     const std::size_t max_in_flight = n_hw > 0 ? n_hw * 2 : 1;
     std::size_t completed = 0;
     run_bounded_async(
@@ -177,11 +176,10 @@ std::vector<uint8_t> compute_subsumed(
         [&checker, &pop, &representatives, &subsumed, &pairs](std::size_t idx) {
             const std::size_t pos_a = pairs[idx].first;
             const std::size_t pos_b = pairs[idx].second;
-            return global_thread_pool().submit(
-                [&checker, &pop, &representatives, &subsumed, pos_a, pos_b] {
-                    check_pair(pop, representatives, subsumed, checker, pos_a,
-                               pos_b);
-                });
+            return [&checker, &pop, &representatives, &subsumed, pos_a, pos_b] {
+                check_pair(pop, representatives, subsumed, checker, pos_a,
+                           pos_b);
+            };
         },
         [&on_progress, &completed, total = pairs.size()](std::size_t) {
             if (on_progress) {
@@ -302,37 +300,35 @@ FilterFunctionT<tlsf::Specification> tlsf_make_bloat_cap_filter(
 
 FilterFunctionT<tlsf::Specification> tlsf_make_weakening_filter(
     tlsf::Specification original, SatisfiabilityChecker& checker) {
-    return {
-        "weakening", [original = std::move(original),
-                      &checker](const std::vector<tlsf::Specification>& pop) {
-            const std::size_t pop_size = pop.size();
-            std::vector<std::atomic<uint8_t>> keep(pop_size);
-            for (auto& flag : keep) {
-                flag.store(0, std::memory_order_relaxed);
-            }
-            const std::size_t n_hw = std::thread::hardware_concurrency();
-            const std::size_t max_in_flight = n_hw > 0 ? n_hw * 2 : 1;
-            run_bounded_async(
-                pop_size, max_in_flight,
-                [&checker, &pop, &original, &keep](std::size_t idx) {
-                    return global_thread_pool().submit(
-                        [&checker, &pop, &original, &keep, idx] {
+    return {"weakening", [original = std::move(original), &checker](
+                             const std::vector<tlsf::Specification>& pop) {
+                const std::size_t pop_size = pop.size();
+                std::vector<std::atomic<uint8_t>> keep(pop_size);
+                for (auto& flag : keep) {
+                    flag.store(0, std::memory_order_relaxed);
+                }
+                const std::size_t n_hw = global_thread_pool().size();
+                const std::size_t max_in_flight = n_hw > 0 ? n_hw * 2 : 1;
+                run_bounded_async(
+                    pop_size, max_in_flight,
+                    [&checker, &pop, &original, &keep](std::size_t idx) {
+                        return [&checker, &pop, &original, &keep, idx] {
                             if (tlsf_spec_implies(original, pop[idx], checker)
                                     .value_or(true)) {
                                 keep[idx].store(1, std::memory_order_relaxed);
                             }
-                        });
-                },
-                [](std::size_t) {});
-            std::vector<tlsf::Specification> survivors;
-            survivors.reserve(pop_size);
-            for (std::size_t i = 0; i < pop_size; ++i) {
-                if (keep[i].load(std::memory_order_relaxed) != 0U) {
-                    survivors.push_back(pop[i]);
+                        };
+                    },
+                    [](std::size_t) {});
+                std::vector<tlsf::Specification> survivors;
+                survivors.reserve(pop_size);
+                for (std::size_t i = 0; i < pop_size; ++i) {
+                    if (keep[i].load(std::memory_order_relaxed) != 0U) {
+                        survivors.push_back(pop[i]);
+                    }
                 }
-            }
-            return survivors;
-        }};
+                return survivors;
+            }};
 }
 
 FilterFunctionT<tlsf::Specification> tlsf_make_implication_filter(

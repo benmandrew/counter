@@ -42,6 +42,7 @@ target_sources(counter_core PRIVATE
     src/prop_formula/parser.cpp
     src/prop_formula/similarity.cpp
     src/prop_formula/transform.cpp
+    src/profile.cpp
     src/requirement.cpp
     src/tlsf/parser.cpp
     src/tlsf/specification.cpp

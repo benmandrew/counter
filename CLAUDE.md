@@ -92,6 +92,25 @@ Every header file in `include/` must have a corresponding `.rst` page under `doc
 6. Apply final filters: dedup, then optional implication filter to keep only maximal specs.
 7. Score, sort, and write each maximal spec to `<output-dir>/repair_N.json`.
 
+## Profiling
+
+`COUNTER_PROFILE=<path>` turns on the *scope profiler* (`include/profile.hpp`),
+which writes a table to stderr and JSON to that path; `COUNTER_PROFILE=1` gives
+the table alone. Every binary reports. The report registers with `atexit` on the
+first scope opened, so `realize`, `mucs` and `compare` need no wiring of their
+own — and a binary that opens no scope prints nothing at all.
+
+Read wall time against per-thread CPU time. A site with large wall and near-zero
+CPU is blocked on a child process, not computing: `proc/read` sits at a cpu/wall
+ratio of about 0.01 on a real run. That ratio is the diagnostic.
+
+It is in-process instrumentation rather than `perf` or `gdb` because neither is
+available on the dev box — `kernel.perf_event_paranoid=4` and yama
+`ptrace_scope` rule out both. `strace` works only by launching the process,
+never by attaching. The counter registry is deliberately leaked so that it
+outlives the `atexit` report; destroying it first would free the names the
+report is about to print.
+
 ## Live dashboard
 
 Opt-in, via `counter --dashboard` or `[runtime] dashboard = true` (the flag can
@@ -131,6 +150,18 @@ Binaries: `counter` (genetic repair), `realize`, `compare`, `ltl`, `mucs` — ru
 `mucs` extracts a minimal unrealizable core. Prints the smallest subset of the guarantee-side sections (PRESET, ASSERT, GUARANTEE) that stays unrealizable against the full, unchanged environment side (INITIALLY, REQUIRE, ASSUME) — the culprit formulae behind unrealizability. Uses QuickXplain over `ltlsynt`. Prints `REALIZABLE (no core)` if the input is already realizable. TLSF-only (FRETISH JSON is not supported).
 
 The same core extraction drives an alternative TLSF **repair mode**. `Config::repair_mode` (TOML `[tlsf] repair_mode = "monolithic" | "muc"`, default `monolithic`) selects between evolving the whole spec at once and the MUC-guided loop in `run_muc` (`src/tlsf/pipeline.cpp`): extract a core, evolve only that sub-spec, reintegrate the repaired core with the untouched non-core guarantees (`tlsf::reintegrate`), and repeat until the whole spec is realizable or `muc_max_iterations` trips. FRETISH ignores it. `scripts/gen_configs.py --repair both` and the `muc` profile in `run_experiments.py` cross the two modes as an experiment factor over the TLSF spec corpus.
+
+## Tool subprocesses
+
+Every pipe a runner opens must be created with `pipe2(..., O_CLOEXEC)` —
+`execute_and_capture` in `src/runner/process.cpp` and the formaliser's
+bidirectional pair in `src/runner/formaliser.cpp`. These runners are called
+from many scoring-pool threads at once, so a fork on one thread inherits the
+pipes every other in-flight call has open and holds them past its own exec.
+The reader waiting on such a call never sees end of file. `pipe2` sets the flag
+atomically; `pipe` followed by `fcntl` races a concurrent fork. The `dup2` onto
+the child's own stdin, stdout and stderr clears the flag on those copies, which
+is what lets the descriptors the child actually needs survive.
 
 ## External tools
 

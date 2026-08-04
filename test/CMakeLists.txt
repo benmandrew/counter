@@ -30,6 +30,7 @@ add_executable(counter_tests
     serialisation_tests.cpp
     config_io_tests.cpp
     dashboard_tests.cpp
+    profile_tests.cpp
     tlsf/parser_tests.cpp
     tlsf/writer_tests.cpp
     tlsf/filter_tests.cpp
@@ -48,6 +49,14 @@ else()
     target_compile_options(counter_tests PRIVATE -Wall -Wextra -Wpedantic)
 endif()
 
+add_test(NAME counter_tests.profile COMMAND counter_tests profile)
+# Again with the profiler switched on. The suite branches on
+# profile::enabled(), so registering it only once means every assertion about
+# actually recording anything is skipped -- the suite would pass by testing that
+# a disabled profiler does nothing, which is the half that cannot regress.
+add_test(NAME counter_tests.profile_enabled COMMAND counter_tests profile)
+set_tests_properties(counter_tests.profile_enabled PROPERTIES
+    ENVIRONMENT "COUNTER_PROFILE=1")
 add_test(NAME counter_tests.transfer_matrix COMMAND counter_tests transfer_matrix)
 add_test(NAME counter_tests.black_runner COMMAND counter_tests black_runner)
 add_test(NAME counter_tests.formaliser_runner COMMAND counter_tests formaliser_runner)

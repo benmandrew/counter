@@ -52,6 +52,11 @@ class ThreadPool {
         return result;
     }
 
+    /// How many workers this pool runs. Filters use it to size their own
+    /// in-flight windows, so that one setting governs concurrency rather than
+    /// each site reaching for the hardware concurrency independently.
+    [[nodiscard]] std::size_t size() const { return m_workers.size(); }
+
    private:
     void worker_loop();
 
@@ -62,6 +67,13 @@ class ThreadPool {
     bool m_stop = false;
 };
 
+/// Sets how many workers global_thread_pool() starts, from Config::parallel.
+/// Zero means the hardware concurrency, which is also what a caller that never
+/// sets it gets. Call once at startup: the pool is built on first use and never
+/// resized, so a later call has no effect.
+void set_thread_pool_size(std::size_t size);
+
 /// Returns the process-lifetime thread pool shared by all bounded-async
-/// dispatch sites, sized to the hardware concurrency.
+/// dispatch sites, sized by set_thread_pool_size or, failing that, to the
+/// hardware concurrency.
 ThreadPool& global_thread_pool();

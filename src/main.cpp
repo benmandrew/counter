@@ -25,6 +25,7 @@
 #include "fitness/function.hpp"
 #include "fitness/status.hpp"
 #include "genetic/generation.hpp"
+#include "profile.hpp"
 #include "requirement.hpp"
 #include "runner/black.hpp"
 #include "runner/ganak.hpp"
@@ -32,6 +33,7 @@
 #include "runner/spot.hpp"
 #include "serialisation.hpp"
 #include "status_line.hpp"
+#include "thread_pool.hpp"
 #include "tlsf/pipeline.hpp"
 #include "version.hpp"
 
@@ -156,6 +158,9 @@ void print_timing_report() {
               << AggregateWeightedFitnessFunction::n_cache_hits << " hits / "
               << AggregateWeightedFitnessFunction::n_cache_misses
               << " misses\n";
+    // The per-tool rows above say how long each tool took; the scope profile
+    // says where inside a call that went. No-op unless COUNTER_PROFILE is set.
+    profile::report_if_enabled();
 }
 
 // Reports where CPU actually went: this process's own code (all threads) vs.
@@ -576,6 +581,7 @@ int main(int argc, const char* const argv[]) {
     cfg.dashboard = cfg.dashboard || has_flag(argc, argv, "--dashboard");
     apply_tool_timeouts(cfg);
     RealizabilityChecker::set_max_concurrency(cfg.max_concurrent_realizability);
+    set_thread_pool_size(cfg.parallel);
     const std::optional<std::string> input_path =
         parse_string_arg(argc, argv, "--input");
     const std::optional<std::string> output_dir =

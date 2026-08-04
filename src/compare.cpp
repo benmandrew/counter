@@ -10,7 +10,6 @@
 #include <sstream>
 #include <stdexcept>
 #include <string>
-#include <thread>
 #include <utility>
 #include <vector>
 
@@ -249,7 +248,7 @@ void run_and_report(const std::vector<RepairMeta>& repairs,
     const std::size_t n_repairs = repairs.size();
     const std::size_t n_ideals = ideal_names.size();
     const std::size_t n_tasks = n_repairs * n_ideals;
-    const std::size_t n_hw = std::thread::hardware_concurrency();
+    const std::size_t n_hw = global_thread_pool().size();
     const std::size_t max_in_flight = n_hw > 0 ? n_hw * 2 : 1;
 
     struct BestResult {
@@ -352,12 +351,12 @@ int run_tlsf(const Args& args, SatisfiabilityChecker& checker) {
 
     run_and_report(
         repair_meta, ideal_names, [&](std::size_t rep, std::size_t ide) {
-            return global_thread_pool().submit([&, rep, ide] {
+            return [&, rep, ide] {
                 return classify(tlsf_spec_implies(repairs[rep].spec,
                                                   ideals[ide].second, checker),
                                 tlsf_spec_implies(ideals[ide].second,
                                                   repairs[rep].spec, checker));
-            });
+            };
         });
     return 0;
 }
@@ -405,13 +404,13 @@ int run_fretish(const Args& args, SatisfiabilityChecker& checker) {
 
     run_and_report(repair_meta, ideal_names,
                    [&](std::size_t rep, std::size_t ide) {
-                       return global_thread_pool().submit([&, rep, ide] {
+                       return [&, rep, ide] {
                            return classify(
                                spec_implies(repairs[rep].second.spec,
                                             ideals[ide].second, checker),
                                spec_implies(ideals[ide].second,
                                             repairs[rep].second.spec, checker));
-                       });
+                       };
                    });
     return 0;
 }

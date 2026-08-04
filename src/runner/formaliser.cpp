@@ -1,5 +1,6 @@
 #include "runner/formaliser.hpp"
 
+#include <fcntl.h>
 #include <unistd.h>
 
 #include <array>
@@ -84,9 +85,15 @@ void PersistentProcess::ensure_spawned() {
 
     std::array<int, 2> stdin_pipe = {-1, -1};
     std::array<int, 2> stdout_pipe = {-1, -1};
-    [[maybe_unused]] const int stdin_pipe_result = pipe(stdin_pipe.data());
+    // O_CLOEXEC on both halves. This pair is the one that stays open for the
+    // process's life, so a one-shot tool forked by any other thread would
+    // otherwise inherit it and hold the formaliser's stdin write end open,
+    // leaving node waiting on a request that has already been answered.
+    [[maybe_unused]] const int stdin_pipe_result =
+        pipe2(stdin_pipe.data(), O_CLOEXEC);
     assert(stdin_pipe_result == 0);
-    [[maybe_unused]] const int stdout_pipe_result = pipe(stdout_pipe.data());
+    [[maybe_unused]] const int stdout_pipe_result =
+        pipe2(stdout_pipe.data(), O_CLOEXEC);
     assert(stdout_pipe_result == 0);
 
     const pid_t child_pid = fork();

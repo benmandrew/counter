@@ -177,17 +177,16 @@ std::vector<Scored<Spec>> score_population(
     run_bounded_async(
         population.size(), max_in_flight,
         [&fitness_function, &population](std::size_t idx) {
-            return global_thread_pool().submit(
-                [&fitness_function, &spec = population[idx]] {
-                    generation_detail::ScoreOutcome outcome;
-                    try {
-                        outcome.result =
-                            fitness_function.objectives_and_fitness(spec);
-                    } catch (const std::exception& exc) {
-                        outcome.error = exc.what();
-                    }
-                    return outcome;
-                });
+            return [&fitness_function, &spec = population[idx]] {
+                generation_detail::ScoreOutcome outcome;
+                try {
+                    outcome.result =
+                        fitness_function.objectives_and_fitness(spec);
+                } catch (const std::exception& exc) {
+                    outcome.error = exc.what();
+                }
+                return outcome;
+            };
         },
         [&scored, &succeeded, &errors, &population, &on_progress, &done,
          total = population.size()](std::size_t idx,

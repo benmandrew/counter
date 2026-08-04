@@ -26,6 +26,7 @@ from 2026-07-14 onwards).
 | `2026-07-23-arbiter-hp` | Sweep-W arms on the arbiter family — zero repairs in every cell (null result). |
 | `2026-07-23-arbiter-padd` | p_add 0.1→0.8 × filter arms on arbiter — zero repairs in every cell; rules out p_add as the arbiter unlock. |
 | `2026-07-24-ablation` | 2×2×2 factorial (selection × metric × Halstead) on FRETISH (4 specs, 40 seeds) + TLSF (19 families, 20 seeds), plus the AuRUS head-to-head (12 families, 30 repeats, ltlsynt-validated). First campaign with recorded rather than inferred provenance. Also archived with the paper (`~/projects/writing/counter-paper/data/ablation-2026-07/`). |
+| `2026-07-31-replicate` | nsga2 vs nsga2-replicate selection: sweep R (both schemes × elitism 0/0.1, gen40/pop1000, 200 seeds) with its censored-row recap, a weakening-off cross on fsm/fsm-combined, a compute-matched nsga2 arm (sweep S, gen120 = 3.0× measured cost ratio), and a TLSF half on 5 specs — 7,600 rows. First campaign with per-row commit attribution in the CSVs (backfilled for the pre-column rows; see its `PROVENANCE.json`). Its source commits are not ancestors of `main`: the branch was split into reconstructed pull requests, so `provenance/replicate-campaign` is what holds them. |
 
 ## Scoring vintage
 

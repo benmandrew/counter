@@ -109,6 +109,11 @@ def main() -> int:
     sample_writer = csv.DictWriter(samples, fieldnames=SAMPLE_FIELDS,
                                    extrasaction="ignore")
     sample_writer.writeheader()
+    # Flushed before the first run rather than after it. These runs are tens of
+    # minutes each, and an empty runs.csv for the first half hour reads as a
+    # harness that failed to start.
+    runs.flush()
+    samples.flush()
 
     # Tiers alternate inside a repeat rather than running one tier to
     # completion. A machine that drifts -- another job starting, a thermal

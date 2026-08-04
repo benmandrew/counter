@@ -96,6 +96,13 @@ void test_every_submitted_task_runs() {
     }
 }
 
+void test_dispatch_window_is_twice_the_pool() {
+    expect(dispatch_window() >= 1,
+           "the dispatch window should always admit at least one task");
+    expect(dispatch_window() == global_thread_pool().size() * 2,
+           "the dispatch window should be twice the pool's worker count");
+}
+
 }  // namespace
 
 void run_thread_pool_tests() {
@@ -106,4 +113,5 @@ void run_thread_pool_tests() {
         test_pool_defaults_to_the_hardware_concurrency();
     }
     test_every_submitted_task_runs();
+    test_dispatch_window_is_twice_the_pool();
 }

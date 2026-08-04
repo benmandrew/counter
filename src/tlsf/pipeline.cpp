@@ -22,6 +22,7 @@
 #include "runner/black.hpp"
 #include "runner/spot.hpp"
 #include "serialisation.hpp"
+#include "thread_pool.hpp"
 #include "tlsf/filter.hpp"
 #include "tlsf/fitness.hpp"
 #include "tlsf/mucs.hpp"
@@ -172,9 +173,7 @@ bool is_realizable(const Specification& spec) {
 // interval.
 std::vector<FilterFunctionT<Specification>> build_per_gen_filters(
     const Specification& spec, const Config& cfg) {
-    // Matches score_population's dispatch width, the other per-generation stage
-    // that fans candidates out over the shared pool.
-    const std::size_t max_in_flight = cfg.parallel > 0 ? cfg.parallel * 4 : 1;
+    const std::size_t max_in_flight = dispatch_window();
     std::vector<FilterFunctionT<Specification>> filters;
     FilterFunctionT<Specification> dedup = tlsf_make_dedup_filter();
     dedup.set_interval(cfg.dedup_filter_interval);

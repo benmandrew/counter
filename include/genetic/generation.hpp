@@ -160,8 +160,7 @@ struct ScoreOutcome {
 /// be systematic (a missing or broken external tool) rather than specific to
 /// one formula, and the run aborts instead of evolving noise.
 ///
-/// @param cfg               Algorithm configuration (parallel thread count,
-///                          max_scoring_failure_rate)
+/// @param cfg               Algorithm configuration (max_scoring_failure_rate)
 /// @param population        The population to score
 /// @param fitness_function  Non-empty set of weighted fitness functions
 /// @param on_progress       Optional callback invoked after each individual is
@@ -178,7 +177,7 @@ std::vector<Scored<Spec>> score_population(
     const Fitness& fitness_function,
     const GenerationProgressCallback& on_progress = nullptr) {
     assert(!fitness_function.empty());
-    const std::size_t max_in_flight = cfg.parallel > 0 ? cfg.parallel * 4 : 1;
+    const std::size_t max_in_flight = dispatch_window();
     std::vector<Scored<Spec>> scored(population.size());
     std::vector<bool> succeeded(population.size(), false);
     std::vector<std::string> errors;

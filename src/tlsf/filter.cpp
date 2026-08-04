@@ -169,8 +169,7 @@ std::vector<uint8_t> compute_subsumed(
     for (auto& flag : subsumed) {
         flag.store(0, std::memory_order_relaxed);
     }
-    const std::size_t n_hw = global_thread_pool().size();
-    const std::size_t max_in_flight = n_hw > 0 ? n_hw * 2 : 1;
+    const std::size_t max_in_flight = dispatch_window();
     std::size_t completed = 0;
     run_bounded_async(
         pairs.size(), max_in_flight,
@@ -339,8 +338,7 @@ FilterFunctionT<tlsf::Specification> tlsf_make_weakening_filter(
                 for (auto& flag : keep) {
                     flag.store(0, std::memory_order_relaxed);
                 }
-                const std::size_t n_hw = global_thread_pool().size();
-                const std::size_t max_in_flight = n_hw > 0 ? n_hw * 2 : 1;
+                const std::size_t max_in_flight = dispatch_window();
                 run_bounded_async(
                     pop_size, max_in_flight,
                     [&checker, &pop, &original, &keep](std::size_t idx) {

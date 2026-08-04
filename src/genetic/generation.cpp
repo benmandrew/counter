@@ -10,6 +10,7 @@
 #include "filter/vacuity.hpp"
 #include "filter/well_separation.hpp"
 #include "runner/spot.hpp"
+#include "thread_pool.hpp"
 
 FilterFunction make_predicate_filter(
     std::string name, std::function<bool(const Specification&)> predicate,
@@ -105,9 +106,7 @@ std::vector<ScoredSpecification> evolve_generation(
 
 std::vector<FilterFunction> get_filter_functions(
     const Config& cfg, Specification original, SatisfiabilityChecker& checker) {
-    // Matches score_population's dispatch width, the other per-generation stage
-    // that fans candidates out over the shared pool.
-    const std::size_t max_in_flight = cfg.parallel > 0 ? cfg.parallel * 4 : 1;
+    const std::size_t max_in_flight = dispatch_window();
     std::vector<FilterFunction> filters;
     FilterFunction dedup = make_dedup_filter();
     dedup.set_interval(cfg.dedup_filter_interval);

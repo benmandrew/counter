@@ -1,5 +1,6 @@
 #include "thread_pool.hpp"
 
+#include <algorithm>
 #include <atomic>
 #include <thread>
 #include <utility>
@@ -61,4 +62,8 @@ ThreadPool& global_thread_pool() {
         return hw_threads > 0 ? hw_threads : 1;
     }());
     return pool;
+}
+
+std::size_t dispatch_window() {
+    return std::max<std::size_t>(1, global_thread_pool().size() * 2);
 }

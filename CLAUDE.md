@@ -132,6 +132,18 @@ Binaries: `counter` (genetic repair), `realize`, `compare`, `ltl`, `mucs` — ru
 
 The same core extraction drives an alternative TLSF **repair mode**. `Config::repair_mode` (TOML `[tlsf] repair_mode = "monolithic" | "muc"`, default `monolithic`) selects between evolving the whole spec at once and the MUC-guided loop in `run_muc` (`src/tlsf/pipeline.cpp`): extract a core, evolve only that sub-spec, reintegrate the repaired core with the untouched non-core guarantees (`tlsf::reintegrate`), and repeat until the whole spec is realizable or `muc_max_iterations` trips. FRETISH ignores it. `scripts/gen_configs.py --repair both` and the `muc` profile in `run_experiments.py` cross the two modes as an experiment factor over the TLSF spec corpus.
 
+## Tool subprocesses
+
+Every pipe a runner opens must be created with `pipe2(..., O_CLOEXEC)` —
+`execute_and_capture` in `src/runner/process.cpp` and the formaliser's
+bidirectional pair in `src/runner/formaliser.cpp`. These runners are called
+from many scoring-pool threads at once, so a fork on one thread inherits the
+pipes every other in-flight call has open and holds them past its own exec.
+The reader waiting on such a call never sees end of file. `pipe2` sets the flag
+atomically; `pipe` followed by `fcntl` races a concurrent fork. The `dup2` onto
+the child's own stdin, stdout and stderr clears the flag on those copies, which
+is what lets the descriptors the child actually needs survive.
+
 ## External tools
 
 - `ltl2tgba`, `ltlsynt` — from SPOT, built from source via `cmake/spot.cmake`; located via the `SPOT_BIN_DIR` compile macro.

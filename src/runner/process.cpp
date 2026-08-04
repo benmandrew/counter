@@ -1,5 +1,6 @@
 #include "runner/process.hpp"
 
+#include <fcntl.h>
 #include <poll.h>
 #include <sys/prctl.h>
 #include <sys/resource.h>
@@ -212,7 +213,14 @@ ProcessResult execute_and_capture(const std::vector<std::string>& arguments,
     }
     argv[arguments.size()] = nullptr;
     std::array<int, 2> pipe_fds = {-1, -1};
-    [[maybe_unused]] const int pipe_result = pipe(pipe_fds.data());
+    // O_CLOEXEC, because these runners are called from many scoring-pool
+    // threads at once. Without it a fork here inherits every pipe another
+    // call has open, and holds the write end past its own exec, so that
+    // call's reader never sees end of file. pipe2 sets the flag atomically;
+    // pipe followed by fcntl would race a concurrent fork. The dup2 onto
+    // stdout and stderr below clears the flag on the copies, which is what
+    // lets the child keep those two.
+    [[maybe_unused]] const int pipe_result = pipe2(pipe_fds.data(), O_CLOEXEC);
     assert(pipe_result == 0);
     const pid_t child_pid = fork();
     if (child_pid < 0) {

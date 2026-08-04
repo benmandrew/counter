@@ -14,6 +14,7 @@
 
 #include <nlohmann/json.hpp>
 
+#include "bounded_async.hpp"
 #include "config.hpp"
 #include "dashboard.hpp"
 #include "genetic/generation.hpp"
@@ -50,17 +51,45 @@ std::optional<std::string> read_file(const std::string& path) {
 std::vector<Scored<Specification>> realizable_survivors(
     const std::vector<Scored<Specification>>& population, const Config& cfg,
     const AggregateWeightedFitnessFunctionT<Specification>& fitness) {
+    // Each status check is an `ltlsynt` query and the whole final population
+    // is checked, so a serial sweep here costs a subprocess per distinct
+    // candidate. Verdicts are collected by index and the survivors compacted
+    // in population order, so the output matches a serial sweep exactly.
+    const std::size_t max_in_flight = dispatch_window();
+    std::vector<char> keep(population.size(), 0);
+    if (max_in_flight <= 1) {
+        for (std::size_t idx = 0; idx < population.size(); ++idx) {
+            keep[idx] =
+                tlsf_status(population[idx].specification, cfg) == 1.0 ? 1 : 0;
+        }
+    } else {
+        run_bounded_async(
+            population.size(), max_in_flight,
+            [&population, &cfg](std::size_t idx) {
+                return [&spec = population[idx].specification, &cfg] {
+                    return tlsf_status(spec, cfg) == 1.0;
+                };
+            },
+            [&keep](std::size_t idx, bool realizable) {
+                keep[idx] = realizable ? 1 : 0;
+            });
+    }
     std::vector<Scored<Specification>> survivors;
-    for (const Scored<Specification>& scored : population) {
-        if (tlsf_status(scored.specification, cfg) != 1.0) {
+    for (std::size_t idx = 0; idx < population.size(); ++idx) {
+        if (keep[idx] == 0) {
             continue;
         }
+        const Scored<Specification>& scored = population[idx];
         const bool seen =
             std::any_of(survivors.begin(), survivors.end(),
                         [&scored](const Scored<Specification>& kept) {
                             return kept.specification == scored.specification;
                         });
         if (!seen) {
+            // Serial on purpose: the final generation scored these same specs,
+            // so the fitness cache is warm and each rescore is a cache hit;
+            // fanning it out would nest solver dispatch inside solver dispatch
+            // for nothing.
             auto [objectives, scalar] =
                 fitness.objectives_and_fitness(scored.specification);
             Scored<Specification> survivor;

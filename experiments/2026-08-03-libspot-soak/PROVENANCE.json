@@ -25,14 +25,32 @@
     "control": {
       "host": "avlab12 (av2)",
       "out": "~/soak-control",
-      "tiers": {"none": [0, 0]},
+      "tiers": {
+        "none": [
+          0,
+          0
+        ]
+      },
       "rows": 810,
       "note": "No timeouts at all, so both in-process calls run inline on the calling thread. This is the reference every digest is compared against."
     },
     "deadline": {
       "host": "av3",
       "out": "~/soak-deadline",
-      "tiers": {"tight": [5, 5], "mid": [100, 50], "loose": [60000, 60000]},
+      "tiers": {
+        "tight": [
+          5,
+          5
+        ],
+        "mid": [
+          100,
+          50
+        ],
+        "loose": [
+          60000,
+          60000
+        ]
+      },
       "rows": 1846,
       "note": "Cycles the three tiers per round, as (ltl2tgba_timeout_ms, simplify_timeout_ms). loose is the correctness arm and must equal control; tight is the resource probe."
     }
@@ -48,7 +66,7 @@
   },
   "caveats": [
     "The resource sampler polled once a second, not four times a second. The 0.25 s interval (ab2fe16, 'fix(scripts): sample the soak four times a second') was committed but never reached the hosts: both worktrees stayed at 81a46a9, and their soak.py hashes to f5a725f5, the 1.0 s revision. Rows are still written every 5 s either way, so the series cadence is unaffected -- but every peak_rss_kb is a lower bound taken from second-resolution polling, and most so on the short runs, whose median wall time is about 7 seconds. The bound understates every arm, so the comparison between tiers holds; the absolute peaks do not.",
-    "The two lift mismatches were unresolved when this directory was written. The soak's design is why: it advances the seed every round, so no configuration was ever run twice on one host and there is no within-arm control to separate 'the in-process path answers differently' from 'this example does not reproduce against itself on a loaded 32-core box'. scripts/reproduce_run.py was written to close exactly this and its output lands in repro-lift-20260819/ (av2) and repro-lift-20260824/ (av3). Read those before drawing a conclusion from the two MISMATCH lines in the analysis.",
+    "The two lift mismatches were unresolved when this directory was first written; the repro key now settles them. Seed 20260824 is withdrawn as evidence -- its baseline does not reproduce against itself. Seed 20260819 stands, at 1 differing digest in 5 loose repeats against a 5/5 stable baseline. Read the repro key, not the two MISMATCH lines in the analysis output, which predate it.",
     "The loose tier fired five times in 606 runs -- four simplifications and one translation each exceeded 60 seconds -- and four of the five changed the answer. The tier was chosen as 'far above the worst call measured' and is not, which is the argument against reading any large timeout as equivalent to none.",
     "A run killed at the wall cap dies on SIGKILL, so it skips the atexit profile report and writes no repairs: it has no profile JSON at all and hashes to the empty-set digest e3b0c44298fc1c14. The runs that most need the profiler are the ones without it. analyse_soak.py skips any pair where either side was capped; a digest mismatch read without that check is not a finding.",
     "av2 carried two stray strace processes at ~52% CPU each (running since ~2026-07-29, unrelated to this work) plus two btop instances, so its wall times are noisy. No cross-host wall-clock comparison here is load-bearing, and none is drawn -- the arms are compared by digest and by per-run resource figures only.",
@@ -85,5 +103,48 @@
     "repro-lift-20260819/": "reproduce_run.py output from av2: 5 repeats of lift gen40/pop1000 at seed 20260819, alternating the none and loose tiers",
     "repro-lift-20260824/": "the same on av3 at seed 20260824",
     "scripts/": "the three vendored drivers above"
+  },
+  "repro": {
+    "ran_on": "2026-08-04",
+    "why": "The soak advances the seed every round, so it never repeats a configuration on one host and cannot separate 'the in-process path answers differently' from 'this run does not reproduce against itself'. These phases repeat one configuration 5 times per tier on the host that saw the mismatch.",
+    "driver": "scripts/reproduce_run.py, blob 850d4762b37908a41a0b5e9f41f7710daf19b3a6, verified still hashing to that on both hosts after the runs",
+    "binary_commit": {
+      "sha": "81a46a9",
+      "confidence": "recorded",
+      "evidence": "counter --version in each phase's manifest.json, dirty=0; both hosts' counter-soak worktrees are checked out at this commit"
+    },
+    "verdict": "The two mismatches have different causes and only one is a finding.",
+    "phases": {
+      "repro-lift-20260819 (av2)": {
+        "runs": 10,
+        "none_tier_digests": {
+          "05edd0951191d063": 5
+        },
+        "loose_tier_digests": {
+          "b336626d2579f8cb": 1,
+          "05edd0951191d063": 4
+        },
+        "reading": "Baseline reproduces: none is 5/5 identical, 26 repairs and about 620 s every time. loose is 4/5, the one outlier being the second run executed. A genuine residual signal, but n=5, the repair count is unchanged, and the divergence is a re-ordering rather than a quality change.",
+        "status": "open"
+      },
+      "repro-lift-20260824 (av3)": {
+        "runs": 10,
+        "none_tier_digests": {
+          "2309f7c71c5d0f7a": 1,
+          "f5c85f3e79f6d125": 1,
+          "40efaa3994341632": 1,
+          "3c90b29c1fb7f092": 1,
+          "7a0d77a79b7647d0": 1
+        },
+        "loose_tier_digests": {
+          "a0ddf0b7ac475d66": 1,
+          "2cfa904075d51841": 2,
+          "5d15af22e3026375": 2
+        },
+        "reading": "Not a mismatch. The none tier -- deadlines 0/0, so the mechanism under test is off -- produced 5 distinct digests in 5 repeats, with repairs 5/8/19/20/23 and wall 1056-2132 s. The configuration does not reproduce against itself, so the soak's disagreement for this seed is not evidence about deadlines or the in-process path. Most likely the solver timeouts (ltlsynt 10000 ms, black 1000 ms) making candidate drops wall-clock dependent on a long, high-variance run.",
+        "status": "resolved -- withdrawn as evidence"
+      }
+    },
+    "limit": "Neither tier is an out-of-process control: none and loose are both in-process libspot, differing only in deadline. These phases rule the DEADLINE MECHANISM in or out. They cannot separate 'in-process libspot perturbs results' from 'this run is timeout-sensitive'. A subprocess-engine arm is what would close that."
   }
 }

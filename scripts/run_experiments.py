@@ -814,6 +814,13 @@ PROFILES: dict[str, dict] = {
     #   python scripts/gen_configs.py --schemes nsga2 nsga2-replicate \
     #       --sweeps R --weakening off --generations 40 --population-size 1000 \
     #       --out-dir experiments/configs-replicate
+    #
+    # The caps are 3600 s, not the wkon arm's 900/1500. Sweep R's partial results
+    # showed the tighter caps censoring only the replicate arm -- 250 of 352
+    # fsm-timing pairs, 56 of 358 fsm-combined -- because they were sized off
+    # nsga2's costs and replicate runs several times longer. A cap that fires on
+    # one arm and never on the other is a one-sided filter on the response under
+    # test, so this arm gets a cap loose enough to bind on neither.
     "replicate-wkoff": {
         "schemes": ["nsga2", "nsga2-replicate"],
         "weakenings": ["wkoff"],
@@ -823,7 +830,45 @@ PROFILES: dict[str, dict] = {
         "levels": {},
         "specs": ["fsm", "fsm-combined"],
         "seeds": list(range(200)),
-        "timeout_caps": {"fsm": 900, "fsm-combined": 1500},
+        "timeout_caps": {"fsm": 3600, "fsm-combined": 3600},
+        "compare_timeout": 1800,
+        "baseline_aliases": {},
+        "configs_dir": EXPERIMENTS_DIR / "configs-replicate",
+        "results_dir": EXPERIMENTS_DIR / "results-replicate",
+        "results_csv": EXPERIMENTS_DIR / "results-replicate.csv",
+        "default_jobs": 4,
+    },
+    # Sweep R again at a cap that binds on neither arm, to replace the rows the
+    # original caps censored. Sweep R sized its timeouts off nsga2's costs, and
+    # replicate runs several times longer, so the cap fired on the treatment arm
+    # alone -- 250 of 352 fsm-timing pairs, 56 of 358 fsm-combined, 34 of 354
+    # takeoff, against zero for nsga2 in every cell. A one-sided cap on the
+    # response under test is a bias, not a budget. fsm is absent because nothing
+    # censored there.
+    #
+    # It shares `replicate`'s CSV and results dir so resume does the selection:
+    # delete the censored rows (and their run directories), point this profile at
+    # the same cells, and only the deleted ones execute. Recap rows are therefore
+    # indistinguishable from originals by key -- deliberately, since the analysis
+    # wants one row per cell -- but recoverable from the data, as any surviving
+    # row censored at the old cap still reads timed_out=1 at wall_time_s == 900
+    # or 1500.
+    #
+    # fsm-timing is expected to be run on a seed subsample via --seeds: it scores
+    # implies_ideal 1.000 in both arms on every pair that completed, so its
+    # re-run buys an honest wall-time ratio rather than a quality contrast, and
+    # the full 250 costs about 31 h per machine against roughly 6 h for 50 seeds.
+    "replicate-recap": {
+        "schemes": ["nsga2", "nsga2-replicate"],
+        "weakenings": None,
+        "metrics": None,
+        "repair_modes": None,
+        "sweeps": ["R"],
+        "levels": {},
+        "specs": ["takeoff", "fsm-timing", "fsm-combined"],
+        "seeds": list(range(200)),
+        "timeout_caps": {
+            "takeoff": 3600, "fsm-timing": 3600, "fsm-combined": 3600},
         "compare_timeout": 1800,
         "baseline_aliases": {},
         "configs_dir": EXPERIMENTS_DIR / "configs-replicate",

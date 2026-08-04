@@ -92,6 +92,25 @@ Every header file in `include/` must have a corresponding `.rst` page under `doc
 6. Apply final filters: dedup, then optional implication filter to keep only maximal specs.
 7. Score, sort, and write each maximal spec to `<output-dir>/repair_N.json`.
 
+## Profiling
+
+`COUNTER_PROFILE=<path>` turns on the *scope profiler* (`include/profile.hpp`),
+which writes a table to stderr and JSON to that path; `COUNTER_PROFILE=1` gives
+the table alone. Every binary reports. The report registers with `atexit` on the
+first scope opened, so `realize`, `mucs` and `compare` need no wiring of their
+own — and a binary that opens no scope prints nothing at all.
+
+Read wall time against per-thread CPU time. A site with large wall and near-zero
+CPU is blocked on a child process, not computing: `proc/read` sits at a cpu/wall
+ratio of about 0.01 on a real run. That ratio is the diagnostic.
+
+It is in-process instrumentation rather than `perf` or `gdb` because neither is
+available on the dev box — `kernel.perf_event_paranoid=4` and yama
+`ptrace_scope` rule out both. `strace` works only by launching the process,
+never by attaching. The counter registry is deliberately leaked so that it
+outlives the `atexit` report; destroying it first would free the names the
+report is about to print.
+
 ## Live dashboard
 
 Opt-in, via `counter --dashboard` or `[runtime] dashboard = true` (the flag can

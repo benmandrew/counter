@@ -6,9 +6,15 @@
 PROJECT_NAME    = "@PROJECT_NAME@ internals"
 PROJECT_NUMBER  = "@PROJECT_VERSION@"
 
-INPUT           = @CMAKE_SOURCE_DIR@/include @CMAKE_SOURCE_DIR@/src
+# internal.md is listed explicitly (not via the docs/ directory, which holds the
+# Sphinx sources for the public site). Without it Doxygen has no main page, and
+# index.html -- the page docs/index.rst links to -- renders as a bare heading
+# over an empty content pane.
+INPUT           = @CMAKE_SOURCE_DIR@/include @CMAKE_SOURCE_DIR@/src \
+                  @CMAKE_SOURCE_DIR@/docs/internal.md
 RECURSIVE       = YES
-FILE_PATTERNS   = *.hpp *.h *.cpp
+FILE_PATTERNS   = *.hpp *.h *.cpp *.md
+USE_MDFILE_AS_MAINPAGE = @CMAKE_SOURCE_DIR@/docs/internal.md
 
 OUTPUT_DIRECTORY = @DOXYGEN_INTERNAL_OUTPUT_DIR@
 GENERATE_HTML   = YES

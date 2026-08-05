@@ -69,7 +69,7 @@
       "type": "object",
       "additionalProperties": false,
       "properties": {
-        "run_weakening":   { "type": "boolean", "description": "Enable per-generation weakening filter." },
+        "run_weakening":   { "type": "boolean", "default": true, "description": "Keep only repairs the original logically implies -- genuine weakenings. A final screen over the realizable survivors, not a per-generation filter: pruning non-weakenings mid-search costs repair quality and never gains it, while screening the output leaves the search untouched. With it off a written repair may forbid behaviour the original allowed." },
         "run_implication": { "type": "boolean", "description": "Enable final implication maximality filter." },
         "run_vacuity":     { "type": "boolean", "description": "Drop candidates whose assumptions are jointly unsatisfiable, which are realizable for free." },
         "run_well_separation": { "type": "boolean", "description": "Drop candidates that are not well-separated: ones the system can satisfy vacuously by forcing its own assumptions to fail. Strictly stronger than run_vacuity, but each test is a full ltlsynt query, so it is off by default." }

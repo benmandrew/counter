@@ -95,7 +95,13 @@ metric        = "logarithmic" # default; "logarithmic" (growth-rate ratio; stays
                               # ratio)
 
 [filters]
-run_weakening   = true  # enable per-generation weakening filter
+# Keep only repairs the original logically implies -- genuine weakenings. This
+# is a final screen over the realizable survivors, not a per-generation filter:
+# pruning non-weakenings mid-search measurably costs repair quality and never
+# gains it, while screening the output leaves the search untouched. With it off
+# a written repair may forbid behaviour the original allowed. FRETISH-only: on
+# the TLSF path the screen drops every repair MUC mode produces (issue #71).
+run_weakening   = true
 run_implication = true  # enable final implication maximality filter
 # Drop candidates whose assumptions are jointly unsatisfiable. Those are
 # realizable for free, since a false antecedent makes the assume-guarantee

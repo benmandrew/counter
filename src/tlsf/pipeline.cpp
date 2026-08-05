@@ -233,11 +233,6 @@ std::vector<FilterFunctionT<Specification>> build_per_gen_filters(
             tlsf_make_vacuity_filter(max_in_flight);
         filters.push_back(std::move(vacuity));
     }
-    if (cfg.run_weakening_filter) {
-        FilterFunctionT<Specification> weakening =
-            tlsf_make_weakening_filter(spec, global_sat_checker());
-        filters.push_back(std::move(weakening));
-    }
     if (cfg.run_well_separation_filter) {
         FilterFunctionT<Specification> well_separation =
             tlsf_make_well_separation_filter(global_real_checker(),
@@ -497,6 +492,12 @@ int run_repair(const std::string& input_path, const std::string& output_dir,
             ? run_muc(original, cfg, random_source, fitness, progress)
             : run_monolithic(original, cfg, random_source, fitness, progress);
     const std::size_t n_realizable = survivors.size();
+    // No weakening screen here: run_weakening_filter is FRETISH-only. A MUC
+    // repair evolves a minimal core and reintegrates it, and the recombined
+    // spec does not satisfy `original implies candidate` under the filter's
+    // decomposition, so screening the output drops every repair the mode
+    // produces. Tracked as issue #71; until that is settled the TLSF path
+    // keeps the maximality screen alone.
     // Final maximality pass: keep only realizable repairs not strictly implied
     // by another, mirroring the FRETISH final implication filter.
     if (cfg.run_implication_filter && survivors.size() > 1) {

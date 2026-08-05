@@ -146,8 +146,19 @@ Filters
 -------
 
 ``[filters]`` toggles the per-generation and final filters; each runs every
-generation when enabled. ``run_weakening`` gates the costliest of them, so
-turning it off is the usual first move when a run is too slow.
+generation when enabled.
+
+``run_weakening`` keeps only repairs the original logically implies — the
+genuine weakenings. It is a **final screen** over the realizable survivors
+rather than a per-generation filter, and is on by default.
+
+It was moved out of the per-generation set on measurement. The ``cj-large``
+campaign is the only one to cross the factor, over 9,796 paired runs: filtering
+each generation lost 1,005 of them and won 410, never helped on any of the four
+specs, and cost 20 points of implies-ideal on ``fsm`` (0.563 → 0.360) — buying
+a 26% wall-time saving with repair quality. Screening only the final population
+leaves the search bit-identical while still guaranteeing that a written repair
+does not forbid behaviour the original allowed.
 
 The per-filter run intervals that once throttled these were removed: across
 every archived campaign not one config had ever set them.

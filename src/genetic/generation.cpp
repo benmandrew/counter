@@ -105,7 +105,8 @@ std::vector<ScoredSpecification> evolve_generation(
 }
 
 std::vector<FilterFunction> get_filter_functions(
-    const Config& cfg, Specification original, SatisfiabilityChecker& checker) {
+    const Config& cfg, const Specification& original,
+    SatisfiabilityChecker& checker) {
     const std::size_t max_in_flight = dispatch_window();
     std::vector<FilterFunction> filters;
     FilterFunction dedup = make_dedup_filter();
@@ -138,20 +139,18 @@ std::vector<FilterFunction> get_filter_functions(
             make_well_separation_filter(global_real_checker(), max_in_flight);
         filters.push_back(std::move(well_separation));
     }
-    if (cfg.run_weakening_filter) {
-        // NOLINTNEXTLINE(clang-analyzer-cplusplus.NewDeleteLeaks)
-        FilterFunction weakening =
-            make_weakening_filter(std::move(original), checker);
-        filters.push_back(std::move(weakening));
-    }
     return filters;
 }
 
 std::vector<FilterFunction> get_final_filter_functions(
-    const Config& cfg, SatisfiabilityChecker& checker,
+    const Config& cfg, Specification original, SatisfiabilityChecker& checker,
     const GenerationProgressCallback& on_impl_progress) {
     std::vector<FilterFunction> filters;
     filters.push_back(make_dedup_filter());
+    if (cfg.run_weakening_filter) {
+        // NOLINTNEXTLINE(clang-analyzer-cplusplus.NewDeleteLeaks)
+        filters.push_back(make_weakening_filter(std::move(original), checker));
+    }
     if (cfg.run_implication_filter) {
         filters.push_back(make_implication_filter(checker, on_impl_progress));
     }

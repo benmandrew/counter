@@ -282,19 +282,31 @@ std::vector<Spec> filter_population(
 /// @param checker   Satisfiability checker; captured by reference, must
 ///                  outlive the returned filters
 std::vector<FilterFunction> get_filter_functions(
-    const Config& cfg, Specification original, SatisfiabilityChecker& checker);
+    const Config& cfg, const Specification& original,
+    SatisfiabilityChecker& checker);
 
 /// Returns the set of filter functions applied to the final realizable
-/// population after evolution: deduplication, and (if
-/// run_implication_filter) the implication filter.
+/// population after evolution: deduplication, then (if run_weakening_filter)
+/// the weakening filter, then (if run_implication_filter) the implication
+/// filter.
 ///
-/// @param cfg              Algorithm configuration (run_implication_filter)
-/// @param checker          Satisfiability checker for the implication filter;
-///                         captured by reference, must outlive the filters
+/// The weakening filter screens the output here rather than pruning each
+/// generation. Running it per generation measurably costs repair quality and
+/// never gains it -- over the 9,796 paired runs of the cj-large campaign it
+/// lost 1,005 and won 410, and cost 20 points of implies-ideal on fsm -- while
+/// screening the final population leaves the search untouched.
+///
+/// @param cfg              Algorithm configuration (run_weakening_filter,
+///                         run_implication_filter)
+/// @param original         The reference specification repairs must weaken;
+///                         copied into the weakening filter
+/// @param checker          Satisfiability checker for the weakening and
+///                         implication filters; captured by reference, must
+///                         outlive the filters
 /// @param on_impl_progress Optional progress callback forwarded to the
 ///                         implication filter
 std::vector<FilterFunction> get_final_filter_functions(
-    const Config& cfg, SatisfiabilityChecker& checker,
+    const Config& cfg, Specification original, SatisfiabilityChecker& checker,
     const GenerationProgressCallback& on_impl_progress = nullptr);
 
 /// Scores each specification in @p specs and returns them ordered best-first

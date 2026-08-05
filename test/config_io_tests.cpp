@@ -56,7 +56,7 @@ p_timing   = 0.1
 default_bound = 10
 
 [filters]
-run_weakening       = false
+run_weakening       = true
 run_implication     = false
 run_well_separation = true
 
@@ -90,8 +90,8 @@ dashboard        = true
            "config_io: mutation p_timing should be parsed from TOML");
     expect(cfg.default_model_counting_bound == 10,
            "config_io: model_counting.default_bound should be parsed");
-    expect(!cfg.run_weakening_filter,
-           "config_io: filters run_weakening should be false");
+    expect(cfg.run_weakening_filter,
+           "config_io: filters run_weakening should be true");
     expect(!cfg.run_implication_filter,
            "config_io: filters run_implication should be false");
     expect(cfg.run_well_separation_filter,

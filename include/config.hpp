@@ -51,6 +51,15 @@ struct Config {
     double fitness_weight_status = 0.5;
     std::size_t default_model_counting_bound = 20;
     SimilarityMetric similarity_metric = SimilarityMetric::Logarithmic;
+    // Keep only repairs the original logically implies -- genuine weakenings.
+    // A *final* screen, not a per-generation filter: pruning non-weakenings
+    // mid-search measurably costs repair quality and never gains it (over the
+    // 9,796 paired runs of the cj-large campaign it lost 1,005 and won 410,
+    // costing 20 points of implies-ideal on fsm), whereas screening the final
+    // population leaves the search bit-identical. On by default, since it is
+    // the only check that a written repair does not forbid behaviour the
+    // original allowed. FRETISH-only: on the TLSF path the screen drops every
+    // repair MUC mode produces, so it is not applied there (issue #71).
     bool run_weakening_filter = true;
     bool run_implication_filter = true;
     // Drop candidates whose assumptions are jointly unsatisfiable: they are

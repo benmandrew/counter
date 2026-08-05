@@ -474,10 +474,13 @@ std::vector<Specification> collect_realizable_specifications(
     return realizable_vec;
 }
 
-// Reduces realizable specifications to those maximal under implication, when
-// run_implication_filter is enabled; otherwise deduplicates only.
-std::vector<Specification> filter_maximal_specifications(
-    const Config& cfg, const std::vector<Specification>& realizable_vec) {
+// Applies the final screens to the realizable specifications: deduplication,
+// then the weakening filter against @p original when run_weakening_filter is
+// set, then the implication (maximality) filter when run_implication_filter is.
+std::pair<std::vector<Specification>, std::vector<FilterRunStats>>
+filter_maximal_specifications(
+    const Config& cfg, const Specification& original,
+    const std::vector<Specification>& realizable_vec) {
     const auto impl_start = std::chrono::steady_clock::now();
     auto on_impl_progress = [&impl_start](std::size_t done, std::size_t total) {
         const double elapsed =
@@ -493,10 +496,18 @@ std::vector<Specification> filter_maximal_specifications(
                   << ImplicationFilterStats::n_timeouts << " timeout)"
                   << std::flush;
     };
-    const std::vector<FilterFunction> filters =
-        get_final_filter_functions(cfg, global_sat_checker(), on_impl_progress);
+    const std::vector<FilterFunction> filters = get_final_filter_functions(
+        cfg, original, global_sat_checker(), on_impl_progress);
     const std::vector<Specification> result =
         filter_population(realizable_vec, filters);
+    // A final filter drops repairs from the output, so it owes the same
+    // accounting as a per-generation one; the report is built from the
+    // per-generation list alone and would otherwise not mention these.
+    std::vector<FilterRunStats> stats;
+    stats.reserve(filters.size());
+    for (const FilterFunction& flt : filters) {
+        stats.push_back({"final/" + flt.name(), flt.n_in(), flt.n_out()});
+    }
     if (cfg.run_implication_filter) {
         const double impl_elapsed =
             std::chrono::duration<double>(std::chrono::steady_clock::now() -
@@ -509,7 +520,7 @@ std::vector<Specification> filter_maximal_specifications(
                   << ImplicationFilterStats::n_duplicates << " dup, "
                   << ImplicationFilterStats::n_timeouts << " timeout)\n";
     }
-    return result;
+    return {result, std::move(stats)};
 }
 
 bool has_flag(int argc, const char* const* argv, const char* flag) {
@@ -720,8 +731,8 @@ int main(int argc, const char* const argv[]) {
         population = std::move(population_result);
         const std::vector<Specification> realizable_vec =
             collect_realizable_specifications(population);
-        const std::vector<Specification> maximal =
-            filter_maximal_specifications(cfg, realizable_vec);
+        auto [maximal, final_filter_stats] =
+            filter_maximal_specifications(cfg, original_spec, realizable_vec);
         const std::vector<ScoredSpecification> scored_maximal =
             score_and_sort_specifications(cfg, maximal, fitness_function);
         write_specifications(scored_maximal, fitness_function, *output_dir);
@@ -735,6 +746,8 @@ int main(int argc, const char* const argv[]) {
                           std::chrono::duration<double>(
                               std::chrono::steady_clock::now() - wall_start)
                               .count());
+        filter_stats.insert(filter_stats.end(), final_filter_stats.begin(),
+                            final_filter_stats.end());
         print_filter_report(filter_stats);
         print_scoring_report();
         print_timing_report();

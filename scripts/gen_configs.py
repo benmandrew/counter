@@ -75,8 +75,13 @@ REPAIRS: dict[str, list[tuple[str, str]]] = {
     "both": [("mono", "monolithic"), ("muc", "muc")],
 }
 
-# Mirrors the built-in defaults from include/config.hpp, with one deliberate
-# exception. config.hpp defaults metric to "logarithmic", but
+# Mirrors the built-in defaults from include/config.hpp, with two deliberate
+# exceptions. config.hpp defaults run_weakening to false, but the experiment
+# baseline stays true: it is a crossed factor (wkon/wkoff) whose flat,
+# non-crossed configs are attributed to LEGACY_WEAKENING ("wkon") by
+# run_experiments.py, so pinning true here keeps the emitted config matching
+# that recorded CSV column and keeps past grids comparable. config.hpp also
+# defaults metric to "logarithmic", but
 # the experiment baseline stays "direct": a flat (non-crossed) config carries no
 # metric directory, so run_experiments.py's metric_of() attributes it to
 # LEGACY_METRIC ("direct") — pinning "direct" here keeps the emitted config's

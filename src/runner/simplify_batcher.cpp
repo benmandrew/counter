@@ -100,7 +100,7 @@ bool run_ltlfilt_batch(const std::string& binary,
     // adding to it from this thread under any other lock is a data race on the
     // same variable. The leader books the whole batch's child CPU against its
     // own call.
-    child_cpu_s = reap_with_grace(child.m_pid, k_reap_grace);
+    child_cpu_s = reap_with_grace(child.m_pid, k_reap_grace, binary);
     if (!wrote || timed_out) {
         return false;
     }

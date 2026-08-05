@@ -4,7 +4,6 @@ add_executable(counter_tests
     runner/ganak_tests.cpp
     runner/ltlfilt_tests.cpp
     runner/process_tests.cpp
-    runner/simplify_batcher_tests.cpp
     runner/spot_tests.cpp
     filter/implication_tests.cpp
     filter/vacuity_tests.cpp
@@ -74,15 +73,6 @@ add_test(NAME counter_tests.formaliser_runner COMMAND counter_tests formaliser_r
 add_test(NAME counter_tests.ganak_runner COMMAND counter_tests ganak_runner)
 add_test(NAME counter_tests.ltlfilt_runner COMMAND counter_tests ltlfilt_runner)
 add_test(NAME counter_tests.process_runner COMMAND counter_tests process_runner)
-add_test(NAME counter_tests.simplify_batcher COMMAND counter_tests simplify_batcher)
-# And again with batching switched off. The batcher pool is built on the first
-# request and never resized, so a batching and a non-batching setting cannot
-# both be observed in one process -- each needs its own, which is what the
-# second registration buys. For the same reason the suite is not in the
-# no-argument run-everything path in main.cpp.
-add_test(NAME counter_tests.simplify_batcher_disabled COMMAND counter_tests simplify_batcher)
-set_tests_properties(counter_tests.simplify_batcher_disabled PROPERTIES
-    ENVIRONMENT "COUNTER_TEST_LTLFILT_BATCHERS=0")
 add_test(NAME counter_tests.spot_runner COMMAND counter_tests spot_runner)
 add_test(NAME counter_tests.crossover COMMAND counter_tests crossover)
 add_test(NAME counter_tests.generation COMMAND counter_tests generation)

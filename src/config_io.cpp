@@ -97,12 +97,12 @@ const KeySpec& config_key_spec() {
                   {{"intervals",
                     section({"dedup", "false_condition", "weakening", "bloat",
                              "vacuity", "well_separation"})}})},
-         {"runtime", section({"black_timeout_ms", "ltlsynt_timeout_ms",
-                              "ltl2tgba_timeout_ms", "ltlfilt_timeout_ms",
-                              "ganak_timeout_ms", "parallel",
-                              "max_concurrent_realizability",
-                              "ltlfilt_batchers", "report_cpu_timing",
-                              "max_scoring_failure_rate", "dashboard"})}});
+         {"runtime",
+          section({"black_timeout_ms", "ltlsynt_timeout_ms",
+                   "ltl2tgba_timeout_ms", "ltlfilt_timeout_ms",
+                   "ganak_timeout_ms", "parallel",
+                   "max_concurrent_realizability", "report_cpu_timing",
+                   "max_scoring_failure_rate", "dashboard"})}});
     return spec;
 }
 
@@ -364,7 +364,6 @@ void apply_runtime(const toml::table& tbl, Config& cfg) {
     }
     read_runtime_count(tbl, "max_concurrent_realizability",
                        cfg.max_concurrent_realizability);
-    read_runtime_count(tbl, "ltlfilt_batchers", cfg.ltlfilt_batchers);
     if (auto val = tbl["dashboard"].value<bool>()) {
         cfg.dashboard = *val;
     }

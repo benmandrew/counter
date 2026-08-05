@@ -12,7 +12,6 @@
 
 #include "profile.hpp"
 #include "runner/process.hpp"
-#include "runner/simplify_batcher.hpp"
 #include "runner/spot.hpp"
 
 namespace {
@@ -39,10 +38,9 @@ struct OneShotSimplify {
     bool m_timed_out = false;
 };
 
-// The formula-at-a-time exec, unchanged from before batching existed: what
-// simplify_ltl falls back to whenever the batcher declines a formula. A killed
-// child exits non-zero, so a timeout lands on the same branch as any other
-// ltlfilt failure and leaves the formula unsimplified.
+// The formula-at-a-time exec behind every simplification. A killed child exits
+// non-zero, so a timeout lands on the same branch as any other ltlfilt failure
+// and leaves the formula unsimplified.
 OneShotSimplify one_shot_simplify(const std::string& binary,
                                   const std::string& formula) {
     COUNTER_PROFILE_SCOPE("ltlfilt/one-shot-exec");
@@ -87,26 +85,10 @@ std::string simplify_ltl(const std::string& formula) {
         return formula;
     }
     const auto start = std::chrono::steady_clock::now();
-    std::string simplified;
-    double child_cpu_s = 0.0;
-    bool timed_out = false;
-    // Nothing back means "run it yourself" -- batching off, a formula that
-    // cannot be batched, or a batch that failed its line-count check. All three
-    // fall through to the one-shot exec.
-    const std::optional<std::string> batched =
-        batched_simplify(binary, formula, child_cpu_s, ltlfilt_timeout());
-    if (batched.has_value()) {
-        simplified = *batched;
-    } else {
-        const OneShotSimplify one_shot = one_shot_simplify(binary, formula);
-        simplified = one_shot.m_formula;
-        // Added, not assigned. Reaching here after leading a batch means the
-        // batch ran and then failed its line-count check, and its child CPU is
-        // already in child_cpu_s; overwriting it would drop a whole exec from
-        // the total.
-        child_cpu_s += one_shot.m_cpu_s;
-        timed_out = one_shot.m_timed_out;
-    }
+    const OneShotSimplify one_shot = one_shot_simplify(binary, formula);
+    const std::string simplified = one_shot.m_formula;
+    const double child_cpu_s = one_shot.m_cpu_s;
+    const bool timed_out = one_shot.m_timed_out;
     const double elapsed =
         std::chrono::duration<double>(std::chrono::steady_clock::now() - start)
             .count();

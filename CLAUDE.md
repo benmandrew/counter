@@ -170,24 +170,19 @@ atomically; `pipe` followed by `fcntl` races a concurrent fork. The `dup2` onto
 the child's own stdin, stdout and stderr clears the flag on those copies, which
 is what lets the descriptors the child actually needs survive.
 
-`spawn_piped_child` in `process.hpp` is the one fork behind both bidirectional
-users — the formaliser and the simplify batcher — so `ParentDeathPolicy` and
-`ExecutableLookup` stay the only two things that differ between them. Nothing
-may fork outside `process.cpp`: `posix_spawn` in particular has no attribute
-for `PR_SET_PDEATHSIG`, which is the whole reason these run on `fork` at all.
+`spawn_piped_child` in `process.hpp` is the one fork behind any bidirectional
+child — currently the formaliser alone — so `ParentDeathPolicy` and
+`ExecutableLookup` stay the only two things a second user would differ in.
+Nothing may fork outside `process.cpp`: `posix_spawn` in particular has no
+attribute for `PR_SET_PDEATHSIG`, which is the whole reason these run on `fork`
+at all.
 
-`simplify_ltl` coalesces concurrent cache misses into one `ltlfilt` exec
-(`src/runner/simplify_batcher.cpp`), sized by `[runtime] ltlfilt_batchers`
-(0 disables it). An exec costs ~8ms of startup against ~0.02ms of
-simplification, so the batch is the saving. Never make it a streaming
-request/response protocol: SPOT tools flush in irregular lumps and hold the
-rest until stdin reaches end of file, and `stdbuf` cannot reach them — the
-batch is written whole, stdin closed, and answers read to end of file. A batch
-whose reply count does not match its request count is rejected outright and
-every formula retried alone, because a misattributed simplification would
-corrupt the search rather than slow it down. The pool is built on first use and
-never resized, so `set_ltlfilt_batchers` must run before any scoring thread
-does; that is also why its test suite needs a process per setting.
+`simplify_ltl` runs one `ltlfilt` exec per cache miss. Coalescing concurrent
+misses into one exec was tried and removed: measured over the corpus at
+`parallel = 8`, the misses do not coincide, so the mean batch size was 1.012,
+exec count fell 1.9%, and wall time rose 37% on 46 of 46 paired examples. Any
+second attempt has to show a batch size above 1 before anything else about it
+matters.
 
 ## External tools
 

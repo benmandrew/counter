@@ -132,4 +132,11 @@ void kill_process_tree(pid_t pid);
 /// Reaps `pid`, giving it `grace` to exit on its own before killing its process
 /// group. Returns the child's user+sys CPU seconds. For a child that is asked
 /// to shut down cleanly first, such as the formaliser on stdin EOF.
-double reap_with_grace(pid_t pid, std::chrono::milliseconds grace);
+///
+/// `executable` names the binary for the peak-resident-set counters, which this
+/// records itself exactly as execute_and_capture does. It is a parameter rather
+/// than a default because a spawn path that reports no memory is invisible
+/// rather than merely incomplete: the counters would simply be missing, and a
+/// tool spawned this way would look like a tool that never allocates.
+double reap_with_grace(pid_t pid, std::chrono::milliseconds grace,
+                       const std::string& executable);

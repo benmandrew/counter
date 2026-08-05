@@ -312,15 +312,15 @@ void kill_process_tree(pid_t pid) {
     kill(pid, SIGKILL);
 }
 
-double reap_with_grace(pid_t pid, std::chrono::milliseconds grace) {
+double reap_with_grace(pid_t pid, std::chrono::milliseconds grace,
+                       const std::string& executable) {
     double cpu_s = 0.0;
-    // Collected and dropped: this reaps a persistent child at teardown, where
-    // the caller holds the executable name and this function does not, so
-    // there is nothing to attribute a peak to. The tools whose memory this
-    // work is about all go through execute_and_capture.
     std::uint64_t peak_rss_kb = 0;
     bool timed_out = false;
     reap(pid, Clock::now() + grace, cpu_s, peak_rss_kb, timed_out);
+    // A long-lived child, so this is its whole-run peak rather than one
+    // request's — the same whole-run reading its CPU total already is.
+    record_tool_peak_rss(executable, peak_rss_kb);
     return cpu_s;
 }
 

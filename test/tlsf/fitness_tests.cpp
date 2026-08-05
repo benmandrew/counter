@@ -2,6 +2,7 @@
 #include <string>
 
 #include "config.hpp"
+#include "fitness/status.hpp"
 #include "test_suite.hpp"
 #include "test_support.hpp"
 #include "tlsf/fitness.hpp"
@@ -112,14 +113,27 @@ void test_status_realizable_is_one() {
            "status: a realizable spec scores 1.0");
 }
 
-void test_status_unsatisfiable_guarantee_is_low() {
+void test_status_individually_unsatisfiable_formula_is_zero() {
+    // One section formula that cannot hold on its own: the component tier.
+    const Config cfg;
+    const tlsf::Specification spec =
+        parse("INPUTS { r; } OUTPUTS { g; } GUARANTEE { g & !g; }");
+    expect(tlsf_status(spec, cfg) == k_status_component_unsatisfiable,
+           "status: an individually unsatisfiable section formula scores the "
+           "component tier");
+}
+
+void test_status_jointly_unsatisfiable_guarantees_are_unrealizable() {
+    // `g` and `!g` are each satisfiable alone, so no component tier fires.
+    // Their conjunction is not realizable, which the realizability query
+    // reports -- the guarantee-side satisfiability tier this used to occupy
+    // was dropped as unpopulated.
     const Config cfg;
     const tlsf::Specification spec =
         parse("INPUTS { r; } OUTPUTS { g; } GUARANTEE { g; !g; }");
-    const double status = tlsf_status(spec, cfg);
-    expect(status < 0.5,
-           "status: a spec with a contradictory guarantee conjunction scores a "
-           "low tier");
+    expect(tlsf_status(spec, cfg) == k_status_unrealizable,
+           "status: jointly contradictory guarantees score the unrealizable "
+           "tier");
 }
 
 void test_aggregate_scores_in_unit_interval() {
@@ -144,6 +158,7 @@ void run_tlsf_fitness_tests() {
     test_halstead_self_is_one_and_bounded();
     test_halstead_vocabulary_is_unioned_not_summed();
     test_status_realizable_is_one();
-    test_status_unsatisfiable_guarantee_is_low();
+    test_status_individually_unsatisfiable_formula_is_zero();
+    test_status_jointly_unsatisfiable_guarantees_are_unrealizable();
     test_aggregate_scores_in_unit_interval();
 }

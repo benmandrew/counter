@@ -251,25 +251,6 @@ bool operator==(const Specification& lhs, const Specification& rhs) {
            lhs.m_out_atoms == rhs.m_out_atoms;
 }
 
-std::string State::label() const {
-    if (m_countdown_state) {
-        return "c=" + std::to_string(m_countdown_ticks);
-    }
-    std::string rendered;
-    rendered += m_condition_holds ? "P" : "~P";
-    rendered += m_response_holds ? "Q" : "~Q";
-    return rendered;
-}
-
-std::vector<State> canonical_states() {
-    return {
-        {false, false},
-        {false, true},
-        {true, false},
-        {true, true},
-    };
-}
-
 std::string to_string(const Timing& timing) {
     return std::visit(
         [](const auto& value) -> std::string {

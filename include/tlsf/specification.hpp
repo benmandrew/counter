@@ -16,7 +16,7 @@ namespace tlsf {
 
 /// Synthesis semantics declared in a TLSF INFO block. The machine model
 /// (Mealy/Moore) and the implication mode (standard/strict) are orthogonal.
-/// Strict semantics are recorded but not yet distinguished by to_ltl(); see the
+/// to_ltl() lowers strict semantics to the weak-until form (PR #27); see the
 /// documentation on Specification::to_ltl.
 enum class Semantics : std::uint8_t {
     MealyStandard,

@@ -9,12 +9,15 @@
 /// went inside a call — a fork that copies page tables and an ltlsynt that
 /// solves a hard game both land in the same "0.013s avg". This adds the
 /// orthogonal axis: named scopes that nest, each recording wall time and the
-/// calling thread's CPU time, so a site whose wall greatly exceeds its CPU is
-/// identifiably *blocked* rather than *working*.
+/// calling thread's CPU time.
+///
+/// Read the two against each other. A site with large wall and near-zero CPU
+/// is blocked on a child process, not computing: `proc/read` sits at a cpu/wall
+/// ratio of about 0.01 on a real run. That ratio is the diagnostic.
 ///
 /// Off unless the COUNTER_PROFILE environment variable is set (to a file path
 /// for JSON output, or to "1"/"-" for the stderr table only). Disabled, a scope
-/// costs one relaxed atomic load.
+/// costs one relaxed atomic load and a branch.
 
 #include <atomic>
 #include <cstdint>
@@ -28,9 +31,12 @@ namespace profile {
 /// mutex-guarded because scoring runs the same site on every pool worker at
 /// once; a lock here would serialise exactly the parallelism being measured.
 ///
-/// Sites are never destroyed and never rehashed: each is a function-local
-/// static, registered once, so a reader can walk the registry without locking
-/// against concurrent accumulation.
+/// Sites are heap-allocated and never freed: site() appends to the registry
+/// under a mutex and nothing ever removes from it, so a Site pointer stays
+/// valid for the life of the process and a reader can sample these counters
+/// without racing a destruction. Lookup is a linear strcmp scan of that
+/// registry rather than a hash, which is why registration is meant to happen
+/// once per source location and not once per call.
 struct Site {
     const char* m_name;
     std::atomic<std::uint64_t> m_calls{0};
@@ -43,8 +49,7 @@ struct Site {
     explicit Site(const char* name) : m_name(name) {}
 };
 
-/// True when COUNTER_PROFILE is set. Read once at first use and cached, so the
-/// per-scope cost when disabled is a relaxed atomic load and a branch.
+/// True when COUNTER_PROFILE is set. Read once at first use and cached.
 bool enabled();
 
 /// Registers (or returns) the site named @p name. Intended to be called from a
@@ -96,9 +101,8 @@ std::uint64_t thread_cpu_ns();
 /// Steady-clock nanoseconds.
 std::uint64_t wall_ns();
 
-/// RAII timer: accumulates into a Site over its lifetime. Wall and CPU are both
-/// sampled, so a scope that is mostly waiting on a child process shows a large
-/// wall/CPU ratio.
+/// RAII timer: accumulates into a Site over its lifetime, sampling both wall
+/// time and the calling thread's CPU time.
 class Scope {
    public:
     explicit Scope(Site& target)

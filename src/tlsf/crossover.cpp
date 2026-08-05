@@ -19,6 +19,10 @@ std::vector<Section*> mutable_sections_of(tlsf::Specification& spec) {
             &spec.m_assume,    &spec.m_assert, &spec.m_guarantee};
 }
 
+// Section-wise uniform crossover needs matching section sizes; without them
+// tlsf_crossover degrades to asexual reproduction (parent A returned
+// unchanged). Since tlsf_add_assumption appends to m_assume, the first
+// individual to gain an assumption can no longer cross with any other.
 bool same_shape(const tlsf::Specification& parent_a,
                 const tlsf::Specification& parent_b) {
     if (parent_a.m_inputs != parent_b.m_inputs ||

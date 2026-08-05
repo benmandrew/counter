@@ -21,16 +21,20 @@ double syntactic_similarity(const Requirement& requirement,
                             const Requirement& other_requirement,
                             const Config& cfg);
 
-/// Computes syntactic similarity between two specifications by conjoining all
-/// triggers into a single formula and all responses into a single formula for
-/// each specification, then averaging the formula-level similarities of the
-/// two trigger conjunctions and the two response conjunctions.
+/// Computes syntactic similarity between two specifications from three
+/// components: the formula-level similarity of the two trigger conjunctions,
+/// that of the two response conjunctions, and the per-index average of the
+/// requirements' timing similarities. Each specification's triggers are
+/// conjoined into one formula and its responses into another. The three
+/// components are combined as a weighted mean under the @c cfg weights.
+///
+/// Both specifications must have at least one requirement; this is asserted,
+/// so it goes unchecked under NDEBUG.
 ///
 /// @param specification       The first specification to compare (non-empty)
 /// @param other_specification The second specification to compare (non-empty)
 /// @param cfg                 Configuration providing component weights
 /// @return                    A syntactic similarity score in the range [0, 1]
-/// @throws std::invalid_argument if either specification has no requirements
 double syntactic_similarity(const Specification& specification,
                             const Specification& other_specification,
                             const Config& cfg);

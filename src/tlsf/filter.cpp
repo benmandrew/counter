@@ -281,10 +281,6 @@ FilterFunctionT<tlsf::Specification> tlsf_make_well_separation_filter(
             return filter_in_parallel(
                 pop, max_in_flight,
                 [&checker](const tlsf::Specification& spec) {
-                    // Input-only assumptions are well-separated by
-                    // construction; only an output-referencing one can be
-                    // forced to fail, so only then run the (expensive)
-                    // realizability query.
                     if (!assumptions_reference_output(spec)) {
                         return true;
                     }

@@ -276,14 +276,11 @@ ActiveFilters select_active_filters(
     return active;
 }
 
-// Evolves `spec` under `cfg` against `fitness`, returning the final scored
-// population and, via `filter_stats_out`, this run's per-filter in/out totals.
-// Shared by both repair modes; in MUC mode `spec` is a core sub-specification.
-// Where one evolve run should report its progress, and how to place it in a run
-// that evolves more than once. MUC repair calls evolve_population per core, so
-// gen_offset keeps the dashboard's generation numbering monotonic across those
-// calls while muc_iter records which core a generation belonged to. A null
-// writer disables reporting entirely.
+// Says where one evolve run should report its progress, and how to place it in
+// a run that evolves more than once. MUC repair calls evolve_population per
+// core, so gen_offset keeps the dashboard's generation numbering monotonic
+// across those calls while muc_iter records which core a generation belonged
+// to. A null writer disables reporting entirely.
 struct DashboardProgress {
     DashboardWriter* writer = nullptr;
     std::vector<std::string> objective_names;
@@ -291,6 +288,9 @@ struct DashboardProgress {
     std::size_t muc_iter = 0;
 };
 
+// Evolves `spec` under `cfg` against `fitness`, returning the final scored
+// population and, via `filter_stats_out`, this run's per-filter in/out totals.
+// Shared by both repair modes; in MUC mode `spec` is a core sub-specification.
 std::vector<Scored<Specification>> evolve_population(
     const Specification& spec, const Config& cfg,
     const RandomSource& random_source,
@@ -304,10 +304,12 @@ std::vector<Scored<Specification>> evolve_population(
     std::vector<Scored<Specification>> population =
         score_population(cfg, seed_population, fitness);
 
-    // Truncation selection with elitism, matching the FRETISH path: each
-    // generation breeds down to selection_size survivors, carrying the best
-    // elitism_size over verbatim. Both are derived once from the seed
-    // population size (cfg guarantees elitism_rate < selection_rate).
+    // Population sizing, matching the FRETISH path: each generation breeds
+    // selection_size offspring and carries the best elitism_size parents over
+    // verbatim. Both are derived once from the seed population size (cfg
+    // guarantees elitism_rate < selection_rate). Which candidates count as
+    // "best" is not truncation on the weighted scalar: order_population applies
+    // cfg.selection_scheme, which defaults to NSGA-II.
     const std::size_t selection_size = std::max(
         std::size_t{1},
         static_cast<std::size_t>(static_cast<double>(cfg.population_size) *

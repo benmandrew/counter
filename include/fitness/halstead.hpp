@@ -50,7 +50,8 @@ struct HalsteadTokens {
 HalsteadTokens halstead_tokens(const Formula& formula);
 
 /// Collect Halstead token counts from a single propositional formula.
-/// Operators are logical connectives (¬, ∧, ∨, →, ↔); operands are atom names.
+/// Operators are the logical connectives (¬, ∧, ∨, →, ↔) and the temporal
+/// operators (X, F, G, U, R, W); operands are atom names.
 HalsteadCounts halstead_counts(const Formula& formula);
 
 /// Collect Halstead token counts from a single requirement, combining the

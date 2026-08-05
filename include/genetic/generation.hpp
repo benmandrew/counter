@@ -108,9 +108,6 @@ FilterFunction make_predicate_filter(
     std::string name, std::function<bool(const Specification&)> predicate,
     std::size_t max_in_flight = 1);
 
-/// Scores each specification using a weighted average of all fitness functions:
-///   fitness = sum(fn_i(spec) * w_i) / sum(w_i)
-///
 /// An individual whose fitness scoring throws is dropped from the returned
 /// population rather than aborting the run (see
 /// Config::max_scoring_failure_rate). Every drop is tallied here so it is
@@ -277,9 +274,11 @@ std::vector<Spec> filter_population(
     return current;
 }
 
-/// Returns the standard set of filter functions used during evolution:
-/// deduplication, a bloat cap, a false-condition filter, and (if enabled) a
-/// weakening filter that keeps only specifications implied by @p original.
+/// Returns the standard set of filter functions used during evolution, in
+/// order: deduplication, a bloat cap, a false-condition filter, a vacuity
+/// filter (if enabled), a well-separation filter (if enabled), and (if
+/// enabled) a weakening filter that keeps only specifications implied by
+/// @p original.
 /// Each filter's per-generation interval is set from @p cfg; the evolution
 /// loop decides which filters run in a given generation.
 ///
@@ -318,7 +317,8 @@ std::vector<FilterFunction> filters_for_generation(
 
 /// Scores each specification in @p specs and returns them ordered best-first
 /// according to @p cfg's selection scheme: descending weighted fitness for
-/// WeightedAverage, or the NSGA-II crowded-comparison order for Nsga2.
+/// WeightedAverage, or the NSGA-II crowded-comparison order for Nsga2 and
+/// Nsga2Replicate.
 std::vector<ScoredSpecification> score_and_sort_specifications(
     const Config& cfg, const std::vector<Specification>& specs,
     const AggregateWeightedFitnessFunction& fitness_function);
@@ -400,10 +400,11 @@ std::vector<Scored<Spec>> evolve_generation_generic(
 /// use with evolve_generation_generic.
 const GeneticOperators<Specification>& fretish_operators();
 
-/// Evolves a population for one generation using truncation selection with
-/// elitism:
-///   1. Sort the population by fitness (descending) and take the top
-///      target_size as parents
+/// Evolves a population for one generation:
+///   1. Order the population best-first under @p cfg's selection scheme —
+///      descending weighted fitness for WeightedAverage, the NSGA-II
+///      crowded-comparison order for Nsga2 and Nsga2Replicate — and take the
+///      top target_size as parents
 ///   2. Carry the best elitism_size parents over verbatim as elites (they skip
 ///      crossover, mutation, and the offspring filters)
 ///   3. For the remaining parents, apply crossover and mutation to produce
@@ -413,6 +414,13 @@ const GeneticOperators<Specification>& fretish_operators();
 ///   5. Pad survivors back to target_size by duplicating them if filtering
 ///      reduced the population
 ///   6. Score the resulting population with fitness functions
+///   7. Choose the survivors: under Nsga2 and Nsga2Replicate the parents are
+///      pooled with the scored offspring and the best target_size of that
+///      union are kept under the crowded-comparison order ((mu+lambda)
+///      elitism), Nsga2Replicate deduplicating the pool before ranking it and
+///      replicating the distinct survivors back up to target_size; under
+///      WeightedAverage the scored population is re-sorted by the weighted
+///      scalar
 ///
 /// If the population is smaller than target_size, all of it is used as
 /// parents. elitism_size is clamped to the number of parents.

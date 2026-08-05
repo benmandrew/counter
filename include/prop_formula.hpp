@@ -50,9 +50,10 @@ class Formula {
         std::function<std::optional<Formula>(const Formula&)>;
 
     /// Default constructor creates a formula representing the logical constant
-    /// "true" (implemented as a single atom named "true"; the parser
-    /// special-cases the names "true" and "false" so they can never be user
-    /// atoms).
+    /// "true" (implemented as a single atom named "true"). The parser gives
+    /// "true" and "false" no special treatment — both parse as ordinary atoms.
+    /// They are reserved by convention and recognised downstream instead; see
+    /// is_constant_atom in src/requirement.cpp.
     Formula();
 
     /// Static instance of the logical constant "true" for convenience.
@@ -134,10 +135,16 @@ class Formula {
     [[nodiscard]] std::string to_dimacs() const;
 
     /// Computes a symmetric, normalized syntactic similarity score between
-    /// this formula and another.
-    /// Uses shared_subformulae(other) with multiplicity and returns
-    /// 0.5 * (shared / n_subformulae() + shared / other.n_subformulae()).
-    /// If either formula has zero subformulae, returns 1.0.
+    /// this formula and another. With shared = shared_subformulae(other),
+    /// f = shared / n_subformulae() and s = shared / other.n_subformulae(),
+    /// the score is the harmonic mean 2 * f * s / (f + s); 0.0 when the two
+    /// share nothing, and 1.0 when either side has zero subformulae. See
+    /// syntactic_similarity in src/prop_formula/similarity.cpp for why the
+    /// harmonic mean rather than the arithmetic one.
+    ///
+    /// The count is over the whole node arena, which is a multiset: there is
+    /// no hash-consing, so `(a & a)` has three subformulae rather than two,
+    /// and the shared count matches repeats with multiplicity.
     /// @param other The formula to compare with
     /// @return A similarity score in [0, 1]
     [[nodiscard]] double syntactic_similarity(const Formula& other) const;

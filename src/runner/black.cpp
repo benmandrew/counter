@@ -81,6 +81,10 @@ std::string black_executable_path() {
 
 std::optional<bool> SatisfiabilityChecker::check_satisfiability(
     const std::string& ltl_formula) {
+    // --simplify is kept on this path, unlike the ltl2tgba and ltlsynt ones
+    // that dropped it: black's inputs are single requirement formulae and
+    // implication checks, not the deep nested-X conjunctions that make ltlfilt
+    // --simplify blow up super-exponentially.
     const std::string normalised = simplify_ltl(ltl_formula);
     // A formula that SPOT reduces to a boolean constant is already decided:
     // "0" is unsatisfiable, "1" is valid and therefore satisfiable. The
@@ -108,12 +112,18 @@ std::optional<bool> SatisfiabilityChecker::check_satisfiability(
     n_cache_misses++;
     const std::string black = black_executable_path();
     assert(access(black.c_str(), F_OK) == 0);
+    // -t is never omitted. black has no default timeout of its own, so an
+    // unbounded solve parks a scoring-pool thread for as long as it takes,
+    // and the search loses a worker rather than an individual.
+    //
     // Round up: black's -t takes whole seconds, and truncating turned any
     // sub-second budget into "-t 0", which disables black's own timeout and
     // left the outer deadline as the only one. Rounding up also keeps the
     // inner timeout the looser of the two, so black still gets its chance to
     // answer "UNKNOWN" cleanly before the outer deadline SIGKILLs it. A zero
-    // budget stays zero, meaning no timeout on either side.
+    // budget stays zero, which disables both sides at once and leaves nothing
+    // bounding the solve; the config default is 1000 ms and no shipped
+    // configuration sets zero.
     const auto timeout_s =
         std::chrono::ceil<std::chrono::seconds>(m_timeout).count();
     // Pass ltl_formula (not normalised) to black. black does parse SPOT's

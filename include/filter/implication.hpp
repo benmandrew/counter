@@ -12,7 +12,9 @@
 #include "runner/black.hpp"
 
 /// Counters for the most recent make_implication_filter pairwise sweep, reset
-/// at the start of each invocation of the returned FilterFunction.
+/// at the start of each invocation of the returned FilterFunction. n_timeouts
+/// is the exception: spec_implies increments it wherever it is called, so the
+/// weakening filter (which resets nothing) also contributes to it.
 struct ImplicationFilterStats {
     /// Unordered pairs for which the dominance check actually ran.
     inline static std::atomic<std::size_t> n_comparisons{0};
@@ -52,7 +54,10 @@ FilterFunction make_dedup_filter();
 /// unsatisfiable) but B does not imply A. Mutually equivalent specifications
 /// (A implies B and B implies A) are both retained.
 ///
-/// All n*(n-1)/2 unordered pairwise implication checks run in parallel.
+/// The unordered pairwise checks run in parallel, but far fewer than n*(n-1)/2
+/// of them actually run: structurally equal specs collapse to one
+/// representative before the sweep, and a pair is skipped outright once either
+/// endpoint is already known subsumed.
 /// @p checker must be thread-safe (SatisfiabilityChecker satisfies this).
 /// The checker is captured by reference; it must outlive the returned
 /// FilterFunction.

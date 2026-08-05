@@ -8,6 +8,16 @@
 
 #include "internal.hpp"
 
+// Formulae are built and taken apart directly on the node arena, never by
+// rendering a string and reparsing it. Temporal formulae have no string round
+// trip at all, since the propositional parser cannot read temporal syntax back
+// — including a propositional operator over a temporal operand, e.g. !(X p).
+// Propositional ones do, but the arena built here is byte-identical to the
+// parser's layout (verified against the propositional test suite), which
+// matters because Formula::hash and operator< compare the arena itself (see
+// core.cpp). Everything below preserves that layout; the individual functions
+// do not restate it.
+
 namespace prop_formula_internal {
 
 Formula::Kind node_type_to_kind(NodeType type) {
@@ -86,8 +96,7 @@ std::vector<Node> build_unary_arena(NodeType type,
 
 // Concatenates @p left and @p right arenas and appends a binary node of
 // @p type. The right arena's internal child indices are shifted by the left
-// arena's size; leaf (Variable) indices stay 0, matching how the parser lays
-// out `(left) op (right)`.
+// arena's size; leaf (Variable) indices stay 0.
 std::vector<Node> build_binary_arena(NodeType type,
                                      const std::vector<Node>& left,
                                      const std::vector<Node>& right) {
@@ -110,9 +119,7 @@ std::vector<Node> build_binary_arena(NodeType type,
 }
 
 // Extracts the subtree rooted at @p root_index from @p nodes into a standalone
-// arena (root last, post-order), remapping child indices. This reproduces the
-// exact layout the parser would produce for the subtree's string form, so an
-// extracted propositional subtree is byte-for-byte equal to the reparsed one.
+// arena (root last, post-order), remapping child indices.
 std::vector<Node> extract_subtree(const std::vector<Node>& nodes,
                                   std::size_t root_index) {
     std::vector<Node> result;
@@ -209,12 +216,7 @@ Formula Formula::from_node_arena(
 }
 
 Formula Formula::make_unary(Kind kind, const Formula& child) {
-    // Construction is done directly on the node arena rather than by building a
-    // string and reparsing it. For propositional operators this yields an arena
-    // byte-identical to the parser's (verified against the propositional test
-    // suite); for temporal operators — and for any propositional operator whose
-    // operand is itself temporal (e.g. !(X p)) — it is the only correct path,
-    // since the propositional parser cannot read temporal syntax back.
+    // Built on the arena; see the note at the top of this file.
     assert(kind == Kind::Not || kind == Kind::Next ||
            kind == Kind::Eventually || kind == Kind::Globally);
     return Formula::from_node_arena(prop_formula_internal::build_unary_arena(
@@ -463,11 +465,7 @@ std::optional<std::string> Formula::atom_name() const {
 }
 
 std::optional<Formula> Formula::unary_child() const {
-    // Extraction is done on the node arena (not by reparsing a string), so it
-    // works uniformly for propositional and temporal roots — including a
-    // propositional operator whose child is temporal, e.g. the child of the
-    // Not in !(X p). For a propositional subtree this yields an arena
-    // byte-identical to the parser's.
+    // Extracted from the arena; see the note at the top of this file.
     const prop_formula_internal::Node& root = m_impl->m_nodes.back();
     if (!prop_formula_internal::is_unary_node(root.m_type)) {
         return std::nullopt;
@@ -488,6 +486,11 @@ std::optional<std::pair<Formula, Formula>> Formula::binary_children() const {
                                                                root.m_right)));
 }
 
+// Each rewritten child is sequenced into a local of its own rather than passed
+// straight into make_unary/make_binary: a rewrite callback may draw from the
+// RandomSource, argument evaluation order is unspecified, and gcc and clang
+// pick opposite orders — so inlining the calls would stop a seed reproducing
+// across compilers (8d1f9bd).
 Formula Formula::rewrite_post_order(
     const RewriteCallback& rewrite_callback) const {
     if (!rewrite_callback) {

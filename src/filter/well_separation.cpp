@@ -70,11 +70,6 @@ bool specification_is_not_well_separated(const Specification& specification,
     if (specification.m_assumptions.empty()) {
         return false;
     }
-    // An assumption constraining only input atoms is well-separated by
-    // construction: the system controls no atom in it and so cannot force it to
-    // fail. Only when an assumption references an output atom is the ltlsynt
-    // query worth the cost. Joint unsatisfiability of the assumptions is the
-    // vacuity filter's concern (it runs first), not this one.
     if (!assumptions_reference_output(specification)) {
         return false;
     }
@@ -89,8 +84,7 @@ bool specification_is_not_well_separated(const Specification& specification,
     // i.e. !(assumptions). It is realizable exactly when the system has a
     // strategy that forces the assumptions to fail against every environment --
     // the definition of not being well-separated. The input/output partition is
-    // the original spec's, so assumptions over input atoms alone stay
-    // unrealizable (the system controls nothing it could use to break them).
+    // the original spec's.
     const std::string formula = "(" + conjunction + ") -> (false)";
     return checker.check_realizability_ltl(formula, specification.m_in_atoms,
                                            specification.m_out_atoms);

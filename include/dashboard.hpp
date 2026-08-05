@@ -37,18 +37,18 @@ class DashboardWriter {
 
     /// Copies the dashboard page next to the progress log, so serving the
     /// output directory is all the viewer needs. Returns the page's path, or an
-    /// empty string if the source page could not be read.
+    /// empty string in each of the three cases where no page is written: the
+    /// writer is disabled, the build carries no dashboard page path
+    /// (COUNTER_DASHBOARD_PAGE_PATH is undefined), or the copy itself failed.
     std::string write_page();
 
-    /// @param input       Path to the specification being repaired
-    /// @param generations  Configured generation count
-    /// @param population   Configured population size
-    /// @param seed         RNG seed the run was started from
-    /// @param objectives   Objective names, in registration order
-    /// @param stages       Every stage a generation can run, in pipeline order,
-    ///                     including filters that only run on some generations,
-    ///                     so the page can reserve a layout that does not move
-    ///                     as interval-gated filters come and go
+    /// Opens the log with the run's fixed facts, @p input being the path to
+    /// the specification being repaired.
+    ///
+    /// @p objectives is in registration order. @p stages is every stage a
+    /// generation can run, in pipeline order, including filters that only run
+    /// on some generations, so the page can reserve a layout that does not
+    /// move as interval-gated filters come and go.
     void run_start(const std::string& input, std::size_t generations,
                    std::size_t population, std::size_t seed,
                    const std::vector<std::string>& objectives,
@@ -57,8 +57,10 @@ class DashboardWriter {
     /// @param gen         1-indexed generation
     /// @param index       Position of the stage within the generation's stage
     ///                    list
-    /// @param observation The completed stage's name, population sizes, and
-    ///                    elapsed time
+    /// @param observation The completed stage's name, population sizes and
+    ///                    elapsed time, and `distinct`: how many of the
+    ///                    survivors are distinct specifications, which is what
+    ///                    no population size can show
     /// @param muc_iter    1-indexed MUC repair iteration, or 0 when the run is
     ///                    not MUC-guided; emitted only when non-zero
     void stage(std::size_t gen, std::size_t index,

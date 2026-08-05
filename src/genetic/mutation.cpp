@@ -529,8 +529,7 @@ Specification mutate_specification(const Specification& specification,
     std::vector<Requirement> assumptions = specification.m_assumptions;
     std::vector<Requirement> guarantees = specification.m_guarantees;
     // Weakening the assume-guarantee specification means weakening a guarantee
-    // but *strengthening* an assumption: a stricter environment expands the set
-    // of environments under which the guarantees must hold.
+    // but *strengthening* an assumption.
     const bool is_assumption = idx < n_assumptions;
     const Direction direction = (is_assumption && cfg.strengthen_assumptions)
                                     ? Direction::Strengthen

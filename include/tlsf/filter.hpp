@@ -3,7 +3,8 @@
 /// @file filter.hpp
 /// @brief Population filters for tlsf::Specification: the TLSF counterparts of
 ///        the FRETISH deduplication, false-condition (assumption
-///        satisfiability), bloat-cap, weakening, and implication filters.
+///        satisfiability), well-separation, bloat-cap, weakening, and
+///        implication filters.
 
 #include <optional>
 

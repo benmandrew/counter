@@ -96,6 +96,12 @@ struct PipedChild {
 /// Both pipes are created with O_CLOEXEC, without which a fork on any other
 /// scoring thread would inherit them and hold this call's ends open past its
 /// own exec, so its reader never sees end of file.
+///
+/// This and execute_and_capture are the only two forks in the codebase, and
+/// nothing may add a third outside process.cpp. posix_spawn would be the
+/// cheaper primitive, but it has no attribute for PR_SET_PDEATHSIG — the one
+/// mechanism that stops a killed run from stranding multi-GB tool processes
+/// (PR #47).
 PipedChild spawn_piped_child(const std::vector<std::string>& arguments,
                              ParentDeathPolicy policy, ExecutableLookup lookup);
 
@@ -109,8 +115,8 @@ std::pair<std::string, bool> read_until_eof(int read_fd,
 /// Applies the child half of the containment policy: puts the child in its own
 /// process group, and applies `policy`. Call only between fork() and exec(),
 /// where it must stay async-signal-safe; under KillWithParentThread it _exit()s
-/// if the parent is already gone. execute_and_capture calls this itself — it is
-/// exposed for PersistentProcess, which owns its own fork.
+/// if the parent is already gone. Both forks in process.cpp call it themselves,
+/// and they are its only callers.
 ///
 /// Note that the new process group is not the terminal's foreground group, so
 /// a Ctrl-C no longer reaches the tool directly. Under KillWithParentThread the

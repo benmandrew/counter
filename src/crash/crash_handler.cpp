@@ -74,6 +74,9 @@ bool write_all(int file_fd, const void* data, std::size_t size) {
     return true;
 }
 
+// Walks one trace at startup so cpptrace's lazy loader and symbol
+// initialisation happen here rather than inside the handler, which can neither
+// allocate nor dlopen. Called from init_cpptrace, before any signal can arrive.
 void warmup_cpptrace() {
     std::array<cpptrace::frame_ptr, 10> buf = {};
     const std::size_t frame_count =
@@ -84,6 +87,14 @@ void warmup_cpptrace() {
     }
 }
 
+// Everything in this function runs inside a signal handler, so it is confined
+// to async-signal-safe calls: no malloc, no iostreams, no std::string, no
+// locks. That one constraint is what every design choice here answers to --
+// the tracer path, crash directory and metadata are fixed buffers filled in
+// ahead of time rather than built here, format_unsigned exists because
+// snprintf is not on the safe list, and write_all is a raw write(2) loop for
+// the same reason. A printf or an allocation added below does not fail
+// loudly; it deadlocks or corrupts the very report it was meant to enrich.
 void crash_handler(int signo, [[maybe_unused]] siginfo_t* siginfo,
                    [[maybe_unused]] void* context) {
     // A faulting scoring-pool thread usually takes its siblings down with it,

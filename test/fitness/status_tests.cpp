@@ -26,32 +26,36 @@ Specification make_spec(const std::string& trigger, const std::string& response,
 // --- specification_status ---
 
 void test_status_unsat_trigger_returns_zero() {
-    // Trigger p & !p is unsatisfiable → score 0.0.
+    // Condition p & !p is unsatisfiable, so is `condition & response`.
     SatisfiabilityChecker sat;
     RealizabilityChecker real;
     const auto spec = make_spec("p & !p", "q");
-    expect(specification_status(spec, sat, real) == 0.0,
-           "status: unsatisfiable trigger conjunction should score 0.0");
+    expect(specification_status(spec, sat, real) ==
+               k_status_component_unsatisfiable,
+           "status: unsatisfiable condition should score the component tier");
 }
 
-void test_status_unsat_response_returns_point_one() {
-    // Trigger p is satisfiable; response q & !q is not → score 0.1.
+void test_status_unsat_response_returns_zero() {
+    // An unsatisfiable response makes `condition & response` unsatisfiable, so
+    // the single component tier catches it without a check of its own.
     SatisfiabilityChecker sat;
     RealizabilityChecker real;
     const auto spec = make_spec("p", "q & !q");
-    expect(specification_status(spec, sat, real) == 0.1,
-           "status: unsatisfiable response conjunction should score 0.1");
+    expect(specification_status(spec, sat, real) ==
+               k_status_component_unsatisfiable,
+           "status: unsatisfiable response should score the component tier");
 }
 
-void test_status_unsat_conjunction_returns_point_two() {
-    // Trigger p and response !p are individually satisfiable, but p & !p is
-    // not → score 0.2.
+void test_status_unsat_conjunction_returns_zero() {
+    // Condition p and response !p are individually satisfiable but cannot hold
+    // together, which is what makes the requirement incoherent.
     SatisfiabilityChecker sat;
     RealizabilityChecker real;
     const auto spec = make_spec("p", "!p");
-    expect(specification_status(spec, sat, real) == 0.2,
-           "status: satisfiable trigger and response but unsatisfiable "
-           "conjunction should score 0.2");
+    expect(specification_status(spec, sat, real) ==
+               k_status_component_unsatisfiable,
+           "status: a condition and response that cannot hold together should "
+           "score the component tier");
 }
 
 void test_status_unrealizable_returns_point_five() {
@@ -74,15 +78,15 @@ void test_status_unrealizable_returns_point_five() {
         {Requirement(Formula("true"), Formula("o"), timing::eventually()),
          Requirement(Formula("o"), Formula("i"), timing::immediately())},
         {"i"}, {"o"});
-    expect(specification_status(spec, sat, real) == 0.5,
-           "status: satisfiable but unrealizable spec should score 0.5");
+    expect(specification_status(spec, sat, real) == k_status_unrealizable,
+           "status: satisfiable but unrealizable spec should score the "
+           "unrealizable tier");
 }
 
 void test_status_jointly_unsat_responses_pass_individual_checks() {
     // Two requirements whose responses are individually satisfiable but
-    // jointly contradictory: old conjunction check returned 0.1 because
-    // (b) & (!b) is unsat.  The per-requirement check passes both, reaching
-    // the realizability call.
+    // jointly contradictory. Components are per-requirement, so both pass and
+    // the realizability call decides.
     // G(a -> b) & G(!a -> !b) = G(a <-> b) is realizable (set b := a).
     SatisfiabilityChecker sat;
     RealizabilityChecker real;
@@ -91,9 +95,9 @@ void test_status_jointly_unsat_responses_pass_individual_checks() {
         {Requirement(Formula("a"), Formula("b"), timing::immediately()),
          Requirement(Formula("!a"), Formula("!b"), timing::immediately())},
         {"a"}, {"b"});
-    expect(specification_status(spec, sat, real) == 1.0,
-           "status: jointly unsat responses that are individually sat should "
-           "not score 0.1");
+    expect(specification_status(spec, sat, real) == k_status_realizable,
+           "status: jointly unsat responses that are individually coherent "
+           "should still reach the realizability tier");
 }
 
 void test_status_realizable_returns_one() {
@@ -101,17 +105,31 @@ void test_status_realizable_returns_one() {
     SatisfiabilityChecker sat;
     RealizabilityChecker real;
     const auto spec = make_spec("i", "o", {"i"}, {"o"});
-    expect(specification_status(spec, sat, real) == 1.0,
+    expect(specification_status(spec, sat, real) == k_status_realizable,
            "status: satisfiable and realizable spec should score 1.0");
+}
+
+void test_status_no_guarantees_skips_the_solver() {
+    // An empty guarantee side leaves a `true` consequent, so the score is
+    // realizable without a solver call. RealizabilityChecker is left
+    // default-constructed and unused, which is the point.
+    SatisfiabilityChecker sat;
+    RealizabilityChecker real;
+    const Specification spec(
+        {Requirement(Formula("i"), Formula("i"), timing::immediately())}, {},
+        {"i"}, {"o"});
+    expect(specification_status(spec, sat, real) == k_status_realizable,
+           "status: no guarantees should score realizable");
 }
 
 }  // namespace
 
 void run_status_tests() {
     test_status_unsat_trigger_returns_zero();
-    test_status_unsat_response_returns_point_one();
-    test_status_unsat_conjunction_returns_point_two();
+    test_status_unsat_response_returns_zero();
+    test_status_unsat_conjunction_returns_zero();
     test_status_jointly_unsat_responses_pass_individual_checks();
     test_status_unrealizable_returns_point_five();
     test_status_realizable_returns_one();
+    test_status_no_guarantees_skips_the_solver();
 }

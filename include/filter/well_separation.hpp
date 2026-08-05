@@ -26,9 +26,7 @@
 /// the system, because satisfiability treats every atom symmetrically whereas
 /// realizability respects the input/output partition. Joint unsatisfiability of
 /// the assumptions is the vacuity filter's concern, not this one; it runs
-/// first. A specification whose assumptions constrain only input atoms is
-/// always well-separated -- the system controls no atom it could use to break
-/// them.
+/// first.
 ///
 /// The ltlsynt query runs only when an assumption references an output atom.
 /// Input-only assumptions are well-separated by construction and answered

@@ -19,12 +19,12 @@ class SatisfiabilityChecker {
    public:
     inline static std::atomic<std::size_t> n_cache_misses{0};
     inline static std::atomic<std::size_t> n_cache_hits{0};
-    // Calls answered from ltlfilt's constant folding without consulting black.
+    /// Calls answered from ltlfilt's constant folding without consulting black.
     inline static std::atomic<std::size_t> n_constant_folded{0};
     inline static std::size_t n_timeouts = 0;
     inline static double total_time_s = 0.0;
-    // Child-process CPU time (user+sys), from wait4(); unlike total_time_s
-    // (wall) it excludes time the parent spends blocked waiting on the child.
+    /// Child-process CPU time (user+sys), from wait4(); unlike total_time_s
+    /// (wall) it excludes time the parent spends blocked waiting on the child.
     inline static double total_cpu_s = 0.0;
 
     /// Returns true (SAT), false (UNSAT), or nullopt (timed out / unknown).
@@ -34,9 +34,9 @@ class SatisfiabilityChecker {
 
    private:
     std::chrono::milliseconds m_timeout{1000};
-    // Cache lookups (the common case once the population converges) take a
-    // shared lock so concurrent hits don't serialise on one another; only an
-    // actual insert needs the exclusive lock.
+    /// Cache lookups (the common case once the population converges) take a
+    /// shared lock so concurrent hits don't serialise on one another; only an
+    /// actual insert needs the exclusive lock.
     mutable std::shared_mutex m_cache_mutex;
     std::unordered_map<std::string, std::optional<bool>> m_cache;
 };

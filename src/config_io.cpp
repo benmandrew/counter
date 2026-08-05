@@ -59,9 +59,14 @@ void read_runtime_count(const toml::table& tbl, const char* key,
 }
 
 // Mirrors the keys the apply_* functions below read, so that a typo in a
-// config file is reported rather than silently ignored. Adding a key to an
-// apply_* function means adding it here too; config_io_tests holds a config
-// exercising every key, which fails if the two drift apart.
+// config file is reported rather than silently ignored. A key needs three
+// edits, none of which the compiler ties together: the apply_* function that
+// reads it, this spec (else the parser warns "unknown key" on a key it
+// accepts), and schemas/config-schema.json (else editors reject it).
+// scripts/check_config_schema.py enforces the last two against each other and
+// against example-config.toml, as part of the lint target. Only
+// test_config_io_known_keys_do_not_warn catches a key missing from this spec,
+// and only for keys its TOML actually sets, so a new key belongs there too.
 struct KeySpec {
     std::set<std::string> keys;
     std::map<std::string, KeySpec> tables;

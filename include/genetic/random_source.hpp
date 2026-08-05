@@ -14,6 +14,11 @@
 /// @brief A source of randomness for genetic algorithm operations, abstracting
 /// away the underlying random generator and allowing for easy injection of
 /// different random sources (e.g., for testing or reproducibility).
+///
+/// Two calls that both draw from a RandomSource must never be arguments of the
+/// same call: argument evaluation order is unspecified, and gcc and clang pick
+/// opposite orders, so the draws swap between compilers and a seed stops
+/// reproducing. Sequence each draw into its own local instead.
 class RandomSource {
    public:
     RandomSource() = default;
@@ -65,7 +70,6 @@ class RandomSource {
 
 /// @brief Creates a RandomSource from a given seed, using `std::mt19937` as the
 /// underlying generator.
-/// @param seed
 /// @return RandomSource initialized with the given seed.
 inline RandomSource make_random_source_from_seed(std::size_t seed) {
     std::mt19937 rng(seed);

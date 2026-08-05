@@ -267,11 +267,13 @@ Formula mutate_propositional_parts(const Formula& formula,
 // ∪ outputs and a conditional form `G(c -> F r)` becomes reachable (guarded by
 // p_conditional_assumption), so the search can express reactive-environment
 // assumptions that reference outputs — e.g. `G(<output> -> F <input>)`, an
-// environment obligation conditioned on a system output. The syntactic
-// input-only ban is then replaced by the well-separation filter, which prunes
-// any assumption the system could force to fail (such as the `G F <output>` the
-// wider draw can also produce). With the flag off the draw is byte-for-byte
-// identical to before.
+// environment obligation conditioned on a system output. What then keeps the
+// system from writing itself an assumption it can force to fail (such as the
+// `G F <output>` the wider draw can also produce) is the well-separation
+// filter rather than the syntactic input-only ban — but only where that filter
+// is on: cfg.run_well_separation_filter defaults to false, so the replacement
+// is the caller's to arrange (PR #34). With allow_output_assumptions off the
+// draw is byte-for-byte identical to before.
 tlsf::Specification tlsf_add_assumption(const tlsf::Specification& spec,
                                         const RandomSource& random_source,
                                         const Config& cfg) {
@@ -350,9 +352,7 @@ tlsf::Specification tlsf_mutate(const tlsf::Specification& spec,
     // widened to inputs ∪ outputs under allow_output_assumptions so a rewrite
     // can keep or introduce an output atom (letting an output-referencing
     // assumption from tlsf_add_assumption be reshaped — e.g. its F grown into a
-    // W hold-until form — rather than having the output overwritten). The
-    // syntactic ban is then replaced by the well-separation filter, which
-    // prunes any assumption the system could force to fail.
+    // W hold-until form — rather than having the output overwritten).
     std::vector<std::string> pool = mutated.m_inputs;
     if (!assumption_side || cfg.allow_output_assumptions) {
         pool.insert(pool.end(), mutated.m_outputs.begin(),

@@ -24,7 +24,14 @@ std::string ltl2tgba_path();
 
 /// Runs ltl2tgba with -D (deterministic), -S (state-based acceptance), and
 /// -H (HOA output) on the given LTL formula and returns the raw HOA text.
-/// Asserts that the binary is accessible and that the process exits cleanly.
+/// Asserts that the binary is accessible; the result is memoised by formula.
+///
+/// None of the three non-clean exits is an assertion. A non-zero exit throws,
+/// and so does a timeout (see set_ltl2tgba_timeout), which drops the
+/// individual. SPOT's exit 2 on a tautology is neither: the universal
+/// automaton is substituted for it, because a formula accepting every trace
+/// is a correct answer rather than a scoring failure (PR #29 — still unfixed
+/// upstream).
 std::string run_ltl2tgba_for_counting(const std::string& formula);
 
 /// Per-call wall-clock budget for the ltl2tgba counting exec (process-global,
@@ -39,18 +46,18 @@ struct Ltl2tgbaStats {
     inline static std::size_t n_cache_hits = 0;
     inline static std::size_t n_cache_misses = 0;
     inline static double total_time_s = 0.0;
-    // Child-process CPU time (user+sys), from wait4(); unlike total_time_s
-    // (wall) it excludes time the parent spends blocked waiting on the child.
+    /// Child-process CPU time (user+sys), from wait4(); unlike total_time_s
+    /// (wall) it excludes time the parent spends blocked waiting on the child.
     inline static double total_cpu_s = 0.0;
-    // ltl2tgba exit-2-on-tautology results substituted with the universal
-    // automaton (see run_ltl2tgba_for_counting) rather than raised as errors.
+    /// ltl2tgba exit-2-on-tautology results substituted with the universal
+    /// automaton (see run_ltl2tgba_for_counting) rather than raised as errors.
     inline static std::size_t n_tautology_substitutions = 0;
-    // Counting calls abandoned at the per-call timeout (raised as errors, so
-    // the individual is dropped).
+    /// Counting calls abandoned at the per-call timeout (raised as errors, so
+    /// the individual is dropped).
     inline static std::size_t n_timeouts = 0;
 
-    // Folds one exec's wall and child-CPU time into the totals. The caller must
-    // hold the stats/cache mutex, matching the other accumulators here.
+    /// Folds one exec's wall and child-CPU time into the totals. The caller
+    /// must hold the stats/cache mutex, matching the other accumulators here.
     static void record_time(double wall_s, double cpu_s) {
         total_time_s += wall_s;
         total_cpu_s += cpu_s;
@@ -63,8 +70,8 @@ class RealizabilityChecker {
     inline static std::size_t n_cache_hits = 0;
     inline static double total_time_s = 0.0;
     inline static double total_cpu_s = 0.0;
-    // ltlsynt calls abandoned at the per-call timeout (treated as
-    // unrealizable).
+    /// ltlsynt calls abandoned at the per-call timeout (treated as
+    /// unrealizable).
     inline static std::size_t n_timeouts = 0;
 
     /// Checks whether the specification is realizable using ltlsynt. Results
@@ -74,7 +81,9 @@ class RealizabilityChecker {
 
     /// Realizability of a raw LTL formula with the given input/output atom
     /// partition (mode-agnostic core shared by the FRETISH and TLSF front
-    /// ends). Memoised by (normalised formula, inputs, outputs).
+    /// ends). Memoised by the formula verbatim together with the atom
+    /// partition; the formula is deliberately *not* normalised first, for the
+    /// reason given where check_realizability_ltl is defined in spot.cpp.
     bool check_realizability_ltl(const std::string& ltl_formula,
                                  const std::vector<std::string>& inputs,
                                  const std::vector<std::string>& outputs);

@@ -111,13 +111,21 @@ inline Count parse_count_decimal_or_throw(std::string_view text) {
 /// counts for the propositional conditions and a transition matrix for
 /// computing the number of satisfying traces via matrix exponentiation.
 struct TransferSystem {
-    /// The states of the automaton
+    /// The states of the automaton. The SPOT + Ganak path leaves these
+    /// default-constructed and carrying no information -- it needs only the
+    /// state count, which is the vector's size -- so only a
+    /// test-constructed system populates them.
     std::vector<State> m_states;
-    /// Counts of satisfying valuations for conditions
+    /// Counts of satisfying valuations for conditions. Always empty on the
+    /// SPOT + Ganak path, which folds the valuation weights straight into
+    /// m_transition_matrix at construction; only a test-constructed system
+    /// supplies them separately.
     CountVector m_valuation_counts;
     /// Transition matrix T where T[i][j] is count from state i to j
     CountMatrix m_transition_matrix;
-    /// Whether matrix represents weighted transitions
+    /// Whether matrix represents weighted transitions. Always true on the
+    /// SPOT + Ganak path; false only for a test-constructed 0/1 adjacency
+    /// matrix awaiting m_valuation_counts.
     bool m_transition_matrix_is_weighted = false;
     /// Optional mask of valid final states (1 = valid, 0 = invalid).
     /// Empty means all states are valid final states.

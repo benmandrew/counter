@@ -18,7 +18,15 @@ namespace tlsf {
 /// fitness, filters, and genetic operators, collects the realizable survivors
 /// (deduplicated), and writes each to `<output_dir>/repair_N.tlsf` with a
 /// sidecar `<output_dir>/repair_N.fitness.json` recording its fitness. Progress
-/// and a summary line are printed to stdout.
+/// and a summary line are printed to stdout. A final implication pass reduces
+/// the survivors to the maximal ones before they are written, unless
+/// `cfg.run_implication_filter` is unset.
+///
+/// That describes `cfg.repair_mode == RepairMode::Monolithic`, the default.
+/// Under `[tlsf] repair_mode = "muc"` the run instead loops extract-core /
+/// evolve-core / reintegrate up to `cfg.muc_max_iterations` times and writes at
+/// most one repair, the recombined specification, if it ends realizable
+/// (PR #30).
 ///
 /// @param input_path    Path to the input TLSF file.
 /// @param output_dir    Existing directory for the repair outputs.

@@ -38,8 +38,8 @@ inline bool uses_nsga2_ranking(const Config& cfg) {
 /// Orders a scored population best-first according to @p cfg's selection
 /// scheme: descending weighted fitness for WeightedAverage, or the NSGA-II
 /// crowded-comparison order (front rank ascending, crowding descending) for
-/// Nsga2. The sort is stable in both cases so a fixed RNG seed is
-/// reproducible.
+/// Nsga2 and Nsga2Replicate. The sort is stable in both cases so a fixed RNG
+/// seed is reproducible.
 template <typename Spec>
 void order_population(const Config& cfg,
                       std::vector<Scored<Spec>>& population) {

@@ -221,6 +221,11 @@ PipedChild spawn_piped_child(const std::vector<std::string>& arguments,
     argv[arguments.size()] = nullptr;
     std::array<int, 2> stdin_pipe = {-1, -1};
     std::array<int, 2> stdout_pipe = {-1, -1};
+    // O_CLOEXEC on both, for the reason spelled out at the pipe2 in
+    // execute_and_capture below: a concurrent fork on another scoring-pool
+    // thread inherits these ends and holds them past its own exec, and this
+    // call's reader then never sees end of file. pipe2 sets the flag
+    // atomically where pipe followed by fcntl races that fork (PR #53).
     [[maybe_unused]] const int stdin_pipe_result =
         pipe2(stdin_pipe.data(), O_CLOEXEC);
     assert(stdin_pipe_result == 0);
@@ -328,9 +333,8 @@ ProcessResult execute_and_capture(const std::vector<std::string>& arguments,
                                   std::chrono::milliseconds timeout,
                                   ExecutableLookup lookup) {
     assert(!arguments.empty());
-    // Build argv before forking: heap allocation inside the child between
-    // fork() and exec() can deadlock if another thread held the allocator lock
-    // at the moment of the fork (e.g. under ASAN's allocator).
+    // Built before forking, as in spawn_piped_child above and for the same
+    // allocator-lock reason.
     std::vector<char*> argv(arguments.size() + 1);
     for (std::size_t arg_idx = 0; arg_idx < arguments.size(); ++arg_idx) {
         argv[arg_idx] = const_cast<char*>(arguments[arg_idx].c_str());

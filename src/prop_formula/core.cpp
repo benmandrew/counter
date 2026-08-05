@@ -61,6 +61,10 @@ bool Formula::is_propositional() const {
     return true;
 }
 
+// Hashes the raw node arena, as operator< above compares it: two logically
+// identical formulae with different arena layouts are unequal and hash
+// differently, which is what forces construction and extraction to preserve
+// the parser's layout (see transform.cpp).
 std::size_t Formula::hash() const noexcept {
     using prop_formula_internal::Node;
     auto combine = [](std::size_t seed, std::size_t val) noexcept {

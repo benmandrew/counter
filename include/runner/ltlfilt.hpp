@@ -13,13 +13,13 @@ struct LtlfiltStats {
     inline static std::size_t n_cache_hits = 0;
     inline static std::size_t n_cache_misses = 0;
     inline static double total_time_s = 0.0;
-    // Child-process CPU time (user+sys), from wait4(); unlike total_time_s
-    // (wall) it excludes time the parent spends blocked waiting on the child.
+    /// Child-process CPU time (user+sys), from wait4(); unlike total_time_s
+    /// (wall) it excludes time the parent spends blocked waiting on the child.
     inline static double total_cpu_s = 0.0;
-    // Calls abandoned at the per-call timeout. Both callers treat these as
-    // inconclusive rather than as errors, so unlike the ltl2tgba and ltlsynt
-    // counters this one costs no individual: it measures how often --simplify
-    // hit its blowup case.
+    /// Calls abandoned at the per-call timeout. Both callers treat these as
+    /// inconclusive rather than as errors, so unlike the ltl2tgba and ltlsynt
+    /// counters this one costs no individual: it measures how often --simplify
+    /// hit its blowup case.
     inline static std::size_t n_timeouts = 0;
 };
 

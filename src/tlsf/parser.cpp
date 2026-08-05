@@ -290,6 +290,9 @@ class Parser {
         return idx < m_tokens.size() ? m_tokens[idx] : m_tokens.back();
     }
 
+    // Clamps on the trailing End token rather than running off the end, which
+    // is what makes peek() total and terminates every `while (!at_boundary())
+    // advance();` loop.
     const Token& advance() {
         const Token& token = peek();
         if (m_pos + 1 < m_tokens.size()) {
@@ -356,8 +359,8 @@ class Parser {
             parse_semantics(spec);  // consumes its own optional ';'
             return;
         } else {
-            // TARGET, TAGS, VERSION, and any other key: value consumed
-            // verbatim.
+            // TARGET, TAGS, VERSION, and any other key: the value is discarded,
+            // not recorded.
             skip_info_value();  // consumes its own optional ';'
             return;
         }

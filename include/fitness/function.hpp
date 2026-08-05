@@ -65,8 +65,11 @@ class AggregateWeightedFitnessFunctionT {
 
     /// Returns the per-objective scores for @p spec, computing and caching
     /// them on the first request and reusing the cached vector thereafter.
-    /// References into m_cache stay valid across later insertions (the cache
-    /// is never erased), so returning a copy is safe under concurrency.
+    /// Scoring runs outside the lock, so two threads that miss on the same
+    /// spec both score it; the second emplace finds the key taken and returns
+    /// the winner's entry, which is the same value. The duplicated work is the
+    /// price of not holding the mutex across an objective that shells out to
+    /// black or ltlsynt, which would serialise the whole scoring pool.
     std::vector<double> objectives_cached(const Spec& spec) const {
         {
             std::scoped_lock lock(*m_cache_mutex);
@@ -116,10 +119,9 @@ class AggregateWeightedFitnessFunctionT {
         }
     }
 
-    /// Computes the weighted average fitness score for a given specification
-    /// element, returning a cached value if it has been scored before.
+    /// Computes the weighted average fitness score for a specification
+    /// element.
     ///
-    /// @param spec The specification element to score.
     /// @return The weighted average fitness score, or 0.0 if total weight is
     /// not positive.
     double operator()(const Spec& spec) const {
@@ -127,8 +129,7 @@ class AggregateWeightedFitnessFunctionT {
     }
 
     /// Returns the individual per-objective scores for @p spec, in the
-    /// registration order of the aggregated fitness functions. Shares the
-    /// same memoisation cache as operator().
+    /// registration order of the aggregated fitness functions.
     std::vector<double> objectives(const Spec& spec) const {
         return objectives_cached(spec);
     }

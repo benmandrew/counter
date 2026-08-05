@@ -31,6 +31,10 @@ class TseitinEncoder {
     }
 
    private:
+    // Every operator emits the full bi-implication, not the single direction
+    // plain SAT would need: the output feeds Ganak, and only a definitional
+    // encoding leaves each auxiliary variable functionally determined, so that
+    // the CNF has the same model count as the original formula.
     int encode_node(std::size_t index) {
         auto cache_it = m_node_literal_cache.find(index);
         if (cache_it != m_node_literal_cache.end()) {

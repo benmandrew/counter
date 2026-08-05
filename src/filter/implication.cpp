@@ -34,6 +34,8 @@ void check_pair(const std::vector<Specification>& pop,
                                                     std::memory_order_relaxed);
     const Specification& spec_a = pop[representatives[a_pos]];
     const Specification& spec_b = pop[representatives[b_pos]];
+    // A timed-out check cannot establish dominance, so an uncertain pair keeps
+    // both endpoints.
     const bool a_implies_b =
         spec_implies(spec_a, spec_b, checker).value_or(false);
     const bool b_implies_a =
@@ -159,6 +161,9 @@ FilterFunction make_weakening_filter(Specification original,
                     pop_size, max_in_flight,
                     [&checker, &pop, &original, &keep](std::size_t idx) {
                         return [&checker, &pop, &original, &keep, idx] {
+                            // A timed-out check retains the candidate: dropping
+                            // on an unknown answer would make survival depend
+                            // on machine load.
                             if (spec_implies(original, pop[idx], checker)
                                     .value_or(true)) {
                                 keep[idx].store(1, std::memory_order_relaxed);

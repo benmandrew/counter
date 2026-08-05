@@ -16,6 +16,13 @@ namespace {
 // Geometric ratio r and small fixed weight w for the timing measure.
 // μ(ForTicks{N}) = μ(WithinTicks{N}) = μ(AfterTicks{N}) = r^N
 // μ(Immediately) = μ(NextTimepoint) = μ(Eventually) = μ(Always) = w
+//
+// r = 1/2 weights the Nth member of each infinite family by r^N, so every
+// downset measure is a finite sum plus a convergent geometric tail. No
+// normalisation is needed: a uniform rescaling of μ cancels in the Jaccard
+// ratio below. The four non-family timings carry a small fixed w = 0.01 so
+// that Eventually, which every downset contains, keeps each intersection
+// non-empty without moving the ratio appreciably. Derived in the paper.
 constexpr double k_timing_geo_ratio = 0.5;
 constexpr double k_timing_discrete_weight = 0.01;
 

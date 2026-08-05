@@ -23,7 +23,7 @@ namespace {
 //
 // Unlike the ltlsynt and ltl2tgba budgets this defaults to a real value rather
 // than to "off": --simplify is super-exponential on the deep nested-X
-// conjunctions the search builds (see 35e1467), and both callers below already
+// conjunctions the search builds (35e1467, PR #24), and both callers below
 // degrade gracefully when they get no answer, so a bounded wait costs only the
 // wait itself.
 std::atomic<std::int64_t> g_ltlfilt_timeout_ms{10'000};

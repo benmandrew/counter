@@ -62,14 +62,15 @@ double semantic_similarity_from_counts(
 /// where shared(req, other, k) is the number of traces of length k satisfying
 /// both requirements, and count(req, k) is the number of traces satisfying req.
 /// Returns a value between 0 and 1, where 1 indicates identical trace
-/// semantics.
+/// semantics. Zero counts are boundary cases rather than errors: two
+/// unsatisfiable requirements score 1.0, and one unsatisfiable against one
+/// satisfiable scores 0.0.
 ///
 /// @param requirement       The first requirement to compare
 /// @param other_requirement The second requirement to compare
 /// @param step_count        The bound k on trace length for model counting
 /// @param metric            Whether to combine counts directly or via logarithm
 /// @return                  A semantic similarity score in [0, 1]
-/// @throws std::domain_error if either requirement has zero satisfying traces
 double semantic_similarity(const Requirement& requirement,
                            const Requirement& other_requirement,
                            std::size_t step_count,
@@ -84,10 +85,14 @@ double semantic_similarity(const Requirement& requirement,
                            const Requirement& other_requirement,
                            const Config& cfg);
 
-/// Computes semantic similarity between two specifications by averaging the
-/// pairwise semantic similarities of corresponding requirements (matched in
-/// set order). Both specifications must be non-empty and have the same number
-/// of requirements.
+/// Computes semantic similarity between two specifications by pairing
+/// assumptions with assumptions and guarantees with guarantees, by index. The
+/// two sides need not be the same length; surplus requirements on either side
+/// have no counterpart and are skipped. Pairs whose two requirements compare
+/// equal are also skipped, and the score is the mean over the remaining
+/// (changed) pairs alone -- identical pairs would otherwise drag the mean
+/// toward 1 as the specification grows and hide the requirements a mutation
+/// actually touched. Returns 1.0 when no pair differs.
 ///
 /// @param specification       The first specification to compare (non-empty)
 /// @param other_specification The second specification to compare (non-empty)

@@ -79,35 +79,27 @@ KeySpec section(std::set<std::string> keys,
 
 const KeySpec& config_key_spec() {
     static const KeySpec spec = section(
-        {},
-        {{"genetic",
-          section({"generations", "population_size", "selection_rate",
-                   "elitism_rate", "crossover_rate", "mutation_rate",
-                   "selection_scheme"})},
-         {"fitness", section({"weight_syntactic", "weight_semantic",
-                              "weight_halstead", "weight_status"})},
-         {"syntactic",
-          section({"weight_trigger", "weight_response", "weight_timing"})},
-         {"mutation",
-          section({"p_trigger", "p_response", "p_timing", "p_add_assumption",
-                   "p_conditional_assumption", "strengthen_assumptions",
-                   "allow_output_assumptions"})},
-         {"tlsf", section({"repair_mode", "muc_max_iterations"},
-                          {{"mutation", section({"p_assumption", "p_guarantee",
-                                                 "p_temporal"})}})},
-         {"model_counting", section({"default_bound", "metric"})},
-         {"filters",
-          section({"run_weakening", "run_implication", "run_vacuity",
-                   "run_well_separation"},
-                  {{"intervals",
-                    section({"dedup", "false_condition", "weakening", "bloat",
-                             "vacuity", "well_separation"})}})},
-         {"runtime",
-          section({"black_timeout_ms", "ltlsynt_timeout_ms",
-                   "ltl2tgba_timeout_ms", "ltlfilt_timeout_ms",
-                   "ganak_timeout_ms", "parallel",
-                   "max_concurrent_realizability", "report_cpu_timing",
-                   "max_scoring_failure_rate", "dashboard"})}});
+        {}, {{"genetic",
+              section({"generations", "population_size", "selection_rate",
+                       "elitism_rate", "crossover_rate", "mutation_rate",
+                       "selection_scheme"})},
+             {"fitness", section({"weight_syntactic", "weight_semantic",
+                                  "weight_halstead", "weight_status"})},
+             {"mutation",
+              section({"p_trigger", "p_response", "p_timing",
+                       "p_add_assumption", "p_conditional_assumption",
+                       "strengthen_assumptions", "allow_output_assumptions"})},
+             {"tlsf",
+              section({"repair_mode", "muc_max_iterations"},
+                      {{"mutation", section({"p_assumption", "p_temporal"})}})},
+             {"model_counting", section({"default_bound", "metric"})},
+             {"filters", section({"run_weakening", "run_implication",
+                                  "run_vacuity", "run_well_separation"})},
+             {"runtime", section({"black_timeout_ms", "ltlsynt_timeout_ms",
+                                  "ltl2tgba_timeout_ms", "ltlfilt_timeout_ms",
+                                  "ganak_timeout_ms", "parallel",
+                                  "max_concurrent_realizability",
+                                  "max_scoring_failure_rate", "dashboard"})}});
     return spec;
 }
 
@@ -197,21 +189,6 @@ void apply_fitness(const toml::table& tbl, Config& cfg) {
     }
 }
 
-void apply_syntactic(const toml::table& tbl, Config& cfg) {
-    if (auto val = tbl["weight_trigger"].value<double>()) {
-        require_nonnegative(*val, "syntactic.weight_trigger");
-        cfg.syntactic_weight_trigger = *val;
-    }
-    if (auto val = tbl["weight_response"].value<double>()) {
-        require_nonnegative(*val, "syntactic.weight_response");
-        cfg.syntactic_weight_response = *val;
-    }
-    if (auto val = tbl["weight_timing"].value<double>()) {
-        require_nonnegative(*val, "syntactic.weight_timing");
-        cfg.syntactic_weight_timing = *val;
-    }
-}
-
 void apply_mutation(const toml::table& tbl, Config& cfg) {
     if (auto val = tbl["p_trigger"].value<double>()) {
         require_probability(*val, "mutation.p_trigger");
@@ -246,10 +223,6 @@ void apply_tlsf(const toml::table& tbl, Config& cfg) {
         if (auto val = (*mutation)["p_assumption"].value<double>()) {
             require_probability(*val, "tlsf.mutation.p_assumption");
             cfg.tlsf_p_assumption = *val;
-        }
-        if (auto val = (*mutation)["p_guarantee"].value<double>()) {
-            require_probability(*val, "tlsf.mutation.p_guarantee");
-            cfg.tlsf_p_guarantee = *val;
         }
         if (auto val = (*mutation)["p_temporal"].value<double>()) {
             require_probability(*val, "tlsf.mutation.p_temporal");
@@ -303,26 +276,6 @@ void apply_filters(const toml::table& tbl, Config& cfg) {
     if (auto val = tbl["run_well_separation"].value<bool>()) {
         cfg.run_well_separation_filter = *val;
     }
-    if (const auto* intervals = tbl["intervals"].as_table()) {
-        const auto parse_interval = [&](const char* key, const char* name,
-                                        std::size_t& field) {
-            if (auto val = (*intervals)[key].value<int64_t>()) {
-                field = static_cast<std::size_t>(require_positive(*val, name));
-            }
-        };
-        parse_interval("dedup", "filters.intervals.dedup",
-                       cfg.dedup_filter_interval);
-        parse_interval("false_condition", "filters.intervals.false_condition",
-                       cfg.false_condition_filter_interval);
-        parse_interval("weakening", "filters.intervals.weakening",
-                       cfg.weakening_filter_interval);
-        parse_interval("bloat", "filters.intervals.bloat",
-                       cfg.bloat_filter_interval);
-        parse_interval("vacuity", "filters.intervals.vacuity",
-                       cfg.vacuity_filter_interval);
-        parse_interval("well_separation", "filters.intervals.well_separation",
-                       cfg.well_separation_filter_interval);
-    }
 }
 
 void apply_runtime(const toml::table& tbl, Config& cfg) {
@@ -372,9 +325,6 @@ void apply_runtime(const toml::table& tbl, Config& cfg) {
     if (auto val = tbl["dashboard"].value<bool>()) {
         cfg.dashboard = *val;
     }
-    if (auto val = tbl["report_cpu_timing"].value<bool>()) {
-        cfg.report_cpu_timing = *val;
-    }
     if (auto val = tbl["max_scoring_failure_rate"].value<double>()) {
         require_probability(*val, "runtime.max_scoring_failure_rate");
         cfg.max_scoring_failure_rate = *val;
@@ -389,9 +339,6 @@ Config apply_toml(const toml::table& tbl) {
     }
     if (const auto* sec = tbl["fitness"].as_table()) {
         apply_fitness(*sec, cfg);
-    }
-    if (const auto* sec = tbl["syntactic"].as_table()) {
-        apply_syntactic(*sec, cfg);
     }
     if (const auto* sec = tbl["mutation"].as_table()) {
         apply_mutation(*sec, cfg);

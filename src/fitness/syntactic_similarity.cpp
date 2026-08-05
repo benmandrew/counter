@@ -242,25 +242,20 @@ double average_timing_similarity(const Specification& spec1,
 
 double syntactic_similarity(const Requirement& requirement,
                             const Requirement& other_requirement,
-                            const Config& cfg) {
+                            [[maybe_unused]] const Config& cfg) {
     double condition_similarity = requirement.m_condition.syntactic_similarity(
         other_requirement.m_condition);
     double response_similarity = requirement.m_response.syntactic_similarity(
         other_requirement.m_response);
     double timing_similarity = timing_syntactic_similarity(
         requirement.m_timing, other_requirement.m_timing);
-    const double total_weight = cfg.syntactic_weight_trigger +
-                                cfg.syntactic_weight_response +
-                                cfg.syntactic_weight_timing;
-    return (cfg.syntactic_weight_trigger * condition_similarity +
-            cfg.syntactic_weight_response * response_similarity +
-            cfg.syntactic_weight_timing * timing_similarity) /
-           total_weight;
+    return (condition_similarity + response_similarity + timing_similarity) /
+           3.0;
 }
 
 double syntactic_similarity(const Specification& specification,
                             const Specification& other_specification,
-                            const Config& cfg) {
+                            [[maybe_unused]] const Config& cfg) {
     COUNTER_PROFILE_SCOPE("fitness/syntactic_similarity_spec");
     assert((!specification.m_assumptions.empty() ||
             !specification.m_guarantees.empty()) &&
@@ -274,11 +269,5 @@ double syntactic_similarity(const Specification& specification,
             .syntactic_similarity(conjoin_responses(other_specification));
     double timing_similarity =
         average_timing_similarity(specification, other_specification);
-    const double total_weight = cfg.syntactic_weight_trigger +
-                                cfg.syntactic_weight_response +
-                                cfg.syntactic_weight_timing;
-    return (cfg.syntactic_weight_trigger * trigger_similarity +
-            cfg.syntactic_weight_response * response_similarity +
-            cfg.syntactic_weight_timing * timing_similarity) /
-           total_weight;
+    return (trigger_similarity + response_similarity + timing_similarity) / 3.0;
 }

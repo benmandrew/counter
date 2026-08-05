@@ -447,38 +447,6 @@ void test_evolve_generation_nsga2_is_deterministic() {
            "identical, stably-ordered generation");
 }
 
-void test_filters_for_generation_respects_intervals() {
-    FilterFunction every = make_predicate_filter(
-        "every", [](const Specification&) { return true; });
-    every.set_interval(1);
-    FilterFunction third = make_predicate_filter(
-        "third", [](const Specification&) { return true; });
-    third.set_interval(3);
-    const std::vector<FilterFunction> filters = {every, third};
-
-    const auto gen2 = filters_for_generation(filters, 2, false);
-    expect(gen2.size() == 1 && gen2[0].name() == "every",
-           "filters_for_generation: interval-3 filter should not run on gen 2");
-
-    const auto gen3 = filters_for_generation(filters, 3, false);
-    expect(gen3.size() == 2,
-           "filters_for_generation: interval-3 filter should run on gen 3");
-}
-
-void test_filters_for_generation_last_runs_all_filters() {
-    FilterFunction rare = make_predicate_filter(
-        "rare", [](const Specification&) { return true; });
-    rare.set_interval(100);
-    const std::vector<FilterFunction> filters = {rare};
-
-    expect(filters_for_generation(filters, 5, false).empty(),
-           "filters_for_generation: a filter whose interval does not divide "
-           "the generation should be skipped");
-    expect(filters_for_generation(filters, 5, true).size() == 1,
-           "filters_for_generation: the final generation should run every "
-           "filter regardless of interval");
-}
-
 // --- dedup_by_specification / replicate_to_size ---
 
 // int stands in for Spec: both helpers need only hashing, equality, and
@@ -718,8 +686,6 @@ void run_generation_tests() {
     test_evolve_generation_nsga2_produces_target_size();
     test_evolve_generation_nsga2_preserves_pareto_front_without_elitism();
     test_evolve_generation_nsga2_is_deterministic();
-    test_filters_for_generation_respects_intervals();
-    test_filters_for_generation_last_runs_all_filters();
     test_dedup_by_specification_keeps_first_occurrence_in_order();
     test_dedup_by_specification_all_distinct_is_identity();
     test_replicate_to_size_produces_target_size();

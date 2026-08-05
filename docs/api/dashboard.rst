@@ -35,10 +35,11 @@ then say which of them actually ran. A new filter or pipeline stage therefore
 appears without either side being taught about it.
 
 The roster exists so the page can lay the stage chart out at a fixed height with
-each stage on a fixed row. Filters run on intervals, so the active set shrinks
-and grows between generations; a chart sized to whichever stages happened to run
-would change height underneath the reader. Stages absent from a generation keep
-their row, struck through and greyed.
+each stage on a fixed row. A generation need not report every stage in the
+roster — MUC repair evolves a fresh core per iteration, and a filter the config
+disables is never constructed — and a chart sized to whichever stages happened
+to run would change height underneath the reader. Stages absent from a
+generation keep their row, struck through and greyed.
 
 Optional fields are omitted rather than defaulted. ``n_realizable`` is absent
 when the driver does not measure it per generation — the TLSF path checks

@@ -36,8 +36,8 @@ test("rows hold the stage's own record, not a neighbour's", () => {
   assert.equal(rows[1].rec.n_out, 30);
 });
 
-/* Filters run on intervals: the set of stages that ran differs generation to
-   generation, but the rows must not move under the reader. */
+/* A generation need not report every stage in the roster, but the rows must not
+   move under the reader. */
 test("the row list is identical across generations that ran different stages", () => {
   const text = log(runStart({ stages: ["breed", "weakening", "score"] }),
                    stage(1, 0, "breed"), stage(1, 1, "weakening"),

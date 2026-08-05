@@ -365,13 +365,6 @@ run_evolution(const Config& cfg, std::vector<ScoredSpecification> population,
             status.render();
         };
 
-        // Each per-generation filter runs only every interval()-th generation;
-        // the final generation always runs every filter, so the returned
-        // population is never left unfiltered.
-        const std::vector<FilterFunction> active_filters =
-            filters_for_generation(filter_functions, gen_idx + 1,
-                                   gen_idx + 1 == cfg.generations);
-
         // The stage index is assigned here rather than by the pipeline: the
         // observer sees stages in order, and the dashboard needs their order
         // without the pipeline having to number them.
@@ -383,11 +376,11 @@ run_evolution(const Config& cfg, std::vector<ScoredSpecification> population,
 
         population = evolve_generation(
             cfg, population, selection_size, elitism_size, fitness_function,
-            active_filters, random_source, on_progress, on_stage);
+            filter_functions, random_source, on_progress, on_stage);
 
         // Each active filter copy carries this generation's in/out sizes; fold
         // them into the running per-filter totals reported at the end.
-        for (const FilterFunction& flt : active_filters) {
+        for (const FilterFunction& flt : filter_functions) {
             for (FilterRunStats& stat : filter_stats) {
                 if (stat.name == flt.name()) {
                     stat.total_in += flt.n_in();
@@ -562,6 +555,9 @@ void print_help(const char* prog) {
         << "                       <output-dir>/progress.jsonl and write a\n"
         << "                       live dashboard page beside it. Equivalent\n"
         << "                       to [runtime] dashboard = true.\n"
+        << "  --cpu-report         Print a CPU-attribution report at exit:\n"
+        << "                       this process's own code against the\n"
+        << "                       external CLI tools, and per tool.\n"
         << "  --version            Print the git commit this binary was "
            "built\n"
         << "                       from as commit=, commit_short= and dirty=\n"
@@ -625,6 +621,7 @@ int main(int argc, const char* const argv[]) {
     // reads one switch. The flag can only enable: a config that already asked
     // for the dashboard is not turned off by its absence.
     cfg.dashboard = cfg.dashboard || has_flag(argc, argv, "--dashboard");
+    cfg.report_cpu_timing = has_flag(argc, argv, "--cpu-report");
     apply_tool_timeouts(cfg);
     RealizabilityChecker::set_max_concurrency(cfg.max_concurrent_realizability);
     set_thread_pool_size(cfg.parallel);

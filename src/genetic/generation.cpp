@@ -109,10 +109,8 @@ std::vector<FilterFunction> get_filter_functions(
     const std::size_t max_in_flight = dispatch_window();
     std::vector<FilterFunction> filters;
     FilterFunction dedup = make_dedup_filter();
-    dedup.set_interval(cfg.dedup_filter_interval);
     filters.push_back(std::move(dedup));
     FilterFunction bloat = make_bloat_cap_filter(original);
-    bloat.set_interval(cfg.bloat_filter_interval);
     filters.push_back(std::move(bloat));
     // A false condition is vacuously satisfied by every trace, so it
     // imposes no constraint; forbid it from surviving as a breeding
@@ -122,14 +120,12 @@ std::vector<FilterFunction> get_filter_functions(
         make_predicate_filter("false-condition", [](const Specification& spec) {
             return !specification_has_false_condition(spec);
         });
-    false_condition.set_interval(cfg.false_condition_filter_interval);
     filters.push_back(std::move(false_condition));
     if (cfg.run_vacuity_filter) {
         // Contradictory assumptions make (A) -> (G) a tautology, so the
         // candidate reads as realizable without repairing anything. Reachable
         // whenever mutation can strengthen an assumption.
         FilterFunction vacuity = make_vacuity_filter(checker, max_in_flight);
-        vacuity.set_interval(cfg.vacuity_filter_interval);
         filters.push_back(std::move(vacuity));
     }
     if (cfg.run_well_separation_filter) {
@@ -140,30 +136,15 @@ std::vector<FilterFunction> get_filter_functions(
         // alongside the survivor re-checks.
         FilterFunction well_separation =
             make_well_separation_filter(global_real_checker(), max_in_flight);
-        well_separation.set_interval(cfg.well_separation_filter_interval);
         filters.push_back(std::move(well_separation));
     }
     if (cfg.run_weakening_filter) {
         // NOLINTNEXTLINE(clang-analyzer-cplusplus.NewDeleteLeaks)
         FilterFunction weakening =
             make_weakening_filter(std::move(original), checker);
-        weakening.set_interval(cfg.weakening_filter_interval);
         filters.push_back(std::move(weakening));
     }
     return filters;
-}
-
-std::vector<FilterFunction> filters_for_generation(
-    const std::vector<FilterFunction>& filters, std::size_t generation,
-    bool is_last_generation) {
-    std::vector<FilterFunction> active;
-    active.reserve(filters.size());
-    for (const FilterFunction& filter : filters) {
-        if (is_last_generation || generation % filter.interval() == 0) {
-            active.push_back(filter);
-        }
-    }
-    return active;
 }
 
 std::vector<FilterFunction> get_final_filter_functions(

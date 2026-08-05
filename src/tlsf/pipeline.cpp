@@ -225,55 +225,26 @@ std::vector<FilterFunctionT<Specification>> build_per_gen_filters(
     const std::size_t max_in_flight = dispatch_window();
     std::vector<FilterFunctionT<Specification>> filters;
     FilterFunctionT<Specification> dedup = tlsf_make_dedup_filter();
-    dedup.set_interval(cfg.dedup_filter_interval);
     filters.push_back(std::move(dedup));
     FilterFunctionT<Specification> bloat = tlsf_make_bloat_cap_filter(spec);
-    bloat.set_interval(cfg.bloat_filter_interval);
     filters.push_back(std::move(bloat));
     if (cfg.run_vacuity_filter) {
         FilterFunctionT<Specification> vacuity =
             tlsf_make_vacuity_filter(max_in_flight);
-        vacuity.set_interval(cfg.vacuity_filter_interval);
         filters.push_back(std::move(vacuity));
     }
     if (cfg.run_weakening_filter) {
         FilterFunctionT<Specification> weakening =
             tlsf_make_weakening_filter(spec, global_sat_checker());
-        weakening.set_interval(cfg.weakening_filter_interval);
         filters.push_back(std::move(weakening));
     }
     if (cfg.run_well_separation_filter) {
         FilterFunctionT<Specification> well_separation =
             tlsf_make_well_separation_filter(global_real_checker(),
                                              max_in_flight);
-        well_separation.set_interval(cfg.well_separation_filter_interval);
         filters.push_back(std::move(well_separation));
     }
     return filters;
-}
-
-// The subset of `filters` that runs this generation (every filter fires on the
-// last generation; otherwise only those whose interval divides gen+1), paired
-// with each active filter's index into `filters` so its stats fold back
-// positionally.
-struct ActiveFilters {
-    std::vector<FilterFunctionT<Specification>> filters;
-    std::vector<std::size_t> indices;
-};
-
-ActiveFilters select_active_filters(
-    const std::vector<FilterFunctionT<Specification>>& filters, std::size_t gen,
-    bool is_last) {
-    ActiveFilters active;
-    active.filters.reserve(filters.size());
-    active.indices.reserve(filters.size());
-    for (std::size_t k = 0; k < filters.size(); ++k) {
-        if (is_last || (gen + 1) % filters[k].interval() == 0) {
-            active.filters.push_back(filters[k]);
-            active.indices.push_back(k);
-        }
-    }
-    return active;
 }
 
 // Says where one evolve run should report its progress, and how to place it in
@@ -324,9 +295,6 @@ std::vector<Scored<Specification>> evolve_population(
     }
 
     for (std::size_t gen = 0; gen < cfg.generations; ++gen) {
-        const bool is_last = gen + 1 == cfg.generations;
-        ActiveFilters active =
-            select_active_filters(per_gen_filters, gen, is_last);
         const auto gen_start = std::chrono::steady_clock::now();
         // MUC repair restarts its generation count on every core it evolves, so
         // the dashboard is given a number that keeps climbing across
@@ -342,14 +310,14 @@ std::vector<Scored<Specification>> evolve_population(
         };
         population = evolve_generation_generic(
             cfg, population, selection_size, elitism_size, fitness,
-            active.filters, tlsf_operators(), random_source, nullptr, on_stage);
-        // The active copies hold this generation's in/out sizes; fold them into
-        // the running per-filter totals for the end-of-run report.
-        for (std::size_t k = 0; k < active.filters.size(); ++k) {
-            filter_stats_out[active.indices[k]].total_in +=
-                active.filters[k].n_in();
-            filter_stats_out[active.indices[k]].total_out +=
-                active.filters[k].n_out();
+            per_gen_filters, tlsf_operators(), random_source, nullptr,
+            on_stage);
+        // Each filter records this generation's in/out sizes in its own mutable
+        // counters; fold them into the running totals for the end-of-run
+        // report.
+        for (std::size_t k = 0; k < per_gen_filters.size(); ++k) {
+            filter_stats_out[k].total_in += per_gen_filters[k].n_in();
+            filter_stats_out[k].total_out += per_gen_filters[k].n_out();
         }
         const double best =
             population.empty() ? 0.0 : population.front().fitness;

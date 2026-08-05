@@ -47,11 +47,6 @@ weight_semantic  = 0.4
 weight_halstead  = 0.05
 weight_status    = 0.6
 
-[syntactic]
-weight_trigger  = 2.0
-weight_response = 1.5
-weight_timing   = 0.5
-
 [mutation]
 p_trigger  = 0.3
 p_response = 0.7
@@ -64,13 +59,6 @@ default_bound = 10
 run_weakening       = false
 run_implication     = false
 run_well_separation = true
-
-[filters.intervals]
-dedup           = 1
-false_condition = 2
-weakening       = 3
-bloat           = 4
-well_separation = 5
 
 [runtime]
 black_timeout_ms = 500
@@ -94,12 +82,6 @@ dashboard        = true
            "config_io: fitness weight_halstead should be parsed from TOML");
     expect(cfg.fitness_weight_status == 0.6,
            "config_io: fitness weight_status should be parsed from TOML");
-    expect(cfg.syntactic_weight_trigger == 2.0,
-           "config_io: syntactic weight_trigger should be parsed from TOML");
-    expect(cfg.syntactic_weight_response == 1.5,
-           "config_io: syntactic weight_response should be parsed from TOML");
-    expect(cfg.syntactic_weight_timing == 0.5,
-           "config_io: syntactic weight_timing should be parsed from TOML");
     expect(cfg.p_trigger == 0.3,
            "config_io: mutation p_trigger should be parsed from TOML");
     expect(cfg.p_response == 0.7,
@@ -112,20 +94,8 @@ dashboard        = true
            "config_io: filters run_weakening should be false");
     expect(!cfg.run_implication_filter,
            "config_io: filters run_implication should be false");
-    expect(cfg.dedup_filter_interval == 1,
-           "config_io: filters.intervals.dedup should be parsed from TOML");
-    expect(cfg.false_condition_filter_interval == 2,
-           "config_io: filters.intervals.false_condition should be parsed from "
-           "TOML");
-    expect(cfg.weakening_filter_interval == 3,
-           "config_io: filters.intervals.weakening should be parsed from TOML");
-    expect(cfg.bloat_filter_interval == 4,
-           "config_io: filters.intervals.bloat should be parsed from TOML");
     expect(cfg.run_well_separation_filter,
            "config_io: filters run_well_separation should be true");
-    expect(cfg.well_separation_filter_interval == 5,
-           "config_io: filters.intervals.well_separation should be parsed from "
-           "TOML");
     expect(cfg.black_timeout == std::chrono::milliseconds{500},
            "config_io: runtime black_timeout_ms should be parsed from TOML");
     expect(cfg.parallel == 4,
@@ -186,19 +156,6 @@ void test_config_io_out_of_range_probability_throws() {
                "config_io: out-of-range error should name the field");
     }
     expect(threw, "config_io: out-of-range probability should throw");
-}
-
-void test_config_io_invalid_filter_interval_throws() {
-    bool threw = false;
-    try {
-        config_from_toml_string("[filters.intervals]\nweakening = 0\n");
-    } catch (const std::exception& exc) {
-        threw = true;
-        const std::string msg(exc.what());
-        expect(msg.find("filters.intervals.weakening") != std::string::npos,
-               "config_io: invalid interval error should name the field");
-    }
-    expect(threw, "config_io: non-positive filter interval should throw");
 }
 
 void test_config_io_elitism_rate_parsed() {
@@ -379,11 +336,6 @@ weight_semantic  = 0.4
 weight_halstead  = 0.05
 weight_status    = 0.6
 
-[syntactic]
-weight_trigger  = 2.0
-weight_response = 1.5
-weight_timing   = 0.5
-
 [mutation]
 p_trigger                = 0.3
 p_response               = 0.7
@@ -399,7 +351,6 @@ muc_max_iterations = 32
 
 [tlsf.mutation]
 p_assumption = 0.3
-p_guarantee  = 0.7
 p_temporal   = 0.2
 
 [model_counting]
@@ -412,14 +363,6 @@ run_implication     = false
 run_vacuity         = true
 run_well_separation = true
 
-[filters.intervals]
-dedup           = 1
-false_condition = 2
-weakening       = 3
-bloat           = 4
-vacuity         = 5
-well_separation = 6
-
 [runtime]
 black_timeout_ms             = 500
 ltlsynt_timeout_ms           = 30000
@@ -428,7 +371,6 @@ ltlfilt_timeout_ms           = 2000
 ganak_timeout_ms             = 4000
 parallel                     = 4
 max_concurrent_realizability = 6
-report_cpu_timing            = true
 max_scoring_failure_rate     = 0.05
 dashboard                    = true
 )";
@@ -459,16 +401,15 @@ void test_config_io_unknown_top_level_key_warns() {
 
 void test_config_io_unknown_nested_key_warns() {
     const std::string warnings = warnings_from(
-        "[filters.intervals]\ndedupe = 2\n\n[tlsf.mutation]\np_temporal_ = "
-        "0.2\n");
-    expect(warnings.find("unknown key filters.intervals.dedupe") !=
+        "[tlsf.mutation]\np_assumption_ = 0.3\np_temporal_ = 0.2\n");
+    expect(warnings.find("unknown key tlsf.mutation.p_assumption_") !=
                std::string::npos,
            "config_io: an unknown key in a nested section should be warned "
            "about by its full path");
     expect(warnings.find("unknown key tlsf.mutation.p_temporal_") !=
                std::string::npos,
-           "config_io: an unknown key in [tlsf.mutation] should be warned "
-           "about by its full path");
+           "config_io: a second unknown key in [tlsf.mutation] should also be "
+           "warned about by its full path");
 }
 
 void test_config_io_unknown_nested_section_warns() {
@@ -505,7 +446,6 @@ void run_config_io_tests() {
     test_config_io_missing_file_throws();
     test_config_io_invalid_toml_throws();
     test_config_io_out_of_range_probability_throws();
-    test_config_io_invalid_filter_interval_throws();
     test_config_io_elitism_rate_parsed();
     test_config_io_elitism_not_less_than_selection_throws();
     test_config_io_selection_scheme_defaults_to_nsga2();

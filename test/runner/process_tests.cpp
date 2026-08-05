@@ -2,6 +2,7 @@
 
 #include <chrono>
 #include <csignal>
+#include <cstddef>
 #include <cstdint>
 #include <cstdio>
 #include <filesystem>  // NOLINT(build/c++17)
@@ -174,6 +175,26 @@ void test_reports_the_child_peak_resident_set() {
                std::to_string(hungry.m_peak_rss_kb) + "kB");
 }
 
+// Dirties one byte per page and reads each back, returning the checksum so the
+// caller can assert on it.
+//
+// Every access goes through a volatile view because a release build is
+// otherwise free to delete the whole allocation: the compiler may elide new/
+// delete pairs, and a plain front()/back() check folds to a constant that keeps
+// nothing alive. That is not hypothetical -- it left this test holding 4.7MB
+// instead of 512MB under -O2, asserting nothing at all. Volatile accesses are
+// observable, so both the buffer and the stores into it have to survive.
+std::uint64_t touch_every_page(std::vector<char>* buffer) {
+    const auto page = static_cast<std::size_t>(sysconf(_SC_PAGESIZE));
+    volatile char* view = buffer->data();
+    std::uint64_t checksum = 0;
+    for (std::size_t offset = 0; offset < buffer->size(); offset += page) {
+        view[offset] = static_cast<char>(1 + (offset % 251));
+        checksum += static_cast<unsigned char>(view[offset]);
+    }
+    return checksum;
+}
+
 // The regression this measurement exists to avoid: a forked child inherits its
 // parent's resident set as copy-on-write, and exec folds that into the child's
 // maxrss, so wait4 reports the parent's footprint for any child that stayed
@@ -183,9 +204,7 @@ void test_reports_the_child_peak_resident_set() {
 // buffer this test is holding.
 void test_does_not_report_the_parents_footprint_as_the_childs() {
     std::vector<char> ballast(k_allocation_kb * 1024, '\1');
-    // Defeats a compiler that would otherwise see the buffer is never read and
-    // drop the pages this test is entirely about.
-    expect(ballast.front() == '\1' && ballast.back() == '\1',
+    expect(touch_every_page(&ballast) > 0,
            "process: the ballast must actually be resident");
 
     const ProcessResult quiet =

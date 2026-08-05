@@ -11,6 +11,7 @@
 
 #include <unistd.h>
 
+#include <algorithm>
 #include <atomic>
 #include <chrono>
 #include <cstdint>
@@ -99,6 +100,45 @@ void test_wall_and_cpu_are_measured_separately() {
            "a 20ms sleep records at least 10ms of wall time");
     expect(site.m_cpu_ns.load() < site.m_wall_ns.load(),
            "a sleeping scope records less CPU time than wall time");
+}
+
+void test_record_max_keeps_the_largest() {
+    // The counter exists for peak resident sets, where summing a thousand
+    // calls' peaks would describe nothing that ever happened. Both orders are
+    // exercised because a naive implementation that assigns rather than
+    // compares passes the ascending one.
+    if (!profile::enabled()) {
+        return;
+    }
+    profile::record_max("test/max-ascending", 10);
+    profile::record_max("test/max-ascending", 250);
+    profile::record_max("test/max-descending", 250);
+    profile::record_max("test/max-descending", 10);
+    std::uint64_t ascending = 0;
+    std::uint64_t descending = 0;
+    for (const auto& [name, value] : profile::counts()) {
+        if (name == "test/max-ascending") {
+            ascending = value;
+        } else if (name == "test/max-descending") {
+            descending = value;
+        }
+    }
+    expect(ascending == 250, "a rising sequence records its largest value");
+    expect(descending == 250,
+           "a falling sequence keeps the largest rather than the last, got " +
+               std::to_string(descending));
+}
+
+void test_record_max_is_silent_when_disabled() {
+    if (profile::enabled()) {
+        return;
+    }
+    profile::record_max("test/max-disabled", 99);
+    const auto counters = profile::counts();
+    const bool present = std::any_of(
+        counters.begin(), counters.end(),
+        [](const auto& entry) { return entry.first == "test/max-disabled"; });
+    expect(!present, "a disabled profiler registers no counter at all");
 }
 
 void test_clocks_advance_monotonically() {
@@ -200,6 +240,8 @@ void run_profile_tests() {
     test_repeated_names_share_one_site();
     test_interned_names_survive_registry_growth();
     test_wall_and_cpu_are_measured_separately();
+    test_record_max_keeps_the_largest();
+    test_record_max_is_silent_when_disabled();
     test_clocks_advance_monotonically();
     test_thread_cpu_excludes_other_threads();
     // Last, so the scopes above have already latched COUNTER_PROFILE as unset.

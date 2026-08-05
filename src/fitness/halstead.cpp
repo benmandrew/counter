@@ -10,23 +10,7 @@
 
 namespace {
 
-struct RawCounts {
-    std::set<std::string> operators;
-    std::set<std::string> operands;
-    std::size_t n1 = 0;
-    std::size_t n2 = 0;
-
-    void merge(const RawCounts& other) {
-        operators.insert(other.operators.begin(), other.operators.end());
-        operands.insert(other.operands.begin(), other.operands.end());
-        n1 += other.n1;
-        n2 += other.n2;
-    }
-
-    [[nodiscard]] HalsteadCounts to_counts() const {
-        return {operators.size(), operands.size(), n1, n2};
-    }
-};
+using RawCounts = HalsteadTokens;
 
 const char* connective_string(Formula::Kind kind) {
     switch (kind) {
@@ -159,6 +143,21 @@ RawCounts count_specification(const Specification& spec) {
 }
 
 }  // namespace
+
+void HalsteadTokens::merge(const HalsteadTokens& other) {
+    operators.insert(other.operators.begin(), other.operators.end());
+    operands.insert(other.operands.begin(), other.operands.end());
+    n1 += other.n1;
+    n2 += other.n2;
+}
+
+HalsteadCounts HalsteadTokens::to_counts() const {
+    return {operators.size(), operands.size(), n1, n2};
+}
+
+HalsteadTokens halstead_tokens(const Formula& formula) {
+    return count_formula(formula);
+}
 
 HalsteadCounts halstead_counts(const Formula& formula) {
     return count_formula(formula).to_counts();

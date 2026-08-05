@@ -5,6 +5,8 @@
 ///        specifications, used as a size-penalty fitness component.
 
 #include <cstddef>
+#include <set>
+#include <string>
 
 #include "requirement.hpp"
 
@@ -20,6 +22,32 @@ struct HalsteadCounts {
     std::size_t n1 = 0;
     std::size_t n2 = 0;
 };
+
+/// The pre-collapse form of HalsteadCounts: the distinct operator and operand
+/// *sets* alongside the occurrence totals.
+///
+/// Aggregating a specification means unioning the distinct sets across its
+/// formulae while summing occurrences, which HalsteadCounts alone cannot
+/// express — adding two eta1 values counts a shared operator once per formula,
+/// so the vocabulary would grow with formula count and inflate the volume.
+/// Both the FRETISH and TLSF paths aggregate through this type so they cannot
+/// drift apart on that rule.
+struct HalsteadTokens {
+    std::set<std::string> operators;
+    std::set<std::string> operands;
+    std::size_t n1 = 0;
+    std::size_t n2 = 0;
+
+    /// Unions @p other's distinct sets into this one and sums the occurrences.
+    void merge(const HalsteadTokens& other);
+
+    /// Collapses the distinct sets to their cardinalities eta1 and eta2.
+    [[nodiscard]] HalsteadCounts to_counts() const;
+};
+
+/// Collect raw Halstead tokens from a single formula, for callers that need to
+/// aggregate across several formulae before collapsing to a vocabulary size.
+HalsteadTokens halstead_tokens(const Formula& formula);
 
 /// Collect Halstead token counts from a single propositional formula.
 /// Operators are logical connectives (¬, ∧, ∨, →, ↔); operands are atom names.

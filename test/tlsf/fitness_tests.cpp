@@ -76,6 +76,34 @@ void test_halstead_self_is_one_and_bounded() {
            "halstead: a size penalty stays within [0, 1]");
 }
 
+// eta1 and eta2 are the sizes of the *distinct* operator and operand sets, so
+// aggregating a spec must union them across its formulae rather than add the
+// per-formula counts -- adding would charge a shared operator once per formula
+// and grow the vocabulary with spec size.
+//
+// Repeating one formula in a second guarantee-side section doubles every
+// occurrence (n1, n2) and leaves the vocabulary untouched. Volume is
+// (n1 + n2) * log2(eta1 + eta2), so under the union rule the candidate's volume
+// is exactly twice the original's and the score is exactly 0.5. Summing instead
+// would take eta from 5 to 10 and drop the score to about 0.35, so the
+// half-exactly assertion is what distinguishes the two rules.
+void test_halstead_vocabulary_is_unioned_not_summed() {
+    const Config cfg;
+    const tlsf::Specification base =
+        parse("INPUTS { r; } OUTPUTS { g; } GUARANTEE { G(r -> F g); }");
+    const tlsf::Specification repeated = parse(
+        "INPUTS { r; } OUTPUTS { g; } ASSERT { G(r -> F g); } "
+        "GUARANTEE { G(r -> F g); }");
+
+    expect(tlsf_halstead_fitness(base, repeated, cfg) == 1.0,
+           "halstead: the smaller spec is no larger than the repeated one");
+    const double score = tlsf_halstead_fitness(repeated, base, cfg);
+    expect(std::fabs(score - 0.5) < 1e-12,
+           "halstead: repeating a formula doubles the occurrences but not the "
+           "vocabulary, so the volume ratio is exactly 1/2 -- summing eta per "
+           "formula instead would score near 0.35");
+}
+
 void test_status_realizable_is_one() {
     const Config cfg;
     const tlsf::Specification spec =
@@ -114,6 +142,7 @@ void run_tlsf_fitness_tests() {
     test_semantic_self_similarity_is_one();
     test_semantic_similarity_honours_configured_metric();
     test_halstead_self_is_one_and_bounded();
+    test_halstead_vocabulary_is_unioned_not_summed();
     test_status_realizable_is_one();
     test_status_unsatisfiable_guarantee_is_low();
     test_aggregate_scores_in_unit_interval();

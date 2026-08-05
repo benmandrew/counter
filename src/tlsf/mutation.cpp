@@ -325,7 +325,16 @@ tlsf::Specification tlsf_mutate(const tlsf::Specification& spec,
     }
     tlsf::Specification mutated = spec;
 
-    bool assumption_side = random_source.next_real() < cfg.tlsf_p_assumption;
+    // The two side probabilities are weights, not independent thresholds, so
+    // normalise: a config setting them to any ratio then behaves as its keys
+    // read, while the conventional pair summing to 1 normalises to itself and
+    // leaves every existing seed reproducing. The draw is unconditional and
+    // sequenced into its own local so the number of RandomSource draws does
+    // not depend on the config -- the determinism goldens pin that stream.
+    const double side_total = cfg.tlsf_p_assumption + cfg.tlsf_p_guarantee;
+    const double side_draw = random_source.next_real();
+    bool assumption_side =
+        side_total > 0.0 && side_draw * side_total < cfg.tlsf_p_assumption;
     std::vector<Section*> sections = side_sections(mutated, assumption_side);
     if (side_formula_count(sections) == 0) {
         // Fall back to the other side when the chosen one is empty.

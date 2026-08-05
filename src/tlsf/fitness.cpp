@@ -8,9 +8,7 @@
 #include <vector>
 
 #include "fitness/halstead.hpp"
-#include "fitness/model_counter.hpp"
 #include "fitness/semantic_similarity.hpp"
-#include "fitness/transfer_matrix.hpp"
 #include "prop_formula.hpp"
 #include "runner/black.hpp"
 #include "runner/spot.hpp"
@@ -90,31 +88,38 @@ double formula_pair_semantic_similarity(const Formula& first,
     const std::string ltl_second = second.to_string();
     const std::string conjunction =
         "(" + ltl_first + ") & (" + ltl_second + ")";
+    // Clamp before counting: past max_representable_step_count the products
+    // inside count_traces saturate to infinity, and the assert that catches it
+    // is compiled out under NDEBUG, so an unclamped bound yields a silently
+    // wrong score in release rather than aborting. TLSF has no timing horizon
+    // to raise the bound to (the temporal structure is in the formula itself),
+    // so the ceiling is the only adjustment.
+    const std::size_t step_count =
+        std::min(bound, max_representable_step_count(n_atoms));
+    // cached_count_traces, not count_traces: the original spec's formulae are
+    // re-counted against every offspring in the population, so one shared
+    // memo covers the whole run -- and it is the same cache the FRETISH path
+    // uses.
     const SemanticSimilarityCounts counts{
-        count_traces(build_transfer_system_from_ltl(ltl_first, n_atoms), bound),
-        count_traces(build_transfer_system_from_ltl(ltl_second, n_atoms),
-                     bound),
-        count_traces(build_transfer_system_from_ltl(conjunction, n_atoms),
-                     bound)};
+        cached_count_traces(ltl_first, n_atoms, step_count),
+        cached_count_traces(ltl_second, n_atoms, step_count),
+        cached_count_traces(conjunction, n_atoms, step_count)};
     return semantic_similarity_from_counts(counts, metric);
 }
 
-HalsteadCounts merge_counts(HalsteadCounts lhs, const HalsteadCounts& rhs) {
-    lhs.eta1 += rhs.eta1;
-    lhs.eta2 += rhs.eta2;
-    lhs.n1 += rhs.n1;
-    lhs.n2 += rhs.n2;
-    return lhs;
-}
-
+// Aggregates through HalsteadTokens rather than adding HalsteadCounts: eta1
+// and eta2 are cardinalities of *distinct* token sets, so summing them per
+// formula would count every shared operator (G, ->, &) once per section
+// formula and make the vocabulary grow with spec size. That is the same union
+// rule halstead_counts(const Specification&) applies on the FRETISH side.
 HalsteadCounts spec_halstead_counts(const tlsf::Specification& spec) {
-    HalsteadCounts total;
+    HalsteadTokens total;
     for (std::size_t section = 0; section < k_n_sections; ++section) {
         for (const Formula& formula : *all_sections(spec, section)) {
-            total = merge_counts(total, halstead_counts(formula));
+            total.merge(halstead_tokens(formula));
         }
     }
-    return total;
+    return total.to_counts();
 }
 
 }  // namespace

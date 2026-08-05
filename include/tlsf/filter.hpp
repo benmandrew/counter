@@ -16,17 +16,40 @@
 /// std::hash / operator== on tlsf::Specification).
 FilterFunctionT<tlsf::Specification> tlsf_make_dedup_filter();
 
-/// Returns a filter dropping specifications whose assumption-side conjunction
-/// is unsatisfiable — the TLSF analogue of the FRETISH false-condition filter,
-/// since contradictory assumptions trivially "realize" any guarantee. A spec
+/// Whether @p spec's assumption-side conjunction (INITIALLY, REQUIRE, ASSUME)
+/// is unsatisfiable, making the spec vacuously realizable: a false antecedent
+/// turns `(assumptions) -> (guarantees)` into a tautology whatever the
+/// guarantees say, so such a spec is not a repair. The TLSF counterpart of
+/// specification_has_unsatisfiable_assumptions, and the same check — the two
+/// differ only in how they reach the assumption conjunction.
+///
+/// Conservative under uncertainty: a spec with no assumption formulae, or one
+/// whose satisfiability check times out, is reported as not vacuous, so a slow
+/// check never silently discards a candidate.
+///
+/// Shared by the per-generation filter below and the final repair screen in
+/// tlsf::run_repair — the filter runs only on its configured interval, so the
+/// screen cannot rely on it having seen the elites it is about to write out.
+bool tlsf_has_unsatisfiable_assumptions(const tlsf::Specification& spec,
+                                        SatisfiabilityChecker& checker);
+
+/// Returns a filter dropping specifications that are vacuously realizable
+/// because their assumptions are jointly unsatisfiable — the TLSF counterpart
+/// of make_vacuity_filter, carrying the same "vacuous-assumptions" stage name
+/// so filter reports and dashboard labels line up across the two paths. A spec
 /// with no assumption formulae is kept; an uncertain (timed-out) satisfiability
 /// result is treated as satisfiable and the spec is kept.
+///
+/// Gated by Config::run_vacuity_filter and throttled by
+/// Config::vacuity_filter_interval, as on the FRETISH path. The final repair
+/// screen applies the predicate unconditionally either way, so turning the
+/// filter off costs search pressure, never output correctness.
 ///
 /// @param max_in_flight Concurrent checks. Each spec carrying assumptions costs
 ///                      a `black` subprocess on a cache miss, and the miss rate
 ///                      rises with population diversity, so a serial sweep here
 ///                      dominates a diverse run. 1 evaluates serially.
-FilterFunctionT<tlsf::Specification> tlsf_make_assumption_sat_filter(
+FilterFunctionT<tlsf::Specification> tlsf_make_vacuity_filter(
     std::size_t max_in_flight = 1);
 
 /// Returns a filter dropping specifications that are not well-separated: ones

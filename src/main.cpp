@@ -50,6 +50,27 @@ std::optional<std::string> parse_string_arg(int argc, const char* const* argv,
     return std::nullopt;
 }
 
+// Whether to read @p input_path as TLSF: @p format_arg when given, otherwise
+// the file extension. Nullopt when --format names neither format.
+//
+// Testing only for "tlsf" and letting everything else mean FRETISH would turn a
+// typo or a capitalisation ("--format TLSF") into a JSON parse error on a .tlsf
+// file, which reads as a broken input rather than as a bad flag.
+std::optional<bool> resolve_is_tlsf(
+    const std::optional<std::string>& format_arg,
+    const std::string& input_path) {
+    if (!format_arg.has_value()) {
+        return std::filesystem::path(input_path).extension() == ".tlsf";
+    }
+    if (*format_arg == "tlsf") {
+        return true;
+    }
+    if (*format_arg == "fretish") {
+        return false;
+    }
+    return std::nullopt;
+}
+
 void write_specifications(
     const std::vector<ScoredSpecification>& scored,
     const AggregateWeightedFitnessFunction& fitness_function,
@@ -89,7 +110,7 @@ void print_filter_report(const std::vector<FilterRunStats>& stats) {
         const double pct_drop =
             100.0 * (1.0 - static_cast<double>(stat.total_out) /
                                static_cast<double>(stat.total_in));
-        std::cout << std::left << std::setw(16) << stat.name << std::right
+        std::cout << std::left << std::setw(20) << stat.name << std::right
                   << std::setw(8) << stat.total_in << " in  " << std::setw(8)
                   << stat.total_out << " out  " << std::fixed
                   << std::setprecision(1) << std::setw(5) << pct_drop
@@ -623,10 +644,15 @@ int main(int argc, const char* const argv[]) {
     }
     const std::optional<std::string> format_arg =
         parse_string_arg(argc, argv, "--format");
-    const bool is_tlsf =
-        format_arg.has_value()
-            ? *format_arg == "tlsf"
-            : std::filesystem::path(*input_path).extension() == ".tlsf";
+    const std::optional<bool> format = resolve_is_tlsf(format_arg, *input_path);
+    if (!format.has_value()) {
+        // resolve_is_tlsf only declines when --format was given, so the
+        // fallback here is unreachable; it is what lets the access be checked.
+        std::cerr << "Unknown --format value: '" << format_arg.value_or("")
+                  << "' (expected 'fretish' or 'tlsf')\n";
+        return 1;
+    }
+    const bool is_tlsf = *format;
     if (is_tlsf) {
         const auto tlsf_wall_start = std::chrono::steady_clock::now();
         RandomSource tlsf_random_source = init_random_source(argc, argv);

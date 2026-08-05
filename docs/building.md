@@ -46,9 +46,19 @@ cmake --workflow --preset debug      # configure + build + test
 | `debug` | `build/` | AddressSanitizer + UndefinedBehaviorSanitizer |
 | `release` | `build-release/` | no debug info |
 | `relwithdebinfo` | `build-relwithdebinfo/` | release-like, with debug info |
+| `tsan` | `build-tsan/` | ThreadSanitizer; disables address space layout randomisation (ASLR) for the tests |
+| `bench` | `build-bench/` | release, plus the benchmarks in [`bench/`](../bench) registered as tests |
 
 `cmake --workflow --preset <name>` configures, builds and tests in one step.
 After the first configure, `cmake --build build` rebuilds incrementally.
+
+Always go through a preset. `cmake -B build` on its own configures with CMake's
+default generator — Unix Makefiles on Linux — which conflicts with the Ninja tree
+every preset produces. The conflict reaches the sub-builds that CMake uses to
+fetch dependencies too, so the failure can be reported against one of those
+rather than against the generator. To recover, delete `CMakeCache.txt` and
+`CMakeFiles/` from the affected build directory and configure again with the
+preset. `build/third_party` survives that, so Spot is not rebuilt.
 
 ## Fetched dependencies
 
@@ -86,7 +96,7 @@ package; otherwise install `libfmt-dev` (or the equivalent) system-wide.
 ctest --preset debug                       # run all tests
 ctest --preset debug -R syntactic          # run tests matching a regex
 
-cmake --build build --target lint          # cpplint + clang-tidy + cppcheck
+cmake --build build --target lint          # cpplint + clang-tidy + cppcheck + config key parity
 cmake --build build --target format        # apply clang-format in-place
 cmake --build build --target format-ci     # dry-run, fails if unformatted
 ```

@@ -5,6 +5,7 @@
 ///        bounded model counting of satisfying traces.
 
 #include <cstddef>
+#include <string>
 
 #include "config.hpp"
 #include "fitness/transfer_matrix.hpp"
@@ -19,6 +20,28 @@ struct SemanticSimilarityCounts {
     Count m_other_requirement_count;
     Count m_conjunction_count;
 };
+
+/// Counts the length-@p step_count traces of @p ltl over a universe of
+/// @p n_total_atoms atoms, memoised on all three arguments.
+///
+/// The transfer-matrix construction and exponentiation inside count_traces are
+/// redone from scratch on every call, even though one side of a comparison is
+/// frequently the same formula across an entire population — the original
+/// specification's piece, compared against many mutated offspring. Both the
+/// FRETISH and TLSF fitness paths count through here so they share one cache.
+///
+/// Thread-safe: the cache is guarded by an internal mutex.
+Count cached_count_traces(const std::string& ltl, std::size_t n_total_atoms,
+                          std::size_t step_count);
+
+/// The largest trace length representable for @p n_atoms atoms.
+///
+/// count_traces sums at most 2^(n_atoms * k) traces, so k is only representable
+/// while n_atoms * k stays inside Count's exponent range. Past it the products
+/// inside count_traces saturate to infinity, and the assert guarding them is
+/// compiled out under NDEBUG — so a release build yields silently wrong counts
+/// rather than aborting. Callers must clamp their bound to this.
+std::size_t max_representable_step_count(std::size_t n_atoms);
 
 /// Combines the three trace counts into a similarity score in [0, 1]. Both
 /// metrics take the harmonic mean of two directional containment terms and

@@ -46,6 +46,21 @@ std::optional<std::string> read_file(const std::string& path) {
     return contents.str();
 }
 
+// A candidate counts as a repair only when it is realizable and not vacuously
+// so. Elites and final-generation offspring reach this collection without
+// necessarily having passed the assumption-satisfiability filter -- that filter
+// runs on an interval -- so the check is repeated here, mirroring the FRETISH
+// path's is_realizable_repair, which screens the same conditions before any
+// repair is written out.
+//
+// The satisfiability query runs first: it is a `black` call against the
+// assumption side alone, far cheaper than the `ltlsynt` query behind
+// tlsf_status, so a vacuous candidate is rejected without paying for synthesis.
+bool is_tlsf_repair(const Specification& spec, const Config& cfg) {
+    return !tlsf_has_unsatisfiable_assumptions(spec, global_sat_checker()) &&
+           tlsf_status(spec, cfg) == 1.0;
+}
+
 // Realizable survivors of the final population, deduplicated by value while
 // preserving fitness order.
 std::vector<Scored<Specification>> realizable_survivors(
@@ -60,14 +75,14 @@ std::vector<Scored<Specification>> realizable_survivors(
     if (max_in_flight <= 1) {
         for (std::size_t idx = 0; idx < population.size(); ++idx) {
             keep[idx] =
-                tlsf_status(population[idx].specification, cfg) == 1.0 ? 1 : 0;
+                is_tlsf_repair(population[idx].specification, cfg) ? 1 : 0;
         }
     } else {
         run_bounded_async(
             population.size(), max_in_flight,
             [&population, &cfg](std::size_t idx) {
                 return [&spec = population[idx].specification, &cfg] {
-                    return tlsf_status(spec, cfg) == 1.0;
+                    return is_tlsf_repair(spec, cfg);
                 };
             },
             [&keep](std::size_t idx, bool realizable) {

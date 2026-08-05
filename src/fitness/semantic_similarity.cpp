@@ -46,32 +46,6 @@ double directional_containment(Count shared, Count whole,
     return std::clamp(ratio_or_throw(shared, whole), 0.0, 1.0);
 }
 
-// Caches trace counts by (ltl, n_total_atoms, step_count): the matrix
-// construction and exponentiation in count_traces is redone from scratch on
-// every call, even though one side of a comparison is frequently the same
-// requirement across an entire population/generation (e.g. the original
-// specification's piece, compared against many mutated offspring).
-Count cached_count_traces(const std::string& ltl, std::size_t n_total_atoms,
-                          std::size_t step_count) {
-    static std::unordered_map<std::string, Count> cache;
-    static std::mutex cache_mutex;
-    const std::string key = ltl + "|" + std::to_string(n_total_atoms) + "|" +
-                            std::to_string(step_count);
-    {
-        std::scoped_lock lock(cache_mutex);
-        const auto found = cache.find(key);
-        if (found != cache.end()) {
-            return found->second;
-        }
-    }
-    const TransferSystem system =
-        build_transfer_system_from_ltl(ltl, n_total_atoms);
-    const Count count = count_traces(system, step_count);
-    std::scoped_lock lock(cache_mutex);
-    cache.emplace(key, count);
-    return count;
-}
-
 // The number of timepoints a timing constrains, i.e. the first step count at
 // which its deadline has been reached. Eventually and Always have no deadline,
 // so they impose no requirement on the bound and return 0.
@@ -98,18 +72,6 @@ std::size_t timing_horizon(const Timing& timing) {
             }
         },
         timing);
-}
-
-// count_traces sums at most 2^(n_atoms * k) traces, so k is only representable
-// while n_atoms * k stays under Count's exponent range -- sizeof(Count) would
-// overstate it, since only the 15-bit exponent governs range. Beyond it the
-// products inside count_traces saturate to infinity, and the assert guarding
-// them is compiled out under NDEBUG -- so a release build yields silently
-// wrong counts rather than aborting.
-std::size_t max_representable_step_count(std::size_t n_atoms) {
-    constexpr auto max_exponent =
-        static_cast<std::size_t>(std::numeric_limits<Count>::max_exponent);
-    return n_atoms == 0 ? max_exponent - 1 : (max_exponent - 1) / n_atoms;
 }
 
 // A bounded timing compiles to a safety automaton (ltl2tgba emits
@@ -158,6 +120,35 @@ SemanticSimilarityCounts count_semantic_similarity_terms(
 }
 
 }  // namespace
+
+Count cached_count_traces(const std::string& ltl, std::size_t n_total_atoms,
+                          std::size_t step_count) {
+    static std::unordered_map<std::string, Count> cache;
+    static std::mutex cache_mutex;
+    const std::string key = ltl + "|" + std::to_string(n_total_atoms) + "|" +
+                            std::to_string(step_count);
+    {
+        std::scoped_lock lock(cache_mutex);
+        const auto found = cache.find(key);
+        if (found != cache.end()) {
+            return found->second;
+        }
+    }
+    const TransferSystem system =
+        build_transfer_system_from_ltl(ltl, n_total_atoms);
+    const Count count = count_traces(system, step_count);
+    std::scoped_lock lock(cache_mutex);
+    cache.emplace(key, count);
+    return count;
+}
+
+std::size_t max_representable_step_count(std::size_t n_atoms) {
+    // sizeof(Count) would overstate the limit, since only the 15-bit exponent
+    // governs range.
+    constexpr auto max_exponent =
+        static_cast<std::size_t>(std::numeric_limits<Count>::max_exponent);
+    return n_atoms == 0 ? max_exponent - 1 : (max_exponent - 1) / n_atoms;
+}
 
 double semantic_similarity_from_counts(const SemanticSimilarityCounts& counts,
                                        SimilarityMetric metric) {

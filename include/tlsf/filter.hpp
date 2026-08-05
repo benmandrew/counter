@@ -16,6 +16,22 @@
 /// std::hash / operator== on tlsf::Specification).
 FilterFunctionT<tlsf::Specification> tlsf_make_dedup_filter();
 
+/// Whether @p spec's assumption-side conjunction (INITIALLY, REQUIRE, ASSUME)
+/// is unsatisfiable, making the spec vacuously realizable: a false antecedent
+/// turns `(assumptions) -> (guarantees)` into a tautology whatever the
+/// guarantees say, so such a spec is not a repair. The TLSF counterpart of
+/// specification_has_unsatisfiable_assumptions.
+///
+/// Conservative under uncertainty: a spec with no assumption formulae, or one
+/// whose satisfiability check times out, is reported as not vacuous, so a slow
+/// check never silently discards a candidate.
+///
+/// Shared by the per-generation filter below and the final repair screen in
+/// tlsf::run_repair — the filter runs only on its configured interval, so the
+/// screen cannot rely on it having seen the elites it is about to write out.
+bool tlsf_has_unsatisfiable_assumptions(const tlsf::Specification& spec,
+                                        SatisfiabilityChecker& checker);
+
 /// Returns a filter dropping specifications whose assumption-side conjunction
 /// is unsatisfiable — the TLSF analogue of the FRETISH false-condition filter,
 /// since contradictory assumptions trivially "realize" any guarantee. A spec

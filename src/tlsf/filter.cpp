@@ -249,19 +249,26 @@ FilterFunctionT<tlsf::Specification> tlsf_make_dedup_filter() {
             }};
 }
 
+bool tlsf_has_unsatisfiable_assumptions(const tlsf::Specification& spec,
+                                        SatisfiabilityChecker& checker) {
+    const bool no_assumptions = spec.m_initially.empty() &&
+                                spec.m_require.empty() && spec.m_assume.empty();
+    if (no_assumptions) {
+        return false;
+    }
+    // Timeout: treat as satisfiable. Dropping on an unknown answer would make
+    // the verdict depend on machine load.
+    return !checker.check_satisfiability(spec.assumption_ltl()).value_or(true);
+}
+
 FilterFunctionT<tlsf::Specification> tlsf_make_assumption_sat_filter(
     std::size_t max_in_flight) {
     return {"assumption-sat",
             [max_in_flight](const std::vector<tlsf::Specification>& pop) {
                 return filter_in_parallel(
                     pop, max_in_flight, [](const tlsf::Specification& spec) {
-                        const bool no_assumptions = spec.m_initially.empty() &&
-                                                    spec.m_require.empty() &&
-                                                    spec.m_assume.empty();
-                        return no_assumptions ||
-                               global_sat_checker()
-                                   .check_satisfiability(spec.assumption_ltl())
-                                   .value_or(true);
+                        return !tlsf_has_unsatisfiable_assumptions(
+                            spec, global_sat_checker());
                     });
             }};
 }

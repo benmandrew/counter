@@ -77,9 +77,12 @@ repair_mode = "monolithic"
 muc_max_iterations = 32
 
 [tlsf.mutation]
-# Applies only in TLSF mode (a .tlsf input or --format tlsf). Probability of
-# mutating an assumption-side section (INITIALLY/REQUIRE/ASSUME) versus a
-# guarantee-side section (PRESET/ASSERT/GUARANTEE).
+# Applies only in TLSF mode (a .tlsf input or --format tlsf). Relative weights
+# for mutating an assumption-side section (INITIALLY/REQUIRE/ASSUME) versus a
+# guarantee-side section (PRESET/ASSERT/GUARANTEE). The pair is normalised by
+# its sum, so these two need not add to 1 -- 0.3/0.7 and 3/7 would behave
+# identically, were the range not capped at 1. Both zero selects the guarantee
+# side.
 p_assumption = 0.3
 p_guarantee  = 0.7
 # Once a section formula is chosen, probability of applying the temporal-structure

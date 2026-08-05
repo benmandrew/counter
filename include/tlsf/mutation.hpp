@@ -10,10 +10,14 @@
 #include "tlsf/specification.hpp"
 
 /// Mutates @p spec by rewriting exactly one section formula. A side is chosen
-/// with probability `cfg.tlsf_p_assumption` (assumption side: INITIALLY,
-/// REQUIRE, ASSUME) versus `cfg.tlsf_p_guarantee` (guarantee side: PRESET,
-/// ASSERT, GUARANTEE), falling back to the other side when the chosen one holds
-/// no formulae, then one formula is drawn uniformly across that side's
+/// by the relative weights `cfg.tlsf_p_assumption` (assumption side: INITIALLY,
+/// REQUIRE, ASSUME) and `cfg.tlsf_p_guarantee` (guarantee side: PRESET, ASSERT,
+/// GUARANTEE) — the two are normalised by their sum rather than read as
+/// independent thresholds, so the conventional pair summing to 1 behaves as
+/// written and any other ratio still means what its keys say. When both are
+/// zero the guarantee side is chosen. The chosen side falls back to the other
+/// when it holds no formulae, then one formula is drawn uniformly across that
+/// side's
 /// non-empty sections. With probability `cfg.tlsf_p_temporal` the chosen
 /// formula is rewritten by the temporal-structure mutation (a recursive
 /// re-implementation of Brizzio et al.'s operator, which may insert, drop, or

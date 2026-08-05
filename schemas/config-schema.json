@@ -58,8 +58,8 @@
           "type": "object",
           "additionalProperties": false,
           "properties": {
-            "p_assumption": { "type": "number", "minimum": 0, "maximum": 1, "description": "Probability of mutating an assumption-side section (INITIALLY/REQUIRE/ASSUME)." },
-            "p_guarantee":  { "type": "number", "minimum": 0, "maximum": 1, "description": "Probability of mutating a guarantee-side section (PRESET/ASSERT/GUARANTEE)." },
+            "p_assumption": { "type": "number", "minimum": 0, "maximum": 1, "description": "Weight for mutating an assumption-side section (INITIALLY/REQUIRE/ASSUME), relative to p_guarantee. The pair is normalised by its sum, so the two need not add to 1." },
+            "p_guarantee":  { "type": "number", "minimum": 0, "maximum": 1, "description": "Weight for mutating a guarantee-side section (PRESET/ASSERT/GUARANTEE), relative to p_assumption. The pair is normalised by its sum; both zero selects the guarantee side." },
             "p_temporal":   { "type": "number", "minimum": 0, "maximum": 1, "description": "Probability that a chosen section formula is rewritten by the temporal-structure mutation (may insert/drop/swap X/F/G/U/R/W) rather than the skeleton-preserving propositional rewrite." }
           }
         },

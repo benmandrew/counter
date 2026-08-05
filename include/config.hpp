@@ -154,9 +154,12 @@ struct Config {
     // makes every assumption mutation a move away from a repair. Retained as a
     // flag only so the two directions can be crossed as an experiment factor.
     bool strengthen_assumptions = true;
-    // TLSF-mode mutation: probability of selecting an assumption-side section
-    // (INITIALLY/REQUIRE/ASSUME) versus a guarantee-side section
-    // (PRESET/ASSERT/GUARANTEE) when mutating a tlsf::Specification.
+    // TLSF-mode mutation: relative weights for selecting an assumption-side
+    // section (INITIALLY/REQUIRE/ASSUME) versus a guarantee-side section
+    // (PRESET/ASSERT/GUARANTEE) when mutating a tlsf::Specification. Normalised
+    // by their sum rather than read as independent thresholds, so a pair that
+    // does not add to 1 still means what it says; both zero selects the
+    // guarantee side. The conventional pair summing to 1 normalises to itself.
     double tlsf_p_assumption = 0.3;
     double tlsf_p_guarantee = 0.7;
     // TLSF-mode mutation: once a section formula has been chosen for rewriting,

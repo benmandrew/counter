@@ -16,15 +16,15 @@ Logic Synthesis Format used by the reactive-synthesis community.
 Build, then repair the bundled arbiter example ([building from
 source](docs/building.md) covers the non-Nix route):
 
-```sh
-nix develop
-cmake --workflow --preset release
+```console
+$ nix develop
+$ cmake --workflow --preset release
 
-./build-release/realize examples/arbiter-gr1/spec.tlsf
-# examples/arbiter-gr1/spec.tlsf: UNREALIZABLE
+$ ./build-release/realize examples/arbiter-gr1/spec.tlsf
+examples/arbiter-gr1/spec.tlsf: UNREALIZABLE
 
-mkdir -p out
-./build-release/counter --input examples/arbiter-gr1/spec.tlsf --output-dir out --seed 42
+$ mkdir -p out
+$ ./build-release/counter --input examples/arbiter-gr1/spec.tlsf --output-dir out --seed 42
 ```
 
 That writes 19 candidate repairs to `out/`, best first, each `repair_N.tlsf`
@@ -43,12 +43,12 @@ full.
 
 ## Commands
 
-```
-counter --input <spec.json|spec.tlsf> --output-dir <dir> [--config <file.toml>] [--format <fretish|tlsf>] [--seed <n>]
-compare --repairs <dir> --ideals <dir>
-realize <spec.json|spec.tlsf> [...]
-ltl     <spec.json|spec.tlsf> [...]
-mucs    <spec.tlsf>
+```console
+$ counter --input <spec.json|spec.tlsf> --output-dir <dir> [--config <file.toml>] [--format <fretish|tlsf>] [--seed <n>]
+$ compare --repairs <dir> --ideals <dir>
+$ realize <spec.json|spec.tlsf> [...]
+$ ltl     <spec.json|spec.tlsf> [...]
+$ mucs    <spec.tlsf>
 ```
 
 | Command | Purpose |

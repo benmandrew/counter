@@ -22,6 +22,18 @@ struct ProcessResult {
     std::string m_output;
     /// The child's user+sys CPU seconds, from wait4's rusage.
     double m_cpu_s = 0.0;
+    /// The child's peak resident set in kilobytes, from wait4's ru_maxrss.
+    ///
+    /// A kernel-maintained high-water mark rather than a sample, so unlike
+    /// polling /proc it cannot miss a spike between reads. It covers this child
+    /// and any descendant it waited for itself, which is what makes it the
+    /// right number for a tool that forks internally.
+    ///
+    /// Zero when the child was killed before the kernel recorded anything, and
+    /// on a timeout it describes only what the process reached before the
+    /// SIGKILL — a tool stopped on its way up reports less than it was heading
+    /// for.
+    std::uint64_t m_peak_rss_kb = 0;
     /// True if the deadline expired: the output is partial and the process
     /// group was killed.
     bool m_timed_out = false;

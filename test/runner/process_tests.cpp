@@ -2,6 +2,7 @@
 
 #include <chrono>
 #include <csignal>
+#include <cstdint>
 #include <cstdio>
 #include <filesystem>  // NOLINT(build/c++17)
 #include <fstream>
@@ -140,6 +141,40 @@ void test_timeout_kills_the_whole_process_group() {
                std::to_string(grandchild) + " survived it");
 }
 
+// 64 MiB, allocated by dd's buffer. Large enough to clear any plausible shell
+// baseline and small enough to be free on any machine that can build this.
+constexpr std::uint64_t k_allocation_kb = 64ULL * 1024ULL;
+
+void test_reports_the_child_peak_resident_set() {
+    const ProcessResult quiet =
+        execute_and_capture({"/bin/sh", "-c", "exit 0"});
+    expect(quiet.m_peak_rss_kb > 0,
+           "process: a child that ran at all has a non-zero peak RSS");
+    expect(quiet.m_peak_rss_kb < k_allocation_kb / 2,
+           "process: a bare shell should not approach 32MB, got " +
+               std::to_string(quiet.m_peak_rss_kb) + "kB");
+
+    // dd is spawned by the shell and waited for by it, so this also pins that
+    // ru_maxrss covers descendants the child reaped itself -- without that the
+    // figure would miss every tool that forks internally.
+    const ProcessResult hungry = execute_and_capture(
+        {"/bin/sh", "-c",
+         "dd if=/dev/zero of=/dev/null bs=64M count=1 2>/dev/null"});
+    expect(hungry.m_exit_code == 0,
+           "process: the allocating child should succeed (is dd present?), "
+           "exit " +
+               std::to_string(hungry.m_exit_code));
+    expect(
+        hungry.m_peak_rss_kb > quiet.m_peak_rss_kb,
+        "process: allocating 64MB must report more than an idle shell, got " +
+            std::to_string(hungry.m_peak_rss_kb) + "kB against " +
+            std::to_string(quiet.m_peak_rss_kb) + "kB");
+    expect(
+        hungry.m_peak_rss_kb > k_allocation_kb / 2,
+        "process: a 64MB buffer should show at least 32MB of peak RSS, got " +
+            std::to_string(hungry.m_peak_rss_kb) + "kB");
+}
+
 }  // namespace
 
 void run_process_runner_tests() {
@@ -149,4 +184,5 @@ void run_process_runner_tests() {
     test_timeout_fires_on_a_child_that_never_writes();
     test_timeout_fires_after_the_child_closes_its_output();
     test_timeout_kills_the_whole_process_group();
+    test_reports_the_child_peak_resident_set();
 }

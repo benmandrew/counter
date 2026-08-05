@@ -22,6 +22,18 @@ struct ProcessResult {
     std::string m_output;
     /// The child's user+sys CPU seconds, from wait4's rusage.
     double m_cpu_s = 0.0;
+    /// The child's peak resident set in kilobytes, from wait4's ru_maxrss.
+    ///
+    /// A kernel-maintained high-water mark rather than a sample, so unlike
+    /// polling /proc it cannot miss a spike between reads. It covers this child
+    /// and any descendant it waited for itself, which is what makes it the
+    /// right number for a tool that forks internally.
+    ///
+    /// Zero when the child was killed before the kernel recorded anything, and
+    /// on a timeout it describes only what the process reached before the
+    /// SIGKILL — a tool stopped on its way up reports less than it was heading
+    /// for.
+    std::uint64_t m_peak_rss_kb = 0;
     /// True if the deadline expired: the output is partial and the process
     /// group was killed.
     bool m_timed_out = false;
@@ -120,4 +132,11 @@ void kill_process_tree(pid_t pid);
 /// Reaps `pid`, giving it `grace` to exit on its own before killing its process
 /// group. Returns the child's user+sys CPU seconds. For a child that is asked
 /// to shut down cleanly first, such as the formaliser on stdin EOF.
-double reap_with_grace(pid_t pid, std::chrono::milliseconds grace);
+///
+/// `executable` names the binary for the peak-resident-set counters, which this
+/// records itself exactly as execute_and_capture does. It is a parameter rather
+/// than a default because a spawn path that reports no memory is invisible
+/// rather than merely incomplete: the counters would simply be missing, and a
+/// tool spawned this way would look like a tool that never allocates.
+double reap_with_grace(pid_t pid, std::chrono::milliseconds grace,
+                       const std::string& executable);

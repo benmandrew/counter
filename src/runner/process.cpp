@@ -13,7 +13,9 @@
 #include <chrono>
 #include <csignal>
 #include <cstddef>
+#include <cstdint>
 #include <ctime>
+#include <iterator>
 #include <limits>
 #include <optional>
 #include <string>
@@ -103,11 +105,47 @@ std::pair<std::string, bool> read_until(
     }
 }
 
+// Records one tool invocation's peak resident set under the tool's own name,
+// so the distribution can be read per tool rather than per run.
+//
+// Both a max and a total, because neither answers the question alone: these
+// peaks are heavily tailed, so a mean over calls describes the common case and
+// says nothing about the worst, while the max says nothing about how often.
+// The threshold counters between them are a coarse histogram of the tail --
+// enough to size a memory limit against, which is the whole purpose. A finer
+// histogram would need a bucket array per tool and this needs no allocation
+// at all.
+void record_tool_peak_rss(const std::string& executable,
+                          std::uint64_t peak_rss_kb) {
+    if (!profile::enabled()) {
+        return;
+    }
+    const std::size_t slash = executable.find_last_of('/');
+    const std::string name =
+        slash == std::string::npos ? executable : executable.substr(slash + 1);
+    const std::string prefix = "tool/" + name + "/";
+    profile::record_max(prefix + "rss_kb_max", peak_rss_kb);
+    profile::add_count((prefix + "rss_kb_total").c_str(), peak_rss_kb);
+    profile::add_count((prefix + "calls").c_str());
+    // Kilobytes, so 256 MiB upwards. Chosen to straddle the range a limit
+    // would plausibly be set in rather than to be evenly spaced.
+    static constexpr std::array<std::pair<std::uint64_t, const char*>, 4>
+        k_thresholds{{{262'144ULL, "rss_ge_256m"},
+                      {1'048'576ULL, "rss_ge_1g"},
+                      {4'194'304ULL, "rss_ge_4g"},
+                      {16'777'216ULL, "rss_ge_16g"}}};
+    for (const auto& [threshold_kb, counter_name] : k_thresholds) {
+        if (peak_rss_kb >= threshold_kb) {
+            profile::add_count((prefix + counter_name).c_str());
+        }
+    }
+}
+
 // Reaps `pid`, killing its process group and continuing to wait if `deadline`
 // passes first. Sets `timed_out` if that kill was needed. Returns the exit
 // status in ProcessResult's encoding.
 int reap(pid_t pid, const std::optional<Clock::time_point>& deadline,
-         double& cpu_s_out, bool& timed_out) {
+         double& cpu_s_out, std::uint64_t& peak_rss_kb_out, bool& timed_out) {
     // Only the reap, not the kill that may precede it: this is the wait for a
     // child that has already closed its stdout. On the common path the first
     // WNOHANG collects it and the wall time is near zero, so a large total
@@ -153,6 +191,10 @@ int reap(pid_t pid, const std::optional<Clock::time_point>& deadline,
         nanosleep(&nap, nullptr);
     }
     cpu_s_out = rusage_cpu_seconds(child_usage);
+    // ru_maxrss is already kilobytes on Linux, and non-negative for a reaped
+    // child; the cast is to the unsigned type the result carries, not a unit
+    // conversion.
+    peak_rss_kb_out = static_cast<std::uint64_t>(child_usage.ru_maxrss);
     if (WIFEXITED(wait_status)) {
         return WEXITSTATUS(wait_status);
     }
@@ -270,10 +312,15 @@ void kill_process_tree(pid_t pid) {
     kill(pid, SIGKILL);
 }
 
-double reap_with_grace(pid_t pid, std::chrono::milliseconds grace) {
+double reap_with_grace(pid_t pid, std::chrono::milliseconds grace,
+                       const std::string& executable) {
     double cpu_s = 0.0;
+    std::uint64_t peak_rss_kb = 0;
     bool timed_out = false;
-    reap(pid, Clock::now() + grace, cpu_s, timed_out);
+    reap(pid, Clock::now() + grace, cpu_s, peak_rss_kb, timed_out);
+    // A long-lived child, so this is its whole-run peak rather than one
+    // request's — the same whole-run reading its CPU total already is.
+    record_tool_peak_rss(executable, peak_rss_kb);
     return cpu_s;
 }
 
@@ -345,12 +392,14 @@ ProcessResult execute_and_capture(const std::vector<std::string>& arguments,
         kill_process_tree(child_pid);
     }
     double cpu_s = 0.0;
+    std::uint64_t peak_rss_kb = 0;
     // Reap against the same deadline rather than blocking. EOF on the pipe
     // means the child closed stdout, not that it exited, so a tool that wedges
     // after writing its answer would otherwise outlive its timeout inside
     // wait4 — the one place the old per-runner wrappers could still hang on a
     // call that nominally had a budget.
-    const int exit_code =
-        reap(child_pid, timed_out ? std::nullopt : deadline, cpu_s, timed_out);
-    return {exit_code, std::move(output), cpu_s, timed_out};
+    const int exit_code = reap(child_pid, timed_out ? std::nullopt : deadline,
+                               cpu_s, peak_rss_kb, timed_out);
+    record_tool_peak_rss(arguments[0], peak_rss_kb);
+    return {exit_code, std::move(output), cpu_s, peak_rss_kb, timed_out};
 }

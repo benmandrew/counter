@@ -144,6 +144,15 @@ void add_count(const char* name, std::uint64_t n) {
     counter_registry()[name] += n;
 }
 
+void record_max(const std::string& name, std::uint64_t value) {
+    if (!enabled()) {
+        return;
+    }
+    const std::scoped_lock lock(registry_mutex());
+    std::uint64_t& slot = counter_registry()[name];
+    slot = std::max(slot, value);
+}
+
 const std::vector<Site*>& sites() { return site_registry(); }
 
 std::vector<std::pair<std::string, std::uint64_t>> counts() {

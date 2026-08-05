@@ -7,6 +7,7 @@
 #include <sys/wait.h>
 #include <unistd.h>
 
+#include <algorithm>
 #include <array>
 #include <cassert>
 #include <cerrno>
@@ -14,6 +15,7 @@
 #include <csignal>
 #include <cstddef>
 #include <cstdint>
+#include <cstdlib>
 #include <ctime>
 #include <iterator>
 #include <limits>
@@ -27,6 +29,63 @@
 namespace {
 
 using Clock = std::chrono::steady_clock;
+
+// This process's current resident set in kilobytes, from the second field of
+// /proc/self/statm (resident pages). Zero if it cannot be read, which makes
+// every subsequent peak measurable rather than none -- the failure mode that
+// reports too much rather than silently discarding every figure.
+//
+// Read rather than parsed with iostreams because this sits in front of every
+// fork: one open/read/close is a rounding error beside the fork itself, a
+// stream is not.
+std::uint64_t self_resident_kb() {
+    const int statm_fd = open("/proc/self/statm", O_RDONLY | O_CLOEXEC);
+    if (statm_fd < 0) {
+        return 0;
+    }
+    std::array<char, 128> buffer{};
+    const ssize_t read_bytes = read(statm_fd, buffer.data(), buffer.size() - 1);
+    close(statm_fd);
+    if (read_bytes <= 0) {
+        return 0;
+    }
+    buffer[static_cast<std::size_t>(read_bytes)] = '\0';
+    char* cursor = nullptr;
+    // Field one is the total program size, which is address space rather than
+    // memory and enormous under ASAN; the resident count is the one after it.
+    std::strtoull(buffer.data(), &cursor, 10);
+    const auto resident_pages =
+        static_cast<std::uint64_t>(std::strtoull(cursor, nullptr, 10));
+    const auto page_kb =
+        static_cast<std::int64_t>(sysconf(_SC_PAGESIZE) / 1024);
+    if (page_kb <= 0) {
+        return 0;
+    }
+    return resident_pages * static_cast<std::uint64_t>(page_kb);
+}
+
+// The floor has to bound this process's resident set at the instant of the
+// fork, which no single read can hit. A sample taken before it is stale by
+// whatever a sibling scoring thread allocated in the window, and understating
+// the floor by even one page is not a small error: peak_rss_above_floor then
+// passes the raw ru_maxrss through, promoting this process's entire footprint
+// into some tool's peak. The larger of a read on each side errs the other way,
+// discarding a tool whose peak happens to fall inside that window rather than
+// mis-attributing one.
+std::uint64_t widen_rss_floor(std::uint64_t floor_before_fork_kb) {
+    return std::max(floor_before_fork_kb, self_resident_kb());
+}
+
+// The child's own peak, or zero where the fork floor swallowed it. See
+// ProcessResult::m_peak_rss_floor_kb: ru_maxrss is
+// max(parent RSS at fork, the tool's true peak), so it is the tool's figure
+// exactly when it clears the floor and says nothing about the tool otherwise.
+// Reporting it regardless would attribute this process's own footprint to
+// whichever tool happened to be spawned.
+std::uint64_t peak_rss_above_floor(std::uint64_t raw_maxrss_kb,
+                                   std::uint64_t floor_kb) {
+    return raw_maxrss_kb > floor_kb ? raw_maxrss_kb : 0;
+}
 
 double rusage_cpu_seconds(const struct rusage& usage) {
     const double user_s = static_cast<double>(usage.ru_utime.tv_sec) +
@@ -115,6 +174,13 @@ std::pair<std::string, bool> read_until(
 // enough to size a memory limit against, which is the whole purpose. A finer
 // histogram would need a bucket array per tool and this needs no allocation
 // at all.
+//
+// `peak_rss_kb` is zero for a call whose peak stayed under the fork floor, and
+// such a call contributes to `calls` alone: rolling it in as a zero would drag
+// every mean down, and rolling in the floor instead would report this process's
+// own memory as the tool's. `rss_measured` is the denominator the max, total
+// and threshold counters share, so a mean is rss_kb_total / rss_measured and
+// calls - rss_measured is how much of the distribution went unseen.
 void record_tool_peak_rss(const std::string& executable,
                           std::uint64_t peak_rss_kb) {
     if (!profile::enabled()) {
@@ -124,9 +190,13 @@ void record_tool_peak_rss(const std::string& executable,
     const std::string name =
         slash == std::string::npos ? executable : executable.substr(slash + 1);
     const std::string prefix = "tool/" + name + "/";
+    profile::add_count((prefix + "calls").c_str());
+    if (peak_rss_kb == 0) {
+        return;
+    }
+    profile::add_count((prefix + "rss_measured").c_str());
     profile::record_max(prefix + "rss_kb_max", peak_rss_kb);
     profile::add_count((prefix + "rss_kb_total").c_str(), peak_rss_kb);
-    profile::add_count((prefix + "calls").c_str());
     // Kilobytes, so 256 MiB upwards. Chosen to straddle the range a limit
     // would plausibly be set in rather than to be evenly spaced.
     static constexpr std::array<std::pair<std::uint64_t, const char*>, 4>
@@ -145,7 +215,8 @@ void record_tool_peak_rss(const std::string& executable,
 // passes first. Sets `timed_out` if that kill was needed. Returns the exit
 // status in ProcessResult's encoding.
 int reap(pid_t pid, const std::optional<Clock::time_point>& deadline,
-         double& cpu_s_out, std::uint64_t& peak_rss_kb_out, bool& timed_out) {
+         std::uint64_t rss_floor_kb, double& cpu_s_out,
+         std::uint64_t& peak_rss_kb_out, bool& timed_out) {
     // Only the reap, not the kill that may precede it: this is the wait for a
     // child that has already closed its stdout. On the common path the first
     // WNOHANG collects it and the wall time is near zero, so a large total
@@ -194,7 +265,8 @@ int reap(pid_t pid, const std::optional<Clock::time_point>& deadline,
     // ru_maxrss is already kilobytes on Linux, and non-negative for a reaped
     // child; the cast is to the unsigned type the result carries, not a unit
     // conversion.
-    peak_rss_kb_out = static_cast<std::uint64_t>(child_usage.ru_maxrss);
+    peak_rss_kb_out = peak_rss_above_floor(
+        static_cast<std::uint64_t>(child_usage.ru_maxrss), rss_floor_kb);
     if (WIFEXITED(wait_status)) {
         return WEXITSTATUS(wait_status);
     }
@@ -232,6 +304,10 @@ PipedChild spawn_piped_child(const std::vector<std::string>& arguments,
     [[maybe_unused]] const int stdout_pipe_result =
         pipe2(stdout_pipe.data(), O_CLOEXEC);
     assert(stdout_pipe_result == 0);
+    // As in execute_and_capture, and handed back on PipedChild because the reap
+    // that needs it happens arbitrarily later, in another thread, by which time
+    // this process has grown and can no longer measure its own floor.
+    const std::uint64_t rss_floor_kb = self_resident_kb();
     const pid_t child_pid = fork();
     if (child_pid < 0) {
         close(stdin_pipe[0]);
@@ -263,7 +339,8 @@ PipedChild spawn_piped_child(const std::vector<std::string>& arguments,
     adopt_child_process_group(child_pid);
     close(stdin_pipe[0]);
     close(stdout_pipe[1]);
-    return {child_pid, stdin_pipe[1], stdout_pipe[0]};
+    return {child_pid, stdin_pipe[1], stdout_pipe[0],
+            widen_rss_floor(rss_floor_kb)};
 }
 
 std::pair<std::string, bool> read_until_eof(int read_fd,
@@ -318,11 +395,13 @@ void kill_process_tree(pid_t pid) {
 }
 
 double reap_with_grace(pid_t pid, std::chrono::milliseconds grace,
-                       const std::string& executable) {
+                       const std::string& executable,
+                       std::uint64_t rss_floor_kb) {
     double cpu_s = 0.0;
     std::uint64_t peak_rss_kb = 0;
     bool timed_out = false;
-    reap(pid, Clock::now() + grace, cpu_s, peak_rss_kb, timed_out);
+    reap(pid, Clock::now() + grace, rss_floor_kb, cpu_s, peak_rss_kb,
+         timed_out);
     // A long-lived child, so this is its whole-run peak rather than one
     // request's — the same whole-run reading its CPU total already is.
     record_tool_peak_rss(executable, peak_rss_kb);
@@ -342,6 +421,7 @@ ProcessResult execute_and_capture(const std::vector<std::string>& arguments,
     argv[arguments.size()] = nullptr;
     std::array<int, 2> pipe_fds = {-1, -1};
     pid_t child_pid = -1;
+    std::uint64_t rss_floor_kb = 0;
     {
         // Timed separately from the read and wait below: this scope is the
         // parent's share of process creation -- the pipe, the fork's page
@@ -361,6 +441,9 @@ ProcessResult execute_and_capture(const std::vector<std::string>& arguments,
         [[maybe_unused]] const int pipe_result =
             pipe2(pipe_fds.data(), O_CLOEXEC);
         assert(pipe_result == 0);
+        // The near side of the floor; widen_rss_floor takes the far side once
+        // the fork has returned.
+        rss_floor_kb = self_resident_kb();
         child_pid = fork();
         if (child_pid < 0) {
             close(pipe_fds[0]);
@@ -385,6 +468,7 @@ ProcessResult execute_and_capture(const std::vector<std::string>& arguments,
         }
         adopt_child_process_group(child_pid);
         close(pipe_fds[1]);
+        rss_floor_kb = widen_rss_floor(rss_floor_kb);
     }
     std::optional<Clock::time_point> deadline;
     if (timeout > std::chrono::milliseconds::zero()) {
@@ -403,7 +487,8 @@ ProcessResult execute_and_capture(const std::vector<std::string>& arguments,
     // wait4 — the one place the old per-runner wrappers could still hang on a
     // call that nominally had a budget.
     const int exit_code = reap(child_pid, timed_out ? std::nullopt : deadline,
-                               cpu_s, peak_rss_kb, timed_out);
+                               rss_floor_kb, cpu_s, peak_rss_kb, timed_out);
     record_tool_peak_rss(arguments[0], peak_rss_kb);
-    return {exit_code, std::move(output), cpu_s, peak_rss_kb, timed_out};
+    return {exit_code,   std::move(output), cpu_s,
+            peak_rss_kb, rss_floor_kb,      timed_out};
 }

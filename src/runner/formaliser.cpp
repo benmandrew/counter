@@ -65,7 +65,7 @@ PersistentProcess::~PersistentProcess() {
     // long-lived, so this is its whole-run user+sys CPU across every
     // formalise() call.
     RequirementFormaliser::total_cpu_s +=
-        reap_with_grace(m_pid, k_shutdown_grace, "node");
+        reap_with_grace(m_pid, k_shutdown_grace, "node", m_rss_floor_kb);
     close(m_read_fd);
 }
 
@@ -90,6 +90,7 @@ void PersistentProcess::ensure_spawned() {
     m_pid = child.m_pid;
     m_write_fd = child.m_write_fd;
     m_read_fd = child.m_read_fd;
+    m_rss_floor_kb = child.m_rss_floor_kb;
     m_spawned = true;
 }
 

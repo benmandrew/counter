@@ -8,6 +8,7 @@
 #include <fstream>
 #include <string>
 #include <thread>
+#include <vector>
 
 #include "runner/process.hpp"
 #include "test_suite.hpp"
@@ -141,38 +142,63 @@ void test_timeout_kills_the_whole_process_group() {
                std::to_string(grandchild) + " survived it");
 }
 
-// 64 MiB, allocated by dd's buffer. Large enough to clear any plausible shell
-// baseline and small enough to be free on any machine that can build this.
-constexpr std::uint64_t k_allocation_kb = 64ULL * 1024ULL;
+// 512 MiB, allocated by dd's buffer. It has to clear this test binary's own
+// resident set rather than a shell's, because that is the floor ru_maxrss
+// cannot see under: an ASAN build sits around 36MB, and the margin has to hold
+// for whatever the binary grows into. Still free on any machine that can build
+// this, since the pages are touched once and released.
+constexpr std::uint64_t k_allocation_kb = 512ULL * 1024ULL;
 
 void test_reports_the_child_peak_resident_set() {
-    const ProcessResult quiet =
-        execute_and_capture({"/bin/sh", "-c", "exit 0"});
-    expect(quiet.m_peak_rss_kb > 0,
-           "process: a child that ran at all has a non-zero peak RSS");
-    expect(quiet.m_peak_rss_kb < k_allocation_kb / 2,
-           "process: a bare shell should not approach 32MB, got " +
-               std::to_string(quiet.m_peak_rss_kb) + "kB");
-
     // dd is spawned by the shell and waited for by it, so this also pins that
     // ru_maxrss covers descendants the child reaped itself -- without that the
     // figure would miss every tool that forks internally.
     const ProcessResult hungry = execute_and_capture(
         {"/bin/sh", "-c",
-         "dd if=/dev/zero of=/dev/null bs=64M count=1 2>/dev/null"});
+         "dd if=/dev/zero of=/dev/null bs=512M count=1 2>/dev/null"});
     expect(hungry.m_exit_code == 0,
            "process: the allocating child should succeed (is dd present?), "
            "exit " +
                std::to_string(hungry.m_exit_code));
-    expect(
-        hungry.m_peak_rss_kb > quiet.m_peak_rss_kb,
-        "process: allocating 64MB must report more than an idle shell, got " +
-            std::to_string(hungry.m_peak_rss_kb) + "kB against " +
-            std::to_string(quiet.m_peak_rss_kb) + "kB");
-    expect(
-        hungry.m_peak_rss_kb > k_allocation_kb / 2,
-        "process: a 64MB buffer should show at least 32MB of peak RSS, got " +
-            std::to_string(hungry.m_peak_rss_kb) + "kB");
+    expect(hungry.m_peak_rss_floor_kb > 0,
+           "process: the fork floor is this process's own resident set, which "
+           "is never zero while it is running");
+    expect(hungry.m_peak_rss_kb > hungry.m_peak_rss_floor_kb,
+           "process: a 512MB buffer must clear the fork floor to be reported "
+           "at all, got " +
+               std::to_string(hungry.m_peak_rss_kb) + "kB against a floor of " +
+               std::to_string(hungry.m_peak_rss_floor_kb) + "kB");
+    expect(hungry.m_peak_rss_kb > k_allocation_kb / 2,
+           "process: a 512MB buffer should show at least 256MB of peak RSS, "
+           "got " +
+               std::to_string(hungry.m_peak_rss_kb) + "kB");
+}
+
+// The regression this measurement exists to avoid: a forked child inherits its
+// parent's resident set as copy-on-write, and exec folds that into the child's
+// maxrss, so wait4 reports the parent's footprint for any child that stayed
+// under it. Reporting that as the tool's peak would have every cheap tool read
+// back as however large counter happened to be -- which is what the assertion
+// below would catch, since /bin/sh cannot really have grown to the size of the
+// buffer this test is holding.
+void test_does_not_report_the_parents_footprint_as_the_childs() {
+    std::vector<char> ballast(k_allocation_kb * 1024, '\1');
+    // Defeats a compiler that would otherwise see the buffer is never read and
+    // drop the pages this test is entirely about.
+    expect(ballast.front() == '\1' && ballast.back() == '\1',
+           "process: the ballast must actually be resident");
+
+    const ProcessResult quiet =
+        execute_and_capture({"/bin/sh", "-c", "exit 0"});
+    expect(quiet.m_peak_rss_floor_kb > k_allocation_kb / 2,
+           "process: the floor should reflect the ballast this process is "
+           "holding, got " +
+               std::to_string(quiet.m_peak_rss_floor_kb) + "kB");
+    expect(quiet.m_peak_rss_kb == 0,
+           "process: a bare shell cannot be measured under a floor this high, "
+           "so it must report nothing rather than the parent's " +
+               std::to_string(quiet.m_peak_rss_floor_kb) + "kB, got " +
+               std::to_string(quiet.m_peak_rss_kb) + "kB");
 }
 
 }  // namespace
@@ -185,4 +211,5 @@ void run_process_runner_tests() {
     test_timeout_fires_after_the_child_closes_its_output();
     test_timeout_kills_the_whole_process_group();
     test_reports_the_child_peak_resident_set();
+    test_does_not_report_the_parents_footprint_as_the_childs();
 }

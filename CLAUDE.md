@@ -177,6 +177,19 @@ Nothing may fork outside `process.cpp`: `posix_spawn` in particular has no
 attribute for `PR_SET_PDEATHSIG`, which is the whole reason these run on `fork`
 at all.
 
+A tool's peak resident set cannot be measured below counter's own. A forked
+child starts as a copy-on-write copy of its parent, and `exec` folds that
+pre-exec high-water into the child's `maxrss`, so `wait4` reports
+`max(parent RSS at fork, the tool's true peak)`. `ProcessResult` therefore
+carries `m_peak_rss_floor_kb` — counter's resident set sampled just before the
+fork — and reports `m_peak_rss_kb` as zero at or below it rather than passing
+counter's own footprint off as the tool's. The `tool/<name>/rss_*` counters
+follow: `calls` counts every invocation, `rss_measured` only those that cleared
+the floor, and the max, total and threshold counters are over the latter alone,
+so a mean is `rss_kb_total / rss_measured`. Any change here has to keep that
+distinction; the `process_runner` suite pins it by spawning a bare shell while
+holding a 512MB buffer.
+
 `simplify_ltl` runs one `ltlfilt` exec per cache miss. Coalescing concurrent
 misses into one exec was tried and removed: measured over the corpus at
 `parallel = 8`, the misses do not coincide, so the mean batch size was 1.012,

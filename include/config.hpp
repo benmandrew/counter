@@ -181,6 +181,19 @@ struct Config {
     // the other workers keep doing non-ltlsynt work. Size it to fit RAM:
     // roughly (available_GB / per-call_GB).
     std::size_t max_concurrent_realizability = 0;
+    // How many ltlfilt batches may run at once. Concurrent simplify_ltl cache
+    // misses are coalesced into one exec per batcher, which trades latency for
+    // CPU: a caller waits for a leader instead of spawning its own ltlfilt.
+    // Measured on fsm gen20/pop1000, medians of five interleaved runs -- 4
+    // batchers cost 5.2% of wall and save 19.3% of total CPU; 16 reach wall
+    // parity and save 4.2%. The relation is monotonic, so there is no setting
+    // that gets both, and the right value depends on whether the machine is
+    // running one counter or many. The default suits a campaign: four
+    // concurrent counter processes finish 12.6% sooner batched, because the
+    // cores the unbatched build spends demand-paging ltlfilt are the ones its
+    // neighbours need. Raise it towards 16 for a single interactive run; 0
+    // disables batching entirely.
+    std::size_t ltlfilt_batchers = 4;
     // A fitness function that throws (in practice an external tool failing on
     // one evolved formula) costs that individual rather than the whole run:
     // the search is stochastic, so one candidate lost out of a population is

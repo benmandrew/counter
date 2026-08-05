@@ -10,6 +10,7 @@
 #include <chrono>
 #include <cstdint>
 #include <string>
+#include <utility>
 #include <vector>
 
 /// Outcome of one external tool invocation.
@@ -62,6 +63,36 @@ enum class ParentDeathPolicy : std::uint8_t {
     /// owner's teardown to arrange.
     SurviveParentThread,
 };
+
+/// A child holding a pipe on each side: the parent writes its stdin and reads
+/// its stdout. Both descriptors and the reap belong to the caller.
+struct PipedChild {
+    pid_t m_pid = -1;
+    /// The parent's write end of the child's stdin. Closing it is what the
+    /// child sees as end of file.
+    int m_write_fd = -1;
+    /// The parent's read end of the child's stdout.
+    int m_read_fd = -1;
+};
+
+/// Forks and execs `arguments` with a pipe onto each of the child's stdin and
+/// stdout, applying the same containment as execute_and_capture. Unlike that
+/// function it neither writes, reads nor reaps: a bidirectional exchange is the
+/// caller's protocol to drive, and how long the child lives is the caller's to
+/// decide — hence `policy`.
+///
+/// Both pipes are created with O_CLOEXEC, without which a fork on any other
+/// scoring thread would inherit them and hold this call's ends open past its
+/// own exec, so its reader never sees end of file.
+PipedChild spawn_piped_child(const std::vector<std::string>& arguments,
+                             ParentDeathPolicy policy, ExecutableLookup lookup);
+
+/// Reads `read_fd` until the writer closes it, or until `timeout` expires.
+/// Returns what was read and whether the deadline was hit; on a timeout the
+/// content is partial and the caller still owns the kill and the reap. Zero
+/// means no deadline, which is the only way this can block indefinitely.
+std::pair<std::string, bool> read_until_eof(int read_fd,
+                                            std::chrono::milliseconds timeout);
 
 /// Applies the child half of the containment policy: puts the child in its own
 /// process group, and applies `policy`. Call only between fork() and exec(),

@@ -146,6 +146,14 @@ black_timeout_ms = 1000  # timeout per black SAT query in milliseconds
 # (default) is unlimited; ltlsynt is multi-GB resident per call on hard specs,
 # so a positive value bounds peak RAM (roughly cap * per-call GB) to avoid OOM.
 # max_concurrent_realizability = 6
+# How many ltlfilt batches may run at once. Concurrent LTL-simplification
+# misses are coalesced into one ltlfilt exec per batcher, which trades latency
+# for CPU: a caller waits for a leader rather than spawning its own process.
+# Measured on fsm gen20/pop1000: 4 costs 5.2% of wall and saves 19.3% of total
+# CPU; 16 reaches wall parity and saves 4.2%. The default suits a campaign --
+# four concurrent counter processes finish 12.6% sooner batched. Raise it
+# towards 16 for a single interactive run; 0 disables batching.
+# ltlfilt_batchers = 4
 # An individual whose fitness scoring throws is dropped from its generation
 # rather than aborting the run. Above this fraction of a generation the tooling
 # is assumed broken rather than the formula, and the run aborts. A single

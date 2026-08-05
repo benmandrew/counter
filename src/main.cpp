@@ -31,6 +31,7 @@
 #include "runner/black.hpp"
 #include "runner/ganak.hpp"
 #include "runner/ltlfilt.hpp"
+#include "runner/simplify_batcher.hpp"
 #include "runner/spot.hpp"
 #include "serialisation.hpp"
 #include "status_line.hpp"
@@ -606,6 +607,9 @@ int main(int argc, const char* const argv[]) {
     cfg.dashboard = cfg.dashboard || has_flag(argc, argv, "--dashboard");
     apply_tool_timeouts(cfg);
     RealizabilityChecker::set_max_concurrency(cfg.max_concurrent_realizability);
+    // Before the thread pool exists, and so before any scoring thread can index
+    // into the batcher pool that this sizes.
+    set_ltlfilt_batchers(cfg.ltlfilt_batchers);
     set_thread_pool_size(cfg.parallel);
     const std::optional<std::string> input_path =
         parse_string_arg(argc, argv, "--input");

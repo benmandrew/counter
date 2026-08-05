@@ -358,8 +358,10 @@ void test_config_io_muc_max_iterations_nonpositive_throws() {
     expect(threw, "config_io: muc_max_iterations = 0 should throw");
 }
 
-// Every key any apply_* function reads. Fails if the parser gains a key that
-// the unknown-key spec in config_io.cpp was not told about.
+// Every key config_key_spec() declares. Fails if an apply_* function gains a
+// key the unknown-key spec was not told about. A key absent from this TOML is
+// not covered, so a new key belongs here as well as in the two places
+// config_io.cpp names.
 void test_config_io_known_keys_do_not_warn() {
     const std::string toml = R"(
 [genetic]
@@ -422,10 +424,13 @@ well_separation = 6
 black_timeout_ms             = 500
 ltlsynt_timeout_ms           = 30000
 ltl2tgba_timeout_ms          = 1000
+ltlfilt_timeout_ms           = 2000
+ganak_timeout_ms             = 4000
 parallel                     = 4
 max_concurrent_realizability = 6
 report_cpu_timing            = true
 max_scoring_failure_rate     = 0.05
+dashboard                    = true
 )";
     const std::string warnings = warnings_from(toml);
     expect(warnings.empty(),

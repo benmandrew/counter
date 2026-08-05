@@ -101,6 +101,8 @@ run_implication = true  # enable final implication maximality filter
 # Drop candidates whose assumptions are jointly unsatisfiable. Those are
 # realizable for free, since a false antecedent makes the assume-guarantee
 # implication a tautology. Costs nothing when there are no assumptions.
+# Applies on both paths. Turning it off only relaxes search pressure: the
+# final screen rejects a vacuous candidate before writing it either way.
 run_vacuity     = true
 # Drop candidates that are not well-separated: ones the system can satisfy
 # vacuously by forcing its own assumptions to fail (i.e. (assumptions) -> false
@@ -112,7 +114,7 @@ run_well_separation = false
 # generation). The final generation always runs every filter.
 [filters.intervals]
 dedup           = 1
-false_condition = 1
+false_condition = 1  # FRETISH only: TLSF has no condition/response split
 weakening       = 3
 bloat           = 1
 vacuity         = 1

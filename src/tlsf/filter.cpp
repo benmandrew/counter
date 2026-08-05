@@ -261,9 +261,9 @@ bool tlsf_has_unsatisfiable_assumptions(const tlsf::Specification& spec,
     return !checker.check_satisfiability(spec.assumption_ltl()).value_or(true);
 }
 
-FilterFunctionT<tlsf::Specification> tlsf_make_assumption_sat_filter(
+FilterFunctionT<tlsf::Specification> tlsf_make_vacuity_filter(
     std::size_t max_in_flight) {
-    return {"assumption-sat",
+    return {"vacuous-assumptions",
             [max_in_flight](const std::vector<tlsf::Specification>& pop) {
                 return filter_in_parallel(
                     pop, max_in_flight, [](const tlsf::Specification& spec) {

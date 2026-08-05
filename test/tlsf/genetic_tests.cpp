@@ -424,7 +424,7 @@ void test_end_to_end_evolution() {
         score_population(cfg, seed_pop, fitness);
 
     const std::vector<FilterFunctionT<tlsf::Specification>> filters = {
-        tlsf_make_dedup_filter(), tlsf_make_assumption_sat_filter()};
+        tlsf_make_dedup_filter(), tlsf_make_vacuity_filter()};
 
     for (std::size_t generation = 0; generation < 2; ++generation) {
         const RandomSource rng = make_random_source_from_seed(generation + 1);

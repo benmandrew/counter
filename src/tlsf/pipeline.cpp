@@ -48,10 +48,11 @@ std::optional<std::string> read_file(const std::string& path) {
 
 // A candidate counts as a repair only when it is realizable and not vacuously
 // so. Elites and final-generation offspring reach this collection without
-// necessarily having passed the assumption-satisfiability filter -- that filter
-// runs on an interval -- so the check is repeated here, mirroring the FRETISH
-// path's is_realizable_repair, which screens the same conditions before any
-// repair is written out.
+// necessarily having passed the vacuity filter -- that filter runs on an
+// interval and can be turned off outright -- so the check is repeated here,
+// mirroring the FRETISH path's is_realizable_repair, which screens the same
+// conditions before any repair is written out. Unconditional on both paths:
+// run_vacuity_filter tunes search pressure, never output correctness.
 //
 // The satisfiability query runs first: it is a `black` call against the
 // assumption side alone, far cheaper than the `ltlsynt` query behind
@@ -198,7 +199,7 @@ void print_filter_report(const std::vector<FilterRunStats>& stats) {
         const double pct_drop =
             100.0 * (1.0 - static_cast<double>(stat.total_out) /
                                static_cast<double>(stat.total_in));
-        std::cout << std::left << std::setw(16) << stat.name << std::right
+        std::cout << std::left << std::setw(20) << stat.name << std::right
                   << std::setw(8) << stat.total_in << " in  " << std::setw(8)
                   << stat.total_out << " out  " << std::fixed
                   << std::setprecision(1) << std::setw(5) << pct_drop
@@ -212,9 +213,13 @@ bool is_realizable(const Specification& spec) {
 }
 
 // Builds the per-generation filters, the TLSF counterparts of the FRETISH set
-// (dedup, bloat cap, assumption-satisfiability = false-condition, and the
-// optional weakening and well-separation filters), each with its configured
-// interval.
+// (dedup, bloat cap, the optional assumption-vacuity, weakening and
+// well-separation filters), each with its configured interval.
+//
+// There is no counterpart to the FRETISH false-condition filter, which is
+// syntactic: it rejects a requirement whose trigger is the literal `false`. A
+// tlsf::Specification has no condition/response split to carry such a trigger,
+// so false_condition_filter_interval does not apply on this path.
 std::vector<FilterFunctionT<Specification>> build_per_gen_filters(
     const Specification& spec, const Config& cfg) {
     const std::size_t max_in_flight = dispatch_window();
@@ -225,10 +230,12 @@ std::vector<FilterFunctionT<Specification>> build_per_gen_filters(
     FilterFunctionT<Specification> bloat = tlsf_make_bloat_cap_filter(spec);
     bloat.set_interval(cfg.bloat_filter_interval);
     filters.push_back(std::move(bloat));
-    FilterFunctionT<Specification> assumption_sat =
-        tlsf_make_assumption_sat_filter(max_in_flight);
-    assumption_sat.set_interval(cfg.false_condition_filter_interval);
-    filters.push_back(std::move(assumption_sat));
+    if (cfg.run_vacuity_filter) {
+        FilterFunctionT<Specification> vacuity =
+            tlsf_make_vacuity_filter(max_in_flight);
+        vacuity.set_interval(cfg.vacuity_filter_interval);
+        filters.push_back(std::move(vacuity));
+    }
     if (cfg.run_weakening_filter) {
         FilterFunctionT<Specification> weakening =
             tlsf_make_weakening_filter(spec, global_sat_checker());

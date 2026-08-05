@@ -110,7 +110,7 @@ void print_filter_report(const std::vector<FilterRunStats>& stats) {
         const double pct_drop =
             100.0 * (1.0 - static_cast<double>(stat.total_out) /
                                static_cast<double>(stat.total_in));
-        std::cout << std::left << std::setw(16) << stat.name << std::right
+        std::cout << std::left << std::setw(20) << stat.name << std::right
                   << std::setw(8) << stat.total_in << " in  " << std::setw(8)
                   << stat.total_out << " out  " << std::fixed
                   << std::setprecision(1) << std::setw(5) << pct_drop

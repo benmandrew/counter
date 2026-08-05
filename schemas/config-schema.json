@@ -89,7 +89,7 @@
           "description": "How often each per-generation filter runs, in generations (1 = every generation). The final generation always runs every filter.",
           "properties": {
             "dedup":           { "type": "integer", "minimum": 1, "description": "Deduplication filter interval." },
-            "false_condition": { "type": "integer", "minimum": 1, "description": "False-condition filter interval." },
+            "false_condition": { "type": "integer", "minimum": 1, "description": "False-condition filter interval. FRETISH only: a tlsf::Specification has no condition/response split to carry a false trigger." },
             "weakening":       { "type": "integer", "minimum": 1, "description": "Weakening filter interval (only when run_weakening)." },
             "bloat":           { "type": "integer", "minimum": 1, "description": "Bloat-cap filter interval." },
             "vacuity":         { "type": "integer", "minimum": 1, "description": "Vacuity filter interval (only when run_vacuity)." },

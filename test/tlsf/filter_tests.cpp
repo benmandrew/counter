@@ -51,7 +51,7 @@ void test_spec_implies_weakening_direction() {
 
 // --- assumption satisfiability ---
 
-// The predicate behind both the per-generation assumption-sat filter and the
+// The predicate behind both the per-generation vacuity filter and the
 // final repair screen in tlsf::run_repair, so a vacuously-realizable elite
 // cannot be written out as a repair.
 void test_unsatisfiable_assumptions_detected() {
@@ -63,15 +63,34 @@ void test_unsatisfiable_assumptions_detected() {
         "INPUTS { a; } OUTPUTS { b; } ASSUME { G a; G !a; } "
         "GUARANTEE { G (a -> b); }");
     expect(tlsf_has_unsatisfiable_assumptions(contradictory, checker),
-           "assumption-sat: contradictory assumptions are detected as vacuous");
+           "vacuity: contradictory assumptions are detected as vacuous");
 
     expect(!tlsf_has_unsatisfiable_assumptions(weaker_spec(), checker),
-           "assumption-sat: a satisfiable fairness assumption is not vacuous");
+           "vacuity: a satisfiable fairness assumption is not vacuous");
 
     // Conservative on the empty case: no assumptions is not vacuous, and the
     // check must not reach the solver at all.
     expect(!tlsf_has_unsatisfiable_assumptions(base_spec(), checker),
-           "assumption-sat: a spec with no assumptions is kept");
+           "vacuity: a spec with no assumptions is kept");
+}
+
+void test_vacuity_filter_drops_contradictory_assumptions() {
+    const tlsf::Specification contradictory = parse_spec(
+        "INPUTS { a; } OUTPUTS { b; } ASSUME { G a; G !a; } "
+        "GUARANTEE { G (a -> b); }");
+    const tlsf::Specification sound = weaker_spec();
+    const FilterFunctionT<tlsf::Specification> filter =
+        tlsf_make_vacuity_filter();
+    const std::vector<tlsf::Specification> survivors =
+        filter({contradictory, sound, base_spec()});
+    expect(survivors.size() == 2,
+           "vacuity filter: the vacuous candidate is dropped, the satisfiable "
+           "and the assumption-free ones kept");
+    expect(std::none_of(survivors.begin(), survivors.end(),
+                        [&contradictory](const tlsf::Specification& kept) {
+                            return kept == contradictory;
+                        }),
+           "vacuity filter: the dropped candidate is the contradictory one");
 }
 
 // --- weakening filter ---
@@ -188,6 +207,7 @@ void run_tlsf_filter_tests() {
     test_spec_implies_reflexive();
     test_spec_implies_weakening_direction();
     test_unsatisfiable_assumptions_detected();
+    test_vacuity_filter_drops_contradictory_assumptions();
     test_weakening_filter_keeps_only_weakenings();
     test_bloat_cap_filter_drops_oversized();
     test_implication_filter_keeps_maximal();

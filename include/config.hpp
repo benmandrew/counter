@@ -75,6 +75,9 @@ struct Config {
     // generation). The final generation always runs every filter, so the
     // resulting population is never left un-deduplicated/un-weakened.
     std::size_t dedup_filter_interval = 1;
+    // FRETISH only. The false-condition filter is syntactic -- it rejects a
+    // requirement whose trigger is the literal `false` -- and a
+    // tlsf::Specification has no condition/response split to carry one.
     std::size_t false_condition_filter_interval = 1;
     std::size_t weakening_filter_interval = 1;
     std::size_t bloat_filter_interval = 1;

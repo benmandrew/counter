@@ -27,9 +27,11 @@ The scale was previously five-point, grading the region below realisability by
 whether the guarantee side or the assumption side was jointly unsatisfiable.
 Instrumenting both front ends over 887k scored candidates put under 0.32% of
 the population into those tiers, and the assumption-side tier never fired at
-all, so both were removed. Ranking *within* unrealisability needs a measure of
-how far a candidate is from realisable, which a satisfiability query cannot
-express.
+all, so both were removed. Filtering does not account for that silence:
+candidates are scored before the filters run, so one is counted in the
+generation that produced it even though a filter then drops it. Ranking
+*within* unrealisability needs a measure of how far a candidate is from
+realisable, which a satisfiability query cannot express.
 
 Weighted equally with the semantic similarity component so realisable
 candidates are strongly preferred throughout evolution.

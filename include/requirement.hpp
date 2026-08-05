@@ -135,26 +135,17 @@ struct Specification {
     [[nodiscard]] std::string to_string() const;
 };
 
-/// A state in the automaton used for transfer matrix model counting. Encodes
-/// the state of a requirement automaton at a particular timepoint, used to
-/// compute both individual and joint requirement model counts.
+/// Vestigial placeholder. Model counting used to build requirement automata
+/// here, and this described a state of one; counting now goes through SPOT and
+/// Ganak instead, and `TransferSystem::m_states` holds only default-constructed
+/// values, so none of these fields carries information. It survives because
+/// `m_states` is typed on it and sized from it. Do not read the fields.
 struct State {
-    /// Whether the condition holds
     bool m_condition_holds = false;
-    /// Whether the response condition holds
     bool m_response_holds = false;
-    /// Countdown mechanism state (for timed constraints)
     bool m_countdown_state = false;
-    /// Remaining ticks in countdown
     std::size_t m_countdown_ticks = 0;
-
-    /// Returns a human-readable label for this state (used for debugging).
-    [[nodiscard]] std::string label() const;
 };
-
-/// Returns the set of canonical states based on the cross-product of condition
-/// and response boolean valuations: {(C,R) | C,R ∈ {true, false}}.
-std::vector<State> canonical_states();
 
 /// Returns true if any assumption or guarantee has a condition that is the
 /// literal atom "false" (e.g. after simplifying "!(true)"). Such a

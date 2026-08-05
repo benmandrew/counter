@@ -24,12 +24,13 @@ class Parser {
         skip_whitespace();
         assert(at_end());
         assert(!m_nodes.empty());
-        if (root != m_nodes.size() - 1) {
-            const prop_formula_internal::Node root_node = m_nodes[root];
-            m_nodes.erase(m_nodes.begin() + static_cast<std::ptrdiff_t>(root));
-            m_nodes.push_back(root_node);
-        }
-
+        // Root-last is an invariant every arena consumer relies on, and it
+        // holds by construction: each production returns the index of the most
+        // recently pushed node. It used to be "restored" here by erasing the
+        // root and re-pushing it, which could only ever have corrupted the
+        // arena -- erase shifts every later node down one without remapping the
+        // m_left/m_right indices pointing at them. Assert it instead.
+        assert(root == m_nodes.size() - 1);
         return m_nodes;
     }
 

@@ -26,11 +26,16 @@ six TLSF sections.
 The scale was previously five-point, grading the region below realisability by
 whether the guarantee side or the assumption side was jointly unsatisfiable.
 Instrumenting both front ends over 887k scored candidates put under 0.32% of
-the population into those tiers, and the assumption-side tier never fired at
-all, so both were removed. Filtering does not account for that silence:
-candidates are scored before the filters run, so one is counted in the
-generation that produced it even though a filter then drops it. Ranking
-*within* unrealisability needs a measure of how far a candidate is from
+the population into those tiers, and both were removed --- for different
+reasons. The guarantee-side tier was measured: nothing filters a jointly
+unsatisfiable guarantee side, and it fired on 46 candidates out of 15,115 on
+the TLSF path, all on one specification. The assumption-side tier never fired
+at all, and could not have. Its predicate is exactly the vacuity filter's, and
+candidate filters run on offspring *before* those offspring are scored, so such
+a candidate never reaches the objective. That tier was unreachable in any run
+leaving ``run_vacuity_filter`` on, which is the default.
+
+Ranking *within* unrealisability needs a measure of how far a candidate is from
 realisable, which a satisfiability query cannot express.
 
 Weighted equally with the semantic similarity component so realisable

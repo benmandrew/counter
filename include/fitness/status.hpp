@@ -28,14 +28,20 @@ inline constexpr double k_status_realizable = 1.0;
 /// realizability more finely -- separate tiers for an unsatisfiable guarantee
 /// side and an unsatisfiable assumption side, mirroring the design this search
 /// is derived from. Instrumenting both front ends over 887k scored candidates
-/// found those tiers hold under 0.32% of the population between them, and the
-/// assumption-side tier never fired once. Both paths filter such candidates,
-/// but filtering runs after scoring, so one is still scored -- and counted --
-/// in the generation that produced it; what the filters suppress is its
-/// survival, not its observation. They cost a satisfiability query each and
-/// bought no ranking, so they were dropped. Grading *within* unrealizability
-/// needs a measure of how far a candidate is from realizable, which a
-/// satisfiability query cannot express.
+/// found those tiers hold under 0.32% of the population between them.
+///
+/// The two failed for different reasons. The guarantee-side tier was measured:
+/// nothing filters a jointly unsatisfiable guarantee side, and it fired on 46
+/// candidates out of 15,115 on the TLSF path, all on one specification. The
+/// assumption-side tier never fired at all, and could not have: its predicate
+/// is exactly the vacuity filter's, and candidate filters run on offspring
+/// *before* those offspring are scored, so such a candidate is discarded
+/// before it reaches this function. The tier was unreachable in any run
+/// leaving run_vacuity_filter on, which is the default -- it re-asked a
+/// question a filter had already acted on.
+///
+/// Grading *within* unrealizability needs a measure of how far a candidate is
+/// from realizable, which a satisfiability query cannot express.
 ///
 /// @param components    Formulae to test individually; any one unsatisfiable
 ///                      scores k_status_component_unsatisfiable

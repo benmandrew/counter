@@ -36,12 +36,15 @@ double tlsf_halstead_fitness(const tlsf::Specification& spec,
                              const tlsf::Specification& original,
                              const Config& cfg);
 
-/// Tiered realizability status of @p spec, in [0, 1]:
+/// Realizability status of @p spec on the shared scale of `fitness/status.hpp`:
 ///   0.0 — some section formula is individually unsatisfiable
-///   0.1 — the guarantee-side conjunction is unsatisfiable
-///   0.2 — the assumption-side conjunction is unsatisfiable
-///   0.5 — everything satisfiable but the lowering is unrealizable
+///   0.5 — every section formula is satisfiable but the lowering is
+///         unrealizable
 ///   1.0 — the lowering is realizable
+///
+/// The components are the individual formulae of all six sections. Scoring is
+/// delegated to `status_score`, which the FRETISH path also uses, so the two
+/// front ends cannot drift onto different scales again.
 double tlsf_status(const tlsf::Specification& spec, const Config& cfg);
 
 /// Builds the weighted aggregate of the four TLSF fitness components, gated on

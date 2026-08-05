@@ -9,6 +9,7 @@
 
 #include "fitness/halstead.hpp"
 #include "fitness/semantic_similarity.hpp"
+#include "fitness/status.hpp"
 #include "prop_formula.hpp"
 #include "runner/black.hpp"
 #include "runner/spot.hpp"
@@ -189,29 +190,19 @@ double tlsf_status(const tlsf::Specification& spec,
                    [[maybe_unused]] const Config& cfg) {
     SatisfiabilityChecker& sat = global_sat_checker();
     RealizabilityChecker& real = global_real_checker();
-    auto all_sat = [&sat](const Section& section) {
-        return std::all_of(
-            section.begin(), section.end(), [&sat](const Formula& formula) {
-                return sat.check_satisfiability(formula.to_string())
-                    .value_or(false);
-            });
-    };
+    // A TLSF specification's components are the individual formulae of its six
+    // sections; the FRETISH path decomposes differently but scores on the same
+    // scale, which is why both route through status_score.
+    std::vector<std::string> components;
     for (std::size_t section = 0; section < k_n_sections; ++section) {
-        if (!all_sat(*all_sections(spec, section))) {
-            return 0.0;
+        for (const Formula& formula : *all_sections(spec, section)) {
+            components.push_back(formula.to_string());
         }
     }
-    if (!sat.check_satisfiability(spec.guarantee_ltl()).value_or(false)) {
-        return 0.1;
-    }
-    if (!sat.check_satisfiability(spec.assumption_ltl()).value_or(false)) {
-        return 0.2;
-    }
-    if (!real.check_realizability_ltl(spec.to_ltl(), spec.m_inputs,
-                                      spec.m_outputs)) {
-        return 0.5;
-    }
-    return 1.0;
+    return status_score(components, sat, [&spec, &real] {
+        return real.check_realizability_ltl(spec.to_ltl(), spec.m_inputs,
+                                            spec.m_outputs);
+    });
 }
 
 AggregateWeightedFitnessFunctionT<tlsf::Specification>

@@ -20,7 +20,8 @@ class Parser {
     std::vector<prop_formula_internal::Node> parse() {
         m_position = 0;
         m_nodes.clear();
-        const std::size_t root = parse_iff();
+        // Only the assert below reads this, so it is unused under NDEBUG.
+        [[maybe_unused]] const std::size_t root = parse_iff();
         skip_whitespace();
         assert(at_end());
         assert(!m_nodes.empty());

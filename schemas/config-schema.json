@@ -27,15 +27,6 @@
         "weight_status":    { "type": "number", "minimum": 0, "description": "Realizability status weight." }
       }
     },
-    "syntactic": {
-      "type": "object",
-      "additionalProperties": false,
-      "properties": {
-        "weight_trigger":  { "type": "number", "minimum": 0, "description": "Contribution of trigger formula similarity." },
-        "weight_response": { "type": "number", "minimum": 0, "description": "Contribution of response formula similarity." },
-        "weight_timing":   { "type": "number", "minimum": 0, "description": "Contribution of timing constraint similarity." }
-      }
-    },
     "mutation": {
       "type": "object",
       "additionalProperties": false,
@@ -58,8 +49,7 @@
           "type": "object",
           "additionalProperties": false,
           "properties": {
-            "p_assumption": { "type": "number", "minimum": 0, "maximum": 1, "description": "Weight for mutating an assumption-side section (INITIALLY/REQUIRE/ASSUME), relative to p_guarantee. The pair is normalised by its sum, so the two need not add to 1." },
-            "p_guarantee":  { "type": "number", "minimum": 0, "maximum": 1, "description": "Weight for mutating a guarantee-side section (PRESET/ASSERT/GUARANTEE), relative to p_assumption. The pair is normalised by its sum; both zero selects the guarantee side." },
+            "p_assumption": { "type": "number", "minimum": 0, "maximum": 1, "description": "Probability of mutating an assumption-side section (INITIALLY/REQUIRE/ASSUME); the guarantee side (PRESET/ASSERT/GUARANTEE) takes the complement." },
             "p_temporal":   { "type": "number", "minimum": 0, "maximum": 1, "description": "Probability that a chosen section formula is rewritten by the temporal-structure mutation (may insert/drop/swap X/F/G/U/R/W) rather than the skeleton-preserving propositional rewrite." }
           }
         },
@@ -79,23 +69,10 @@
       "type": "object",
       "additionalProperties": false,
       "properties": {
-        "run_weakening":   { "type": "boolean", "description": "Enable per-generation weakening filter." },
+        "run_weakening":   { "type": "boolean", "default": true, "description": "Keep only repairs the original logically implies -- genuine weakenings. A final screen over the realizable survivors, not a per-generation filter: pruning non-weakenings mid-search costs repair quality and never gains it, while screening the output leaves the search untouched. With it off a written repair may forbid behaviour the original allowed. Applies on both paths; the TLSF check is an exact whole-formula query where the FRETISH one is an under-detecting assume-guarantee decomposition, so the TLSF screen rejects more." },
         "run_implication": { "type": "boolean", "description": "Enable final implication maximality filter." },
         "run_vacuity":     { "type": "boolean", "description": "Drop candidates whose assumptions are jointly unsatisfiable, which are realizable for free." },
-        "run_well_separation": { "type": "boolean", "description": "Drop candidates that are not well-separated: ones the system can satisfy vacuously by forcing its own assumptions to fail. Strictly stronger than run_vacuity. Each test is a full ltlsynt query, but dropping a candidate before scoring saves more than the query costs, so it is on by default." },
-        "intervals": {
-          "type": "object",
-          "additionalProperties": false,
-          "description": "How often each per-generation filter runs, in generations (1 = every generation). The final generation always runs every filter.",
-          "properties": {
-            "dedup":           { "type": "integer", "minimum": 1, "description": "Deduplication filter interval." },
-            "false_condition": { "type": "integer", "minimum": 1, "description": "False-condition filter interval. FRETISH only: a tlsf::Specification has no condition/response split to carry a false trigger." },
-            "weakening":       { "type": "integer", "minimum": 1, "description": "Weakening filter interval (only when run_weakening)." },
-            "bloat":           { "type": "integer", "minimum": 1, "description": "Bloat-cap filter interval." },
-            "vacuity":         { "type": "integer", "minimum": 1, "description": "Vacuity filter interval (only when run_vacuity)." },
-            "well_separation": { "type": "integer", "minimum": 1, "description": "Well-separation filter interval (only when run_well_separation)." }
-          }
-        }
+        "run_well_separation": { "type": "boolean", "default": true, "description": "Drop candidates that are not well-separated: ones the system can satisfy vacuously by forcing its own assumptions to fail. Strictly stronger than run_vacuity. Each test is a full ltlsynt query, but a candidate dropped before scoring costs no model-count and no synthesis query, so it is on by default. Stays a per-generation filter rather than a final screen: an end-of-run pass is re-admitted by the elites and by NSGA-II parent pooling." }
       }
     },
     "runtime": {
@@ -109,7 +86,6 @@
         "ganak_timeout_ms": { "type": "integer", "minimum": 0, "description": "Per-call ganak model-counting timeout in milliseconds. 0 (default) is no timeout; a call exceeding it drops the individual against max_scoring_failure_rate." },
         "parallel":          { "type": "integer", "minimum": 1, "description": "Thread pool size. Omit to use hardware concurrency." },
         "max_concurrent_realizability": { "type": "integer", "minimum": 0, "description": "Cap on ltlsynt processes running at once, independent of the thread pool. 0 (default) is unlimited; a positive value bounds peak RAM." },
-        "report_cpu_timing": { "type": "boolean", "description": "Print the CPU-attribution report (your code vs. external CLI tools)." },
         "max_scoring_failure_rate": { "type": "number", "minimum": 0, "maximum": 1, "description": "Fraction of a generation whose fitness scoring may throw before the run aborts. A single failure per generation is always tolerated." },
         "dashboard": { "type": "boolean", "description": "Stream progress to <output-dir>/progress.jsonl and copy the live dashboard page beside it. Off by default; --dashboard also enables it." }
       }

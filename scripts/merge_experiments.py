@@ -55,7 +55,9 @@ PROFILE_CSVS: dict[str, str] = {
     "wellsep": "results-wellsep.csv",
     # Its own CSV, never wellsep's: the sweep letter and level names differ but
     # the key fields (spec, seed, selection, ...) overlap, so sharing would
-    # interleave two campaigns in one dataset.
+    # interleave two campaigns in one dataset. The profile itself is retired --
+    # its sweep varied filters.intervals.well_separation, a key that no longer
+    # exists -- but the entry stays so the archived CSVs remain mergeable.
     "wellsep-timing": "results-wellsep-timing.csv",
     "arbiter-hp": "results-arbiter-hp.csv",
     "ablate-fret": "results-ablate-fret.csv",

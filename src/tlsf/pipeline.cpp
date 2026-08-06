@@ -48,8 +48,8 @@ std::optional<std::string> read_file(const std::string& path) {
 
 // A candidate counts as a repair only when it is realizable and not vacuously
 // so. Elites and final-generation offspring reach this collection without
-// necessarily having passed the vacuity filter -- that filter runs on an
-// interval and can be turned off outright -- so the check is repeated here,
+// necessarily having passed the vacuity filter -- that filter can be turned
+// off outright -- so the check is repeated here,
 // mirroring the FRETISH path's is_realizable_repair, which screens the same
 // conditions before any repair is written out. Unconditional on both paths:
 // run_vacuity_filter tunes search pressure, never output correctness.
@@ -213,67 +213,43 @@ bool is_realizable(const Specification& spec) {
 }
 
 // Builds the per-generation filters, the TLSF counterparts of the FRETISH set
-// (dedup, bloat cap, the optional assumption-vacuity, weakening and
-// well-separation filters), each with its configured interval.
+// (dedup, bloat cap, the optional assumption-vacuity and well-separation
+// filters).
 //
-// There is no counterpart to the FRETISH false-condition filter, which is
-// syntactic: it rejects a requirement whose trigger is the literal `false`. A
-// tlsf::Specification has no condition/response split to carry such a trigger,
-// so false_condition_filter_interval does not apply on this path.
+// There is no counterpart to the FRETISH false-condition filter, and none is
+// wanted. That filter is syntactic -- it rejects a requirement whose trigger is
+// the literal `false` -- and a tlsf::Specification has no condition/response
+// split to carry such a trigger. The antecedent of `(assumptions) ->
+// (guarantees)` is the assumption side, and the vacuity filter above already
+// decides it *semantically*, so it catches an assumption merely equivalent to
+// false where the syntactic check would not. Porting the FRETISH check here
+// would add nothing it does not already subsume.
+//
+// The unchecked half is the dual: a guarantee side equivalent to `true`, which
+// makes the implication a tautology just as a false antecedent does. Nothing on
+// this path tests it -- least of all the final weakening screen, since
+// `original implies true` holds trivially and a gutted guarantee is therefore a
+// perfect weakening.
 std::vector<FilterFunctionT<Specification>> build_per_gen_filters(
     const Specification& spec, const Config& cfg) {
     const std::size_t max_in_flight = dispatch_window();
     std::vector<FilterFunctionT<Specification>> filters;
     FilterFunctionT<Specification> dedup = tlsf_make_dedup_filter();
-    dedup.set_interval(cfg.dedup_filter_interval);
     filters.push_back(std::move(dedup));
     FilterFunctionT<Specification> bloat = tlsf_make_bloat_cap_filter(spec);
-    bloat.set_interval(cfg.bloat_filter_interval);
     filters.push_back(std::move(bloat));
     if (cfg.run_vacuity_filter) {
         FilterFunctionT<Specification> vacuity =
             tlsf_make_vacuity_filter(max_in_flight);
-        vacuity.set_interval(cfg.vacuity_filter_interval);
         filters.push_back(std::move(vacuity));
-    }
-    if (cfg.run_weakening_filter) {
-        FilterFunctionT<Specification> weakening =
-            tlsf_make_weakening_filter(spec, global_sat_checker());
-        weakening.set_interval(cfg.weakening_filter_interval);
-        filters.push_back(std::move(weakening));
     }
     if (cfg.run_well_separation_filter) {
         FilterFunctionT<Specification> well_separation =
             tlsf_make_well_separation_filter(global_real_checker(),
                                              max_in_flight);
-        well_separation.set_interval(cfg.well_separation_filter_interval);
         filters.push_back(std::move(well_separation));
     }
     return filters;
-}
-
-// The subset of `filters` that runs this generation (every filter fires on the
-// last generation; otherwise only those whose interval divides gen+1), paired
-// with each active filter's index into `filters` so its stats fold back
-// positionally.
-struct ActiveFilters {
-    std::vector<FilterFunctionT<Specification>> filters;
-    std::vector<std::size_t> indices;
-};
-
-ActiveFilters select_active_filters(
-    const std::vector<FilterFunctionT<Specification>>& filters, std::size_t gen,
-    bool is_last) {
-    ActiveFilters active;
-    active.filters.reserve(filters.size());
-    active.indices.reserve(filters.size());
-    for (std::size_t k = 0; k < filters.size(); ++k) {
-        if (is_last || (gen + 1) % filters[k].interval() == 0) {
-            active.filters.push_back(filters[k]);
-            active.indices.push_back(k);
-        }
-    }
-    return active;
 }
 
 // Says where one evolve run should report its progress, and how to place it in
@@ -324,9 +300,6 @@ std::vector<Scored<Specification>> evolve_population(
     }
 
     for (std::size_t gen = 0; gen < cfg.generations; ++gen) {
-        const bool is_last = gen + 1 == cfg.generations;
-        ActiveFilters active =
-            select_active_filters(per_gen_filters, gen, is_last);
         const auto gen_start = std::chrono::steady_clock::now();
         // MUC repair restarts its generation count on every core it evolves, so
         // the dashboard is given a number that keeps climbing across
@@ -342,14 +315,14 @@ std::vector<Scored<Specification>> evolve_population(
         };
         population = evolve_generation_generic(
             cfg, population, selection_size, elitism_size, fitness,
-            active.filters, tlsf_operators(), random_source, nullptr, on_stage);
-        // The active copies hold this generation's in/out sizes; fold them into
-        // the running per-filter totals for the end-of-run report.
-        for (std::size_t k = 0; k < active.filters.size(); ++k) {
-            filter_stats_out[active.indices[k]].total_in +=
-                active.filters[k].n_in();
-            filter_stats_out[active.indices[k]].total_out +=
-                active.filters[k].n_out();
+            per_gen_filters, tlsf_operators(), random_source, nullptr,
+            on_stage);
+        // Each filter records this generation's in/out sizes in its own mutable
+        // counters; fold them into the running totals for the end-of-run
+        // report.
+        for (std::size_t k = 0; k < per_gen_filters.size(); ++k) {
+            filter_stats_out[k].total_in += per_gen_filters[k].n_in();
+            filter_stats_out[k].total_out += per_gen_filters[k].n_out();
         }
         const double best =
             population.empty() ? 0.0 : population.front().fitness;
@@ -529,6 +502,33 @@ int run_repair(const std::string& input_path, const std::string& output_dir,
             ? run_muc(original, cfg, random_source, fitness, progress)
             : run_monolithic(original, cfg, random_source, fitness, progress);
     const std::size_t n_realizable = survivors.size();
+    // Final weakening screen, as on the FRETISH path: keep only repairs the
+    // original logically implies. The check here is exact rather than the
+    // FRETISH assume-guarantee decomposition -- a tlsf::Specification lowers to
+    // one LTL formula -- so a rejection means the candidate genuinely forbids
+    // behaviour the original allowed, not that the decomposition lost it.
+    if (cfg.run_weakening_filter && !survivors.empty()) {
+        std::vector<Specification> specs;
+        specs.reserve(survivors.size());
+        for (const Scored<Specification>& scored : survivors) {
+            specs.push_back(scored.specification);
+        }
+        const std::vector<Specification> weakenings =
+            tlsf_make_weakening_filter(original, global_sat_checker())(specs);
+        std::vector<Scored<Specification>> kept;
+        kept.reserve(weakenings.size());
+        for (const Scored<Specification>& scored : survivors) {
+            const bool is_weakening =
+                std::any_of(weakenings.begin(), weakenings.end(),
+                            [&scored](const Specification& spec) {
+                                return spec == scored.specification;
+                            });
+            if (is_weakening) {
+                kept.push_back(scored);
+            }
+        }
+        survivors = std::move(kept);
+    }
     // Final maximality pass: keep only realizable repairs not strictly implied
     // by another, mirroring the FRETISH final implication filter.
     if (cfg.run_implication_filter && survivors.size() > 1) {

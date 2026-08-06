@@ -29,8 +29,9 @@ FilterFunctionT<tlsf::Specification> tlsf_make_dedup_filter();
 /// check never silently discards a candidate.
 ///
 /// Shared by the per-generation filter below and the final repair screen in
-/// tlsf::run_repair — the filter runs only on its configured interval, so the
-/// screen cannot rely on it having seen the elites it is about to write out.
+/// tlsf::run_repair — the filter can be disabled outright, and elites bypass
+/// the offspring filters anyway, so the screen cannot rely on it having seen
+/// the specifications it is about to write out.
 bool tlsf_has_unsatisfiable_assumptions(const tlsf::Specification& spec,
                                         SatisfiabilityChecker& checker);
 
@@ -41,10 +42,9 @@ bool tlsf_has_unsatisfiable_assumptions(const tlsf::Specification& spec,
 /// with no assumption formulae is kept; an uncertain (timed-out) satisfiability
 /// result is treated as satisfiable and the spec is kept.
 ///
-/// Gated by Config::run_vacuity_filter and throttled by
-/// Config::vacuity_filter_interval, as on the FRETISH path. The final repair
-/// screen applies the predicate unconditionally either way, so turning the
-/// filter off costs search pressure, never output correctness.
+/// Gated by Config::run_vacuity_filter, as on the FRETISH path. The final
+/// repair screen applies the predicate unconditionally either way, so turning
+/// the filter off costs search pressure, never output correctness.
 ///
 /// @param max_in_flight Concurrent checks. Each spec carrying assumptions costs
 ///                      a `black` subprocess on a cache miss, and the miss rate

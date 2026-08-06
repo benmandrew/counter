@@ -46,9 +46,9 @@ class DashboardWriter {
     /// the specification being repaired.
     ///
     /// @p objectives is in registration order. @p stages is every stage a
-    /// generation can run, in pipeline order, including filters that only run
-    /// on some generations, so the page can reserve a layout that does not
-    /// move as interval-gated filters come and go.
+    /// generation can run, in pipeline order, so the page can lay out the full
+    /// set before the first generation reports rather than growing it row by
+    /// row as stages first appear.
     void run_start(const std::string& input, std::size_t generations,
                    std::size_t population, std::size_t seed,
                    const std::vector<std::string>& objectives,

@@ -91,8 +91,8 @@ void test_records_are_one_json_object_per_line() {
            "need not know them");
     expect(records[0]["stages"].size() == 3,
            "dashboard: run_start should declare every stage the run can "
-           "execute, so the page can reserve a layout that does not move as "
-           "interval-gated filters come and go");
+           "execute, so the page can lay out the full set before the first "
+           "generation reports");
     expect(records[1]["name"] == "breed" && records[1]["n_in"] == 10 &&
                records[1]["n_out"] == 8,
            "dashboard: a stage record should carry its name and both "

@@ -173,6 +173,17 @@ def toml_keys(table, prefix=""):
     return paths
 
 
+def toml_scalars(table, prefix=""):
+    """Leaf (non-table) keys and their values, by dotted path."""
+    values = {}
+    for name, value in table.items():
+        if isinstance(value, dict):
+            values.update(toml_scalars(value, prefix + name + "."))
+        else:
+            values[prefix + name] = value
+    return values
+
+
 def toml_values(table, prefix=""):
     values = {}
     for name, value in table.items():
@@ -181,6 +192,90 @@ def toml_values(table, prefix=""):
         elif isinstance(value, str):
             values[prefix + name] = value
     return values
+
+
+# --- include/config.hpp ------------------------------------------------------
+
+# TOML path -> the Config member holding its default. Keys absent here are not
+# value-checked: genetic.selection_scheme, tlsf.repair_mode and
+# model_counting.metric are enums already covered by the enum check above, and
+# runtime.parallel defaults to hardware concurrency, which is not a constant to
+# pin. Everything else must appear, so a new key cannot quietly skip the check.
+DEFAULT_FIELDS = {
+    "genetic.generations": "generations",
+    "genetic.population_size": "population_size",
+    "genetic.selection_rate": "selection_rate",
+    "genetic.elitism_rate": "elitism_rate",
+    "genetic.crossover_rate": "crossover_rate",
+    "genetic.mutation_rate": "mutation_rate",
+    "fitness.weight_syntactic": "fitness_weight_syntactic",
+    "fitness.weight_semantic": "fitness_weight_semantic",
+    "fitness.weight_halstead": "fitness_weight_halstead",
+    "fitness.weight_status": "fitness_weight_status",
+    "mutation.p_trigger": "p_trigger",
+    "mutation.p_response": "p_response",
+    "mutation.p_timing": "p_timing",
+    "mutation.p_add_assumption": "p_add_assumption",
+    "mutation.p_conditional_assumption": "p_conditional_assumption",
+    "mutation.strengthen_assumptions": "strengthen_assumptions",
+    "mutation.allow_output_assumptions": "allow_output_assumptions",
+    "tlsf.muc_max_iterations": "muc_max_iterations",
+    "tlsf.mutation.p_assumption": "tlsf_p_assumption",
+    "tlsf.mutation.p_temporal": "tlsf_p_temporal",
+    "model_counting.default_bound": "default_model_counting_bound",
+    "filters.run_weakening": "run_weakening_filter",
+    "filters.run_implication": "run_implication_filter",
+    "filters.run_vacuity": "run_vacuity_filter",
+    "filters.run_well_separation": "run_well_separation_filter",
+    "runtime.black_timeout_ms": "black_timeout",
+    "runtime.ltlsynt_timeout_ms": "ltlsynt_timeout",
+    "runtime.ltl2tgba_timeout_ms": "ltl2tgba_timeout",
+    "runtime.ltlfilt_timeout_ms": "ltlfilt_timeout",
+    "runtime.ganak_timeout_ms": "ganak_timeout",
+    "runtime.max_concurrent_realizability": "max_concurrent_realizability",
+    "runtime.max_scoring_failure_rate": "max_scoring_failure_rate",
+    "runtime.dashboard": "dashboard",
+}
+
+# Keys the parser accepts but that carry no pinnable constant default.
+UNPINNED_KEYS = {
+    "genetic.selection_scheme",
+    "tlsf.repair_mode",
+    "model_counting.metric",
+    "runtime.parallel",
+}
+
+
+def hpp_defaults(source):
+    """Default value per Config member, from its in-class initialiser.
+
+    Handles both spellings the struct uses: ``T name = value;`` for the scalars
+    and ``std::chrono::milliseconds name{value};`` for the tool timeouts. C++
+    digit separators are stripped so 10'000 reads as 10000.
+    """
+    body = source[source.index("struct Config {") :]
+    body = body[: body.index("\n};")]
+    found = {}
+    for name, value in re.findall(r"(\w+)\s*=\s*([^;]+);", body):
+        found[name] = value.strip()
+    for name, value in re.findall(r"(\w+)\{([^}]*)\}\s*;", body):
+        found.setdefault(name, value.strip())
+    return {k: v.replace("'", "") for k, v in found.items()}
+
+
+def as_comparable(value):
+    """Normalise a C++ literal or a TOML value to compare the two."""
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, (int, float)):
+        return float(value)
+    text = str(value).strip()
+    if text in ("true", "false"):
+        return text == "true"
+    try:
+        return float(text)
+    except ValueError:
+        return text
 
 
 # --- checks ------------------------------------------------------------------
@@ -197,6 +292,7 @@ def main():
     root = ap.parse_args().root
 
     cpp = root / "src" / "config_io.cpp"
+    hpp = root / "include" / "config.hpp"
     schema_path = root / "schemas" / "config-schema.json"
     example_path = root / "example-config.toml"
 
@@ -211,6 +307,7 @@ def main():
             return None, f"{path}: {exc}"
 
     cpp_source, cpp_error = load(cpp, lambda text: text)
+    hpp_source, hpp_error = load(hpp, lambda text: text)
     schema, schema_error = load(schema_path, json.loads)
     example, example_error = load(example_path, tomllib.loads)
 
@@ -221,7 +318,11 @@ def main():
         except ValueError as exc:
             spec_error = f"{cpp}: could not read config_key_spec(): {exc}"
 
-    fatal = [e for e in (cpp_error, schema_error, example_error, spec_error) if e]
+    fatal = [
+        e
+        for e in (cpp_error, hpp_error, schema_error, example_error, spec_error)
+        if e
+    ]
     if fatal:
         print("Config key parity check could not run:\n", file=sys.stderr)
         for error in fatal:
@@ -229,7 +330,7 @@ def main():
         return 1
 
     assert cpp_source is not None and schema is not None and example is not None
-    assert from_parser is not None
+    assert from_parser is not None and hpp_source is not None
 
     from_schema = schema_keys(schema["properties"])
     from_example = toml_keys(example)
@@ -251,6 +352,38 @@ def main():
             f"{example_path.name}: sets '{path}', which the parser does not "
             f"recognise and will warn about."
         )
+
+    # example-config.toml is the template users copy, and it says every value in
+    # it is the built-in default. That was silently false for eight keys, so the
+    # claim is now enforced: each scalar key's value must equal the initialiser
+    # of the Config member that backs it.
+    defaults = hpp_defaults(hpp_source)
+    for path, value in sorted(toml_scalars(example).items()):
+        if path in UNPINNED_KEYS:
+            continue
+        field = DEFAULT_FIELDS.get(path)
+        if field is None:
+            errors.append(
+                f"check_config_schema.py: '{path}' is in "
+                f"{example_path.name} but not in DEFAULT_FIELDS, so its value "
+                f"goes unchecked. Add it (or to UNPINNED_KEYS if it has no "
+                f"constant default)."
+            )
+            continue
+        if field not in defaults:
+            errors.append(
+                f"config.hpp: no initialiser found for '{field}', which backs "
+                f"'{path}'."
+            )
+            continue
+        want = as_comparable(defaults[field])
+        got = as_comparable(value)
+        if want != got:
+            errors.append(
+                f"{example_path.name}: '{path}' is {got!r}, but config.hpp "
+                f"defaults {field} to {want!r}. The template must show the "
+                f"built-in default."
+            )
 
     # An open object defeats the point of the schema: it would validate any key.
     for offender in open_objects(schema):

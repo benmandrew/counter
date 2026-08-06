@@ -57,7 +57,8 @@
     "Only intervals 1 and 1000 are on the grid, so nothing here says whether some intermediate cadence beats both ends.",
     "every-gen leaked once in 9529 repairs, detector seed 18 repair_2.tlsf. A final well-separation gate, matching what the weakening and vacuity filters already have, is still worth adding. Issues #72 (stage_filter_fallback re-admits the whole unfiltered offspring set when the chain empties the population), #74 (a realizability timeout is read as well-separated and cached for the rest of the run, material at ltlsynt_timeout_ms = 500) and #77 (the seed population is never filtered) each describe a route this campaign did not close.",
     "The leak rates are over emitted repairs, not runs, so a spec that emits many repairs per run weighs more heavily in the pooled figure than one that emits few. The per-spec breakdown is the one to read.",
-    "TLSF only. Well-separation is measured inert on the FRETISH path, where assumptions are input-only in practice, and this campaign says nothing about it there."
+    "TLSF only. Well-separation is measured inert on the FRETISH path, where assumptions are input-only in practice, and this campaign says nothing about it there.",
+    "Not regenerable. The `[filters.intervals]` table was removed from the config surface after this campaign closed, and the three arms were three values of `well_separation` within it, so `gen_configs.py` sweep V and the `wellsep-timing` profile are retired and the configs archived here can no longer be produced by any current binary. The archive is the record. This does not weaken the result -- the finding is precisely that the cadence the removed key expressed was not worth expressing -- but it does mean the arms cannot be re-run, and a reproduction would have to restore the key first."
   ],
   "vendored_scripts": {
     "vendored_on": "2026-08-06",

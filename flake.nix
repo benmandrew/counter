@@ -66,10 +66,6 @@
             graphviz
             (python3.withPackages (ps: with ps; [ sphinx breathe furo ]))
 
-            # Runtime dependency of the prebuilt black-sat binary (cmake/black.cmake),
-            # which dynamically links libfmt.so.9 and does not bundle it.
-            fmt_9
-
             # SMT backend for building black-sat from source (cmake/black.cmake's
             # fallback path on non-Ubuntu-24.04 hosts, where the prebuilt deb doesn't apply).
             z3
@@ -78,7 +74,14 @@
             # (vendor/fretCLI.main.js, see runner/formaliser.hpp): `node` is
             # looked up on PATH at run time, not fetched by CMake.
             nodejs
-          ];
+          ]
+          # Runtime dependency of the prebuilt black-sat binary, which
+          # dynamically links libfmt.so.9 and does not bundle it. Only the
+          # Linux path of cmake/black.cmake uses that binary — elsewhere black
+          # is built from source against z3 — and fmt 9.1.0's test suite does
+          # not compile under clang 21 (it specialises std::is_floating_point),
+          # so pulling it in on darwin breaks the shell for a file nothing reads.
+          ++ lib.optional stdenv.hostPlatform.isLinux fmt_9;
 
           # Point curl/git at the nix CA bundle — required on NixOS, harmless on Ubuntu
           SSL_CERT_FILE = "${pkgs.cacert}/etc/ssl/certs/ca-bundle.crt";
@@ -91,7 +94,9 @@
           # programs and crashing them on ABI mismatches. cmake/black.cmake
           # reads this plain var and bakes the path directly into the
           # black-sat wrapper script instead, scoped to just that one exec.
-          COUNTER_FMT9_LIB_DIR = "${pkgs.fmt_9}/lib";
+          COUNTER_FMT9_LIB_DIR =
+            pkgs.lib.optionalString pkgs.stdenv.hostPlatform.isLinux
+              "${pkgs.fmt_9}/lib";
         };
       });
 }

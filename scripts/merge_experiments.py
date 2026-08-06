@@ -119,6 +119,28 @@ LEGACY_METRIC = "direct"
 LEGACY_REPAIR = "mono"
 LEGACY_COMMIT = "unknown"
 
+# The two NSGA-II schemes were renamed -- "nsga2" -> "nsga2-truncate" and
+# "nsga2-replicate" -> "nsga2-apportion" -- and the binary rejects the old
+# spellings outright. Only the name moved: the scheme each one selects is
+# unchanged, so a row recorded under either spelling names the same cell of the
+# design. 224,861 archived rows carry "nsga2" and the replicate campaign's rows
+# carry "nsga2-replicate"; canonicalising the `selection` value wherever it
+# enters a KEY_FIELDS key is what lets an archived row and a new one join as one
+# row rather than merging into two. Duplicated from run_experiments.py rather
+# than imported, like every other LEGACY_* constant here: both scripts are
+# standalone and are vendored per campaign under experiments/<campaign>/scripts/,
+# where a cross-import would not resolve. The stored `selection` value itself is
+# never rewritten -- the merged CSV keeps whatever each campaign recorded.
+SCHEME_ALIASES: dict[str, str] = {
+    "nsga2": "nsga2-truncate",
+    "nsga2-replicate": "nsga2-apportion",
+}
+
+
+def canonical_scheme(name: str) -> str:
+    """Current spelling of a selection scheme; any other name passes through."""
+    return SCHEME_ALIASES.get(name, name)
+
 
 def resolve_source(name: str) -> tuple[str, str]:
     """Map a CLI argument to (label, rsync_root).
@@ -225,7 +247,14 @@ def key_of(row: dict) -> tuple:
     # A CSV predating the selection/weakening columns carries only nsga2 / wkon
     # runs, so an absent value keys as that default rather than "" — otherwise
     # merging an old and a new copy of the same run would produce two rows.
-    return tuple(row.get(f) or FIELD_DEFAULTS.get(f, "") for f in KEY_FIELDS)
+    # canonical_scheme is the same argument one step on: a row saying "nsga2"
+    # and a row saying "nsga2-truncate" describe one cell under two spellings of
+    # one scheme, so they must key alike or the merge splits them.
+    def value(field: str) -> str:
+        v = row.get(field) or FIELD_DEFAULTS.get(field, "")
+        return canonical_scheme(v) if field == "selection" else v
+
+    return tuple(value(f) for f in KEY_FIELDS)
 
 
 def merge_csv(pulled: list[Path], results_csv: Path) -> None:

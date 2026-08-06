@@ -58,7 +58,15 @@ SECTION_ALIASES = {
 # 35). Needed because both the level name and the spec name may contain
 # hyphens but never underscores, so the scheme token is the only reliable
 # anchor for splitting a run_id.
-SCHEMES = ("nsga2-replicate", "nsga2", "weighted")
+#
+# "nsga2" and "nsga2-replicate" are the pre-rename spellings of
+# "nsga2-truncate" and "nsga2-apportion". gen_configs.py emits the new names
+# only, but every run directory archived under experiments/ is named with the
+# old ones, and those are the directories this script is usually pointed at --
+# so dropping them here would lose the anchor on exactly the layout it reads
+# most. Membership is tested per token, so the order is presentational.
+SCHEMES = ("nsga2-truncate", "nsga2-apportion", "nsga2-replicate", "nsga2",
+           "weighted")
 
 # Crossed-factor tags run_experiments.py splices between the scheme and the
 # spec name (wk_tag/mx_tag/rp_tag, line 1756-1758). Only present on profiles

@@ -92,6 +92,27 @@ of `well_separation`, so it cannot be regenerated at all and its archive is the
 only record. Retire the sweep and profile when their key goes; a generator that
 emits a key the binary warns on is worse than an absent one.
 
+Retiring a key's *value* lands in the same place. The selection schemes were
+renamed on 2026-08-06 — `nsga2` to `nsga2-truncate`, `nsga2-replicate` to
+`nsga2-apportion` — and the old spellings are rejected rather than aliased, by
+name and with a message saying what to do. Every archived campaign config sets
+one of them, so none of them runs against a current binary; reproduce those at
+the commit their `PROVENANCE.json` names, which is what the vendored
+per-campaign `scripts/` exists for.
+
+Archived *results* are the separate half, and the one that needed work.
+`gen_configs.py` turns the scheme name into a config directory name,
+`scheme_of()` in `run_experiments.py` reads it back into the `selection` column
+of every results CSV, and that column joins `KEY_FIELDS` in
+`merge_experiments.py` — so renaming what the harness emits would have made all
+224,861 archived rows reading `nsga2` miss their resume key and re-run finished
+campaigns. `canonical_scheme()` in both scripts maps the retired spellings onto
+the new ones wherever a `selection` value is read back, which is what keeps
+resume and merge joining those rows. The scheme itself never changed, only its
+name, so the mapping is an identity on behaviour. Renaming any other factor
+directory means adding to that mapping in the same way; leaving it out is
+silent, and shows up as a finished campaign re-running from zero.
+
 ## Docs
 
 Every header file in `include/` must have a corresponding `.rst` page under `docs/api/` and be listed in `docs/index.rst`. When adding a new header, add the page and toctree entry before committing. The site covers `include/` alone: implementation detail under `src/` is deliberately not published.
@@ -111,7 +132,7 @@ Every header file in `include/` must have a corresponding `.rst` page under `doc
 1. Load `Specification` from `--input` JSON.
 2. Build `AggregateWeightedFitnessFunction` (syntactic + semantic + Halstead + status) and per-generation `FilterFunction` list from the original spec.
 3. Seed an RNG (from `--seed` or `std::random_device`); register crash metadata.
-4. Run `Config::generations` rounds of `evolve_generation`: crossover + mutation, apply filters to the offspring (dedup, bloat cap, false-condition, optional vacuity/well-separation), then score the survivors in a thread pool. Filters run **before** scoring, so a dropped candidate never costs a model-count or a synthesis query, and a filter's solver calls warm the caches scoring then hits. A stage that re-tests a filter's own predicate on the population that filter already judged is therefore dead code, not a safety net. The one deliberate re-test is the filter fallback: when the chain empties the offspring, it re-applies the `FilterKind::Correctness` filters alone to the *unfiltered* offspring, a set those filters never saw, because dedup and the bloat cap run first and shadow them. It re-admits the candidates dropped for being duplicates or oversized and none of the ones dropped as unfit to breed from; with no correct offspring at all the elites carry the generation, and only an elite-free run restores them unscreened. Tagging a new filter is therefore load-bearing, and the untagged default is `Correctness` so a forgotten tag costs a wasted re-test rather than a re-admitted bad candidate. Selection follows `Config::selection_scheme`: `Nsga2` (default) ranks by non-dominated sorting + crowding distance over the individual objectives (`include/genetic/nsga2.hpp`) with (μ+λ) survivor pooling; `Nsga2Replicate` ranks identically but deduplicates the pool before sorting and replicates the distinct survivors back to `population_size`, apportioning copies by `1 / (1 + rank)`; `WeightedAverage` ranks by the aggregate scalar, but converges prematurely and is kept for comparison rather than use. The scored population always carries both the per-objective vector and the weighted scalar (`Scored<Spec>`).
+4. Run `Config::generations` rounds of `evolve_generation`: crossover + mutation, apply filters to the offspring (dedup, bloat cap, false-condition, optional vacuity/well-separation), then score the survivors in a thread pool. Filters run **before** scoring, so a dropped candidate never costs a model-count or a synthesis query, and a filter's solver calls warm the caches scoring then hits. A stage that re-tests a filter's own predicate on the population that filter already judged is therefore dead code, not a safety net. The one deliberate re-test is the filter fallback: when the chain empties the offspring, it re-applies the `FilterKind::Correctness` filters alone to the *unfiltered* offspring, a set those filters never saw, because dedup and the bloat cap run first and shadow them. It re-admits the candidates dropped for being duplicates or oversized and none of the ones dropped as unfit to breed from; with no correct offspring at all the elites carry the generation, and only an elite-free run restores them unscreened. Tagging a new filter is therefore load-bearing, and the untagged default is `Correctness` so a forgotten tag costs a wasted re-test rather than a re-admitted bad candidate. Selection follows `Config::selection_scheme`, whose two NSGA-II schemes rank identically and are named for the survivor step, the only thing that differs between them: `Nsga2Truncate` (TOML `nsga2-truncate`, the default) ranks by non-dominated sorting + crowding distance over the individual objectives (`include/genetic/nsga2.hpp`) with (μ+λ) survivor pooling, then truncates the pool at `population_size`; `Nsga2Apportion` (TOML `nsga2-apportion`) ranks identically but deduplicates the pool before sorting and apportions the `population_size` slots over the distinct survivors by `1 / (1 + rank)`; `WeightedAverage` ranks by the aggregate scalar, but converges prematurely and is kept for comparison rather than use. These were spelled `nsga2` and `nsga2-replicate` until 2026-08-06, when the old spellings were removed rather than aliased — see "Selection scheme rename" below, which is the only reason ~225k archived result rows still read `nsga2`. The scored population always carries both the per-objective vector and the weighted scalar (`Scored<Spec>`).
 5. Collect the realizable survivors from the final population (re-checked with `black` + `ltlsynt`).
 6. Apply final filters: dedup, then the optional weakening filter (keep only genuine weakenings of the original), then the optional implication filter to keep only maximal specs. Weakening is a final screen rather than a per-generation one because pruning non-weakenings mid-search measurably costs repair quality and never gains it; see `docs/configuration.rst`.
 7. Score, sort, and write each maximal spec to `<output-dir>/repair_N.json`.

@@ -11,6 +11,13 @@ dated subdirectory when they close.
 The outcome metric throughout is `implies_ideal` — the fraction of runs producing
 at least one repair *equivalent to* or *stronger than* an ideal.
 
+Entries below name the selection schemes as their campaigns did, `nsga2` and
+`nsga2-replicate`. Those are the schemes renamed on 2026-08-06 to
+`nsga2-truncate` and `nsga2-apportion`; only the names changed, so a result
+recorded under either spelling is a result for the same scheme. The old names
+are left standing here because they are what the archived `selection` column
+says.
+
 ---
 
 ## 2026-08-06 — Well-separation cadence: every generation vs once at the end

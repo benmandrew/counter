@@ -180,10 +180,10 @@ void test_config_io_elitism_not_less_than_selection_throws() {
            "config_io: elitism_rate not less than selection_rate should throw");
 }
 
-void test_config_io_selection_scheme_defaults_to_nsga2() {
+void test_config_io_selection_scheme_defaults_to_nsga2_truncate() {
     const Config cfg = config_from_toml_string("");
-    expect(cfg.selection_scheme == SelectionScheme::Nsga2,
-           "config_io: selection_scheme should default to Nsga2");
+    expect(cfg.selection_scheme == SelectionScheme::Nsga2Truncate,
+           "config_io: selection_scheme should default to Nsga2Truncate");
 }
 
 void test_config_io_selection_scheme_weighted_parsed() {
@@ -194,19 +194,50 @@ void test_config_io_selection_scheme_weighted_parsed() {
            "WeightedAverage");
 }
 
-void test_config_io_selection_scheme_nsga2_parsed() {
-    const Config cfg =
-        config_from_toml_string("[genetic]\nselection_scheme = \"nsga2\"\n");
-    expect(cfg.selection_scheme == SelectionScheme::Nsga2,
-           "config_io: selection_scheme = \"nsga2\" should be parsed");
+void test_config_io_selection_scheme_nsga2_truncate_parsed() {
+    const Config cfg = config_from_toml_string(
+        "[genetic]\nselection_scheme = \"nsga2-truncate\"\n");
+    expect(cfg.selection_scheme == SelectionScheme::Nsga2Truncate,
+           "config_io: selection_scheme = \"nsga2-truncate\" should be parsed");
 }
 
-void test_config_io_selection_scheme_nsga2_replicate_parsed() {
+void test_config_io_selection_scheme_nsga2_apportion_parsed() {
     const Config cfg = config_from_toml_string(
-        "[genetic]\nselection_scheme = \"nsga2-replicate\"\n");
-    expect(cfg.selection_scheme == SelectionScheme::Nsga2Replicate,
-           "config_io: selection_scheme = \"nsga2-replicate\" should be "
+        "[genetic]\nselection_scheme = \"nsga2-apportion\"\n");
+    expect(cfg.selection_scheme == SelectionScheme::Nsga2Apportion,
+           "config_io: selection_scheme = \"nsga2-apportion\" should be "
            "parsed");
+}
+
+// The two original spellings are rejected rather than aliased, and rejected by
+// name: an archived config that sets one must fail loudly and say what to do,
+// not run silently under a scheme this binary no longer calls by that name.
+void expect_retired_spelling_rejected(const std::string& spelling) {
+    bool threw = false;
+    try {
+        config_from_toml_string("[genetic]\nselection_scheme = \"" + spelling +
+                                "\"\n");
+    } catch (const std::exception& exc) {
+        threw = true;
+        const std::string msg(exc.what());
+        expect(msg.find(spelling) != std::string::npos,
+               "config_io: the error should quote the retired spelling " +
+                   spelling);
+        expect(msg.find("PROVENANCE.json") != std::string::npos,
+               "config_io: the error should say how to reproduce an archived "
+               "campaign that sets " +
+                   spelling);
+    }
+    expect(threw, "config_io: the retired spelling " + spelling +
+                      " should be rejected, not aliased");
+}
+
+void test_config_io_selection_scheme_retired_nsga2_rejected() {
+    expect_retired_spelling_rejected("nsga2");
+}
+
+void test_config_io_selection_scheme_retired_replicate_rejected() {
+    expect_retired_spelling_rejected("nsga2-replicate");
 }
 
 void test_config_io_selection_scheme_invalid_throws() {
@@ -328,7 +359,7 @@ selection_rate   = 0.5
 elitism_rate     = 0.1
 crossover_rate   = 0.2
 mutation_rate    = 0.8
-selection_scheme = "nsga2"
+selection_scheme = "nsga2-truncate"
 
 [fitness]
 weight_syntactic = 0.3
@@ -448,10 +479,12 @@ void run_config_io_tests() {
     test_config_io_out_of_range_probability_throws();
     test_config_io_elitism_rate_parsed();
     test_config_io_elitism_not_less_than_selection_throws();
-    test_config_io_selection_scheme_defaults_to_nsga2();
+    test_config_io_selection_scheme_defaults_to_nsga2_truncate();
     test_config_io_selection_scheme_weighted_parsed();
-    test_config_io_selection_scheme_nsga2_parsed();
-    test_config_io_selection_scheme_nsga2_replicate_parsed();
+    test_config_io_selection_scheme_nsga2_truncate_parsed();
+    test_config_io_selection_scheme_nsga2_apportion_parsed();
+    test_config_io_selection_scheme_retired_nsga2_rejected();
+    test_config_io_selection_scheme_retired_replicate_rejected();
     test_config_io_selection_scheme_invalid_throws();
     test_config_io_similarity_metric_defaults_to_logarithmic();
     test_config_io_similarity_metric_direct_parsed();

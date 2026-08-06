@@ -31,15 +31,15 @@ enum class PopulationView : std::uint8_t { Scored, Unscored };
 /// True for the selection schemes that rank by the NSGA-II crowded-comparison
 /// order rather than the blended fitness scalar.
 inline bool uses_nsga2_ranking(const Config& cfg) {
-    return cfg.selection_scheme == SelectionScheme::Nsga2 ||
-           cfg.selection_scheme == SelectionScheme::Nsga2Replicate;
+    return cfg.selection_scheme == SelectionScheme::Nsga2Truncate ||
+           cfg.selection_scheme == SelectionScheme::Nsga2Apportion;
 }
 
 /// Orders a scored population best-first according to @p cfg's selection
 /// scheme: descending weighted fitness for WeightedAverage, or the NSGA-II
 /// crowded-comparison order (front rank ascending, crowding descending) for
-/// Nsga2 and Nsga2Replicate. The sort is stable in both cases so a fixed RNG
-/// seed is reproducible.
+/// Nsga2Truncate and Nsga2Apportion. The sort is stable in both cases so a
+/// fixed RNG seed is reproducible.
 template <typename Spec>
 void order_population(const Config& cfg,
                       std::vector<Scored<Spec>>& population) {
@@ -133,13 +133,14 @@ std::vector<Scored<Spec>> dedup_by_specification(
     return distinct;
 }
 
-/// Replicates a deduplicated, crowded-comparison-ordered @p distinct
-/// population back up to @p target_size. Each individual is weighted
-/// 1 / (1 + rank); every one keeps at least one copy and the remaining
-/// target_size - distinct.size() slots are apportioned by the largest-remainder
-/// (Hamilton) method over the normalised weights, breaking remainder ties
-/// towards the better-ranked individual. Copies are emitted contiguously in the
-/// input order, so the result stays sorted best-first for breed_offspring.
+/// The survivor step of SelectionScheme::Nsga2Apportion: hands the @p
+/// target_size slots out over a deduplicated, crowded-comparison-ordered @p
+/// distinct population. Each individual is weighted 1 / (1 + rank); every one
+/// keeps at least one slot and the remaining target_size - distinct.size() are
+/// apportioned by the largest-remainder (Hamilton) method over the normalised
+/// weights, breaking remainder ties towards the better-ranked individual.
+/// Copies are emitted contiguously in the input order, so the result stays
+/// sorted best-first for breed_offspring.
 ///
 /// Purely arithmetic: it draws no random numbers, so a seeded run stays
 /// reproducible. Requires a non-empty @p distinct no longer than @p
@@ -433,9 +434,9 @@ void stage_select(GenerationContext<Spec>& ctx) {
     pool.insert(pool.end(), std::make_move_iterator(ctx.m_scored.begin()),
                 std::make_move_iterator(ctx.m_scored.end()));
 
-    const bool replicate =
-        ctx.m_cfg.selection_scheme == SelectionScheme::Nsga2Replicate;
-    if (replicate) {
+    const bool apportion =
+        ctx.m_cfg.selection_scheme == SelectionScheme::Nsga2Apportion;
+    if (apportion) {
         // Ranking the distinct specifications rather than the ~target_size
         // slots holding them stops the truncation below from cutting
         // arbitrarily through the rank-0 front.
@@ -445,7 +446,7 @@ void stage_select(GenerationContext<Spec>& ctx) {
 
     if (pool.size() > ctx.m_target_size) {
         pool.resize(ctx.m_target_size);
-    } else if (replicate && pool.size() < ctx.m_target_size) {
+    } else if (apportion && pool.size() < ctx.m_target_size) {
         // Deduplication alone would leave too few slots to breed from, so
         // selection pressure is re-expressed as replication multiplicity.
         pool = generation_detail::replicate_to_size(pool, ctx.m_target_size);

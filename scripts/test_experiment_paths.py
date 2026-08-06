@@ -38,20 +38,32 @@ def factors(path_str):
 BASE = "experiments/configs/{}/sweep_C_default.toml"
 
 # (layout, expected (scheme, weakening, metric)). LEGACY_WEAKENING/METRIC fill
-# in for any factor segment the layout omits.
+# in for any factor segment the layout omits. The scheme component is the
+# canonical name: the directories gen_configs.py writes today carry it already,
+# and a directory named with a pre-rename spelling resolves through
+# SCHEME_ALIASES to the same value, so the two layouts land on one resume key.
 CASES = [
     # flat: predates both factors
-    ("nsga2", ("nsga2", R.LEGACY_WEAKENING, R.LEGACY_METRIC)),
+    ("nsga2-truncate", ("nsga2-truncate", R.LEGACY_WEAKENING, R.LEGACY_METRIC)),
     # weakening only
-    ("nsga2/wkon", ("nsga2", "wkon", R.LEGACY_METRIC)),
+    ("nsga2-truncate/wkon", ("nsga2-truncate", "wkon", R.LEGACY_METRIC)),
     ("weighted/wkoff", ("weighted", "wkoff", R.LEGACY_METRIC)),
     # metric only (weakening absent)
-    ("nsga2/direct", ("nsga2", R.LEGACY_WEAKENING, "direct")),
-    ("nsga2/log", ("nsga2", R.LEGACY_WEAKENING, "log")),
+    ("nsga2-truncate/direct", ("nsga2-truncate", R.LEGACY_WEAKENING, "direct")),
+    ("nsga2-apportion/log", ("nsga2-apportion", R.LEGACY_WEAKENING, "log")),
     # three deep: both factors, canonical <scheme>/<weakening>/<metric> order
-    ("nsga2/wkon/direct", ("nsga2", "wkon", "direct")),
-    ("nsga2/wkoff/log", ("nsga2", "wkoff", "log")),
+    ("nsga2-truncate/wkon/direct", ("nsga2-truncate", "wkon", "direct")),
+    ("nsga2-apportion/wkoff/log", ("nsga2-apportion", "wkoff", "log")),
     ("weighted/wkon/log", ("weighted", "wkon", "log")),
+    # the same layouts under the pre-rename directory names, as every archived
+    # config tree carries them
+    ("nsga2", ("nsga2-truncate", R.LEGACY_WEAKENING, R.LEGACY_METRIC)),
+    ("nsga2/wkon", ("nsga2-truncate", "wkon", R.LEGACY_METRIC)),
+    ("nsga2/direct", ("nsga2-truncate", R.LEGACY_WEAKENING, "direct")),
+    ("nsga2/log", ("nsga2-truncate", R.LEGACY_WEAKENING, "log")),
+    ("nsga2/wkon/direct", ("nsga2-truncate", "wkon", "direct")),
+    ("nsga2/wkoff/log", ("nsga2-truncate", "wkoff", "log")),
+    ("nsga2-replicate/wkon/log", ("nsga2-apportion", "wkon", "log")),
 ]
 
 for layout, want in CASES:
@@ -59,8 +71,25 @@ for layout, want in CASES:
 
 # The scan is order-independent, so a swapped nesting still resolves — the
 # guarantee the ancestor-scan buys over a fixed parent/parent.parent walk.
-check(factors(BASE.format("nsga2/log/wkoff")), ("nsga2", "wkoff", "log"),
-      "swapped metric/weakening nesting")
+check(factors(BASE.format("nsga2-truncate/log/wkoff")),
+      ("nsga2-truncate", "wkoff", "log"), "swapped metric/weakening nesting")
+check(factors(BASE.format("nsga2/log/wkoff")),
+      ("nsga2-truncate", "wkoff", "log"),
+      "swapped nesting under the pre-rename scheme name")
+
+# A name outside the mapping passes through untouched, so a scheme added later
+# needs no entry.
+check(R.canonical_scheme("weighted"), "weighted", "unmapped scheme unchanged")
+check(R.canonical_scheme("nsga2-truncate"), "nsga2-truncate",
+      "canonical_scheme is idempotent")
+
+# gen_configs emits directory names, so it must emit canonical ones only: a
+# pre-rename name here would write a config the binary refuses to load.
+for s in G.SCHEMES:
+    check(R.canonical_scheme(s), s, f"gen_configs SCHEMES entry <{s}> is current")
+check(G.DEFAULTS["selection_scheme"],
+      R.canonical_scheme(G.DEFAULTS["selection_scheme"]),
+      "gen_configs DEFAULTS pins a current selection_scheme")
 
 
 def repair(path_str):
@@ -81,7 +110,7 @@ for layout, want in REPAIR_CASES:
 
 # A repair segment must not be mistaken for the scheme or any other factor.
 check(factors(BASE.format("nsga2/wkon/direct/muc")),
-      ("nsga2", "wkon", "direct"), "factors ignore the repair segment")
+      ("nsga2-truncate", "wkon", "direct"), "factors ignore the repair segment")
 check(repair(BASE.format("nsga2/wkon/direct")), R.LEGACY_REPAIR,
       "repair_mode falls back to LEGACY_REPAIR when absent")
 
@@ -132,7 +161,7 @@ for name in ("padd", "wellsep"):
 # 2 sweep-C levels (default = Halstead 0.1, no-halstead = 0.0).
 check(len(R.TLSF_ABLATION_SPECS), 20, "ablation TLSF corpus size")
 for name in ("ablate-fret", "ablate-tlsf"):
-    check(sorted(P[name]["schemes"]), ["nsga2", "weighted"],
+    check(sorted(P[name]["schemes"]), ["nsga2-truncate", "weighted"],
           f"{name} schemes")
     check(P[name]["metrics"], ["direct", "log"], f"{name} metrics")
     check(P[name]["levels"], {"C": ["default", "no-halstead"]},
@@ -149,7 +178,7 @@ for field in ("configs_dir", "results_dir", "results_csv"):
           f"h2h-tlsf shares ablate-tlsf {field}")
 # ... and it must stay inside the control cell, with the metric crossed (not
 # None/legacy) so its run_id and CSV metric column match ablate-tlsf's log cell.
-check(P["h2h-tlsf"]["schemes"], ["nsga2"], "h2h-tlsf control scheme")
+check(P["h2h-tlsf"]["schemes"], ["nsga2-truncate"], "h2h-tlsf control scheme")
 check(P["h2h-tlsf"]["metrics"], ["log"], "h2h-tlsf control metric")
 check(P["h2h-tlsf"]["levels"], {"C": ["default"]}, "h2h-tlsf control level")
 check(P["h2h-tlsf"]["specs"], R.H2H_TLSF_SPECS, "h2h-tlsf corpus")
@@ -202,6 +231,12 @@ for name in ("ablate-fret", "ablate-tlsf", "h2h-tlsf"):
 # Every spec a profile names must resolve to an on-disk input, and every
 # capped profile must cap every spec it runs (run_one indexes caps[spec]).
 for name, prof in P.items():
+    # A profile's schemes are directory names under configs_dir, and
+    # gen_configs.py writes only the current spelling, so a pre-rename name here
+    # would silently select nothing and exit "No configs found".
+    for scheme in prof["schemes"]:
+        assert R.canonical_scheme(scheme) == scheme, \
+            f"{name}: schemes names the pre-rename scheme {scheme}"
     for s in prof["specs"]:
         assert R.SPECS[s]["input"].exists(), \
             f"{name}: missing input for spec {s}"
@@ -247,6 +282,31 @@ legacy_row = {"sweep": "C", "level_name": "default", "selection": "nsga2",
 check(M.key_of({**legacy_row, "commit": "c38f582", "dirty": "0"}),
       M.key_of(legacy_row), "merge key ignores the commit columns")
 
+
+# ── Selection-scheme rename ──────────────────────────────────────────────────
+
+# Both scripts carry their own copy of the mapping (they are standalone and
+# vendored per campaign), so they can drift; a drift splits every archived row
+# from its new-name counterpart on merge.
+check(M.SCHEME_ALIASES, R.SCHEME_ALIASES, "SCHEME_ALIASES agrees across scripts")
+check(R.canonical_scheme(R.LEGACY_SELECTION), "nsga2-truncate",
+      "the legacy selection default canonicalises")
+
+# The scheme was renamed, not changed: a row saying "nsga2" and a row saying
+# "nsga2-truncate" are one cell, and merging the two copies must not produce two
+# rows.
+check(M.key_of(legacy_row),
+      M.key_of({**legacy_row, "selection": "nsga2-truncate"}),
+      "merge key joins nsga2 with nsga2-truncate")
+check(M.key_of({**legacy_row, "selection": "nsga2-replicate"}),
+      M.key_of({**legacy_row, "selection": "nsga2-apportion"}),
+      "merge key joins nsga2-replicate with nsga2-apportion")
+# ... and the two schemes still key apart, or the rename would collapse the
+# arms of the replicate campaign onto each other.
+assert (M.key_of({**legacy_row, "selection": "nsga2"})
+        != M.key_of({**legacy_row, "selection": "nsga2-replicate"})), \
+    "the two NSGA-II schemes must stay distinct cells"
+
 # The historical header, copied from experiments/2026-07-23-arbiter-hp/
 # results-arbiter-hp.csv. Resuming against it must find its rows, and appending
 # to it must drop the new columns rather than widening a closed campaign's CSV.
@@ -270,9 +330,18 @@ with tempfile.TemporaryDirectory() as tmp:
                     "implies_ideal": "1", "n_implies": "1",
                     "wall_time_s": "12.0", "timed_out": "0", "n_dropped": "0"})
 
+    # The archived row says selection = "nsga2"; the plan is keyed off
+    # scheme_of(), which canonicalises. Resume only skips the row if both sides
+    # agree, so the key here must be the canonical name — otherwise 224,861
+    # archived rows miss and re-run.
     done = R.load_done_set(legacy_csv)
-    check(done, {("C", "default", "nsga2", "wkon", "log", "mono", "lift", 3)},
-          "load_done_set resumes an archived CSV")
+    check(done,
+          {("C", "default", "nsga2-truncate", "wkon", "log", "mono", "lift", 3)},
+          "load_done_set canonicalises an archived CSV's scheme name")
+    cfg = Path("experiments/configs/nsga2/wkon/log/mono/sweep_C_default.toml")
+    assert ("C", "default", R.scheme_of(cfg), R.weakening_of(cfg),
+            R.metric_of(cfg), R.repair_mode_of(cfg), "lift", 3) in done, \
+        "an old-name config tree resolves onto the archived CSV's resume key"
 
     # A new-format row appended to that CSV keeps its header: extrasaction
     # ignores the columns it predates.

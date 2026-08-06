@@ -169,6 +169,27 @@ CSV_FIELDS = [
 # keeps resume working against those CSVs instead of re-running them.
 LEGACY_SELECTION = "nsga2"
 
+# The two NSGA-II schemes were renamed -- "nsga2" -> "nsga2-truncate" and
+# "nsga2-replicate" -> "nsga2-apportion" -- and the binary rejects the old
+# spellings outright. Only the name moved: the scheme each one selects is
+# unchanged, so a row recorded under either spelling names the same cell of the
+# design. 224,861 archived rows carry "nsga2" and the replicate campaign's rows
+# carry "nsga2-replicate", against zero rows written under the new names so far.
+# Canonicalising every `selection` value as it is read back -- from an archived
+# CSV on resume, or from a config directory name -- is what keeps those rows
+# matching the plan instead of missing it and re-running finished campaigns.
+# gen_configs.py emits the new names only; this mapping is read-side alone.
+SCHEME_ALIASES: dict[str, str] = {
+    "nsga2": "nsga2-truncate",
+    "nsga2-replicate": "nsga2-apportion",
+}
+
+
+def canonical_scheme(name: str) -> str:
+    """Current spelling of a selection scheme; any other name passes through."""
+    return SCHEME_ALIASES.get(name, name)
+
+
 # Rows written before `weakening` existed ran configs with run_weakening = true
 # (the DEFAULTS value, overridden only by sweep J's weaken-off level, which the
 # profiles of that era did not run). Same purpose as LEGACY_SELECTION: keep
@@ -312,7 +333,7 @@ PROFILES: dict[str, dict] = {
     # results.csv stays a single comparable dataset even though gen_configs.py
     # now emits a finer grid around them.
     "full": {
-        "schemes": ["nsga2"],
+        "schemes": ["nsga2-truncate"],
         "weakenings": None,
         "metrics": None,
         "repair_modes": None,
@@ -335,7 +356,7 @@ PROFILES: dict[str, dict] = {
     # constant, which is what makes nsga2-vs-weighted answerable per level
     # instead of only at the baseline.
     "factorial": {
-        "schemes": ["nsga2", "weighted"],
+        "schemes": ["nsga2-truncate", "weighted"],
         "weakenings": None,
         "metrics": None,
         "repair_modes": None,
@@ -356,7 +377,7 @@ PROFILES: dict[str, dict] = {
     # pins, so they would contradict the operating point rather than sweep
     # around it; G and H are excluded for want of signal at the smaller one.
     "cj-large": {
-        "schemes": ["nsga2"],
+        "schemes": ["nsga2-truncate"],
         "weakenings": ["wkon", "wkoff"],
         "metrics": None,
         "repair_modes": None,
@@ -383,7 +404,7 @@ PROFILES: dict[str, dict] = {
     # seed count is spent on statistical power for the main effect rather than
     # on a grid. No aliasing: a single level has nothing to alias onto.
     "metric": {
-        "schemes": ["nsga2"],
+        "schemes": ["nsga2-truncate"],
         "weakenings": None,
         "metrics": ["direct", "log"],
         "repair_modes": None,
@@ -416,7 +437,7 @@ PROFILES: dict[str, dict] = {
     # (--tlsf carries the 500 ms ltlsynt timeout and 0.15 scoring tolerance the
     # heavy specs need; --sweeps C would not — TLSF_SWEEPS has no C level.)
     "muc": {
-        "schemes": ["nsga2"],
+        "schemes": ["nsga2-truncate"],
         "weakenings": None,
         "metrics": None,
         "repair_modes": ["mono", "muc"],
@@ -460,7 +481,7 @@ PROFILES: dict[str, dict] = {
     # (--tlsf carries the 60 s ltl2tgba-timeout, 500 ms ltlsynt-timeout and 0.15
     # scoring tolerance; the ltl2tgba-timeout needs the deployed counting-leak fix.)
     "padd": {
-        "schemes": ["nsga2"],
+        "schemes": ["nsga2-truncate"],
         "weakenings": None,
         "metrics": None,
         "repair_modes": ["mono", "muc"],
@@ -495,7 +516,7 @@ PROFILES: dict[str, dict] = {
     #   python scripts/gen_configs.py --tlsf --sweeps W \
     #       --out-dir experiments/configs-wellsep
     "wellsep": {
-        "schemes": ["nsga2"],
+        "schemes": ["nsga2-truncate"],
         "weakenings": None,
         "metrics": None,
         "repair_modes": None,
@@ -545,7 +566,7 @@ PROFILES: dict[str, dict] = {
     #       --generations 40 --population-size 2000 \
     #       --out-dir experiments/configs-arbiter-hp
     "arbiter-hp": {
-        "schemes": ["nsga2"],
+        "schemes": ["nsga2-truncate"],
         "weakenings": None,
         "metrics": None,
         "repair_modes": None,
@@ -583,7 +604,7 @@ PROFILES: dict[str, dict] = {
     #       --generations 100 --population-size 10000 \
     #       --out-dir experiments/configs-arbiter-padd
     "arbiter-padd": {
-        "schemes": ["nsga2"],
+        "schemes": ["nsga2-truncate"],
         "weakenings": None,
         "metrics": None,
         "repair_modes": None,
@@ -608,7 +629,7 @@ PROFILES: dict[str, dict] = {
     # own experiments/configs-tlsf/ grid; generate it with
     #   python scripts/gen_configs.py --tlsf
     "tlsf": {
-        "schemes": ["nsga2"],
+        "schemes": ["nsga2-truncate"],
         "weakenings": None,
         "metrics": None,
         "repair_modes": None,
@@ -650,13 +671,13 @@ PROFILES: dict[str, dict] = {
     # the metric-campaign scale where repairs are strong enough for the factors
     # to move outcomes. Control cell: nsga2 / log / C-default. Generate with
     #   python scripts/gen_configs.py --sweeps C --levels default,no-halstead \
-    #       --schemes nsga2 weighted --metric both \
+    #       --schemes nsga2-truncate weighted --metric both \
     #       --generations 40 --population-size 1000 \
     #       --out-dir experiments/configs-ablate-fret
     # (--levels keeps sweep C's other three levels out of the grid — they would
     # silently inflate the 8 cells to 20.)
     "ablate-fret": {
-        "schemes": ["nsga2", "weighted"],
+        "schemes": ["nsga2-truncate", "weighted"],
         "weakenings": None,
         "metrics": ["direct", "log"],
         "repair_modes": None,
@@ -687,12 +708,12 @@ PROFILES: dict[str, dict] = {
     # passed explicitly because --tlsf swaps in the TLSF sweep table, which has
     # no sweep C. Generate with
     #   python scripts/gen_configs.py --sweeps C --levels default,no-halstead \
-    #       --schemes nsga2 weighted --metric both \
+    #       --schemes nsga2-truncate weighted --metric both \
     #       --ltlsynt-timeout 500 --ltl2tgba-timeout 60000 \
     #       --max-scoring-failure-rate 0.15 \
     #       --out-dir experiments/configs-ablate-tlsf
     "ablate-tlsf": {
-        "schemes": ["nsga2", "weighted"],
+        "schemes": ["nsga2-truncate", "weighted"],
         "weakenings": None,
         "metrics": ["direct", "log"],
         "repair_modes": None,
@@ -722,7 +743,7 @@ PROFILES: dict[str, dict] = {
     # The same sharing means the two profiles must not run concurrently on
     # one machine (interleaved CSV appends and run dirs).
     "h2h-tlsf": {
-        "schemes": ["nsga2"],
+        "schemes": ["nsga2-truncate"],
         "weakenings": None,
         # ["log"] (not None): keeps the factor-cell key, run_id and CSV metric
         # column identical to ablate-tlsf's log cell, which is what makes the
@@ -743,16 +764,16 @@ PROFILES: dict[str, dict] = {
     # nsga2 vs nsga2-replicate on FRETISH, at the gen40/pop1000 operating point
     # the cj-large and metric campaigns used — so the control arm is checkable
     # against their rows rather than being taken on trust. Three arms:
-    #   nsga2/sweep_R            control
-    #   nsga2-replicate/sweep_R  treatment
-    #   nsga2/sweep_S            compute-matched control (see gen_configs)
+    #   nsga2-truncate/sweep_R    control
+    #   nsga2-apportion/sweep_R   treatment
+    #   nsga2-truncate/sweep_S    compute-matched control (see gen_configs)
     # The design is the config tree, not this table: sweep S is generated under
-    # nsga2 only, so listing both schemes and both sweeps still yields three
-    # arms rather than four. Generate with
-    #   python scripts/gen_configs.py --schemes nsga2 nsga2-replicate \
+    # the truncate scheme only, so listing both schemes and both sweeps still
+    # yields three arms rather than four. Generate with
+    #   python scripts/gen_configs.py --schemes nsga2-truncate nsga2-apportion \
     #       --sweeps R --generations 40 --population-size 1000 \
     #       --out-dir experiments/configs-replicate
-    #   python scripts/gen_configs.py --schemes nsga2 --sweeps S \
+    #   python scripts/gen_configs.py --schemes nsga2-truncate --sweeps S \
     #       --generations 40 --population-size 1000 \
     #       --compute-match-factor <measured> \
     #       --out-dir experiments/configs-replicate
@@ -763,7 +784,7 @@ PROFILES: dict[str, dict] = {
     # takeoff/fsm-timing (~1.0) as saturation controls that should not move.
     # found_repair, n_repairs and wall_time_s are secondary.
     "replicate": {
-        "schemes": ["nsga2", "nsga2-replicate"],
+        "schemes": ["nsga2-truncate", "nsga2-apportion"],
         "weakenings": None,
         "metrics": None,
         "repair_modes": None,
@@ -811,7 +832,7 @@ PROFILES: dict[str, dict] = {
     # weakening column separates the rows, run_id carries a _wkoff tag so no run
     # directory collides with the flat-layout runs, and the analysis reads one
     # file. Generate the configs it reads with
-    #   python scripts/gen_configs.py --schemes nsga2 nsga2-replicate \
+    #   python scripts/gen_configs.py --schemes nsga2-truncate nsga2-apportion \
     #       --sweeps R --weakening off --generations 40 --population-size 1000 \
     #       --out-dir experiments/configs-replicate
     #
@@ -822,7 +843,7 @@ PROFILES: dict[str, dict] = {
     # one arm and never on the other is a one-sided filter on the response under
     # test, so this arm gets a cap loose enough to bind on neither.
     "replicate-wkoff": {
-        "schemes": ["nsga2", "nsga2-replicate"],
+        "schemes": ["nsga2-truncate", "nsga2-apportion"],
         "weakenings": ["wkoff"],
         "metrics": None,
         "repair_modes": None,
@@ -859,7 +880,7 @@ PROFILES: dict[str, dict] = {
     # re-run buys an honest wall-time ratio rather than a quality contrast, and
     # the full 250 costs about 31 h per machine against roughly 6 h for 50 seeds.
     "replicate-recap": {
-        "schemes": ["nsga2", "nsga2-replicate"],
+        "schemes": ["nsga2-truncate", "nsga2-apportion"],
         "weakenings": None,
         "metrics": None,
         "repair_modes": None,
@@ -881,7 +902,8 @@ PROFILES: dict[str, dict] = {
     # the compute-matched control rides on the FRETISH half, where the responses
     # are less saturated and a run costs minutes rather than tens of minutes.
     # Generate with
-    #   python scripts/gen_configs.py --tlsf --schemes nsga2 nsga2-replicate \
+    #   python scripts/gen_configs.py --tlsf \
+    #       --schemes nsga2-truncate nsga2-apportion \
     #       --sweeps R --out-dir experiments/configs-replicate-tlsf
     # (--tlsf carries the 500 ms ltlsynt timeout, 60 s ltl2tgba timeout and 0.15
     # scoring tolerance the heavy specs need.)
@@ -892,7 +914,7 @@ PROFILES: dict[str, dict] = {
     # implies_ideal 0.000 with found_repair ~1.0 and serve as negative controls.
     # humanoid-531 is excluded on cost alone (965 s mean, 2400 s p90).
     "replicate-tlsf": {
-        "schemes": ["nsga2", "nsga2-replicate"],
+        "schemes": ["nsga2-truncate", "nsga2-apportion"],
         "weakenings": None,
         "metrics": None,
         "repair_modes": None,
@@ -964,11 +986,17 @@ def _factor_dir(config_path: Path, known: tuple[str, ...] | frozenset[str]):
 
 
 def scheme_of(config_path: Path) -> str:
-    """Selection scheme: the first ancestor that is not a factor directory."""
+    """Selection scheme: the first ancestor that is not a factor directory.
+
+    Canonicalised, so a config tree generated under the old scheme names still
+    reads back as the name the `selection` column now carries -- the same value
+    load_done_set() derives from an archived CSV, which is what lets the two
+    meet on the resume key.
+    """
     for p in config_path.parents:
         if p.name not in FACTOR_DIRS:
-            return p.name
-    return config_path.parent.name
+            return canonical_scheme(p.name)
+    return canonical_scheme(config_path.parent.name)
 
 
 def weakening_of(config_path: Path) -> str:
@@ -1277,7 +1305,8 @@ def load_done_set(csv_path: Path) -> set:
     with open(csv_path, newline="") as f:
         for row in csv.DictReader(f):
             done.add((row["sweep"], row["level_name"],
-                      row.get("selection") or LEGACY_SELECTION,
+                      canonical_scheme(row.get("selection")
+                                       or LEGACY_SELECTION),
                       row.get("weakening") or LEGACY_WEAKENING,
                       row.get("metric") or LEGACY_METRIC,
                       row.get("repair_mode") or LEGACY_REPAIR,
@@ -1566,7 +1595,11 @@ def main() -> None:
     # wkoff/log's D/ptrig0.5 aliases onto wkoff/log's C/default, never onto
     # another cell's. The byte-identity check enforces it, since the configs
     # differ on the factor keys.
-    factor_cells = [(s, w, m, r) for s in wanted_schemes
+    # canonical_scheme, because configs_by_key is keyed by scheme_of(), which
+    # canonicalises: a profile pointed at a config tree with the old directory
+    # names would otherwise build its alias table under a key the lookup below
+    # never asks for.
+    factor_cells = [(canonical_scheme(s), w, m, r) for s in wanted_schemes
                     for w in (wanted_weakenings or [LEGACY_WEAKENING])
                     for m in (wanted_metrics or [LEGACY_METRIC])
                     for r in (wanted_repairs or [LEGACY_REPAIR])]

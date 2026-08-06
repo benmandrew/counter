@@ -55,7 +55,7 @@ filename and reads the scheme back off the parent directory.
 Every generated config pins `selection_scheme` explicitly. That matters:
 `config.hpp` defaults to `weighted`, so a config omitting the key hands the run
 to weighted selection without saying so. Check with
-`grep -rc nsga2 experiments/configs/nsga2/` if a run's results look unexpectedly
+`grep -rc nsga2-truncate experiments/configs/nsga2-truncate/` if a run's results look unexpectedly
 poor.
 
 Sweeps generated, each holding every other parameter at its default:
@@ -111,10 +111,10 @@ CSV it writes:
 
 | Profile | Schemes | Sweeps / levels | Seeds | Results CSV | Wall-clock at `--jobs 4` |
 |---|---|---|---|---|---|
-| `full` (default) | nsga2 | the original 14 levels of A, B, C | 0–29 | `results.csv` | ~29 min (1440 runs) |
-| `factorial` | nsga2, weighted | every level of A–J | 0–99 | `results-factorial.csv` | ~14.6 h (43,200 runs) |
-| `metric` | nsga2 | C/default only, `metric` crossed direct×log | 0–99 | `results-metric.csv` | ~1 h split across two machines (800 runs at generations=40/population=1000) |
-| `tlsf` | nsga2 | A + B, coarse 4-level cross (7 operating points) | 0–59 (ceiling) | `results-tlsf.csv` | ~16 h split across av2+av3 (`--jobs 1`; the six TLSF specs) |
+| `full` (default) | nsga2-truncate | the original 14 levels of A, B, C | 0–29 | `results.csv` | ~29 min (1440 runs) |
+| `factorial` | nsga2-truncate, weighted | every level of A–J | 0–99 | `results-factorial.csv` | ~14.6 h (43,200 runs) |
+| `metric` | nsga2-truncate | C/default only, `metric` crossed direct×log | 0–99 | `results-metric.csv` | ~1 h split across two machines (800 runs at generations=40/population=1000) |
+| `tlsf` | nsga2-truncate | A + B, coarse 4-level cross (7 operating points) | 0–59 (ceiling) | `results-tlsf.csv` | ~16 h split across av2+av3 (`--jobs 1`; the six TLSF specs) |
 
 `full` is pinned to the four generation and five population levels it has
 always had, so its `results.csv` stays one comparable dataset even though
@@ -148,7 +148,7 @@ repairs are strong enough for the metric to move outcomes. It reads its own
 
 ```sh
 python scripts/gen_configs.py --generations 40 --population-size 1000 \
-    --schemes nsga2 --sweeps C --metric both --out-dir experiments/configs-metric
+    --schemes nsga2-truncate --sweeps C --metric both --out-dir experiments/configs-metric
 python scripts/run_experiments.py --profile metric --seeds $(seq -s' ' 0 49) --jobs 4   # av2
 python scripts/run_experiments.py --profile metric --seeds $(seq -s' ' 50 99) --jobs 4  # av3
 python scripts/merge_experiments.py av2 av3 --profile metric
@@ -168,7 +168,7 @@ humanoid-531 — take about three minutes each even at the `gen10/pop200`
 baseline, against a few seconds for the FRETISH specs. So the grid is a coarse
 four-level cross per axis (seven distinct operating points, sharing the
 baseline) rather than the fine FRETISH grid: the budget is spent on seeds
-instead of gradations. It reads its own `experiments/configs-tlsf/nsga2/` grid,
+instead of gradations. It reads its own `experiments/configs-tlsf/nsga2-truncate/` grid,
 so generate it with `--tlsf` first:
 
 ```sh
@@ -231,7 +231,8 @@ differ only in `sweep`/`level_name`/`level_value`. Identity is verified
 byte-for-byte before aliasing; if the files ever diverge the runner warns and
 runs them separately. `--dry-run` tags aliased rows with `(alias of A/gen10)`.
 
-Aliasing never crosses schemes: nsga2's `B/pop200` aliases onto nsga2's
+Aliasing never crosses schemes: nsga2-truncate's `B/pop200` aliases onto
+nsga2-truncate's
 `A/gen10`, never onto weighted's. The byte-identity check enforces that on its
 own, since the two configs differ on `selection_scheme`.
 
@@ -378,7 +379,7 @@ per key. Local rows win, so a machine's own results are never
 overwritten by a remote copy of the same run. Output is sorted by key, which
 makes the file byte-stable and the whole operation idempotent — re-running it
 never duplicates rows. Per-run directories encode their scheme and seed
-(`sweep_A_gen10_nsga2_fsm_seed17`), so they never collide between machines or
+(`sweep_A_gen10_nsga2-truncate_fsm_seed17`), so they never collide between machines or
 between schemes.
 
 `selection`, `weakening` and `metric` are part of the key because a profile may
@@ -388,6 +389,18 @@ crossed rows collapse onto one key and half are dropped in silence. Rows written
 before a column existed carry its legacy default — nsga2, wkon, direct — so both
 scripts read an absent value as that rather than empty, which keeps resume and
 merge working against the older CSVs.
+
+The selection schemes were renamed on 2026-08-06 — `nsga2` to `nsga2-truncate`,
+`nsga2-replicate` to `nsga2-apportion` — and `gen_configs.py` emits the new
+names, so a `selection` value depends on when its row was written. Only the
+names moved, so `canonical_scheme()` in both scripts maps a retired spelling
+onto its replacement wherever the column is read: at `scheme_of()`, at the
+resume key in `load_done_set()`, and at `key_of()` in `merge_experiments.py`.
+Archived rows therefore still match, and a campaign closed before the rename
+resumes instead of re-running from zero. Row values are never rewritten — a
+merged CSV keeps whatever each campaign recorded, and only the key is
+canonical. Renaming any other factor directory needs the same treatment;
+skipping it is silent, and shows up as a finished campaign re-running.
 
 Sources are reached over ssh. An entry in `~/.ssh/config` must match the
 hostname as written in `REMOTES` — a bare `Host av3` block does not apply to

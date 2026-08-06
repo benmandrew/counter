@@ -2,8 +2,8 @@
 //
 // These exist to protect seed reproducibility across refactors of
 // evolve_generation_generic. The pre-existing determinism test
-// (test_evolve_generation_nsga2_is_deterministic) drives evolution from a
-// *scripted* RandomSource, so it only shows that equal inputs give equal
+// (test_evolve_generation_nsga2_truncate_is_deterministic) drives evolution
+// from a *scripted* RandomSource, so it only shows that equal inputs give equal
 // outputs: reorder the draws and both sides reorder alike and it still passes.
 // The tests here instead record the real mt19937 draw stream and pin it, so a
 // change to the order or count of draws fails loudly.
@@ -105,7 +105,7 @@ Requirement make_req(const std::string& condition, const std::string& response,
 /// unexplained golden break.
 Config golden_config() {
     Config cfg;
-    cfg.selection_scheme = SelectionScheme::Nsga2;
+    cfg.selection_scheme = SelectionScheme::Nsga2Truncate;
     // Strictly between 0 and 1: probability_check short-circuits without
     // drawing at exactly 0.0 or 1.0, which would leave its own draws untested.
     cfg.crossover_rate = 0.75;

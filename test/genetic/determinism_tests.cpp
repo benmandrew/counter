@@ -115,7 +115,11 @@ Config golden_config() {
     cfg.p_timing = 0.15;
     cfg.p_add_assumption = 0.05;
     cfg.p_conditional_assumption = 0.25;
-    cfg.allow_output_assumptions = false;
+    // Pinned to the production default. It is also the value the goldens below
+    // were recorded under: with it off, an assumption-side rewrite draws from
+    // the inputs alone, so next_index sees a narrower bound and the trace hash
+    // moves without a single draw being added, removed or reordered.
+    cfg.allow_output_assumptions = true;
     cfg.strengthen_assumptions = true;
     cfg.parallel = 1;
     return cfg;

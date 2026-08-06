@@ -176,6 +176,34 @@ it drops the mutex ``G !(g0 & g1)`` and adds ``G g1`` — and is rejected. Turni
 ``run_weakening`` off on a TLSF run will therefore produce more written repairs,
 not better ones.
 
+``run_well_separation`` drops candidates that are not *well-separated*: ones the
+system can satisfy vacuously by forcing its own assumptions to fail.
+Realizability is decided on ``(assumptions) -> (guarantees)``, so replacing the
+guarantees with ``false`` and finding ``(assumptions) -> false`` realizable
+means the system has a strategy that breaks the assumptions on its own. That is
+strictly stronger than ``run_vacuity``. It is on by default.
+
+It is the counterpart to ``mutation.allow_output_assumptions``, which also
+defaults on. That flag lets an environment assumption reference output atoms;
+this filter is what then stops the search writing the system an assumption it
+can defeat. The two are meant to move together, and turning this off while
+leaving that on is the one combination with no guard.
+
+Unlike ``run_weakening`` it is a per-generation filter rather than a final
+screen, and that is deliberate. A 7,200-run TLSF campaign measured an
+end-of-run pass leaking 42.7% not-well-separated repairs against 44.1% with the
+filter off entirely — indistinguishable — because the elites bypass the filter
+chain and NSGA-II pools every parent unfiltered, so a late pass's drops are
+re-admitted. ``run_weakening`` escapes that only because its screen sits over
+the collected realizable survivors, downstream of both.
+
+Each test is a full ``ltlsynt`` query, run only where an assumption references
+an output atom, so it costs nothing on specifications whose assumptions are
+input-only. It was off by default until that campaign priced it: filtering
+every generation came out about 5% *faster* than not filtering, because a
+candidate dropped before the scoring stage never costs a model-count or a
+synthesis query.
+
 The per-filter run intervals that once throttled these were removed: across
 every archived campaign not one config had ever set them.
 

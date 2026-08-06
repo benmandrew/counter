@@ -107,6 +107,7 @@ void test_mutation_assumption_atoms_from_inputs_only() {
     Config cfg;
     cfg.p_add_assumption =
         0.0;  // isolate the rewrite path (not add-assumption)
+    cfg.allow_output_assumptions = false;
     tlsf::Specification spec;
     spec.m_inputs = {"a", "c"};
     spec.m_outputs = {"bout"};
@@ -212,6 +213,7 @@ void test_temporal_mutation_atoms_from_inputs_only() {
     Config cfg;
     cfg.tlsf_p_temporal = 1.0;
     cfg.p_add_assumption = 0.0;
+    cfg.allow_output_assumptions = false;
     tlsf::Specification spec;
     spec.m_inputs = {"a", "c"};
     spec.m_outputs = {"bout"};
@@ -242,6 +244,7 @@ void test_add_assumption_appends_fairness() {
                             .m_guarantee.front()};
     Config cfg;
     cfg.p_add_assumption = 1.0;
+    cfg.allow_output_assumptions = false;
     for (std::size_t seed = 0; seed < 20; ++seed) {
         const RandomSource rng = make_random_source_from_seed(seed);
         const tlsf::Specification mutated = tlsf_mutate(spec, rng, cfg);

@@ -81,10 +81,20 @@ struct Config {
     // decided on (assumptions) -> (guarantees), so replacing the guarantees
     // with false and finding (assumptions) -> false realizable means the system
     // has a strategy that breaks the assumptions on its own. Complementary to
-    // the vacuity check, but each test is a full ltlsynt query (run only when
-    // an assumption references an output atom), so off by default. A no-op for
-    // specs with no assumptions, which short-circuit before any solver call.
-    bool run_well_separation_filter = false;
+    // the vacuity check. Each test is a full ltlsynt query (run only when an
+    // assumption references an output atom), which is why this was off by
+    // default until the 2026-08-06 wellsep-timing campaign priced it: over 7200
+    // TLSF runs, filtering every generation came out 5% *faster* than not
+    // filtering at all, because a candidate dropped before the scoring stage
+    // never costs a model-count or a synthesis query. Unlike
+    // run_weakening_filter this stays a per-generation filter rather than
+    // becoming a final screen -- the same campaign measured an end-of-run pass
+    // leaking 42.7% against 44.1% for no filter at all, since elites and
+    // NSGA-II parent pooling re-admit whatever a late pass drops. It is the
+    // counterpart to allow_output_assumptions, which without it admits
+    // assumptions the system can defeat. A no-op for specs with no
+    // assumptions, which short-circuit before any solver call.
+    bool run_well_separation_filter = true;
     std::chrono::milliseconds black_timeout{1000};
     // Per-call wall-clock budget for ltlsynt realizability checks. Unlike
     // black, ltlsynt has no internal timeout, and the genetic search
@@ -149,12 +159,16 @@ struct Config {
     // than G(c -> F <input>) and so the more powerful repair, which is why the
     // unconditional form keeps the majority of the draw.
     double p_conditional_assumption = 0.25;
-    // When true, freshly added environment assumptions may reference output
-    // atoms as well as inputs; when false (the default) they stay input-only
-    // and so are well-separated by construction. Should be paired with
-    // run_well_separation_filter enabled, which prunes any not-well-separated
-    // assumption the wider draw produces.
-    bool allow_output_assumptions = false;
+    // When true (the default), environment assumptions may reference output
+    // atoms as well as inputs — both a freshly added assumption and a rewrite
+    // of an existing one, on the FRETISH and TLSF paths alike. Setting it false
+    // keeps every assumption input-only and so well-separated by construction,
+    // at the cost of the reactive-environment assumptions (`G(<output> -> F
+    // <input>)`) the wider draw can express. With it on, what keeps the system
+    // from writing itself an assumption it can force to fail is the
+    // well-separation filter rather than the syntactic ban, so pair it with
+    // run_well_separation_filter.
+    bool allow_output_assumptions = true;
     // Mutate assumption timings in the strengthening direction rather than the
     // weakening one. Weakening the overall assume-guarantee specification means
     // weakening a guarantee but strengthening an assumption, so weakening both

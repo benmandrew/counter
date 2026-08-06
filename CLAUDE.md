@@ -72,6 +72,26 @@ Campaigns closed before this existed carry a reconstructed `PROVENANCE.json` in 
 
 Each archived campaign also carries `experiments/<campaign>/scripts/` — verbatim copies of the `gen_configs.py`, `run_experiments.py` and `merge_experiments.py` that ran it, so the directory reproduces without the git history. `vendored_scripts` in its `PROVENANCE.json` records the source commit and blob sha per file; check a copy with `git hash-object`. Attribution defaults to `profile_commit`, but campaign content overrides it where the two disagree: `CSV_FIELDS` in `run_experiments.py` grew one column at a time, so a header pins the runner revision independently of any mtime, and the profile's seed budget, spec set and timeout caps narrow it further. The column count alone is necessary but not sufficient — a runner must also define the profile the campaign ran. Four campaigns (`factorial`, `wellsep`, `genpop-sweeps`, `tlsf-genpop`) are attributed against their anchor on that basis; do not "correct" them back. The last two ran off the unmerged TLSF branch and their source commits are not ancestors of `main` (`reachable_from_main: false`); the annotated tag `provenance/tlsf-branch` points at that branch's tip and holds all of them reachable, so never delete it — without it they are dangling objects that `git gc` collects and the recorded shas stop resolving. `2026-07-31-replicate` sits in the same position for a different reason: its branch `feat/replicate-campaign` was split into reconstructed pull requests rather than merged, so the same content reached `main` under fresh shas while every sha its `PROVENANCE.json` names still points into the branch, and `provenance/replicate-campaign` holds those under the same never-delete rule. Splitting a branch instead of merging it silently invalidates any recorded sha pointing into it, so re-check a campaign archive whenever its branch is split rather than merged. These paths plus `README.md` and `experiments/<campaign>/PLAN.md`, a campaign's pre-registered plan where one was written before launch, are the only tracked files under `experiments/`, via negations in `.gitignore` that need each directory level to be ignored by content rather than by name; adding a tracked file under a new subdirectory means re-opening descent into it first. The plan is tracked so its decision rule stays checkable against the result it was meant to bind; the root `PLAN.md` stays gitignored, a working file with no such claim on it.
 
+A campaign's archived config is a partial record: `gen_configs.py` emits a key
+only where a sweep overrides it, so everything else comes from the binary's
+default at run time. Changing a C++ default therefore changes what every
+archived config *means* without touching a byte of it. Two keys have crossed
+that line, both in the same commit: `allow_output_assumptions` and
+`run_well_separation` were `false` for every campaign archived under
+`experiments/` and are `true` from that commit on. Reproducing any archived
+campaign therefore requires writing both keys back to `false` explicitly.
+Archived configs are not edited to compensate; the note in
+`experiments/README.md` ("Config vintage") is the record. Flipping a default
+that archived configs omit means adding to that note.
+
+*Removing* a key is the sharper version of the same problem: an archived config
+that sets one is no longer merely reinterpreted, it is rejected. The
+`[filters.intervals]` table went that way, which retired the `wellsep-timing`
+profile and TLSF sweep V along with it — that campaign's arms were three values
+of `well_separation`, so it cannot be regenerated at all and its archive is the
+only record. Retire the sweep and profile when their key goes; a generator that
+emits a key the binary warns on is worse than an absent one.
+
 ## Docs
 
 Every header file in `include/` must have a corresponding `.rst` page under `docs/api/` and be listed in `docs/index.rst`. When adding a new header, add the page and toctree entry before committing. The site covers `include/` alone: implementation detail under `src/` is deliberately not published.

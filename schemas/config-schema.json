@@ -37,7 +37,7 @@
         "p_add_assumption": { "type": "number", "minimum": 0, "maximum": 1, "description": "Both modes: probability a mutation appends a new environment assumption (fairness over an input) instead of rewriting an existing requirement/formula." },
         "p_conditional_assumption": { "type": "number", "minimum": 0, "maximum": 1, "description": "Of the appended assumptions, the fraction guarded by a random input atom rather than by 'true'." },
         "strengthen_assumptions": { "type": "boolean", "description": "Mutate assumption timings in the strengthening direction rather than the weakening one. Retained so the two directions can be compared." },
-        "allow_output_assumptions": { "type": "boolean", "description": "Allow freshly added environment assumptions to reference output atoms as well as inputs. False (the default) keeps them input-only and so well-separated by construction." }
+        "allow_output_assumptions": { "type": "boolean", "description": "Allow environment assumptions to reference output atoms as well as inputs, both when added and when rewritten. True is the default; false keeps them input-only and so well-separated by construction." }
       }
     },
     "tlsf": {
@@ -72,7 +72,7 @@
         "run_weakening":   { "type": "boolean", "default": true, "description": "Keep only repairs the original logically implies -- genuine weakenings. A final screen over the realizable survivors, not a per-generation filter: pruning non-weakenings mid-search costs repair quality and never gains it, while screening the output leaves the search untouched. With it off a written repair may forbid behaviour the original allowed. Applies on both paths; the TLSF check is an exact whole-formula query where the FRETISH one is an under-detecting assume-guarantee decomposition, so the TLSF screen rejects more." },
         "run_implication": { "type": "boolean", "description": "Enable final implication maximality filter." },
         "run_vacuity":     { "type": "boolean", "description": "Drop candidates whose assumptions are jointly unsatisfiable, which are realizable for free." },
-        "run_well_separation": { "type": "boolean", "description": "Drop candidates that are not well-separated: ones the system can satisfy vacuously by forcing its own assumptions to fail. Strictly stronger than run_vacuity, but each test is a full ltlsynt query, so it is off by default." }
+        "run_well_separation": { "type": "boolean", "default": true, "description": "Drop candidates that are not well-separated: ones the system can satisfy vacuously by forcing its own assumptions to fail. Strictly stronger than run_vacuity. Each test is a full ltlsynt query, but a candidate dropped before scoring costs no model-count and no synthesis query, so it is on by default. Stays a per-generation filter rather than a final screen: an end-of-run pass is re-admitted by the elites and by NSGA-II parent pooling." }
       }
     },
     "runtime": {

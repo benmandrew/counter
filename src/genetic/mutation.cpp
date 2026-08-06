@@ -417,9 +417,10 @@ bool creates_duplicate(const std::vector<Requirement>& requirements,
 }
 
 // The atom pool a freshly added assumption draws its condition and response
-// from. Inputs only by default; with allow_output_assumptions the outputs join
-// the draw as well. Historically outputs were excluded on the same reasoning as
-// the trigger restriction (an output denotes the next state, so guarding on one
+// from. Inputs plus outputs under allow_output_assumptions (the default);
+// inputs alone with it off. Historically outputs were excluded on the same
+// reasoning as the trigger restriction (an output denotes the next state, so
+// guarding on one
 // gives the synthesiser a self-referential condition it can discharge
 // vacuously), but under the flag that syntactic ban is lifted and well-
 // separation is delegated to the well-separation filter, which prunes any
@@ -510,14 +511,6 @@ Specification mutate_specification(const Specification& specification,
                  specification.m_in_atoms.end());
     atoms.insert(atoms.end(), specification.m_out_atoms.begin(),
                  specification.m_out_atoms.end());
-    // Triggers are evaluated at the current timepoint, where the current state
-    // is available through input atoms; output atoms denote the next state, so
-    // letting one into a trigger produces a self-referential guard the
-    // synthesiser can vacuously discharge. Draw trigger atoms from inputs only.
-    // Fall back to the full pool when there are no inputs, since mutation
-    // cannot then draw an atom for a trigger at all.
-    const std::vector<std::string>& condition_atoms =
-        specification.m_in_atoms.empty() ? atoms : specification.m_in_atoms;
     const std::vector<Timing> timing_pool = collect_timing_pool(specification);
     const std::vector<std::size_t> weakenable_indices =
         collect_weakenable_indices(specification);
@@ -534,6 +527,32 @@ Specification mutate_specification(const Specification& specification,
     const Direction direction = (is_assumption && cfg.strengthen_assumptions)
                                     ? Direction::Strengthen
                                     : Direction::Weaken;
+    // An existing assumption is held to the same pool rule as a freshly added
+    // one: with allow_output_assumptions off it draws from inputs only, so no
+    // rewrite can smuggle an output atom into the environment side and defeat
+    // the input-only-by-construction well-separation the flag promises. The
+    // TLSF path already gates its rewrite this way (src/tlsf/mutation.cpp);
+    // this is the FRETISH half. Guarantees keep the full pool either way.
+    const std::vector<std::string>& mutation_atoms =
+        (is_assumption && !cfg.allow_output_assumptions)
+            ? specification.m_in_atoms
+            : atoms;
+    if (mutation_atoms.empty()) {
+        // Without atoms, mutate_formula's structural rewrites cannot draw a
+        // replacement atom; leave the specification unchanged.
+        return specification;
+    }
+    // Triggers are evaluated at the current timepoint, where the current state
+    // is available through input atoms; output atoms denote the next state, so
+    // letting one into a trigger produces a self-referential guard the
+    // synthesiser can vacuously discharge. Draw trigger atoms from inputs only.
+    // Fall back to the mutation pool when there are no inputs, since mutation
+    // cannot then draw an atom for a trigger at all — and that fallback is the
+    // second route an output could reach an assumption, so it falls back to the
+    // gated pool rather than to the full one.
+    const std::vector<std::string>& condition_atoms =
+        specification.m_in_atoms.empty() ? mutation_atoms
+                                         : specification.m_in_atoms;
     // Both requirement lists live behind the same mutate-then-dedup-check
     // logic; pick the target and its local index so that logic appears once.
     // Exactly one mutate_requirement call happens either way, keeping the RNG
@@ -542,8 +561,8 @@ Specification mutate_specification(const Specification& specification,
     std::vector<Requirement>& target = is_assumption ? assumptions : guarantees;
     const std::size_t local_idx = is_assumption ? idx : idx - n_assumptions;
     target[local_idx] =
-        mutate_requirement(target[local_idx], atoms, condition_atoms, direction,
-                           timing_pool, random_source, cfg);
+        mutate_requirement(target[local_idx], mutation_atoms, condition_atoms,
+                           direction, timing_pool, random_source, cfg);
     if (creates_duplicate(target, local_idx)) {
         return specification;
     }

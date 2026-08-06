@@ -13,6 +13,168 @@ at least one repair *equivalent to* or *stronger than* an ideal.
 
 ---
 
+## 2026-08-06 — Well-separation cadence: every generation vs once at the end
+
+**What changed.** Three arms ask whether the *well-separation* filter should run
+every generation or be throttled to a single end-of-run pass, the way
+`weakening` often is: `nofilter` (`run_well_separation = false`), `every-gen`
+(`run_well_separation = true`, `filters.intervals.well_separation = 1`, the
+shipped behaviour when enabled) and `final-only` (interval 1000). *Cadence* is
+the only factor — the accept/reject predicate is identical in all three. The
+treatment needs no code change: both drivers force every per-generation filter
+on the last generation whatever its interval, so an interval above the
+generation count leaves exactly that one forced pass. All arms fix
+`allow_output_assumptions = true`, because the 2026-07-23 campaign below
+measured the filter completely inert with input-only assumptions. **Why:** the
+filter's `ltlsynt` calls looked like a per-generation tax worth paying once, and
+a pilot on `arbiter` showed every-generation filtering wiping out repairs the
+unfiltered arm found. The decision rule is **pre-registered** in
+`experiments/2026-08-06-wellsep-timing/PLAN.md`.
+
+**Run.** 16 TLSF specs × 150 seeds × 3 arms = **7,200 runs**, generations=10 /
+population_size=200, `nsga2`, `ltlsynt_timeout_ms = 500`. Seeds 0–74 on av3,
+75–149 on av2; av2 194.9 min, av3 166.9 min. Zero errors and 4 run timeouts in
+7,200, so nothing is censored. Binary `cbcaede` with `dirty=0` on every row.
+Every emitted `repair_*.tlsf` on all three arms was then re-checked *outside*
+the run that produced it, by a standalone `scripts/check_well_separated.py`
+calling `ltlsynt` directly with no cache: 33,998 repairs, 0 undecided. A run
+cannot be its own witness.
+
+| arm | leak | `found_repair` | `implies_ideal` | mean `n_repairs` | mean wall s | median paired wall ratio |
+|---|---|---|---|---|---|---|
+| `nofilter` | 0.441 | 0.999 | 0.315 | 5.15 | 12.23 | 1.000 |
+| **`every-gen`** | **0.000** | 0.899 | **0.355** | 3.97 | 11.27 | **0.949** |
+| `final-only` | 0.427 | 0.999 | 0.317 | 5.05 | 11.89 | 0.991 |
+
+Ratios are paired on (spec, seed), n = 2,400 each; the sign test against
+`nofilter` gives p=8.93e-38 for `every-gen` and p=1.70e-16 for `final-only`.
+
+### Result: final-only is not a cheap screen, it is no screen at all
+
+Criterion 1 required final-only to cut the leak rate. It does not — 0.427
+against the control's 0.441 — and that criterion was pre-registered as the
+campaign's gate. The forced last pass does run: a filter report from a
+final-only `arbiter` run reads `not-well-separated 25 in 17 out 32.0% avg
+drop`. Its drops never reach the output. Per spec, final-only's leak tracks the
+unfiltered control within a few points on all sixteen.
+
+| spec | `nofilter` leak | `final-only` leak |
+|---|---|---|
+| arbiter | 0.905 | 0.891 |
+| arbiter-aurus | 0.501 | 0.479 |
+| codesample-un2 | 0.826 | 0.819 |
+| rg1 | 0.987 | 0.989 |
+| rg2 | 0.016 | 0.014 |
+
+Two routes re-admit the dropped candidates. `stage_restore_elites` appends
+elites after the whole filter chain (issue #73), and — far wider —
+`stage_select` pools all of `ctx.m_parents` unfiltered under NSGA-II (μ+λ) at
+`include/genetic/pipeline.hpp:402`. Moving elitism ahead of the filters would
+not fix it: parent pooling is 100% of the population against elitism's 10%.
+Because criterion 1 was the gate, criteria 2 and 3 are void as the plan
+specified, and the leak rate is the reported result.
+
+### Result: filtering every generation is cheaper than not filtering
+
+The median paired wall ratio of `every-gen` against the unfiltered control is
+0.949. Filters run before scoring, so a candidate dropped there never costs a
+model-count or a synthesis query, and that saving exceeds what the filter's own
+`ltlsynt` calls cost. This inverts the assumption the filter was kept off by
+default under.
+
+### Result: the yield loss is an artefact of counting bad output
+
+`found_repair` counts a run as successful whether or not its repairs are
+well-separated, which is the whole quantity the filter exists to control.
+Counting instead the runs that emitted at least one *well-separated* repair
+reverses the ranking: `every-gen` 2158/2400 = 0.899, `nofilter` 2051/2400 =
+0.855, `final-only` 2057/2400 = 0.857. `every-gen` also carries the highest
+`implies_ideal`, 0.355 against 0.315, with 152 discordant pairs gained against
+57 lost versus the control.
+
+The nominal `found_repair` loss sits in exactly two of sixteen specs, both of
+which score `implies_ideal` 0.00 in every arm:
+
+- **`rg1`** — `found_repair` falls 1.00 → 0.39, yet well-separated yield *rises*
+  from 5/150 to 58/150. Its unfiltered leak rate is 0.987, so almost everything
+  the nominal figure counts is junk.
+- **`arbiter`** — `found_repair` falls 1.00 → 0.00 and well-separated yield
+  falls 33/150 → 0/150. This is the one genuine regression in the corpus, and
+  the pilot observation that motivated the campaign. Its unfiltered leak rate is
+  0.905.
+
+Every other spec holds `found_repair` at about 1.00 under `every-gen`.
+
+### What this campaign cannot answer
+
+- **Why `arbiter` regresses.** It is a real loss and is not explained away. The
+  plan's stepping-stone hypothesis — that per-generation filtering prunes useful
+  intermediate candidates — survives on that one spec and is refuted on `rg1`,
+  where the same filter improves well-separated yield elevenfold.
+- **Whether an intermediate cadence beats both ends.** Only intervals 1 and 1000
+  were on the grid.
+- **Anything outside TLSF.** Well-separation is measured inert on the FRETISH
+  path, where assumptions are input-only in practice
+  ([[well-separation-inert-on-fretish]]).
+- **Whether `every-gen` closes every leak.** It leaked once in 9,529
+  (`detector` seed 18). A final well-separation gate, matching what the weakening
+  and vacuity filters already have, is still worth adding. Issues #72
+  (`stage_filter_fallback` re-admits the whole unfiltered offspring set when the
+  chain empties the population), #74 (a realizability timeout reads as
+  well-separated and is cached for the rest of the run, which is material at
+  `ltlsynt_timeout_ms = 500`) and #77 (the seed population is never filtered)
+  each describe a route this campaign did not close.
+
+### Method notes worth keeping
+
+- **Leak rates are over emitted repairs, not runs.** A spec emitting many
+  repairs per run therefore weighs more heavily in the pooled figure; the
+  per-spec breakdown is the one to read.
+- **Six specs were excluded before launch.** Five on cost — amba, full-arbiter,
+  humanoid-531, prioritized-arbiter and simple-arbiter, each over 90 s on one
+  seed under the expensive arm — and `takeoff-tlsf` for having no ideal fix,
+  which would leave `implies_ideal` undefined on part of the grid.
+- **A narrow grid would have reported its own specs' lean.** The corpus was
+  widened from the 2026-07-23 campaign's five specs to sixteen because a pilot
+  showed the effect changing sign across specs. `arbiter` and `rg1` are exactly
+  that, and they point opposite ways.
+- **Cost was calibrated at the campaign's own concurrency** — 4 jobs at
+  `parallel = 8`, not one job on an idle host
+  ([[calibration-saturation-bias]]).
+
+### Scripts and launch
+
+```sh
+python scripts/gen_configs.py --tlsf --sweeps V \
+    --out-dir experiments/configs-wellsep-timing
+# av2                                                            # av3
+… --profile wellsep-timing --seeds $(seq -s' ' 75 149)   … --seeds $(seq -s' ' 0 74)
+python scripts/merge_experiments.py av2 av3 --profile wellsep-timing
+python scripts/check_well_separated.py experiments/results-wellsep-timing \
+    --out verdicts.csv
+```
+
+Those two commands no longer run. `[filters.intervals]` was removed from the
+config surface in the same window, and the three arms were three values of
+`well_separation` within it, so sweep V and the `wellsep-timing` profile are
+retired with it — the campaign cannot be regenerated by any current binary. The
+finding is what retired them: a cadence not worth expressing does not need a key.
+The archive is `experiments/2026-08-06-wellsep-timing/`, and every figure above
+reproduces from it with
+`python3 experiments/2026-08-06-wellsep-timing/scripts/analyse_wellsep_timing.py`.
+
+**Verdict: final-only is rejected, and the filter ships on by default alongside
+output assumptions.** `run_well_separation` and `allow_output_assumptions` both
+flip to `true` as C++ defaults, and the filter stays per-generation, which is
+what discharges the 2026-07-23 warning below that the second must never ship
+without the first — the two now move together, as that entry demanded. Throttling
+a filter to the last generation sounded like a saving and turned out to buy
+nothing, on a filter that was never costing anything to begin with. What remains
+is `arbiter`, where the correct behaviour and the useful one still point in
+opposite directions.
+
+---
+
 ## 2026-07-31 — nsga2 vs nsga2-replicate as the selection default
 
 **What changed.** Three arms, paired by seed, ask whether `nsga2-replicate`
@@ -416,7 +578,8 @@ coverage tax on `lily02`.
 - **The two switches must be read as a pair.** `allow_output_assumptions` on its
   own is a false-positive machine (`found_repair` 0.80 → 1.00 with junk repairs);
   it is only sound with the well-separation filter on. Never ship the first
-  without the second.
+  without the second. Both now default on, together, as of 2026-08-06 above,
+  which priced the filter and found it cheaper to run than to skip.
 - **A filter inert on one input class is not inert on another.** Well-separation
   drops nothing on FRETISH (input-only assumptions) and is decisive on TLSF once
   output assumptions are admitted — the same code, opposite verdicts, decided by

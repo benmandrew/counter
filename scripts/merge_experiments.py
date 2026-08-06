@@ -53,6 +53,10 @@ PROFILE_CSVS: dict[str, str] = {
     "padd": "results-padd.csv",
     "tlsf": "results-tlsf.csv",
     "wellsep": "results-wellsep.csv",
+    # Its own CSV, never wellsep's: the sweep letter and level names differ but
+    # the key fields (spec, seed, selection, ...) overlap, so sharing would
+    # interleave two campaigns in one dataset.
+    "wellsep-timing": "results-wellsep-timing.csv",
     "arbiter-hp": "results-arbiter-hp.csv",
     "ablate-fret": "results-ablate-fret.csv",
     # h2h-tlsf shares ablate-tlsf's CSV (that sharing is its dedup mechanism),
@@ -81,6 +85,7 @@ PROFILE_RESULT_DIRS: dict[str, str] = {
     "padd": "results-padd",
     "tlsf": "results-tlsf",
     "wellsep": "results-wellsep",
+    "wellsep-timing": "results-wellsep-timing",
     "arbiter-hp": "results-arbiter-hp",
     "ablate-fret": "results-ablate-fret",
     "ablate-tlsf": "results-ablate-tlsf",

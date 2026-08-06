@@ -121,6 +121,14 @@ DEFAULTS: dict = {
     # (W) crosses them as a 2x2.
     "run_well_separation": False,
     "allow_output_assumptions": False,
+    # How often the well-separation filter runs, in generations (config.hpp
+    # default 1 = every generation). Emitted into [filters.intervals] only when a
+    # sweep overrides it (see make_toml), so every existing grid stays
+    # byte-identical; the well-separation timing sweep (V) varies it. A value
+    # above `generations` makes the filter final-only: both drivers force every
+    # per-generation filter to run on the last generation regardless of interval,
+    # so a never-matching interval leaves exactly that one pass.
+    "well_separation_interval": 1,
     "black_timeout_ms": 1000,
     "repair_mode": "monolithic",
     # TLSF-only [tlsf.mutation] split (see config.hpp). Emitted only when a sweep
@@ -210,7 +218,11 @@ def make_toml(overrides: dict, defaults: dict = DEFAULTS) -> str:
         f"run_weakening   = {_fmt(d['run_weakening'])}",
         f"run_implication = {_fmt(d['run_implication'])}",
     ] + ([f"run_well_separation = {_fmt(d['run_well_separation'])}"]
-         if "run_well_separation" in overrides else []) + [
+         if "run_well_separation" in overrides else []) + ([
+        "",
+        "[filters.intervals]",
+        f"well_separation = {d['well_separation_interval']}",
+    ] if "well_separation_interval" in overrides else []) + [
         "",
         "[runtime]",
         f"black_timeout_ms = {d['black_timeout_ms']}",
@@ -477,6 +489,40 @@ TLSF_SWEEP_W: list[tuple[str, dict]] = [
                      "allow_output_assumptions": True}),
 ]
 
+# TLSF sweep V: when the well-separation filter runs, rather than whether. Every
+# generation the filter pays an ltlsynt call per surviving candidate, but it
+# removes the not-well-separated ones before they breed, so the population that
+# survives is one the filter already accepts. Running it only at the end pays
+# that cost once, but the search may then spend the whole run breeding candidates
+# that are all discarded in the final pass. The two are the same filter and the
+# same accept/reject predicate; only the schedule differs, so the comparison is
+# cost against search quality.
+#
+# final-only is expressed as an interval of 1000 rather than a separate mode:
+# both drivers force every per-generation filter on the last generation whatever
+# its interval (filters_for_generation, select_active_filters), so an interval
+# that never matches leaves exactly one final pass. 1000 sits above any
+# `generations` this campaign runs at, so the level stays final-only if the
+# operating point moves.
+#
+# Every level pins allow_output_assumptions = True. The 2026-07-23 wellsep
+# campaign measured the filter as inert without it (79.7% found-rate off vs 79.6%
+# on), because input-only assumptions are always well-separated and the filter
+# has nothing to reject — a timing comparison over an inert filter measures
+# nothing. That also means no level here is byte-identical to the A/gen10
+# baseline, so unlike the other sweeps there is nothing to alias onto a baseline
+# run and all three levels execute.
+TLSF_SWEEP_V: list[tuple[str, dict]] = [
+    ("nofilter",   {"run_well_separation": False,
+                    "allow_output_assumptions": True}),   # control
+    ("every-gen",  {"run_well_separation": True,
+                    "allow_output_assumptions": True,
+                    "well_separation_interval": 1}),
+    ("final-only", {"run_well_separation": True,
+                    "allow_output_assumptions": True,
+                    "well_separation_interval": 1000}),
+]
+
 # TLSF sweep Q: arbiter p_add_assumption spread x the two wson output-assumption
 # arms — the follow-up to arbiter-hp. That pop10000/gen100 run left
 # p_add_assumption at the config.hpp default 0.05 and never reached arbiter's
@@ -521,6 +567,7 @@ TLSF_SWEEPS: list[tuple[str, list]] = [
     ("W", TLSF_SWEEP_W),
     ("Q", TLSF_SWEEP_Q),
     ("R", TLSF_SWEEP_R),
+    ("V", TLSF_SWEEP_V),
 ]
 
 TLSF_CONFIGS_DIR = Path(__file__).parent.parent / "experiments" / "configs-tlsf"

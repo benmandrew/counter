@@ -530,6 +530,52 @@ PROFILES: dict[str, dict] = {
         "results_csv": EXPERIMENTS_DIR / "results-wellsep.csv",
         "default_jobs": 1,
     },
+    # Well-separation *timing*: when the filter runs, not whether. The three arms
+    # are the levels of TLSF sweep V (gen_configs.TLSF_SWEEP_V) — nofilter (never
+    # filtered), every-gen (the shipped interval of 1), and final-only (interval
+    # 1000, above any `generations` here, which both drivers turn into a single
+    # forced pass on the last generation). Per-generation filtering pays an
+    # ltlsynt call every generation but keeps the population clean of candidates
+    # that would be rejected anyway; final-only pays once and risks breeding a
+    # whole run's worth of candidates that all die in the final pass. Every arm
+    # sets allow_output_assumptions = True, because the 2026-07-23 wellsep
+    # campaign measured the filter inert without it (79.7% vs 79.6% found-rate) —
+    # timing an inert filter measures nothing.
+    #
+    # It must NOT share wellsep's CSV. The sweep letter and level names differ,
+    # but the resume key is (sweep, level_name, selection, weakening, metric,
+    # repair_mode, spec, seed) and these runs reuse wellsep's spec and seed
+    # ranges under the same nsga2 selection — sharing the file would leave two
+    # campaigns interleaved in one dataset, and a wellsep re-merge would carry
+    # rows it never ran. Same reason for the separate results_dir: run_id names
+    # collide across profiles, so parse_repair_files() would read the other
+    # campaign's stale repair_*.json. Generate with:
+    #   python scripts/gen_configs.py --tlsf --sweeps V \
+    #       --out-dir experiments/configs-wellsep-timing
+    "wellsep-timing": {
+        "schemes": ["nsga2"],
+        "weakenings": None,
+        "metrics": None,
+        "repair_modes": None,
+        "sweeps": ["V"],
+        "levels": {"V": ["nofilter", "every-gen", "final-only"]},
+        "specs": [s for s in TLSF_CORE_SPECS if s != "humanoid-531"],
+        # Provisional. Three arms rather than wellsep's four, but the per-seed
+        # cost is not simply 3/4 of it: the whole point is that the arms cost
+        # different amounts, and nothing has yet measured what final-only saves.
+        # Re-size this against a calibration run before launching.
+        "seeds": list(range(240)),
+        # Same caps as wellsep: same specs, same gen10/pop200 operating point,
+        # and the treatment can only remove filter work relative to the arm those
+        # caps were calibrated on.
+        "timeout_caps": {"arbiter": 60, "gyro-var1": 120, "lift": 600,
+                         "lily02": 60, "minepump": 60},
+        "baseline_aliases": {},
+        "configs_dir": EXPERIMENTS_DIR / "configs-wellsep-timing",
+        "results_dir": EXPERIMENTS_DIR / "results-wellsep-timing",
+        "results_csv": EXPERIMENTS_DIR / "results-wellsep-timing.csv",
+        "default_jobs": 4,
+    },
     # Focused arbiter follow-up to the 2026-07-23 wellsep campaign. That run
     # showed the well-separation filter rejects *every* output-assumption repair
     # arbiter finds at gen10/pop200 (320/320 dropped) — all vacuous — but the

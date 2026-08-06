@@ -94,6 +94,11 @@ target_sources(counter_fitness PRIVATE
     src/tlsf/filter.cpp
     src/tlsf/mucs.cpp
     src/tlsf/pipeline.cpp
+    src/tlsf/evolve.cpp
+    src/tlsf/filter_report.cpp
+    src/tlsf/repair_modes.cpp
+    src/tlsf/repair_output.cpp
+    src/tlsf/survivors.cpp
     src/config_io.cpp
     src/dashboard.cpp
 )

@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1785909210788,
+  "lastUpdate": 1785995850465,
   "repoUrl": "https://github.com/benmandrew/counter",
   "entries": {
     "counter benchmarks": [
@@ -4950,6 +4950,76 @@ window.BENCHMARK_DATA = {
             "value": 3440.0803647565535,
             "unit": "ns/iter",
             "extra": "iterations: 202875\ncpu: 3439.5369611829947 ns\nthreads: 1"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "name": "benmandrew",
+            "username": "benmandrew",
+            "email": "benmandrew@gmail.com"
+          },
+          "committer": {
+            "name": "benmandrew",
+            "username": "benmandrew",
+            "email": "benmandrew@gmail.com"
+          },
+          "id": "4f481cc13ddc78fa6cd9ffa8997237c29225d616",
+          "message": "fix(process_tests): keep the RSS ballast resident under -O2\n\nThe ballast test added in 24b6f49 guarded its 512MB buffer with\n`ballast.front() == '\\1' && ballast.back() == '\\1'`, which a\nrelease build folds to a constant, letting it elide the whole\nallocation. The test passed vacuously in debug and failed CI's\nrelease leg (\"the floor should reflect the ballast this process\nis holding, got 4768kB\").\n\nRoute every access through a new `touch_every_page` helper that\nwrites one byte per page through a `volatile` view and reads it\nback into a checksum: volatile accesses are observable, so both\nthe buffer and the stores into it survive optimisation. Measured\nat -O2 on both compilers, the old guard left the process resident\nat ~3.5MB; the new helper leaves it at ~515MB, above the 256MB\nfloor the assertion checks.",
+          "timestamp": "2026-08-05T16:30:56Z",
+          "url": "https://github.com/benmandrew/counter/commit/4f481cc13ddc78fa6cd9ffa8997237c29225d616"
+        },
+        "date": 1785995849902,
+        "tool": "googlecpp",
+        "benches": [
+          {
+            "name": "Syntactic similarity - small formulas (3 variables)",
+            "value": 540.5362496452442,
+            "unit": "ns/iter",
+            "extra": "iterations: 1229681\ncpu: 540.425067151562 ns\nthreads: 1"
+          },
+          {
+            "name": "Syntactic similarity - large formulas (11 variables, O(n*m) shared_subformulae)",
+            "value": 2383.0540493266185,
+            "unit": "ns/iter",
+            "extra": "iterations: 280133\ncpu: 2382.0115802136843 ns\nthreads: 1"
+          },
+          {
+            "name": "Spec implication check - warm black cache",
+            "value": 613.3723088590467,
+            "unit": "ns/iter",
+            "extra": "iterations: 1128657\ncpu: 613.2909245235708 ns\nthreads: 1"
+          },
+          {
+            "name": "Trace model counting - matrix exponentiation/steps:5",
+            "value": 198.87620712446267,
+            "unit": "ns/iter",
+            "extra": "iterations: 3519314\ncpu: 198.85133977815 ns\nthreads: 1"
+          },
+          {
+            "name": "Trace model counting - matrix exponentiation/steps:10",
+            "value": 224.88403209180962,
+            "unit": "ns/iter",
+            "extra": "iterations: 3109205\ncpu: 224.8550571609142 ns\nthreads: 1"
+          },
+          {
+            "name": "Trace model counting - matrix exponentiation/steps:20",
+            "value": 250.87054652657397,
+            "unit": "ns/iter",
+            "extra": "iterations: 2788245\ncpu: 250.8613328455711 ns\nthreads: 1"
+          },
+          {
+            "name": "Trace model counting - matrix exponentiation/steps:50",
+            "value": 302.35353673088065,
+            "unit": "ns/iter",
+            "extra": "iterations: 2317465\ncpu: 302.31606043672735 ns\nthreads: 1"
+          },
+          {
+            "name": "Mutate specification - 3-guarantee takeoff spec",
+            "value": 3523.9486736044773,
+            "unit": "ns/iter",
+            "extra": "iterations: 197754\ncpu: 3522.621509552272 ns\nthreads: 1"
           }
         ]
       }

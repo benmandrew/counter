@@ -80,7 +80,7 @@
       "additionalProperties": false,
       "properties": {
         "black_timeout_ms":  { "type": "integer", "minimum": 0, "description": "Timeout per black SAT query in milliseconds." },
-        "ltlsynt_timeout_ms": { "type": "integer", "minimum": 0, "description": "Per-call ltlsynt realizability timeout in milliseconds. 0 (default) is no timeout; a call exceeding it is killed and treated as unrealizable." },
+        "ltlsynt_timeout_ms": { "type": "integer", "minimum": 0, "description": "Per-call ltlsynt realizability timeout in milliseconds. 0 (default) is no timeout; a call exceeding it is killed and reported as undecided, which does not admit a repair and drops the candidate at the well-separation filter." },
         "ltl2tgba_timeout_ms": { "type": "integer", "minimum": 0, "description": "Per-call ltl2tgba automaton-construction timeout in milliseconds. 0 (default) is no timeout." },
         "ltlfilt_timeout_ms": { "type": "integer", "minimum": 0, "description": "Per-call ltlfilt simplification timeout in milliseconds. Default 10000; 0 is no timeout. An abandoned call returns the formula unsimplified rather than failing." },
         "ganak_timeout_ms": { "type": "integer", "minimum": 0, "description": "Per-call ganak model-counting timeout in milliseconds. 0 (default) is no timeout; a call exceeding it drops the individual against max_scoring_failure_rate." },

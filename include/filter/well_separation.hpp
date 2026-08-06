@@ -33,10 +33,12 @@
 /// without a solver call, since the system controls nothing it could use to
 /// break them.
 ///
-/// Conservative under uncertainty: a specification with no assumptions has
-/// nothing to falsify and is reported well-separated without a solver call, and
-/// an ltlsynt query that times out is treated as unrealizable (well-separated),
-/// so a slow check never silently discards a candidate.
+/// A specification with no assumptions has nothing to falsify and is reported
+/// well-separated without a solver call. An ltlsynt query that times out is
+/// undecided, and reads here as *not* well-separated, so the candidate is
+/// dropped: this filter keeps a candidate exactly when the query comes back
+/// unrealizable, which makes the fallback every other caller uses the unsafe
+/// one here.
 ///
 /// @param specification The specification to test
 /// @param checker       Realizability checker for the ltlsynt query;

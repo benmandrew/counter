@@ -13,9 +13,11 @@
 #include <iostream>
 #include <memory>
 #include <mutex>
+#include <optional>
 #include <stdexcept>
 #include <string>
 #include <unordered_map>
+#include <unordered_set>
 #include <vector>
 
 #include "requirement.hpp"
@@ -209,6 +211,11 @@ std::string run_ltl2tgba_for_counting(const std::string& formula) {
     // the raw formula in milliseconds. Passing the formula straight through
     // avoids that cliff.
     static std::unordered_map<std::string, std::string> cache;
+    // Formulae whose determinization was abandoned at the budget. Memoised
+    // like the automata themselves: the blowup is a property of the formula,
+    // not of the moment, so re-running it buys the same timeout at full price
+    // and the individual is dropped either way.
+    static std::unordered_set<std::string> timed_out;
     static std::mutex cache_mutex;
     {
         std::scoped_lock lock(cache_mutex);
@@ -216,6 +223,13 @@ std::string run_ltl2tgba_for_counting(const std::string& formula) {
         if (found != cache.end()) {
             Ltl2tgbaStats::n_cache_hits++;
             return found->second;
+        }
+        if (timed_out.count(formula) != 0) {
+            // Same error as the exec would have raised, so a caller sees one
+            // behaviour whether or not this formula has been tried before.
+            Ltl2tgbaStats::n_cache_hits++;
+            throw std::runtime_error("ltl2tgba timed out for formula: " +
+                                     formula);
         }
         Ltl2tgbaStats::n_cache_misses++;
     }
@@ -238,6 +252,7 @@ std::string run_ltl2tgba_for_counting(const std::string& formula) {
             std::scoped_lock lock(cache_mutex);
             Ltl2tgbaStats::record_time(elapsed, result.m_cpu_s);
             Ltl2tgbaStats::n_timeouts++;
+            timed_out.insert(formula);
         }
         throw std::runtime_error("ltl2tgba timed out for formula: " + formula);
     }
@@ -266,7 +281,7 @@ std::string run_ltl2tgba_for_counting(const std::string& formula) {
     return result.m_output;
 }
 
-bool RealizabilityChecker::check_realizability(
+std::optional<bool> RealizabilityChecker::check_realizability(
     const Specification& specification) {
     std::string conj_ltl;
     build_specification_formula(specification, conj_ltl);
@@ -274,7 +289,7 @@ bool RealizabilityChecker::check_realizability(
                                    specification.m_out_atoms);
 }
 
-bool RealizabilityChecker::check_realizability_ltl(
+std::optional<bool> RealizabilityChecker::check_realizability_ltl(
     const std::string& ltl_formula, const std::vector<std::string>& inputs,
     const std::vector<std::string>& outputs) {
     // No normalize_ltl() pre-pass, matching run_ltl2tgba_for_counting: ltlsynt
@@ -319,13 +334,15 @@ bool RealizabilityChecker::check_realizability_ltl(
     const double elapsed =
         std::chrono::duration<double>(std::chrono::steady_clock::now() - start)
             .count();
-    // A timed-out query is treated as unrealizable: its realizability could not
-    // be decided within budget, so the candidate is not admitted as a repair.
-    // This is conservative (a genuinely realizable but hard-to-synthesise spec
-    // is dropped), which is the point — those are the queries that would
-    // otherwise stall the run for minutes each.
-    const bool realizable =
-        result.m_timed_out ? false : parse_realizability_output(result);
+    // A timed-out query is undecided, not unrealizable. Which of the two is
+    // the safe reading depends on the question being asked -- admitting a
+    // repair wants "unrealizable", the well-separation filter wants
+    // "realizable" -- so the direction is the caller's to pick, and this
+    // reports nullopt rather than picking one for everybody.
+    const std::optional<bool> realizable =
+        result.m_timed_out
+            ? std::nullopt
+            : std::optional<bool>(parse_realizability_output(result));
     // Diagnostic hook (off unless COUNTER_LTLSYNT_LOG names a file): append one
     // "elapsed_s timed_out n_atoms" line per ltlsynt exec, for studying the
     // call-duration distribution and tuning ltlsynt_timeout. Zero cost when the
@@ -343,6 +360,12 @@ bool RealizabilityChecker::check_realizability_ltl(
     if (result.m_timed_out) {
         n_timeouts++;
     }
+    // Undecided is memoised like any other outcome, for the reason the ltlfilt
+    // cache gives: a formula that blew the budget once will blow it every
+    // time, and re-paying that wait per occurrence is the stall the timeout
+    // exists to avoid. What #74 had to remove was caching a *verdict* nobody
+    // decided; nullopt is not one, so every caller still picks its own
+    // direction on every hit.
     m_cache.emplace(cache_key, realizable);
     return realizable;
 }

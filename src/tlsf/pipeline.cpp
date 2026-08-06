@@ -208,8 +208,11 @@ void print_filter_report(const std::vector<FilterRunStats>& stats) {
 }
 
 bool is_realizable(const Specification& spec) {
-    return global_real_checker().check_realizability_ltl(
-        spec.to_ltl(), spec.m_inputs, spec.m_outputs);
+    // Undecided reads as unrealizable: the repair loop keeps going rather than
+    // declaring a specification repaired on a query that never finished.
+    return global_real_checker()
+        .check_realizability_ltl(spec.to_ltl(), spec.m_inputs, spec.m_outputs)
+        .value_or(false);
 }
 
 // Builds the per-generation filters, the TLSF counterparts of the FRETISH set

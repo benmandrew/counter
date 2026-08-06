@@ -51,6 +51,6 @@ double specification_status(const Specification& specification,
         // is realizable whatever the assumptions say; skip the solver rather
         // than ask it a question with a known answer.
         return specification.m_guarantees.empty() ||
-               real.check_realizability(specification);
+               real.check_realizability(specification).value_or(false);
     });
 }

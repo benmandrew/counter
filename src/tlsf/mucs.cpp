@@ -134,8 +134,12 @@ MinimalUnrealizableCore extract_muc(const Specification& spec,
 MinimalUnrealizableCore extract_muc(const Specification& spec) {
     RealizabilityChecker& checker = global_real_checker();
     return extract_muc(spec, [&checker](const Specification& candidate) {
-        return checker.check_realizability_ltl(
-            candidate.to_ltl(), candidate.m_inputs, candidate.m_outputs);
+        // Undecided reads as unrealizable, which keeps QuickXplain shrinking
+        // the candidate set rather than reporting a core it never confirmed.
+        return checker
+            .check_realizability_ltl(candidate.to_ltl(), candidate.m_inputs,
+                                     candidate.m_outputs)
+            .value_or(false);
     });
 }
 

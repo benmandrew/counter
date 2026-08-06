@@ -102,8 +102,10 @@ struct Config {
     // black, ltlsynt has no internal timeout, and the genetic search
     // occasionally generates synthesis queries that run for minutes with no
     // upper bound, stalling a run on the tail. A call exceeding this is killed
-    // and treated as unrealizable. 0 (the default) disables the timeout,
-    // preserving prior behaviour; the heavy TLSF specs set it.
+    // and reported as undecided, which each caller resolves its own way: no
+    // repair is admitted on it, and the well-separation filter drops the
+    // candidate. 0 (the default) disables the timeout, preserving prior
+    // behaviour; the heavy TLSF specs set it.
     std::chrono::milliseconds ltlsynt_timeout{0};
     // Per-call wall-clock budget for the ltl2tgba model-counting exec. Like
     // ltlsynt, ltl2tgba has no internal timeout, and the deterministic (-D)

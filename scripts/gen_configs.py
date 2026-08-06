@@ -555,7 +555,8 @@ TLSF_MAX_REALIZABILITY = 0
 # under 50ms and only ~2% pass 100ms, with an almost-empty 0.5-1s band, so 500ms
 # and the earlier 10s abandon nearly the same set (they differ by ~0.1% of
 # calls) while 500ms caps the pathological tail far tighter. A timed-out check
-# is treated as unrealizable.
+# is undecided: it admits no repair, and drops the candidate at the
+# well-separation filter.
 TLSF_LTLSYNT_TIMEOUT_MS = 500
 
 # Default per-call ltl2tgba (model-counting) timeout (ms) for the TLSF campaign.

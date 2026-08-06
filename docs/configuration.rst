@@ -207,6 +207,25 @@ chain and NSGA-II pools every parent unfiltered, so a late pass's drops are
 re-admitted. ``run_weakening`` escapes that only because its screen sits over
 the collected realizable survivors, downstream of both.
 
+This filter is the one caller that reads a failed synthesis the other way
+round. Everywhere else an undecided ``ltlsynt`` query means "do not admit this
+repair", so falling back on *unrealizable* is the cautious answer; here
+unrealizable is what *keeps* a candidate, so the same fallback would admit
+specifications nobody checked — and it is this filter's own query load that
+makes ``runtime.ltlsynt_timeout_ms`` fire in the first place. An undecided
+query therefore drops the candidate.
+
+The undecided outcome is memoised, so the candidate stays dropped for the rest
+of the run without re-running ``ltlsynt``. That is deliberate rather than a
+leftover of the old behaviour: ``ltlsynt`` is deterministic and its call
+durations are sharply bimodal --- 95% of the TLSF campaign's calls finished
+under 50 ms, the 0.5--1 s band was almost empty, and a 500 ms cap abandoned
+within 0.1% of the calls a 10 s cap did --- so a formula that blows the budget
+is in the minutes-long tail rather than near the boundary, and asking again
+buys the same non-answer at full price. What caching a plain ``false`` used to
+do, and this does not, is decide the question: ``nullopt`` is not a verdict, so
+every caller still resolves it in its own direction on every cache hit.
+
 Each test is a full ``ltlsynt`` query, run only where an assumption references
 an output atom, so it costs nothing on specifications whose assumptions are
 input-only. It was off by default until that campaign priced it: filtering

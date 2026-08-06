@@ -200,8 +200,10 @@ double tlsf_status(const tlsf::Specification& spec,
         }
     }
     return status_score(components, sat, [&spec, &real] {
-        return real.check_realizability_ltl(spec.to_ltl(), spec.m_inputs,
-                                            spec.m_outputs);
+        return real
+            .check_realizability_ltl(spec.to_ltl(), spec.m_inputs,
+                                     spec.m_outputs)
+            .value_or(false);
     });
 }
 

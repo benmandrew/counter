@@ -330,6 +330,15 @@ elseif(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
                 ${CMAKE_COMMAND} --build <BINARY_DIR> --target frontend --parallel
             INSTALL_COMMAND
                 ${CMAKE_COMMAND} --install <BINARY_DIR>
+            # Unlike the Linux paths, BLACK_EXECUTABLE here is the installed
+            # binary rather than a wrapper script written at configure time, so
+            # nothing has created it by the time the generator runs.
+            # ExternalProject declares only its stamps as outputs, leaving the
+            # `DEPENDS "${BLACK_EXECUTABLE}"` on black_binary with no rule to
+            # produce it -- ninja rejects the whole graph before compiling
+            # anything.  add_dependencies alone does not fix that: it orders
+            # targets, it does not name a producer for the file.
+            BUILD_BYPRODUCTS "${BLACK_INSTALL_DIR}/bin/black"
             DEPENDS
                 tsl_hopscotch_project
                 nlohmann_json_project

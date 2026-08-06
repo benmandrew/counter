@@ -63,7 +63,6 @@
 
             # Docs targets (doxygen + sphinx)
             doxygen
-            graphviz
             (python3.withPackages (ps: with ps; [ sphinx breathe furo ]))
 
             # SMT backend for building black-sat from source (cmake/black.cmake's

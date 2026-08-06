@@ -3,11 +3,7 @@ Counter
 
 Repairing unrealisable FRETish specifications.
 
-The pages below are the curated public API — the ``include/`` headers. For a
-deeper look at the implementation, the
-`internal reference <internal/index.html>`_ is a separate full Doxygen build
-covering ``src/`` as well as private class members, file-local (``static``)
-functions, and anonymous namespaces, with source browsing and call graphs.
+The pages below are the curated public API — the ``include/`` headers.
 
 .. toctree::
    :maxdepth: 1

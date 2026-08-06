@@ -74,7 +74,7 @@ Each archived campaign also carries `experiments/<campaign>/scripts/` — verbat
 
 ## Docs
 
-Every header file in `include/` must have a corresponding `.rst` page under `docs/api/` and be listed in `docs/index.rst`. When adding a new header, add the page and toctree entry before committing. The internal reference needs no per-file upkeep — it scans `src/` automatically, so nothing extra is required there.
+Every header file in `include/` must have a corresponding `.rst` page under `docs/api/` and be listed in `docs/index.rst`. When adding a new header, add the page and toctree entry before committing. The site covers `include/` alone: implementation detail under `src/` is deliberately not published.
 
 ## Code style
 

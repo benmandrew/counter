@@ -8,6 +8,7 @@
 #include <algorithm>
 #include <cassert>
 #include <cstddef>
+#include <cstdint>
 #include <functional>
 #include <iterator>
 #include <map>
@@ -31,6 +32,22 @@
 #include "runner/black.hpp"
 #include "thread_pool.hpp"
 
+/// Whether a filter's rejects may be re-admitted to keep a generation alive.
+///
+/// Correctness rejects are unfit to breed from at all: a candidate with a false
+/// condition, contradictory assumptions or a system strategy that falsifies its
+/// own assumptions satisfies (A) -> (G) for free, so breeding from one chases a
+/// repair that repairs nothing. Preference rejects are perfectly good
+/// specifications that the chain would rather not carry -- a duplicate, or one
+/// grown past the bloat cap -- and re-admitting one costs diversity or size,
+/// not meaning.
+///
+/// Only stage_filter_fallback reads this: it decides which rejects can come
+/// back when the chain empties the population. Filters that never run inside a
+/// generation (the final weakening and implication screens) are still tagged,
+/// so the distinction reads the same everywhere.
+enum class FilterKind : std::uint8_t { Correctness, Preference };
+
 /// A filter function transforms a population into a surviving subset.
 /// Receives the entire population, enabling both per-element predicates and
 /// population-level relations such as keeping only maximal elements under a
@@ -43,8 +60,12 @@ class FilterFunctionT {
    public:
     using Fn = std::function<std::vector<Spec>(const std::vector<Spec>&)>;
 
-    FilterFunctionT(std::string name, Fn func)
-        : m_name(std::move(name)), m_fn(std::move(func)) {}
+    /// A filter is Correctness unless it says otherwise: a new filter left
+    /// untagged is then re-applied by the fallback rather than silently
+    /// bypassed by it, which is the failure this default exists to avoid.
+    FilterFunctionT(std::string name, Fn func,
+                    FilterKind kind = FilterKind::Correctness)
+        : m_name(std::move(name)), m_fn(std::move(func)), m_kind(kind) {}
 
     /// Implicit construction from any compatible callable (for tests and
     /// inline construction where a display name is not needed).
@@ -64,12 +85,14 @@ class FilterFunctionT {
     }
 
     const std::string& name() const { return m_name; }
+    FilterKind kind() const { return m_kind; }
     std::size_t n_in() const { return m_n_in; }
     std::size_t n_out() const { return m_n_out; }
 
    private:
     std::string m_name;
     Fn m_fn;
+    FilterKind m_kind{FilterKind::Correctness};
     mutable std::size_t m_n_in{0};
     mutable std::size_t m_n_out{0};
 };
@@ -96,11 +119,12 @@ using ScoredSpecification = Scored<Specification>;
 /// @param name          Display name used in diagnostic output
 /// @param predicate     A predicate returning true for specifications to keep
 /// @param max_in_flight Concurrent predicate evaluations; 1 evaluates serially
+/// @param kind          Whether the fallback may re-admit this filter's rejects
 /// @return              A FilterFunction that applies the predicate
 /// element-wise
 FilterFunction make_predicate_filter(
     std::string name, std::function<bool(const Specification&)> predicate,
-    std::size_t max_in_flight = 1);
+    std::size_t max_in_flight = 1, FilterKind kind = FilterKind::Correctness);
 
 /// An individual whose fitness scoring throws is dropped from the returned
 /// population rather than aborting the run (see
@@ -335,6 +359,38 @@ std::vector<PipelineStage<Spec>> filter_stages(
     return stages;
 }
 
+/// Builds the rescue stage_filter_fallback runs when the chain empties the
+/// population: the correctness filters of @p filters alone, in their original
+/// order, applied to the unfiltered offspring.
+///
+/// The chain runs in series, so the correctness filters only ever judge what
+/// the preference filters passed on to them. A candidate the bloat cap dropped
+/// is therefore not a candidate that failed well-separation; it is one whose
+/// well-separation was never asked about. Re-running the correctness filters
+/// over the whole unfiltered set asks, and what survives is exactly the
+/// candidates that are correct but were culled for being duplicates or
+/// oversized. Every candidate that already reached those filters is a hit in
+/// the solver caches they share, so the rescue re-tests only what the chain
+/// never tested.
+///
+/// Holds copies of the filters rather than references, so re-applying one does
+/// not overwrite the n_in/n_out tallies the drivers accumulate per generation
+/// from the main pass.
+template <typename Spec>
+PopulationRescue<Spec> correctness_rescue(
+    const std::vector<FilterFunctionT<Spec>>& filters) {
+    std::vector<FilterFunctionT<Spec>> correctness;
+    for (const FilterFunctionT<Spec>& filter : filters) {
+        if (filter.kind() == FilterKind::Correctness) {
+            correctness.push_back(filter);
+        }
+    }
+    return
+        [correctness = std::move(correctness)](const std::vector<Spec>& pop) {
+            return filter_population(pop, correctness);
+        };
+}
+
 /// The names of every stage a generation can run, in pipeline order, counting
 /// filters that only run on some generations.
 ///
@@ -346,8 +402,8 @@ template <typename Spec>
 std::vector<std::string> generation_stage_names(
     const std::vector<FilterFunctionT<Spec>>& filters) {
     std::vector<std::string> names;
-    for (const PipelineStage<Spec>& stage :
-         make_generation_pipeline<Spec>(filter_stages(filters))) {
+    for (const PipelineStage<Spec>& stage : make_generation_pipeline<Spec>(
+             filter_stages(filters), correctness_rescue(filters))) {
         names.push_back(stage.name());
     }
     return names;
@@ -382,7 +438,8 @@ std::vector<Scored<Spec>> evolve_generation_generic(
                                     on_progress);
         });
     const std::vector<PipelineStage<Spec>> stages =
-        make_generation_pipeline<Spec>(filter_stages(filter_functions));
+        make_generation_pipeline<Spec>(filter_stages(filter_functions),
+                                       correctness_rescue(filter_functions));
     return run_generation_pipeline(ctx, stages, on_stage);
 }
 

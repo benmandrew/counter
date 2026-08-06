@@ -133,7 +133,8 @@ std::vector<Specification> keep_non_subsumed(
 }  // namespace
 
 FilterFunction make_dedup_filter() {
-    return {"dedup", [](const std::vector<Specification>& pop) {
+    return {"dedup",
+            [](const std::vector<Specification>& pop) {
                 std::unordered_set<Specification> seen;
                 seen.reserve(pop.size());
                 std::vector<Specification> survivors;
@@ -144,7 +145,8 @@ FilterFunction make_dedup_filter() {
                     }
                 }
                 return survivors;
-            }};
+            },
+            FilterKind::Preference};
 }
 
 FilterFunction make_weakening_filter(Specification original,
@@ -201,5 +203,6 @@ FilterFunction make_implication_filter(
                 const std::vector<uint8_t> sub =
                     compute_subsumed(pop, checker, on_progress);
                 return keep_non_subsumed(pop, sub);
-            }};
+            },
+            FilterKind::Preference};
 }

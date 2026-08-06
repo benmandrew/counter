@@ -559,17 +559,42 @@ PROFILES: dict[str, dict] = {
         "repair_modes": None,
         "sweeps": ["V"],
         "levels": {"V": ["nofilter", "every-gen", "final-only"]},
-        "specs": [s for s in TLSF_CORE_SPECS if s != "humanoid-531"],
-        # Provisional. Three arms rather than wellsep's four, but the per-seed
-        # cost is not simply 3/4 of it: the whole point is that the arms cost
-        # different amounts, and nothing has yet measured what final-only saves.
-        # Re-size this against a calibration run before launching.
-        "seeds": list(range(240)),
-        # Same caps as wellsep: same specs, same gen10/pop200 operating point,
-        # and the treatment can only remove filter work relative to the arm those
-        # caps were calibrated on.
+        # Widened past wellsep's five, because the effect is spec-dependent: a
+        # smoke test found every-gen filtering takes arbiter from 20 repairs to
+        # 0 while leaving gyro-var1 untouched, so a five-spec grid would report
+        # whichever way its specs happened to lean. Every spec here was timed at
+        # campaign concurrency under the expensive arm and clears 25s, and every
+        # one has an ideal fix under examples/<spec>/fixes so implies_ideal is
+        # defined across the whole grid. Dropped on cost (>90s, one seed):
+        # amba, full-arbiter, humanoid-531, prioritized-arbiter, simple-arbiter.
+        # Dropped for having no ideal, which would leave implies_ideal blank on
+        # part of the grid: takeoff-tlsf.
+        "specs": [
+            "arbiter", "gyro-var1", "lift", "lily02", "minepump",
+            "arbiter-aurus", "arbiter-handshake", "codesample-un1",
+            "codesample-un2", "detector", "gyro-var2", "humanoid-458",
+            "load-balancer", "rg1", "rg2", "round-robin-arbiter",
+        ],
+        # Sized from a measured 181 job-seconds per seed per arm over these 16
+        # specs (4 concurrent runs, parallel = 8, the campaign's own geometry),
+        # so 543 per seed across three arms. Two 32-core hosts at 4 jobs give
+        # 172800 job-seconds in six hours; 150 seeds spends about 65% of that,
+        # and the rest absorbs the compare/implies_ideal work the calibration
+        # did not include. Deliberately under-sized: run_experiments resumes on
+        # (sweep, level_name, selection, weakening, metric, repair_mode, spec,
+        # seed), so extending the range later costs only the new cells, whereas
+        # over-sizing ends the window with arms unbalanced and breaks pairing.
+        "seeds": list(range(150)),
+        # wellsep's caps for its five specs; the rest are roughly 5x the
+        # measured single-seed cost under the expensive arm, which leaves room
+        # for the tail without letting a hung run eat the window.
         "timeout_caps": {"arbiter": 60, "gyro-var1": 120, "lift": 600,
-                         "lily02": 60, "minepump": 60},
+                         "lily02": 60, "minepump": 60,
+                         "arbiter-aurus": 60, "arbiter-handshake": 60,
+                         "codesample-un1": 90, "codesample-un2": 60,
+                         "detector": 180, "gyro-var2": 120,
+                         "humanoid-458": 120, "load-balancer": 90,
+                         "rg1": 60, "rg2": 60, "round-robin-arbiter": 150},
         "baseline_aliases": {},
         "configs_dir": EXPERIMENTS_DIR / "configs-wellsep-timing",
         "results_dir": EXPERIMENTS_DIR / "results-wellsep-timing",

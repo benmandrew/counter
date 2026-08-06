@@ -270,15 +270,12 @@ std::vector<Spec> filter_population(
 
 /// Returns the standard set of filter functions used during evolution, in
 /// order: deduplication, a bloat cap, a false-condition filter, a vacuity
-/// filter (if enabled), a well-separation filter (if enabled), and (if
-/// enabled) a weakening filter that keeps only specifications implied by
-/// @p original.
-/// Each filter's per-generation interval is set from @p cfg; the evolution
-/// loop decides which filters run in a given generation.
+/// filter (if enabled) and a well-separation filter (if enabled). Every one
+/// runs on every generation; the weakening and implication screens are not
+/// here but in get_final_filter_functions, which runs once over the survivors.
 ///
-/// @param cfg       Algorithm configuration (filter flags and intervals)
-/// @param original  The reference specification for the weakening filter;
-///                  captured by value inside the filter
+/// @param cfg       Algorithm configuration (the filter enable flags)
+/// @param original  The reference specification the bloat cap is sized against
 /// @param checker   Satisfiability checker; captured by reference, must
 ///                  outlive the returned filters
 std::vector<FilterFunction> get_filter_functions(

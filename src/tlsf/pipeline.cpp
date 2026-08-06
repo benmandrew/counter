@@ -48,8 +48,8 @@ std::optional<std::string> read_file(const std::string& path) {
 
 // A candidate counts as a repair only when it is realizable and not vacuously
 // so. Elites and final-generation offspring reach this collection without
-// necessarily having passed the vacuity filter -- that filter runs on an
-// interval and can be turned off outright -- so the check is repeated here,
+// necessarily having passed the vacuity filter -- that filter can be turned
+// off outright -- so the check is repeated here,
 // mirroring the FRETISH path's is_realizable_repair, which screens the same
 // conditions before any repair is written out. Unconditional on both paths:
 // run_vacuity_filter tunes search pressure, never output correctness.
@@ -213,13 +213,23 @@ bool is_realizable(const Specification& spec) {
 }
 
 // Builds the per-generation filters, the TLSF counterparts of the FRETISH set
-// (dedup, bloat cap, the optional assumption-vacuity, weakening and
-// well-separation filters), each with its configured interval.
+// (dedup, bloat cap, the optional assumption-vacuity and well-separation
+// filters).
 //
-// There is no counterpart to the FRETISH false-condition filter, which is
-// syntactic: it rejects a requirement whose trigger is the literal `false`. A
-// tlsf::Specification has no condition/response split to carry such a trigger,
-// so false_condition_filter_interval does not apply on this path.
+// There is no counterpart to the FRETISH false-condition filter, and none is
+// wanted. That filter is syntactic -- it rejects a requirement whose trigger is
+// the literal `false` -- and a tlsf::Specification has no condition/response
+// split to carry such a trigger. The antecedent of `(assumptions) ->
+// (guarantees)` is the assumption side, and the vacuity filter above already
+// decides it *semantically*, so it catches an assumption merely equivalent to
+// false where the syntactic check would not. Porting the FRETISH check here
+// would add nothing it does not already subsume.
+//
+// The unchecked half is the dual: a guarantee side equivalent to `true`, which
+// makes the implication a tautology just as a false antecedent does. Nothing on
+// this path tests it -- least of all the weakening screen, since `original
+// implies true` holds trivially and a gutted guarantee is therefore a perfect
+// weakening.
 std::vector<FilterFunctionT<Specification>> build_per_gen_filters(
     const Specification& spec, const Config& cfg) {
     const std::size_t max_in_flight = dispatch_window();

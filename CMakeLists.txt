@@ -40,7 +40,10 @@ target_sources(counter_core PRIVATE
     src/prop_formula/core.cpp
     src/prop_formula/dimacs_api.cpp
     src/prop_formula/parser.cpp
+    src/prop_formula/render.cpp
+    src/prop_formula/rewrite.cpp
     src/prop_formula/similarity.cpp
+    src/prop_formula/simplify.cpp
     src/prop_formula/transform.cpp
     src/profile.cpp
     src/requirement.cpp

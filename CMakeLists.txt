@@ -101,6 +101,7 @@ target_sources(counter_fitness PRIVATE
     src/tlsf/survivors.cpp
     src/config_io.cpp
     src/dashboard.cpp
+    src/driver_support.cpp
 )
 target_include_directories(counter_fitness PUBLIC include)
 target_link_libraries(counter_fitness PUBLIC counter_core tomlplusplus::tomlplusplus)
@@ -149,7 +150,14 @@ endif()
 target_compile_definitions(counter_fitness PRIVATE
     COUNTER_DASHBOARD_PAGE_PATH="${COUNTER_DASHBOARD_PAGE_PATH}")
 
-add_executable(counter src/main.cpp src/crash/crash_handler.cpp)
+add_executable(counter
+    src/main.cpp
+    src/crash/crash_handler.cpp
+    src/repair/cli.cpp
+    src/repair/driver.cpp
+    src/repair/evolution.cpp
+    src/repair/reports.cpp
+)
 target_link_libraries(counter PRIVATE counter_fitness cpptrace::cpptrace)
 
 add_executable(signal_tracer src/crash/signal_tracer.cpp)

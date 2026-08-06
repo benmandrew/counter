@@ -1,16 +1,16 @@
 #include "tlsf/mucs.hpp"
 
+#include <cstddef>
+#include <exception>
 #include <filesystem>
-#include <fstream>
 #include <iostream>
 #include <optional>
-#include <sstream>
 #include <string>
 
+#include "driver_support.hpp"
 #include "runner/spot.hpp"
 #include "tlsf/parser.hpp"
 #include "tlsf/specification.hpp"
-#include "version.hpp"
 
 namespace {
 
@@ -28,15 +28,6 @@ void print_usage(const char* prog) {
         << "  --version  Print the git commit this binary was built from.\n";
 }
 
-bool has_flag(int argc, const char* const* argv, const char* flag) {
-    for (int i = 1; i < argc; ++i) {
-        if (argv[i] != nullptr && std::string(argv[i]) == flag) {
-            return true;
-        }
-    }
-    return false;
-}
-
 }  // namespace
 
 int main(int argc, const char* const argv[]) {
@@ -44,12 +35,7 @@ int main(int argc, const char* const argv[]) {
         std::cerr << "fatal: missing argv[0]\n";
         return 1;
     }
-    if (has_flag(argc, argv, "--version")) {
-        version::print(std::cout);
-        return 0;
-    }
-    if (has_flag(argc, argv, "-h") || has_flag(argc, argv, "--help")) {
-        print_usage(argv[0]);
+    if (handle_info_flags(argc, argv, print_usage)) {
         return 0;
     }
     if (argc != 2 || argv[1] == nullptr) {
@@ -65,17 +51,15 @@ int main(int argc, const char* const argv[]) {
         return 1;
     }
 
-    std::ifstream file(path);
-    if (!file) {
+    const std::optional<std::string> contents = read_file_contents(path);
+    if (!contents.has_value()) {
         std::cerr << path << ": cannot read file\n";
         return 1;
     }
-    std::ostringstream contents;
-    contents << file.rdbuf();
 
     tlsf::Specification spec;
     try {
-        spec = tlsf::parse(contents.str());
+        spec = tlsf::parse(*contents);
     } catch (const std::exception& exc) {
         std::cerr << path << ": " << exc.what() << "\n";
         return 1;

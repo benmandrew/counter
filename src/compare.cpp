@@ -2,12 +2,12 @@
 #include <array>
 #include <cstddef>
 #include <cstdint>
+#include <cstdlib>
+#include <exception>
 #include <filesystem>
-#include <fstream>
 #include <iomanip>
 #include <iostream>
 #include <optional>
-#include <sstream>
 #include <stdexcept>
 #include <string>
 #include <utility>
@@ -17,6 +17,7 @@
 
 #include "bounded_async.hpp"
 #include "config.hpp"
+#include "driver_support.hpp"
 #include "filter/implication_check.hpp"
 #include "requirement.hpp"
 #include "runner/black.hpp"
@@ -125,13 +126,11 @@ std::vector<std::pair<std::string, Specification>> load_ideals(
 }
 
 std::string read_file(const std::string& path) {
-    std::ifstream file(path);
-    if (!file) {
+    const std::optional<std::string> contents = read_file_contents(path);
+    if (!contents.has_value()) {
         throw std::runtime_error("cannot open file: " + path);
     }
-    std::ostringstream contents;
-    contents << file.rdbuf();
-    return contents.str();
+    return *contents;
 }
 
 // counter writes each TLSF repair as repair_N.tlsf alongside a

@@ -56,11 +56,13 @@ p_conditional_assumption = 0.25
 # weakens both, which makes every assumption mutation a move away from a
 # repair; kept only so the two directions can be compared.
 strengthen_assumptions = true
-# When true, freshly added environment assumptions may reference output atoms as
-# well as inputs; false (the default) keeps them input-only and so well-separated
-# by construction. Pair with filters.run_well_separation, which prunes any
-# not-well-separated assumption the wider draw produces.
-allow_output_assumptions = false
+# When true (the default), environment assumptions may reference output atoms as
+# well as inputs — both freshly added assumptions and rewrites of existing ones,
+# in FRETISH and TLSF mode alike. False keeps them input-only and so
+# well-separated by construction. Pair the default with
+# filters.run_well_separation, which prunes any not-well-separated assumption the
+# wider draw produces.
+allow_output_assumptions = true
 
 [tlsf]
 # Applies only in TLSF mode (a .tlsf input or --format tlsf).
@@ -106,9 +108,13 @@ run_implication = true  # enable final implication maximality filter
 run_vacuity     = true
 # Drop candidates that are not well-separated: ones the system can satisfy
 # vacuously by forcing its own assumptions to fail (i.e. (assumptions) -> false
-# is realizable). Strictly stronger than run_vacuity, but each test is a full
-# ltlsynt query, so it is off by default and the interval below throttles it.
-run_well_separation = false
+# is realizable). Strictly stronger than run_vacuity. Each test is a full
+# ltlsynt query, but dropping a candidate before it is scored saves more than
+# the query costs, so on is both the default and the cheaper setting; the
+# interval below throttles it if a spec disagrees. Raising that interval above
+# the generation count does not make it a cheap end-of-run screen -- see the
+# note there.
+run_well_separation = true
 
 # How often each per-generation filter runs, in generations (1 = every
 # generation). The final generation always runs every filter.
@@ -118,6 +124,11 @@ false_condition = 1  # FRETISH only: TLSF has no condition/response split
 weakening       = 3
 bloat           = 1
 vacuity         = 1
+# An interval above `generations` leaves only the forced final-generation pass,
+# and that pass does not screen the output: elites bypass the filters and
+# NSGA-II pools every parent unfiltered, so the drops are re-admitted. Measured
+# at 42.7% not-well-separated output against 44.1% with the filter off
+# entirely. Keep this at 1.
 well_separation = 1
 
 [runtime]

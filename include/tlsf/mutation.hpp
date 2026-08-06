@@ -29,10 +29,10 @@
 /// returned unchanged.
 ///
 /// With probability `cfg.p_add_assumption` the operator instead appends a new
-/// environment assumption to the ASSUME section (an unconditional `G F <input>`
-/// fairness property by default; a conditional `G(c -> F r)` over inputs ∪
-/// outputs when `cfg.allow_output_assumptions` is set — see tlsf_add_assumption
-/// in the .cpp).
+/// environment assumption to the ASSUME section (a conditional `G(c -> F r)`
+/// over inputs ∪ outputs when `cfg.allow_output_assumptions` is set, which is
+/// the default; an unconditional `G F <input>` fairness property with it off —
+/// see tlsf_add_assumption in the .cpp).
 tlsf::Specification tlsf_mutate(const tlsf::Specification& spec,
                                 const RandomSource& random_source,
                                 const Config& cfg);

@@ -146,11 +146,21 @@ Filters
 -------
 
 ``[filters]`` toggles the per-generation and final filters, and
-``[filters.intervals]`` sets how often each runs, in generations. All four
-default to 1 — every generation — and the final generation always runs every
-filter regardless of interval, so the returned population is never left
-un-deduplicated or un-weakened. Raising ``weakening``, the costliest of the
-four, is the usual first move when a run is too slow.
+``[filters.intervals]`` sets how often each runs, in generations. All six —
+``dedup``, ``false_condition``, ``weakening``, ``bloat``, ``vacuity`` and
+``well_separation`` — default to 1, every generation. The final generation
+runs every filter regardless of interval, but that covers what the final
+generation produces, not what the run returns: ``stage_restore_elites``
+appends the elites after the whole filter chain, and ``stage_select`` pools
+every parent unfiltered under NSGA-II, so rejected candidates are re-admitted.
+With ``well_separation`` set above the generation count, 42.7% of emitted
+repairs were not well-separated, against 44.1% with the filter off entirely.
+Raising an interval is also not reliably a saving, because a candidate dropped
+before the scoring stage costs no model-count and no synthesis query: running
+the well-separation filter every generation measured about 5% faster than not
+running it at all. ``weakening`` is the costliest of the six and the usual
+place to start when a run is too slow, but the saving is worth measuring
+rather than assuming.
 
 Runtime
 -------

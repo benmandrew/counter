@@ -66,11 +66,16 @@ struct Config {
     // decided on (assumptions) -> (guarantees), so replacing the guarantees
     // with false and finding (assumptions) -> false realizable means the system
     // has a strategy that breaks the assumptions on its own. Complementary to
-    // the vacuity check, but each test is a full ltlsynt query (run only when
-    // an assumption references an output atom), so off by default; the interval
-    // throttles it when enabled. A no-op for specs with no assumptions, which
-    // short-circuit before any solver call.
-    bool run_well_separation_filter = false;
+    // the vacuity check. Each test is a full ltlsynt query (run only when an
+    // assumption references an output atom), which is why this was off by
+    // default until the 2026-08-06 wellsep-timing campaign measured the cost:
+    // over 7200 TLSF runs, filtering every generation was 5% *faster* than not
+    // filtering, because a candidate dropped before scoring never costs a
+    // model-count or a synthesis query. It is the counterpart to
+    // allow_output_assumptions, which without it admits assumptions the system
+    // can defeat. A no-op for specs with no assumptions, which short-circuit
+    // before any solver call.
+    bool run_well_separation_filter = true;
     // Per-generation filters run only every Nth generation (1 = every
     // generation). The final generation always runs every filter, so the
     // resulting population is never left un-deduplicated/un-weakened.
@@ -82,6 +87,12 @@ struct Config {
     std::size_t weakening_filter_interval = 1;
     std::size_t bloat_filter_interval = 1;
     std::size_t vacuity_filter_interval = 1;
+    // Raising this above the generation count does not buy a cheap end-of-run
+    // screen. The forced final-generation pass runs, but its drops never reach
+    // the output: stage_restore_elites appends elites after the filter chain
+    // and stage_select pools every parent unfiltered, so the rejected
+    // specifications are re-admitted. Measured over 7200 runs at 42.7%
+    // not-well-separated output against 44.1% with the filter off outright.
     std::size_t well_separation_filter_interval = 1;
     std::chrono::milliseconds black_timeout{1000};
     // Per-call wall-clock budget for ltlsynt realizability checks. Unlike
@@ -145,12 +156,16 @@ struct Config {
     // than G(c -> F <input>) and so the more powerful repair, which is why the
     // unconditional form keeps the majority of the draw.
     double p_conditional_assumption = 0.25;
-    // When true, freshly added environment assumptions may reference output
-    // atoms as well as inputs; when false (the default) they stay input-only
-    // and so are well-separated by construction. Should be paired with
-    // run_well_separation_filter enabled, which prunes any not-well-separated
-    // assumption the wider draw produces.
-    bool allow_output_assumptions = false;
+    // When true (the default), environment assumptions may reference output
+    // atoms as well as inputs — both a freshly added assumption and a rewrite
+    // of an existing one, on the FRETISH and TLSF paths alike. Setting it false
+    // keeps every assumption input-only and so well-separated by construction,
+    // at the cost of the reactive-environment assumptions (`G(<output> -> F
+    // <input>)`) the wider draw can express. With it on, what keeps the system
+    // from writing itself an assumption it can force to fail is the
+    // well-separation filter rather than the syntactic ban, so pair it with
+    // run_well_separation_filter.
+    bool allow_output_assumptions = true;
     // Mutate assumption timings in the strengthening direction rather than the
     // weakening one. Weakening the overall assume-guarantee specification means
     // weakening a guarantee but strengthening an assumption, so weakening both

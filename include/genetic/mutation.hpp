@@ -80,7 +80,9 @@ Requirement mutate_requirement(const Requirement& requirement,
 
 /// Mutates a specification by picking one requirement at random and replacing
 /// it with a mutated version. The pool of atom names is taken from the
-/// specification's in_atoms and out_atoms.
+/// specification's in_atoms and out_atoms, except on the assumption side with
+/// `cfg.allow_output_assumptions` off, where it narrows to in_atoms so that no
+/// rewrite can give an assumption an output atom.
 ///
 /// @param specification The specification to mutate (must be non-empty)
 /// @param random_source Random source for index and mutation choices

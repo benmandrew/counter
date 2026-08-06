@@ -261,19 +261,22 @@ Formula mutate_propositional_parts(const Formula& formula,
 // Appends a new environment assumption to the ASSUME section. Strengthening the
 // environment this way is how the algorithm repairs unrealizability the
 // rewrite-only mutation cannot reach (e.g. the missing request-fairness of an
-// unrealizable GR(1) arbiter). By default the assumption is an unconditional
-// fairness property `G F <input>` (input negated on a coin flip), drawn from
-// the inputs only. With allow_output_assumptions the atom pool widens to inputs
+// unrealizable GR(1) arbiter). With allow_output_assumptions off the assumption
+// is an unconditional fairness property `G F <input>` (input negated on a coin
+// flip), drawn from the inputs only. Under the flag — which is the default —
+// the atom pool widens to inputs
 // ∪ outputs and a conditional form `G(c -> F r)` becomes reachable (guarded by
 // p_conditional_assumption), so the search can express reactive-environment
 // assumptions that reference outputs — e.g. `G(<output> -> F <input>)`, an
 // environment obligation conditioned on a system output. What then keeps the
 // system from writing itself an assumption it can force to fail (such as the
 // `G F <output>` the wider draw can also produce) is the well-separation
-// filter rather than the syntactic input-only ban — but only where that filter
-// is on: cfg.run_well_separation_filter defaults to false, so the replacement
-// is the caller's to arrange (PR #34). With allow_output_assumptions off the
-// draw is byte-for-byte identical to before.
+// filter rather than the syntactic input-only ban. The two defaults therefore
+// move together: cfg.run_well_separation_filter is on by default for exactly
+// this reason, and turning it off while leaving this flag on is the
+// false-positive configuration EXPERIMENTS.md records (found_repair 0.80 ->
+// 1.00 on repairs the filter would have rejected). With
+// allow_output_assumptions off the draw is byte-for-byte identical to before.
 tlsf::Specification tlsf_add_assumption(const tlsf::Specification& spec,
                                         const RandomSource& random_source,
                                         const Config& cfg) {

@@ -575,6 +575,7 @@ void test_add_assumption_condition_varies_over_inputs_and_true() {
     Config cfg;
     cfg.p_add_assumption = 1.0;
     cfg.p_conditional_assumption = 0.5;
+    cfg.allow_output_assumptions = false;
     std::vector<std::string> seen_conditions;
     for (std::size_t seed = 0; seed < 200; ++seed) {
         const Specification result =
@@ -631,9 +632,9 @@ void test_add_assumption_can_reference_output_when_allowed() {
            "can reference an output atom");
 }
 
-// The default keeps assumptions input-only: no output atom may enter an added
-// assumption, matching the pre-flag behaviour exactly.
-void test_add_assumption_never_references_output_by_default() {
+// With the flag off, assumptions stay input-only: no output atom may enter an
+// added assumption, matching the pre-flag behaviour exactly.
+void test_add_assumption_never_references_output_when_disallowed() {
     const Specification spec(
         {},
         {Requirement(Formula("a"), Formula("B"), timing::always(),
@@ -651,6 +652,117 @@ void test_add_assumption_never_references_output_by_default() {
                    ltl.find('D') == std::string::npos,
                "add-assumption: with the flag off an added assumption never "
                "references an output atom");
+    }
+}
+
+// Rewriting an *existing* assumption is held to the same pool rule as adding
+// one. With the flag off, neither the response rewrite nor the trigger rewrite
+// may pull an output atom ("B"/"D") into the environment side, which is the
+// route that used to bypass the flag entirely.
+void test_assumption_rewrite_never_references_output_when_disallowed() {
+    const Specification spec(
+        {Requirement(Formula("a"), Formula("c"), timing::always(),
+                     ConditionType::Trigger, /*weakenable=*/true)},
+        {Requirement(Formula("a"), Formula("B"), timing::always(),
+                     ConditionType::Trigger, /*weakenable=*/false)},
+        {"a", "c"}, {"B", "D"});
+    Config cfg;
+    cfg.allow_output_assumptions = false;
+    cfg.p_add_assumption = 0.0;
+    cfg.p_response = 1.0;
+    cfg.p_trigger = 1.0;
+    cfg.p_timing = 0.0;
+    for (std::size_t seed = 0; seed < 200; ++seed) {
+        const Specification result =
+            mutate_specification(spec, make_random_source_from_seed(seed), cfg);
+        const std::string ltl = result.m_assumptions.front().m_ltl;
+        expect(
+            ltl.find('B') == std::string::npos &&
+                ltl.find('D') == std::string::npos,
+            "assumption rewrite: with allow_output_assumptions off a rewrite "
+            "of an existing assumption must not introduce an output atom");
+    }
+}
+
+// The flag on (the default) restores the wider pool for the rewrite as well as
+// the add, so an existing assumption can acquire an output atom.
+void test_assumption_rewrite_can_reference_output_when_allowed() {
+    const Specification spec(
+        {Requirement(Formula("a"), Formula("c"), timing::always(),
+                     ConditionType::Trigger, /*weakenable=*/true)},
+        {Requirement(Formula("a"), Formula("B"), timing::always(),
+                     ConditionType::Trigger, /*weakenable=*/false)},
+        {"a", "c"}, {"B", "D"});
+    Config cfg;
+    cfg.allow_output_assumptions = true;
+    cfg.p_add_assumption = 0.0;
+    cfg.p_response = 1.0;
+    cfg.p_trigger = 1.0;
+    cfg.p_timing = 0.0;
+    bool saw_output = false;
+    for (std::size_t seed = 0; seed < 200 && !saw_output; ++seed) {
+        const Specification result =
+            mutate_specification(spec, make_random_source_from_seed(seed), cfg);
+        const std::string ltl = result.m_assumptions.front().m_ltl;
+        saw_output = ltl.find('B') != std::string::npos ||
+                     ltl.find('D') != std::string::npos;
+    }
+    expect(saw_output,
+           "assumption rewrite: with allow_output_assumptions on a rewrite of "
+           "an existing assumption can introduce an output atom");
+}
+
+// Restricting the assumption side must not touch the guarantee side, which
+// draws from inputs union outputs whatever the flag says.
+void test_guarantee_rewrite_keeps_outputs_when_assumptions_restricted() {
+    const Specification spec(
+        {Requirement(Formula("a"), Formula("c"), timing::always(),
+                     ConditionType::Trigger, /*weakenable=*/false)},
+        {Requirement(Formula("a"), Formula("c"), timing::always(),
+                     ConditionType::Trigger, /*weakenable=*/true)},
+        {"a", "c"}, {"B", "D"});
+    Config cfg;
+    cfg.allow_output_assumptions = false;
+    cfg.p_add_assumption = 0.0;
+    cfg.p_response = 1.0;
+    cfg.p_trigger = 0.0;
+    cfg.p_timing = 0.0;
+    bool saw_output = false;
+    for (std::size_t seed = 0; seed < 200 && !saw_output; ++seed) {
+        const Specification result =
+            mutate_specification(spec, make_random_source_from_seed(seed), cfg);
+        const std::string ltl = result.m_guarantees.front().m_ltl;
+        saw_output = ltl.find('B') != std::string::npos ||
+                     ltl.find('D') != std::string::npos;
+    }
+    expect(saw_output,
+           "guarantee rewrite: the assumption-side restriction must leave the "
+           "guarantee pool at inputs union outputs");
+}
+
+// The second route into an assumption is the condition_atoms fallback, which
+// widens to the full pool when the specification declares no inputs. With the
+// flag off there is then no legal atom to draw, so the mutation is a no-op
+// rather than an output-atom leak.
+void test_assumption_rewrite_without_inputs_is_noop_when_disallowed() {
+    const Specification spec(
+        {Requirement(Formula("B"), Formula("D"), timing::always(),
+                     ConditionType::Trigger, /*weakenable=*/true)},
+        {Requirement(Formula("B"), Formula("D"), timing::next_timepoint(),
+                     ConditionType::Trigger, /*weakenable=*/false)},
+        {}, {"B", "D"});
+    Config cfg;
+    cfg.allow_output_assumptions = false;
+    cfg.p_add_assumption = 0.0;
+    cfg.p_response = 1.0;
+    cfg.p_trigger = 1.0;
+    cfg.p_timing = 1.0;
+    for (std::size_t seed = 0; seed < 50; ++seed) {
+        const Specification result =
+            mutate_specification(spec, make_random_source_from_seed(seed), cfg);
+        expect(result.m_assumptions == spec.m_assumptions,
+               "assumption rewrite: with no inputs and the flag off the "
+               "assumption side has no drawable atom, so mutation is a no-op");
     }
 }
 
@@ -699,6 +811,10 @@ void run_mutation_tests() {
     test_add_assumption_appends_environment_assumption();
     test_add_assumption_condition_varies_over_inputs_and_true();
     test_add_assumption_can_reference_output_when_allowed();
-    test_add_assumption_never_references_output_by_default();
+    test_add_assumption_never_references_output_when_disallowed();
+    test_assumption_rewrite_never_references_output_when_disallowed();
+    test_assumption_rewrite_can_reference_output_when_allowed();
+    test_guarantee_rewrite_keeps_outputs_when_assumptions_restricted();
+    test_assumption_rewrite_without_inputs_is_noop_when_disallowed();
     test_add_assumption_disabled_by_zero_probability();
 }

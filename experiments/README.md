@@ -46,6 +46,23 @@ campaign was invariant. Pre-rescore snapshots are kept as
 `*.pre-final-ideals.bak.csv`. Per-machine pre-merge CSVs are kept as
 `av2-*`/`av3-*` (or `av2.*`/`av3.*`).
 
+## Config vintage
+
+`gen_configs.py` writes a key only when a sweep overrides it, so an archived
+config states a fraction of the settings its campaign ran under and inherits
+the rest from the binary. That makes a changed C++ default a silent change to
+what an archived config means. Two such changes have happened, both in the
+commit that closed `2026-08-06-wellsep-timing`: `allow_output_assumptions` and
+`run_well_separation` each defaulted to `false` for every campaign archived
+here and now default to `true`. Re-running an archived config therefore needs
+both keys written in as `false` explicitly. Without the first, the run admits
+output atoms into assumptions where the campaign did not; without the second it
+also drops the candidates that draw produces, so the two omissions do not
+cancel — they compound into a search neither the old nor the new default
+describes. The arms that set the keys themselves (the wellsep and ablation
+factorials, and wellsep-timing's own three levels) are unaffected, since they
+state them either way.
+
 ## Commit attribution
 
 Every campaign directory carries a `PROVENANCE.json`. For campaigns closed

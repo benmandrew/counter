@@ -115,12 +115,16 @@ DEFAULTS: dict = {
     "metric": "direct",
     "run_weakening": True,
     "run_implication": True,
-    # Well-separation filter and output-atom assumptions (PR #34). Both off by
-    # default and emitted into the TOML only when a sweep overrides them (see
-    # make_toml), so every existing grid stays byte-identical; the wellsep sweep
-    # (W) crosses them as a 2x2.
-    "run_well_separation": False,
-    "allow_output_assumptions": False,
+    # Well-separation filter and output-atom assumptions (PR #34). Both now
+    # default on in the binary, and both are emitted into the TOML only when a
+    # sweep overrides them (see make_toml), so every existing grid stays
+    # byte-identical; the wellsep sweep (W) crosses them as a 2x2. These entries
+    # mirror the binary rather than drive it -- a grid that does not override
+    # them emits no key and takes whatever the binary defaults to at run time,
+    # which is why re-running an archived config does not reproduce it. See
+    # "Config vintage" in experiments/README.md.
+    "run_well_separation": True,
+    "allow_output_assumptions": True,
     # How often the well-separation filter runs, in generations (config.hpp
     # default 1 = every generation). Emitted into [filters.intervals] only when a
     # sweep overrides it (see make_toml), so every existing grid stays

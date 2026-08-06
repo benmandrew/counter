@@ -63,6 +63,24 @@ describes. The arms that set the keys themselves (the wellsep and ablation
 factorials, and wellsep-timing's own three levels) are unaffected, since they
 state them either way.
 
+A third change is sharper than a shifted default, because it stops an archived
+config from running at all. On 2026-08-06 the two NSGA-II selection schemes were
+renamed: `nsga2` became `nsga2-truncate` and `nsga2-replicate` became
+`nsga2-apportion`. The old spellings are **rejected**, not aliased, so every
+config archived here — all of which pin one of them — fails against a current
+binary with an error naming the replacement. This is deliberate. Reproducing a
+campaign means building the commit its `PROVENANCE.json` names and running the
+vendored `scripts/` beside it, not editing the archived config to suit a newer
+binary; a config edited to run under today's defaults is no longer the record of
+what ran.
+
+The archived **results** are unaffected and stay readable. Their `selection`
+column still says `nsga2`, and `canonical_scheme()` in `run_experiments.py` and
+`merge_experiments.py` maps that onto `nsga2-truncate` wherever the column is
+read, so archived rows still join new ones for resume, merge and cross-campaign
+comparison. Nothing under `experiments/` was rewritten to match the new names,
+and nothing should be: the column records the name the campaign ran under.
+
 ## Commit attribution
 
 Every campaign directory carries a `PROVENANCE.json`. For campaigns closed

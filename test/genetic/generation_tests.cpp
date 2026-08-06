@@ -400,7 +400,7 @@ void test_evolve_generation_nsga2_truncate_produces_target_size() {
            "target_size survivors");
 }
 
-void test_evolve_generation_nsga2_truncate_preserves_pareto_front_without_elitism() {
+void test_evolve_generation_nsga2_truncate_preserves_front_no_elitism() {
     Config cfg = nsga2_truncate_config();
     cfg.crossover_rate = 0.0;
     cfg.mutation_rate = 0.0;
@@ -688,7 +688,7 @@ void run_generation_tests() {
     test_evolve_generation_selects_parents_before_offspring_filtering();
     test_evolve_generation_elitism_preserves_best_through_filter();
     test_evolve_generation_nsga2_truncate_produces_target_size();
-    test_evolve_generation_nsga2_truncate_preserves_pareto_front_without_elitism();
+    test_evolve_generation_nsga2_truncate_preserves_front_no_elitism();
     test_evolve_generation_nsga2_truncate_is_deterministic();
     test_dedup_by_specification_keeps_first_occurrence_in_order();
     test_dedup_by_specification_all_distinct_is_identity();

@@ -92,6 +92,27 @@ of `well_separation`, so it cannot be regenerated at all and its archive is the
 only record. Retire the sweep and profile when their key goes; a generator that
 emits a key the binary warns on is worse than an absent one.
 
+Retiring a key's *value* lands in the same place. The selection schemes were
+renamed on 2026-08-06 — `nsga2` to `nsga2-truncate`, `nsga2-replicate` to
+`nsga2-apportion` — and the old spellings are rejected rather than aliased, by
+name and with a message saying what to do. Every archived campaign config sets
+one of them, so none of them runs against a current binary; reproduce those at
+the commit their `PROVENANCE.json` names, which is what the vendored
+per-campaign `scripts/` exists for.
+
+Archived *results* are the separate half, and the one that needed work.
+`gen_configs.py` turns the scheme name into a config directory name,
+`scheme_of()` in `run_experiments.py` reads it back into the `selection` column
+of every results CSV, and that column joins `KEY_FIELDS` in
+`merge_experiments.py` — so renaming what the harness emits would have made all
+224,861 archived rows reading `nsga2` miss their resume key and re-run finished
+campaigns. `canonical_scheme()` in both scripts maps the retired spellings onto
+the new ones wherever a `selection` value is read back, which is what keeps
+resume and merge joining those rows. The scheme itself never changed, only its
+name, so the mapping is an identity on behaviour. Renaming any other factor
+directory means adding to that mapping in the same way; leaving it out is
+silent, and shows up as a finished campaign re-running from zero.
+
 ## Docs
 
 Every header file in `include/` must have a corresponding `.rst` page under `docs/api/` and be listed in `docs/index.rst`. When adding a new header, add the page and toctree entry before committing. The site covers `include/` alone: implementation detail under `src/` is deliberately not published.

@@ -19,6 +19,32 @@
 
 namespace {
 
+/// Names the replacement for a selection_scheme spelling retired by the
+/// 2026-08-06 rename, as a clause to fold into the error, or "" for any other
+/// value. The retired spellings are matched here rather than as another
+/// `*val == "..."` arm of the chain below, where both a reader and
+/// scripts/check_config_schema.py take a comparison to mean the parser accepts
+/// the value -- these are rejected, and the schema's enum must not list them.
+///
+/// Rejected rather than aliased: every archived campaign config pins one of
+/// them, so each fails against a current binary, deliberately. Reproduce those
+/// at the commit their PROVENANCE.json names, which is what the vendored
+/// per-campaign scripts/ exists for. Archived *results* are the separate half
+/// and still join, via canonical_scheme() in the harness scripts.
+std::string retired_scheme_hint(const std::string& value) {
+    std::string replacement;
+    if (value == "nsga2") {
+        replacement = "nsga2-truncate";
+    } else if (value == "nsga2-replicate") {
+        replacement = "nsga2-apportion";
+    } else {
+        return "";
+    }
+    return "= \"" + value + "\" was renamed on 2026-08-06 to \"" + replacement +
+           "\"; to reproduce an archived campaign, build the commit its "
+           "PROVENANCE.json names rather than editing its config. It ";
+}
+
 template <typename T>
 T require_positive(T value, const char* name) {
     if (value <= T{0}) {
@@ -148,25 +174,18 @@ void apply_genetic(const toml::table& tbl, Config& cfg) {
         cfg.mutation_rate = *val;
     }
     if (auto val = tbl["selection_scheme"].value<std::string>()) {
-        // "nsga2" and "nsga2-replicate" are the schemes' original spellings.
-        // They are permanent aliases, not a deprecation: the experiment harness
-        // turns these strings into config directory names, which reach the
-        // `selection` column of every results CSV and join archived rows on it.
-        // Renaming what the harness emits would make a quarter of a million
-        // archived rows miss their key, so the old spellings stay accepted
-        // without a warning and with no removal planned.
         if (*val == "weighted") {
             cfg.selection_scheme = SelectionScheme::WeightedAverage;
-        } else if (*val == "nsga2-truncate" || *val == "nsga2") {
+        } else if (*val == "nsga2-truncate") {
             cfg.selection_scheme = SelectionScheme::Nsga2Truncate;
-        } else if (*val == "nsga2-apportion" || *val == "nsga2-replicate") {
+        } else if (*val == "nsga2-apportion") {
             cfg.selection_scheme = SelectionScheme::Nsga2Apportion;
         } else {
             throw std::runtime_error(
-                "config: genetic.selection_scheme must be \"weighted\", "
-                "\"nsga2-truncate\", or \"nsga2-apportion\" (the older "
-                "\"nsga2\" and \"nsga2-replicate\" spellings are still "
-                "accepted)");
+                "config: genetic.selection_scheme " +
+                retired_scheme_hint(*val) +
+                "must be \"weighted\", \"nsga2-truncate\", or "
+                "\"nsga2-apportion\"");
         }
     }
     // Elites are a subset of the selected parents, so elitism must be strictly

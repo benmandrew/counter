@@ -209,23 +209,35 @@ void test_config_io_selection_scheme_nsga2_apportion_parsed() {
            "parsed");
 }
 
-// The two original spellings are permanent aliases -- the experiment harness
-// emits them as directory names that key its archived results -- so a run
-// keyed on either must keep landing on the same scheme.
-void test_config_io_selection_scheme_legacy_nsga2_alias_parsed() {
-    const Config cfg =
-        config_from_toml_string("[genetic]\nselection_scheme = \"nsga2\"\n");
-    expect(cfg.selection_scheme == SelectionScheme::Nsga2Truncate,
-           "config_io: the legacy \"nsga2\" spelling should still parse as "
-           "Nsga2Truncate");
+// The two original spellings are rejected rather than aliased, and rejected by
+// name: an archived config that sets one must fail loudly and say what to do,
+// not run silently under a scheme this binary no longer calls by that name.
+void expect_retired_spelling_rejected(const std::string& spelling) {
+    bool threw = false;
+    try {
+        config_from_toml_string("[genetic]\nselection_scheme = \"" + spelling +
+                                "\"\n");
+    } catch (const std::exception& exc) {
+        threw = true;
+        const std::string msg(exc.what());
+        expect(msg.find(spelling) != std::string::npos,
+               "config_io: the error should quote the retired spelling " +
+                   spelling);
+        expect(msg.find("PROVENANCE.json") != std::string::npos,
+               "config_io: the error should say how to reproduce an archived "
+               "campaign that sets " +
+                   spelling);
+    }
+    expect(threw, "config_io: the retired spelling " + spelling +
+                      " should be rejected, not aliased");
 }
 
-void test_config_io_selection_scheme_legacy_replicate_alias_parsed() {
-    const Config cfg = config_from_toml_string(
-        "[genetic]\nselection_scheme = \"nsga2-replicate\"\n");
-    expect(cfg.selection_scheme == SelectionScheme::Nsga2Apportion,
-           "config_io: the legacy \"nsga2-replicate\" spelling should still "
-           "parse as Nsga2Apportion");
+void test_config_io_selection_scheme_retired_nsga2_rejected() {
+    expect_retired_spelling_rejected("nsga2");
+}
+
+void test_config_io_selection_scheme_retired_replicate_rejected() {
+    expect_retired_spelling_rejected("nsga2-replicate");
 }
 
 void test_config_io_selection_scheme_invalid_throws() {
@@ -471,8 +483,8 @@ void run_config_io_tests() {
     test_config_io_selection_scheme_weighted_parsed();
     test_config_io_selection_scheme_nsga2_truncate_parsed();
     test_config_io_selection_scheme_nsga2_apportion_parsed();
-    test_config_io_selection_scheme_legacy_nsga2_alias_parsed();
-    test_config_io_selection_scheme_legacy_replicate_alias_parsed();
+    test_config_io_selection_scheme_retired_nsga2_rejected();
+    test_config_io_selection_scheme_retired_replicate_rejected();
     test_config_io_selection_scheme_invalid_throws();
     test_config_io_similarity_metric_defaults_to_logarithmic();
     test_config_io_similarity_metric_direct_parsed();

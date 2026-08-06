@@ -89,6 +89,16 @@ Selection scheme
 ----------------
 
 ``genetic.selection_scheme`` decides how those four components drive selection.
+The two NSGA-II schemes rank identically and are named for the survivor step,
+the only thing that differs between them.
+
+.. note::
+
+   These were spelled ``nsga2`` and ``nsga2-replicate`` before 2026-08-06. Both
+   spellings are now **rejected** rather than accepted as aliases, so a config
+   setting one fails with an error naming its replacement. To reproduce an
+   archived campaign, build the commit its ``PROVENANCE.json`` records rather
+   than rewriting its config.
 
 **nsga2-truncate** (default) treats them as separate objectives and ranks
 candidates by *Non-dominated Sorting Genetic Algorithm II*

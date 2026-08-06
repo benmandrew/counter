@@ -11,7 +11,7 @@ which makes selection_scheme a factor of the design rather than a constant.
 
 Usage:
     python scripts/gen_configs.py                       # the standard grid
-    python scripts/gen_configs.py --schemes nsga2       # one scheme only
+    python scripts/gen_configs.py --schemes nsga2-truncate   # one scheme only
     python scripts/gen_configs.py --sweeps C D E        # specific sweeps
     python scripts/gen_configs.py --sweeps C --levels default,no-halstead
                                                         # specific levels only
@@ -29,20 +29,23 @@ CONFIGS_DIR = Path(__file__).parent.parent / "experiments" / "configs"
 
 # Selection schemes the whole grid is duplicated across. Every generated config
 # pins the scheme explicitly rather than relying on the config.hpp default,
-# which is "nsga2". nsga2-replicate is appended rather than
-# ordered next to nsga2 so the first two entries keep the positions the earlier
+# which is "nsga2-truncate". nsga2-apportion is appended rather than ordered
+# next to nsga2-truncate so the first two entries keep the positions the earlier
 # grids were generated under.
 #
-# These strings are frozen data identifiers, not config spellings. Each becomes
-# a config *directory* name, scheme_of() in run_experiments.py reads that name
-# back into the `selection` column of every results CSV, and that column joins
-# KEY_FIELDS in merge_experiments.py -- the natural key for resume and merge.
-# A quarter of a million archived rows carry these values, so renaming them here
-# would make every one of them miss its key and re-run a finished campaign. The
-# config file's spelling has since moved on to "nsga2-truncate" and
-# "nsga2-apportion"; nothing breaks, because config_io.cpp keeps "nsga2" and
-# "nsga2-replicate" as permanent aliases for exactly this reason.
-SCHEMES: list[str] = ["nsga2", "weighted", "nsga2-replicate"]
+# The two NSGA-II schemes were renamed: "nsga2" -> "nsga2-truncate" and
+# "nsga2-replicate" -> "nsga2-apportion". That is a hard break rather than a
+# deprecation -- config_io.cpp rejects the old spellings, so a config emitted
+# under them does not run at all. Each string here is also a config *directory*
+# name: scheme_of() in run_experiments.py reads it back into the `selection`
+# column of every results CSV, and that column joins KEY_FIELDS in
+# merge_experiments.py -- the natural key for resume and merge. Roughly a
+# quarter of a million archived rows were written under the old names, so the
+# rename would make every one of them miss its key and re-run a finished
+# campaign. SCHEME_ALIASES / canonical_scheme() in run_experiments.py and
+# merge_experiments.py close that gap by canonicalising every `selection` value
+# read back; nothing else here may depend on the old spellings.
+SCHEMES: list[str] = ["nsga2-truncate", "weighted", "nsga2-apportion"]
 
 # run_weakening as a crossed factor: each (scheme, sweep, level) is emitted once
 # per weakening state into its own <scheme>/<wkon|wkoff>/ directory. The state
@@ -100,7 +103,7 @@ REPAIRS: dict[str, list[tuple[str, str]]] = {
 DEFAULTS: dict = {
     "generations": 10,
     "population_size": 200,
-    "selection_scheme": "nsga2",
+    "selection_scheme": "nsga2-truncate",
     "crossover_rate": 0.1,
     "mutation_rate": 1.0,
     # Fraction of the population carried over verbatim, mirroring config.hpp.
@@ -644,8 +647,9 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--tlsf", action="store_true",
                         help="Emit the TLSF campaign grid: a coarse "
                              "generations x population cross (sweeps A, B) for "
-                             "nsga2 only, into configs-tlsf. Unless overridden, "
-                             "sets --schemes nsga2 and --out-dir configs-tlsf")
+                             "nsga2-truncate only, into configs-tlsf. Unless "
+                             "overridden, sets --schemes nsga2-truncate and "
+                             "--out-dir configs-tlsf")
     parser.add_argument("--max-realizability", type=int, default=None,
                         metavar="N",
                         help="Cap concurrent ltlsynt processes "
@@ -704,7 +708,7 @@ def main() -> None:
     if args.tlsf:
         sweep_table = TLSF_SWEEPS
         if schemes == SCHEMES:
-            schemes = ["nsga2"]
+            schemes = ["nsga2-truncate"]
         if out_dir == CONFIGS_DIR:
             out_dir = TLSF_CONFIGS_DIR
         if max_realizability is None:

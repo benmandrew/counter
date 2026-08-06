@@ -578,11 +578,9 @@ PROFILES: dict[str, dict] = {
         # Sized from a measured 181 job-seconds per seed per arm over these 16
         # specs (4 concurrent runs, parallel = 8, the campaign's own geometry),
         # so 543 per seed across three arms. Two 32-core hosts at 4 jobs give
-        # 172800 job-seconds in six hours, and 150 seeds spends 81450 of them,
-        # a little under half. The margin is not slack: the calibration timed
-        # `counter` alone, and every run also pays a `compare` pass per repair
-        # per ideal for implies_ideal, which is uncounted here.
-        # Deliberately under-sized: run_experiments resumes on
+        # 172800 job-seconds in six hours; 150 seeds spends about 65% of that,
+        # and the rest absorbs the compare/implies_ideal work the calibration
+        # did not include. Deliberately under-sized: run_experiments resumes on
         # (sweep, level_name, selection, weakening, metric, repair_mode, spec,
         # seed), so extending the range later costs only the new cells, whereas
         # over-sizing ends the window with arms unbalanced and breaks pairing.

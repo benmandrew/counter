@@ -9,9 +9,11 @@
 
 #include "config.hpp"
 #include "genetic/random_source.hpp"
+#include "runner/black.hpp"
 #include "runner/spot.hpp"
 #include "test_suite.hpp"
 #include "test_support.hpp"
+#include "tlsf/filter.hpp"
 #include "tlsf/parser.hpp"
 #include "tlsf/pipeline.hpp"
 #include "tlsf/specification.hpp"
@@ -163,6 +165,12 @@ void test_muc_repair_end_to_end() {
     cfg.parallel = 1;
     cfg.default_model_counting_bound = 3;
     cfg.repair_mode = RepairMode::Muc;
+    // This test is about the MUC loop converging to a realizable output, and
+    // the repair it converges to at seed 0 is not a logical weakening -- see
+    // test_weakening_screen_rejects_non_weakening below, which pins exactly
+    // that. Leaving the screen on here would assert two things at once and
+    // fail on the second.
+    cfg.run_weakening_filter = false;
 
     const RandomSource random_source = make_random_source_from_seed(0);
     const int status =
@@ -188,10 +196,73 @@ void test_muc_repair_end_to_end() {
     std::filesystem::remove_all(dir, err_code);
 }
 
+// Realizable is not the same as repaired. The MUC repair of the arbiter above
+// reaches realizability by deleting the mutex guarantee G !(g0 & g1) and adding
+// G(g1) -- so it forbids behaviour the original allowed, and the original does
+// not imply it. The final weakening screen must reject it.
+//
+// Unlike the FRETISH assume-guarantee decomposition, tlsf_spec_implies is an
+// exact whole-formula query, so a rejection here is a fact about the two specs
+// rather than an artefact of how the check decomposes them.
+void test_weakening_screen_rejects_non_weakening() {
+    const std::filesystem::path dir =
+        std::filesystem::temp_directory_path() /
+        ("tlsf_weakening_test_" +
+         std::to_string(std::hash<std::string>{}(std::string(k_unrealizable))));
+    std::error_code err_code;
+    std::filesystem::remove_all(dir, err_code);
+    expect(std::filesystem::create_directories(dir, err_code),
+           "weakening: temp directory is created");
+
+    const std::filesystem::path input_path = dir / "spec.tlsf";
+    {
+        std::ofstream input(input_path);
+        input << k_unrealizable;
+    }
+
+    Config cfg;
+    cfg.generations = 5;
+    cfg.population_size = 50;
+    cfg.parallel = 1;
+    cfg.default_model_counting_bound = 3;
+    cfg.repair_mode = RepairMode::Muc;
+    cfg.run_weakening_filter = true;
+
+    const RandomSource random_source = make_random_source_from_seed(0);
+    const int status =
+        tlsf::run_repair(input_path.string(), dir.string(), cfg, random_source);
+    expect(status == 0, "weakening: run_repair returns 0");
+
+    const tlsf::Specification original = tlsf::parse(k_unrealizable);
+    std::size_t n_repairs = 0;
+    for (const auto& entry : std::filesystem::directory_iterator(dir)) {
+        if (entry.path().extension() != ".tlsf" ||
+            entry.path().filename() == "spec.tlsf") {
+            continue;
+        }
+        std::ifstream repair(entry.path());
+        std::ostringstream contents;
+        contents << repair.rdbuf();
+        const tlsf::Specification spec = tlsf::parse(contents.str());
+        // Whatever survives the screen must be a genuine weakening. A timed-out
+        // check keeps the candidate, so accept nullopt as well.
+        expect(
+            tlsf_spec_implies(original, spec, global_sat_checker())
+                .value_or(true),
+            "weakening: every written TLSF repair is implied by the original");
+        ++n_repairs;
+    }
+    expect(n_repairs == 0,
+           "weakening: the screen rejects this fixture's non-weakening repair");
+
+    std::filesystem::remove_all(dir, err_code);
+}
+
 }  // namespace
 
 void run_tlsf_pipeline_tests() {
     test_arbiter_realizability();
     test_muc_repair_end_to_end();
+    test_weakening_screen_rejects_non_weakening();
     test_run_repair_end_to_end();
 }

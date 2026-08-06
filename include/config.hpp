@@ -49,11 +49,26 @@ struct Config {
     double fitness_weight_semantic = 0.5;
     double fitness_weight_halstead = 0.1;
     double fitness_weight_status = 0.5;
-    double syntactic_weight_trigger = 1.0;
-    double syntactic_weight_response = 1.0;
-    double syntactic_weight_timing = 1.0;
     std::size_t default_model_counting_bound = 20;
     SimilarityMetric similarity_metric = SimilarityMetric::Logarithmic;
+    // Keep only repairs the original logically implies -- genuine weakenings.
+    // A *final* screen, not a per-generation filter: pruning non-weakenings
+    // mid-search measurably costs repair quality and never gains it (over the
+    // 9,796 paired runs of the cj-large campaign it lost 1,005 and won 410,
+    // costing 20 points of implies-ideal on fsm), whereas screening the final
+    // population leaves the search bit-identical. On by default, since it is
+    // the only check that a written repair does not forbid behaviour the
+    // original allowed.
+    //
+    // Applies on both paths, but the check behind it differs in strength. The
+    // FRETISH spec_implies is an assume-guarantee decomposition that pairs each
+    // requirement against a single counterpart, and so under-detects: it can
+    // reject a genuine weakening that only holds via several requirements
+    // together. The TLSF tlsf_spec_implies lowers the whole specification to
+    // one LTL formula and is exact, so a rejection there is a fact about the
+    // two specs. Expect the TLSF screen to reject more, and to be right when
+    // it does -- mutation can delete a safety guarantee and add a stronger one,
+    // reaching realizability without weakening anything.
     bool run_weakening_filter = true;
     bool run_implication_filter = true;
     // Drop candidates whose assumptions are jointly unsatisfiable: they are
@@ -67,22 +82,9 @@ struct Config {
     // with false and finding (assumptions) -> false realizable means the system
     // has a strategy that breaks the assumptions on its own. Complementary to
     // the vacuity check, but each test is a full ltlsynt query (run only when
-    // an assumption references an output atom), so off by default; the interval
-    // throttles it when enabled. A no-op for specs with no assumptions, which
-    // short-circuit before any solver call.
+    // an assumption references an output atom), so off by default. A no-op for
+    // specs with no assumptions, which short-circuit before any solver call.
     bool run_well_separation_filter = false;
-    // Per-generation filters run only every Nth generation (1 = every
-    // generation). The final generation always runs every filter, so the
-    // resulting population is never left un-deduplicated/un-weakened.
-    std::size_t dedup_filter_interval = 1;
-    // FRETISH only. The false-condition filter is syntactic -- it rejects a
-    // requirement whose trigger is the literal `false` -- and a
-    // tlsf::Specification has no condition/response split to carry one.
-    std::size_t false_condition_filter_interval = 1;
-    std::size_t weakening_filter_interval = 1;
-    std::size_t bloat_filter_interval = 1;
-    std::size_t vacuity_filter_interval = 1;
-    std::size_t well_separation_filter_interval = 1;
     std::chrono::milliseconds black_timeout{1000};
     // Per-call wall-clock budget for ltlsynt realizability checks. Unlike
     // black, ltlsynt has no internal timeout, and the genetic search
@@ -111,8 +113,10 @@ struct Config {
     // abandoning it drops the individual against max_scoring_failure_rate.
     std::chrono::milliseconds ganak_timeout{0};
     // When true, print the CPU-attribution report (your code vs. the external
-    // CLI tools, via getrusage + per-tool wait4). Opt-in: off leaves output
-    // identical to before.
+    // CLI tools, via getrusage + per-tool wait4). Set by `counter --cpu-report`
+    // alone; deliberately not a TOML key, because it asks a question about one
+    // interactive run rather than about the search, exactly as COUNTER_PROFILE
+    // does for the scope profiler.
     bool report_cpu_timing = false;
     // When true, stream per-stage and per-generation progress to
     // <output-dir>/progress.jsonl and copy the dashboard page beside it. Opt-in
@@ -157,14 +161,12 @@ struct Config {
     // makes every assumption mutation a move away from a repair. Retained as a
     // flag only so the two directions can be crossed as an experiment factor.
     bool strengthen_assumptions = true;
-    // TLSF-mode mutation: relative weights for selecting an assumption-side
-    // section (INITIALLY/REQUIRE/ASSUME) versus a guarantee-side section
-    // (PRESET/ASSERT/GUARANTEE) when mutating a tlsf::Specification. Normalised
-    // by their sum rather than read as independent thresholds, so a pair that
-    // does not add to 1 still means what it says; both zero selects the
-    // guarantee side. The conventional pair summing to 1 normalises to itself.
+    // TLSF-mode mutation: probability of mutating an assumption-side section
+    // (INITIALLY/REQUIRE/ASSUME) rather than a guarantee-side one
+    // (PRESET/ASSERT/GUARANTEE) when mutating a tlsf::Specification. The
+    // guarantee side takes the complement. This was once a pair of weights
+    // normalised by their sum, which spent two keys on one degree of freedom.
     double tlsf_p_assumption = 0.3;
-    double tlsf_p_guarantee = 0.7;
     // TLSF-mode mutation: once a section formula has been chosen for rewriting,
     // the probability of applying the temporal-structure mutation (which may
     // insert, drop, or swap X/F/G/U/R/W operators, following Brizzio et al.)

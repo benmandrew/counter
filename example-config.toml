@@ -1,21 +1,28 @@
 #:schema ./schemas/config-schema.json
 # counter configuration file
 # All sections and keys are optional; absent keys use the built-in defaults.
+# Every value shown below IS that default, so copying this file whole changes
+# nothing. scripts/check_config_schema.py enforces that against config.hpp as
+# part of the lint target -- a default may not drift from this template.
 
 [genetic]
-generations     = 10    # number of evolution rounds
-population_size = 1000  # candidates per generation
-selection_rate  = 0.5   # fraction of population selected as parents each generation
-elitism_rate    = 0.1   # fraction carried over verbatim each generation (must be < selection_rate)
-crossover_rate  = 0.1   # probability of crossover between parents
-mutation_rate   = 0.8   # probability of mutating an offspring
+generations     = 10   # number of evolution rounds
+population_size = 200  # candidates per generation
+selection_rate  = 0.5  # fraction of population selected as parents each generation
+elitism_rate    = 0.1  # fraction carried over verbatim each generation (must be < selection_rate)
+crossover_rate  = 0.1  # probability of crossover between parents
+mutation_rate   = 1.0  # probability of mutating an offspring
 # Selection scheme:
 #   "nsga2" (default) ranks by Pareto non-domination and crowding distance over
 #     the individual components, searching for the Pareto front of repairs
 #     rather than one weighted compromise. The [fitness] weights only select
-#     which components are active (weight > 0); they no longer bias selection.
+#     which components are active (weight > 0); they no longer bias selection,
+#     though they still order the final written repairs.
 #     NSGA-II's (mu+lambda) survivor pooling is already elitist, so
 #     elitism_rate = 0 is the natural setting.
+#   "nsga2-replicate" ranks identically, but deduplicates the pool before
+#     sorting and replicates the distinct survivors back up to
+#     population_size, apportioning copies by 1 / (1 + rank).
 #   "weighted" ranks candidates by the single weighted-average of the fitness
 #     components (the [fitness] weights below). It converges prematurely: over a
 #     50k-run parameter sweep the generation count made no difference to its
@@ -25,20 +32,15 @@ mutation_rate   = 0.8   # probability of mutating an offspring
 selection_scheme = "nsga2"
 
 [fitness]
-weight_syntactic = 0.33  # syntactic similarity component weight
-weight_semantic  = 0.33  # semantic similarity (model counting) component weight
-weight_halstead  = 0.1   # Halstead complexity penalty weight
-weight_status    = 0.33  # realizability status weight
-
-[syntactic]
-weight_trigger  = 1.0   # contribution of trigger formula similarity
-weight_response = 1.0   # contribution of response formula similarity
-weight_timing   = 1.0   # contribution of timing constraint similarity
+weight_syntactic = 0.2  # syntactic similarity component weight
+weight_semantic  = 0.5  # semantic similarity (model counting) component weight
+weight_halstead  = 0.1  # Halstead complexity penalty weight
+weight_status    = 0.5  # realizability status weight
 
 [mutation]
 p_trigger  = 0.5    # per-requirement probability of mutating the trigger
-p_response = 0.1    # per-requirement probability of mutating the response
-p_timing   = 0.1    # per-requirement probability of mutating the timing
+p_response = 0.5    # per-requirement probability of mutating the response
+p_timing   = 0.15   # per-requirement probability of mutating the timing
 # Shared by both modes: probability that a mutation instead appends a new
 # environment assumption (a fairness assumption over an input) rather than
 # rewriting an existing requirement/formula. Enables repairs that require
@@ -66,7 +68,7 @@ allow_output_assumptions = false
 # Applies only in TLSF mode (a .tlsf input or --format tlsf).
 # Repair strategy:
 #   "monolithic" (default) evolves the whole specification at once.
-#   "muc" repairs iteratively — extract a minimal unrealizable core, evolve only
+#   "muc" repairs iteratively -- extract a minimal unrealizable core, evolve only
 #   that sub-specification, reintegrate the repaired core with the untouched
 #   non-core guarantees, and repeat until the whole spec is realizable. Focuses
 #   the search (and the per-candidate ltlsynt cost) on the culprit formulae.
@@ -77,26 +79,31 @@ repair_mode = "monolithic"
 muc_max_iterations = 32
 
 [tlsf.mutation]
-# Applies only in TLSF mode (a .tlsf input or --format tlsf). Relative weights
-# for mutating an assumption-side section (INITIALLY/REQUIRE/ASSUME) versus a
-# guarantee-side section (PRESET/ASSERT/GUARANTEE). The pair is normalised by
-# its sum, so these two need not add to 1 -- 0.3/0.7 and 3/7 would behave
-# identically, were the range not capped at 1. Both zero selects the guarantee
-# side.
+# Applies only in TLSF mode (a .tlsf input or --format tlsf). Probability of
+# mutating an assumption-side section (INITIALLY/REQUIRE/ASSUME); the guarantee
+# side (PRESET/ASSERT/GUARANTEE) takes the complement.
 p_assumption = 0.3
-p_guarantee  = 0.7
 # Once a section formula is chosen, probability of applying the temporal-structure
 # mutation (may insert/drop/swap X/F/G/U/R/W operators) rather than the
 # skeleton-preserving propositional rewrite. At 0 temporal skeletons are fixed.
 p_temporal   = 0.2
 
 [model_counting]
-default_bound = 10       # trace-length bound k for bounded model counting
+default_bound = 20            # trace-length bound k for bounded model counting
 metric        = "logarithmic" # default; "logarithmic" (growth-rate ratio; stays
-                         # stable as the bound grows) or "direct" (count ratio)
+                              # stable as the bound grows) or "direct" (count
+                              # ratio)
 
 [filters]
-run_weakening   = true  # enable per-generation weakening filter
+# Keep only repairs the original logically implies -- genuine weakenings. This
+# is a final screen over the realizable survivors, not a per-generation filter:
+# pruning non-weakenings mid-search measurably costs repair quality and never
+# gains it, while screening the output leaves the search untouched. With it off
+# a written repair may forbid behaviour the original allowed. Applies on both
+# paths; the TLSF check is exact where the FRETISH one under-detects, so the
+# TLSF screen rejects more -- and is right to, since mutation can delete a
+# safety guarantee and add a stronger one.
+run_weakening   = true
 run_implication = true  # enable final implication maximality filter
 # Drop candidates whose assumptions are jointly unsatisfiable. Those are
 # realizable for free, since a false antecedent makes the assume-guarantee
@@ -107,18 +114,8 @@ run_vacuity     = true
 # Drop candidates that are not well-separated: ones the system can satisfy
 # vacuously by forcing its own assumptions to fail (i.e. (assumptions) -> false
 # is realizable). Strictly stronger than run_vacuity, but each test is a full
-# ltlsynt query, so it is off by default and the interval below throttles it.
+# ltlsynt query, so it is off by default.
 run_well_separation = false
-
-# How often each per-generation filter runs, in generations (1 = every
-# generation). The final generation always runs every filter.
-[filters.intervals]
-dedup           = 1
-false_condition = 1  # FRETISH only: TLSF has no condition/response split
-weakening       = 3
-bloat           = 1
-vacuity         = 1
-well_separation = 1
 
 [runtime]
 black_timeout_ms = 1000  # timeout per black SAT query in milliseconds
@@ -127,32 +124,37 @@ black_timeout_ms = 1000  # timeout per black SAT query in milliseconds
 # shows the run as it happens. Off by default: a campaign of many runs pays for
 # the file and its flushes with nobody watching. `counter --dashboard` turns it
 # on for a single run without editing a config.
-# dashboard = true
+dashboard = false
 # Per-call ltlsynt realizability timeout in ms. 0 (default) is no timeout;
 # ltlsynt has no internal one, so on hard specs a single synthesis query can run
 # for minutes. A call exceeding this is killed and treated as unrealizable.
-# ltlsynt_timeout_ms = 30000
+ltlsynt_timeout_ms = 0
 # Per-call ltl2tgba timeout in ms. 0 (default) is no timeout; the -D
 # determinization blows up on deeply nested formulae. A call exceeding this is
 # killed and the individual is dropped.
-# ltl2tgba_timeout_ms = 30000
+ltl2tgba_timeout_ms = 0
 # Per-call ltlfilt timeout in ms. Unlike the budgets above this defaults to
 # 10000 rather than off, because --simplify is super-exponential on deep
 # nested-X conjunctions and an abandoned call only costs a simplification: the
 # formula is used unsimplified. 0 disables it.
-# ltlfilt_timeout_ms = 10000
+ltlfilt_timeout_ms = 10000
 # Per-call ganak model-counting timeout in ms. 0 (default) is no timeout.
 # Counting is the fitness function's real work, so a slow count is usually a
 # hard one rather than a blowup; a call exceeding this drops the individual and
 # spends the max_scoring_failure_rate budget below.
-# ganak_timeout_ms = 60000
-# parallel         = 8     # thread pool size (omit to use hardware concurrency)
+ganak_timeout_ms = 0
 # Cap on ltlsynt processes running at once, independent of the thread pool. 0
 # (default) is unlimited; ltlsynt is multi-GB resident per call on hard specs,
 # so a positive value bounds peak RAM (roughly cap * per-call GB) to avoid OOM.
-# max_concurrent_realizability = 6
+max_concurrent_realizability = 0
 # An individual whose fitness scoring throws is dropped from its generation
 # rather than aborting the run. Above this fraction of a generation the tooling
 # is assumed broken rather than the formula, and the run aborts. A single
 # failure per generation is always tolerated, whatever the population size.
-# max_scoring_failure_rate = 0.05
+max_scoring_failure_rate = 0.05
+# The CPU-attribution report is `counter --cpu-report`, not a key here: it asks
+# about one interactive run rather than about the search, as COUNTER_PROFILE
+# does for the scope profiler.
+#
+# parallel = 8   # thread pool size; the default is hardware concurrency, so
+                 # this key has no fixed default to pin and stays commented out.

@@ -124,14 +124,11 @@ void test_mutation_assumption_atoms_from_inputs_only() {
     }
 }
 
-// tlsf_p_assumption and tlsf_p_guarantee are relative weights, normalised by
-// their sum, not independent thresholds. Both sides hold formulae here, so
-// neither can be reached by the empty-side fallback and the weights alone
-// decide. An equal but non-unit pair (0.2 / 0.2) must behave as 0.5 / 0.5, and
-// a zero weight must shut its side out entirely -- were the guarantee weight
-// ignored and the assumption weight read as a bare threshold, 0.2 / 0.0 would
-// still send a fifth of the draws to the assumption side.
-void test_mutation_side_weights_are_normalised() {
+// tlsf_p_assumption is the probability of picking the assumption side; the
+// guarantee side takes the complement. Both sides hold formulae here, so
+// neither can be reached by the empty-side fallback and the probability alone
+// decides.
+void test_mutation_side_probability_selects_side() {
     tlsf::Specification spec;
     spec.m_inputs = {"a"};
     spec.m_outputs = {"b"};
@@ -143,11 +140,10 @@ void test_mutation_side_weights_are_normalised() {
     // an untouched side is bit-identical across every seed. Count the seeds on
     // which each side actually changed and read the zeroes as exclusions.
     constexpr std::size_t k_seeds = 200;
-    auto changed_counts = [&spec](double p_assumption, double p_guarantee) {
+    auto changed_counts = [&spec](double p_assumption) {
         Config cfg;
         cfg.p_add_assumption = 0.0;  // isolate the rewrite path
         cfg.tlsf_p_assumption = p_assumption;
-        cfg.tlsf_p_guarantee = p_guarantee;
         std::pair<std::size_t, std::size_t> counts{0, 0};
         for (std::size_t seed = 0; seed < k_seeds; ++seed) {
             const RandomSource rng = make_random_source_from_seed(seed);
@@ -162,26 +158,19 @@ void test_mutation_side_weights_are_normalised() {
         return counts;
     };
 
-    expect(changed_counts(0.0, 0.4).first == 0,
-           "mutation: a zero assumption weight never touches the assumption "
-           "side");
-    // The discriminating case. Read as a bare threshold, p_assumption = 0.4
-    // would send 60% of the draws to the guarantee side; normalised against a
-    // zero guarantee weight it sends none.
-    expect(changed_counts(0.4, 0.0).second == 0,
-           "mutation: a zero guarantee weight never touches the guarantee "
-           "side, so the guarantee weight is genuinely read");
+    expect(changed_counts(0.0).first == 0,
+           "mutation: p_assumption = 0 never touches the assumption side");
+    expect(changed_counts(1.0).second == 0,
+           "mutation: p_assumption = 1 never touches the guarantee side");
 
-    const auto [assume_changed, guarantee_changed] = changed_counts(0.2, 0.2);
+    const auto [assume_changed, guarantee_changed] = changed_counts(0.5);
     expect(assume_changed > 0 && guarantee_changed > 0,
-           "mutation: equal weights reach both sides");
-    // Equal weights mean an even split however they are scaled; the two
-    // sections are single atoms, so their no-op rates match and the observed
-    // counts stay comparable. Read as a bare threshold, 0.2 would put roughly
-    // four times as many changes on the guarantee side.
+           "mutation: p_assumption = 0.5 reaches both sides");
+    // The two sections are single atoms, so their no-op rates match and the
+    // observed counts stay comparable at an even split.
     expect(assume_changed * 2 > guarantee_changed &&
                guarantee_changed * 2 > assume_changed,
-           "mutation: 0.2/0.2 splits evenly, behaving as 0.5/0.5");
+           "mutation: p_assumption = 0.5 splits evenly");
 }
 
 void test_temporal_mutation_changes_skeleton() {
@@ -447,7 +436,7 @@ void test_end_to_end_evolution() {
 void run_tlsf_genetic_tests() {
     test_mutation_preserves_temporal_skeleton();
     test_mutation_assumption_atoms_from_inputs_only();
-    test_mutation_side_weights_are_normalised();
+    test_mutation_side_probability_selects_side();
     test_temporal_mutation_changes_skeleton();
     test_temporal_mutation_atoms_from_inputs_only();
     test_add_assumption_appends_fairness();

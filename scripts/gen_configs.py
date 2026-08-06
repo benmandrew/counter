@@ -27,9 +27,9 @@ from pathlib import Path
 
 CONFIGS_DIR = Path(__file__).parent.parent / "experiments" / "configs"
 
-# Selection schemes the whole grid is duplicated across. config.hpp defaults to
-# "weighted"; a config omitting the key silently gets that, which is why every
-# generated config pins it explicitly. nsga2-replicate is appended rather than
+# Selection schemes the whole grid is duplicated across. Every generated config
+# pins the scheme explicitly rather than relying on the config.hpp default,
+# which is "nsga2". nsga2-replicate is appended rather than
 # ordered next to nsga2 so the first two entries keep the positions the earlier
 # grids were generated under.
 SCHEMES: list[str] = ["nsga2", "weighted", "nsga2-replicate"]
@@ -76,9 +76,12 @@ REPAIRS: dict[str, list[tuple[str, str]]] = {
 }
 
 # Mirrors the built-in defaults from include/config.hpp, with two deliberate
-# exceptions. config.hpp defaults selection_scheme to "weighted", but the
-# baseline of every sweep is NSGA-II, so DEFAULTS pins "nsga2" and the generator
-# overrides it per scheme. config.hpp now defaults metric to "logarithmic", but
+# exceptions. config.hpp defaults run_weakening to false, but the experiment
+# baseline stays true: it is a crossed factor (wkon/wkoff) whose flat,
+# non-crossed configs are attributed to LEGACY_WEAKENING ("wkon") by
+# run_experiments.py, so pinning true here keeps the emitted config matching
+# that recorded CSV column and keeps past grids comparable. config.hpp also
+# defaults metric to "logarithmic", but
 # the experiment baseline stays "direct": a flat (non-crossed) config carries no
 # metric directory, so run_experiments.py's metric_of() attributes it to
 # LEGACY_METRIC ("direct") — pinning "direct" here keeps the emitted config's
@@ -100,9 +103,6 @@ DEFAULTS: dict = {
     "weight_semantic": 0.33,
     "weight_halstead": 0.1,
     "weight_status": 0.33,
-    "weight_trigger": 1.0,
-    "weight_response": 1.0,
-    "weight_timing": 1.0,
     "p_trigger": 0.5,
     "p_response": 0.5,
     "p_timing": 0.15,
@@ -129,7 +129,6 @@ DEFAULTS: dict = {
     # them to vary how mutation divides its budget between the environment
     # (assumption) and guarantee sides.
     "p_assumption": 0.3,
-    "p_guarantee": 0.7,
     "p_temporal": 0.2,
     # 0 = unlimited, matching config.hpp. Emitted into [runtime] only when
     # positive (see make_toml), so the standard grids stay byte-identical to the
@@ -188,11 +187,6 @@ def make_toml(overrides: dict, defaults: dict = DEFAULTS) -> str:
         f"weight_halstead  = {_fmt(d['weight_halstead'])}",
         f"weight_status    = {_fmt(d['weight_status'])}",
         "",
-        "[syntactic]",
-        f"weight_trigger  = {_fmt(d['weight_trigger'])}",
-        f"weight_response = {_fmt(d['weight_response'])}",
-        f"weight_timing   = {_fmt(d['weight_timing'])}",
-        "",
         "[mutation]",
         f"p_trigger  = {_fmt(d['p_trigger'])}",
         f"p_response = {_fmt(d['p_response'])}",
@@ -231,9 +225,8 @@ def make_toml(overrides: dict, defaults: dict = DEFAULTS) -> str:
         "",
         "[tlsf.mutation]",
         f"p_assumption = {_fmt(d['p_assumption'])}",
-        f"p_guarantee  = {_fmt(d['p_guarantee'])}",
         f"p_temporal   = {_fmt(d['p_temporal'])}",
-    ] if overrides.keys() & {"p_assumption", "p_guarantee", "p_temporal"}
+    ] if overrides.keys() & {"p_assumption", "p_temporal"}
         else []) + [
         "",
     ])
@@ -438,10 +431,14 @@ TLSF_SWEEP_B: list[tuple[str, dict]] = [
 # the config.hpp baseline (p_assumption=0.3). Crossed with tlsf.repair_mode via
 # `--tlsf --sweeps M --repair both` for the mono-vs-muc campaign.
 TLSF_SWEEP_M: list[tuple[str, dict]] = [
-    ("pg0.3", {"p_assumption": 0.7, "p_guarantee": 0.3}),
-    ("pg0.5", {"p_assumption": 0.5, "p_guarantee": 0.5}),
-    ("pg0.7", {"p_assumption": 0.3, "p_guarantee": 0.7}),   # baseline
-    ("pg0.9", {"p_assumption": 0.1, "p_guarantee": 0.9}),
+    # Level names still read as the guarantee-side share, which is now
+    # 1 - p_assumption rather than its own key. They are load-bearing: level
+    # names are parsed back out of archived campaign paths, so renaming them
+    # would orphan every muc-campaign row.
+    ("pg0.3", {"p_assumption": 0.7}),
+    ("pg0.5", {"p_assumption": 0.5}),
+    ("pg0.7", {"p_assumption": 0.3}),   # baseline
+    ("pg0.9", {"p_assumption": 0.1}),
 ]
 
 # TLSF sweep P: vary p_add_assumption (TLSF-only campaign use, though the key is

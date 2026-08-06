@@ -16,7 +16,7 @@ assumptions can be perfectly satisfiable yet still forcibly falsifiable by the
 system, because satisfiability treats every atom symmetrically whereas
 realizability respects the input/output partition. Assumptions over input atoms
 alone are always well-separated. Each test is a full ``ltlsynt`` query, so the
-filter is off by default and interval-throttled when enabled. The check
+filter is off by default. The check
 short-circuits for specifications with no assumptions and treats a solver
 timeout as unrealizable (well-separated), so a slow check never silently
 discards a candidate.

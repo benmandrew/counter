@@ -25,12 +25,12 @@ same way. Values still out of range for their field abort the run.
    [runtime]
    parallel = 16              # override thread pool size
    dashboard = true           # stream progress.jsonl + the live dashboard page
-   report_cpu_timing = true   # print a CPU-attribution report at the end
 
 ``example-config.toml`` in the repository root is an annotated template listing
-every key with a comment explaining it. Its values are illustrative rather than
-the defaults — consult the table below, or ``include/config.hpp``, for what a
-key falls back to when omitted.
+every key with a comment explaining it. Every value in it **is** that key's
+default, so copying the file whole changes nothing;
+``scripts/check_config_schema.py`` enforces this against ``include/config.hpp``
+as part of the ``lint`` target.
 
 Fitness weights
 ---------------
@@ -145,12 +145,39 @@ fitness record, so outputs stay comparable across runs.
 Filters
 -------
 
-``[filters]`` toggles the per-generation and final filters, and
-``[filters.intervals]`` sets how often each runs, in generations. All four
-default to 1 — every generation — and the final generation always runs every
-filter regardless of interval, so the returned population is never left
-un-deduplicated or un-weakened. Raising ``weakening``, the costliest of the
-four, is the usual first move when a run is too slow.
+``[filters]`` toggles the per-generation and final filters; each runs every
+generation when enabled.
+
+``run_weakening`` keeps only repairs the original logically implies — the
+genuine weakenings. It is a **final screen** over the realizable survivors
+rather than a per-generation filter, and is on by default.
+
+It was moved out of the per-generation set on measurement. The ``cj-large``
+campaign is the only one to cross the factor, over 9,796 paired runs: filtering
+each generation lost 1,005 of them and won 410, never helped on any of the four
+specs, and cost 20 points of implies-ideal on ``fsm`` (0.563 → 0.360) — buying
+a 26% wall-time saving with repair quality. Screening only the final population
+leaves the search bit-identical while still guaranteeing that a written repair
+does not forbid behaviour the original allowed.
+
+The screen applies on both paths, but the implication check behind it differs
+in strength. On FRETISH, ``spec_implies`` decomposes the assume-guarantee pair
+and matches each requirement against a *single* counterpart, so it under-detects
+— an implication that only holds via several requirements together is missed,
+and a genuine weakening can be rejected. On TLSF, ``tlsf_spec_implies`` lowers
+the whole specification to one LTL formula and asks ``black`` whether
+``(original) & !(candidate)`` is unsatisfiable, which is exact.
+
+Expect the TLSF screen to reject more, and to be right when it does. Nothing
+constrains mutation to weaken: it can delete a safety guarantee and add a
+stronger one, reaching realizability while forbidding behaviour the original
+allowed. The MUC repair of the two-client arbiter fixture does exactly this —
+it drops the mutex ``G !(g0 & g1)`` and adds ``G g1`` — and is rejected. Turning
+``run_weakening`` off on a TLSF run will therefore produce more written repairs,
+not better ones.
+
+The per-filter run intervals that once throttled these were removed: across
+every archived campaign not one config had ever set them.
 
 Runtime
 -------
@@ -167,7 +194,9 @@ its flushes with nobody watching; ``counter --dashboard`` enables it for a
 single run without editing a config. The flag can only turn the dashboard on —
 a config that already asked for it is not disabled by omitting the flag.
 
-``runtime.report_cpu_timing`` prints a CPU-attribution report at the end,
-separating time spent in counter's own code from time spent in the external
-tools (``black``, ``ltlsynt``, ``ganak``), measured per-process via
-``getrusage``/``wait4``. It defaults to false.
+``counter --cpu-report`` prints a CPU-attribution report at the end, separating
+time spent in counter's own code from time spent in the external tools
+(``black``, ``ltlsynt``, ``ganak``), measured per-process via
+``getrusage``/``wait4``. It is a flag rather than a config key because it asks
+about one interactive run rather than about the search, as ``COUNTER_PROFILE``
+does for the scope profiler.

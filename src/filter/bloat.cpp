@@ -50,5 +50,6 @@ FilterFunction make_bloat_cap_filter(const Specification& original,
                     }
                 }
                 return survivors;
-            }};
+            },
+            FilterKind::Preference};
 }

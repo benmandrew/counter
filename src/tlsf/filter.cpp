@@ -235,7 +235,8 @@ std::vector<tlsf::Specification> filter_in_parallel(
 }  // namespace
 
 FilterFunctionT<tlsf::Specification> tlsf_make_dedup_filter() {
-    return {"dedup", [](const std::vector<tlsf::Specification>& pop) {
+    return {"dedup",
+            [](const std::vector<tlsf::Specification>& pop) {
                 std::unordered_set<tlsf::Specification> seen;
                 seen.reserve(pop.size());
                 std::vector<tlsf::Specification> survivors;
@@ -246,7 +247,8 @@ FilterFunctionT<tlsf::Specification> tlsf_make_dedup_filter() {
                     }
                 }
                 return survivors;
-            }};
+            },
+            FilterKind::Preference};
 }
 
 bool tlsf_has_unsatisfiable_assumptions(const tlsf::Specification& spec,
@@ -314,22 +316,24 @@ std::optional<bool> tlsf_spec_implies(const tlsf::Specification& from,
 FilterFunctionT<tlsf::Specification> tlsf_make_bloat_cap_filter(
     const tlsf::Specification& original, double max_ratio) {
     const std::size_t original_max = max_formula_size(original);
-    return {"bloat-cap", [original_max, max_ratio](
-                             const std::vector<tlsf::Specification>& pop) {
-                if (original_max == 0) {
-                    return pop;
+    return {
+        "bloat-cap",
+        [original_max, max_ratio](const std::vector<tlsf::Specification>& pop) {
+            if (original_max == 0) {
+                return pop;
+            }
+            const auto cap = static_cast<std::size_t>(
+                max_ratio * static_cast<double>(original_max));
+            std::vector<tlsf::Specification> survivors;
+            survivors.reserve(pop.size());
+            for (const tlsf::Specification& spec : pop) {
+                if (!any_formula_exceeds(spec, cap)) {
+                    survivors.push_back(spec);
                 }
-                const auto cap = static_cast<std::size_t>(
-                    max_ratio * static_cast<double>(original_max));
-                std::vector<tlsf::Specification> survivors;
-                survivors.reserve(pop.size());
-                for (const tlsf::Specification& spec : pop) {
-                    if (!any_formula_exceeds(spec, cap)) {
-                        survivors.push_back(spec);
-                    }
-                }
-                return survivors;
-            }};
+            }
+            return survivors;
+        },
+        FilterKind::Preference};
 }
 
 FilterFunctionT<tlsf::Specification> tlsf_make_weakening_filter(
@@ -367,19 +371,21 @@ FilterFunctionT<tlsf::Specification> tlsf_make_weakening_filter(
 FilterFunctionT<tlsf::Specification> tlsf_make_implication_filter(
     SatisfiabilityChecker& checker,
     const GenerationProgressCallback& on_progress) {
-    return {"implication", [&checker, on_progress](
-                               const std::vector<tlsf::Specification>& pop) {
-                if (pop.size() <= 1) {
-                    return pop;
+    return {
+        "implication",
+        [&checker, on_progress](const std::vector<tlsf::Specification>& pop) {
+            if (pop.size() <= 1) {
+                return pop;
+            }
+            const std::vector<uint8_t> subsumed =
+                compute_subsumed(pop, checker, on_progress);
+            std::vector<tlsf::Specification> maximal;
+            for (std::size_t i = 0; i < pop.size(); ++i) {
+                if (subsumed[i] == 0U) {
+                    maximal.push_back(pop[i]);
                 }
-                const std::vector<uint8_t> subsumed =
-                    compute_subsumed(pop, checker, on_progress);
-                std::vector<tlsf::Specification> maximal;
-                for (std::size_t i = 0; i < pop.size(); ++i) {
-                    if (subsumed[i] == 0U) {
-                        maximal.push_back(pop[i]);
-                    }
-                }
-                return maximal;
-            }};
+            }
+            return maximal;
+        },
+        FilterKind::Preference};
 }

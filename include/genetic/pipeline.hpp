@@ -325,6 +325,13 @@ struct StageObservation {
 /// Invoked after each stage completes, in stage order.
 using StageObserver = std::function<void(const StageObservation&)>;
 
+/// Screens a rescued population, returning the part of it fit to breed from.
+/// Built by correctness_rescue() and read only by stage_filter_fallback; a null
+/// one rescues nothing, so the fallback restores the offspring unscreened.
+template <typename Spec>
+using PopulationRescue =
+    std::function<std::vector<Spec>(const std::vector<Spec>&)>;
+
 namespace pipeline_detail {
 
 template <typename Spec>
@@ -347,15 +354,38 @@ void stage_breed(GenerationContext<Spec>& ctx) {
     ctx.m_view = PopulationView::Unscored;
 }
 
-/// Restores the unfiltered offspring when the filters between breeding and here
-/// rejected all of them. The test is on the combined result, not on each filter
-/// in turn: a filter that empties the population is fine as long as an earlier
-/// or later one does not, which is why this cannot be folded into the filter
-/// stages themselves.
+/// Rescues the generation when the filters between breeding and here rejected
+/// every offspring, an outcome that would otherwise end the run. The test is on
+/// the combined result, not on each filter in turn: a filter that empties the
+/// population is fine as long as an earlier or later one does not, which is why
+/// this cannot be folded into the filter stages themselves.
+///
+/// What comes back is screened. @p rescue re-applies the correctness filters
+/// alone to the unfiltered offspring, so the rescue re-admits the candidates
+/// dropped for being duplicates or oversized and none of the candidates dropped
+/// for being unfit to breed from. Restoring the offspring wholesale instead
+/// would trade correctness for survival at the exact moment correctness is
+/// being enforced hardest: the sharper the filter, the more often it empties
+/// the population, so the rescue fires precisely where it would undo the most
+/// work.
+///
+/// When the rescue itself comes back empty, no correct candidate was bred at
+/// all this generation. The elites are then the whole of the next population:
+/// they bypass the filters by construction and are already the best the run has
+/// found, so carrying them alone beats re-admitting candidates already known to
+/// be unfit. Only a run with no elites at all restores the offspring
+/// unscreened, and only because the alternative is an empty population, which
+/// stage_pad cannot pad and the run cannot continue from.
 template <typename Spec>
-void stage_filter_fallback(GenerationContext<Spec>& ctx) {
+void stage_filter_fallback(GenerationContext<Spec>& ctx,
+                           const PopulationRescue<Spec>& rescue) {
     if (ctx.m_candidates.empty()) {
-        ctx.m_candidates = std::move(ctx.m_pre_filter);
+        if (rescue) {
+            ctx.m_candidates = rescue(ctx.m_pre_filter);
+        }
+        if (ctx.m_candidates.empty() && ctx.m_elite_n == 0) {
+            ctx.m_candidates = std::move(ctx.m_pre_filter);
+        }
     }
     ctx.m_pre_filter.clear();
 }
@@ -431,7 +461,8 @@ void stage_select(GenerationContext<Spec>& ctx) {
 /// lets a consumer derive the stage set rather than hardcode it.
 template <typename Spec>
 std::vector<PipelineStage<Spec>> make_generation_pipeline(
-    std::vector<PipelineStage<Spec>> filter_stages) {
+    std::vector<PipelineStage<Spec>> filter_stages,
+    PopulationRescue<Spec> rescue = nullptr) {
     constexpr std::size_t k_fixed_stages = 6;
     std::vector<PipelineStage<Spec>> stages;
     stages.reserve(filter_stages.size() + k_fixed_stages);
@@ -441,8 +472,10 @@ std::vector<PipelineStage<Spec>> make_generation_pipeline(
     for (PipelineStage<Spec>& stage : filter_stages) {
         stages.push_back(std::move(stage));
     }
-    stages.emplace_back("filter-fallback",
-                        pipeline_detail::stage_filter_fallback<Spec>);
+    stages.emplace_back("filter-fallback", [rescue = std::move(rescue)](
+                                               GenerationContext<Spec>& ctx) {
+        pipeline_detail::stage_filter_fallback(ctx, rescue);
+    });
     stages.emplace_back("restore-elites",
                         pipeline_detail::stage_restore_elites<Spec>);
     stages.emplace_back("pad", pipeline_detail::stage_pad<Spec>);

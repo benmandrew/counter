@@ -14,9 +14,10 @@
 
 FilterFunction make_predicate_filter(
     std::string name, std::function<bool(const Specification&)> predicate,
-    std::size_t max_in_flight) {
-    return {std::move(name), [predicate = std::move(predicate), max_in_flight](
-                                 const std::vector<Specification>& pop) {
+    std::size_t max_in_flight, FilterKind kind) {
+    return {std::move(name),
+            [predicate = std::move(predicate),
+             max_in_flight](const std::vector<Specification>& pop) {
                 std::vector<Specification> survivors;
                 survivors.reserve(pop.size());
                 // Verdicts are collected by index and the survivors rebuilt in
@@ -46,7 +47,8 @@ FilterFunction make_predicate_filter(
                     }
                 }
                 return survivors;
-            }};
+            },
+            kind};
 }
 
 Specification simplify_offspring(Specification offspring) {

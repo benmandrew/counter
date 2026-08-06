@@ -47,14 +47,15 @@ std::vector<Specification> distinct_specs() {
 
 std::vector<StageObservation> observe_generation(
     const std::vector<FilterFunction>& filters,
-    const std::vector<Specification>& specs = distinct_specs()) {
+    const std::vector<Specification>& specs = distinct_specs(),
+    std::size_t elitism_size = k_elitism_size) {
     const Config cfg;
     const AggregateWeightedFitnessFunction fns = constant_fitness();
     const std::vector<ScoredSpecification> pop =
         score_population(cfg, specs, fns);
     std::vector<StageObservation> seen;
     evolve_generation(
-        cfg, pop, k_target_size, k_elitism_size, fns, filters, make_source(),
+        cfg, pop, k_target_size, elitism_size, fns, filters, make_source(),
         nullptr, [&seen](const StageObservation& obs) { seen.push_back(obs); });
     return seen;
 }
@@ -174,16 +175,73 @@ void test_pipeline_distinct_sees_through_a_duplicated_population() {
            "report size 4 and one distinct individual");
 }
 
-void test_pipeline_filter_fallback_restores_rejected_offspring() {
-    const std::vector<FilterFunction> filters = {make_predicate_filter(
-        "reject-all", [](const Specification&) { return false; })};
+FilterFunction reject_all(const std::string& name, FilterKind kind) {
+    return make_predicate_filter(
+        name, [](const Specification&) { return false; }, 1, kind);
+}
+
+void test_pipeline_filter_fallback_restores_preference_rejects() {
+    const std::vector<FilterFunction> filters = {
+        reject_all("prefer-none", FilterKind::Preference)};
     const std::vector<StageObservation> seen = observe_generation(filters);
-    expect(stage(seen, "reject-all").n_out == 0,
+    expect(stage(seen, "prefer-none").n_out == 0,
            "pipeline: the filter should reject every offspring");
     expect(stage(seen, "filter-fallback").n_in == 0 &&
                stage(seen, "filter-fallback").n_out == 3,
-           "pipeline: the fallback should restore the unfiltered offspring "
-           "when the filter chain as a whole leaves nothing");
+           "pipeline: the fallback should restore the offspring a preference "
+           "filter emptied, since nothing about them is unfit to breed from");
+}
+
+void test_pipeline_filter_fallback_withholds_correctness_rejects() {
+    const std::vector<FilterFunction> filters = {
+        reject_all("not-correct", FilterKind::Correctness)};
+    const std::vector<StageObservation> seen = observe_generation(filters);
+    expect(stage(seen, "filter-fallback").n_out == 0,
+           "pipeline: the fallback must not re-admit offspring a correctness "
+           "filter rejected, which is what it exists to enforce");
+    expect(stage(seen, "restore-elites").n_out == k_elitism_size &&
+               stage(seen, "pad").n_out == k_target_size,
+           "pipeline: with no correct offspring the elites should carry the "
+           "generation on their own, and padding should still reach the "
+           "target size");
+}
+
+void test_pipeline_filter_fallback_rescreens_the_rescued_offspring() {
+    // The preference filter empties the population before the correctness
+    // filter judges a single candidate, so every call it records is one the
+    // rescue made.
+    std::size_t calls = 0;
+    const std::vector<FilterFunction> filters = {
+        reject_all("prefer-none", FilterKind::Preference),
+        make_predicate_filter(
+            "correct-all",
+            [&calls](const Specification&) {
+                ++calls;
+                return true;
+            },
+            1, FilterKind::Correctness)};
+    const std::vector<StageObservation> seen = observe_generation(filters);
+    expect(stage(seen, "correct-all").n_in == 0,
+           "pipeline: the correctness filter should see nothing in the main "
+           "pass, the preference filter having emptied the population first");
+    expect(calls == 3,
+           "pipeline: the rescue should re-apply the correctness filter to "
+           "each of the three unfiltered offspring, which the chain never "
+           "judged");
+    expect(stage(seen, "filter-fallback").n_out == 3,
+           "pipeline: offspring that pass the re-applied correctness filter "
+           "should be restored");
+}
+
+void test_pipeline_filter_fallback_restores_offspring_without_elites() {
+    const std::vector<FilterFunction> filters = {
+        reject_all("not-correct", FilterKind::Correctness)};
+    const std::vector<StageObservation> seen =
+        observe_generation(filters, distinct_specs(), 0);
+    expect(stage(seen, "filter-fallback").n_out == k_target_size,
+           "pipeline: with no elites to fall back on, an empty rescue must "
+           "still restore the offspring, an empty population being one the "
+           "run cannot continue from");
 }
 
 }  // namespace
@@ -195,5 +253,8 @@ void run_pipeline_tests() {
     test_pipeline_sizes_track_the_population();
     test_pipeline_reports_distinct_alongside_size();
     test_pipeline_distinct_sees_through_a_duplicated_population();
-    test_pipeline_filter_fallback_restores_rejected_offspring();
+    test_pipeline_filter_fallback_restores_preference_rejects();
+    test_pipeline_filter_fallback_withholds_correctness_rejects();
+    test_pipeline_filter_fallback_rescreens_the_rescued_offspring();
+    test_pipeline_filter_fallback_restores_offspring_without_elites();
 }

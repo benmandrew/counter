@@ -46,12 +46,12 @@ std::string format_crash_metadata(std::size_t seed,
     return out.str();
 }
 
-RandomSource init_random_source(const std::optional<std::string>& seed_arg) {
+RandomSource init_random_source(const std::optional<std::size_t>& seed) {
+    if (seed.has_value()) {
+        return make_random_source_from_seed(*seed);
+    }
     std::random_device rng_dev;
-    const std::size_t seed =
-        seed_arg.has_value() ? static_cast<std::size_t>(std::stoull(*seed_arg))
-                             : static_cast<std::size_t>(rng_dev());
-    return make_random_source_from_seed(seed);
+    return make_random_source_from_seed(static_cast<std::size_t>(rng_dev()));
 }
 
 double seconds_since(std::chrono::steady_clock::time_point start) {
@@ -64,12 +64,13 @@ double seconds_since(std::chrono::steady_clock::time_point start) {
 
 int run_tlsf_repair(const Config& cfg, const std::string& input_path,
                     const std::string& output_dir,
-                    const std::optional<std::string>& seed_arg) {
+                    const std::optional<std::size_t>& seed) {
     const auto wall_start = std::chrono::steady_clock::now();
-    RandomSource random_source = init_random_source(seed_arg);
-    const std::optional<std::size_t> seed = random_source.seed();
-    if (seed.has_value()) {
-        register_crash_metadata(format_crash_metadata(*seed, input_path, cfg));
+    RandomSource random_source = init_random_source(seed);
+    const std::optional<std::size_t> effective_seed = random_source.seed();
+    if (effective_seed.has_value()) {
+        register_crash_metadata(
+            format_crash_metadata(*effective_seed, input_path, cfg));
     }
     try {
         const int result =
@@ -88,7 +89,7 @@ int run_tlsf_repair(const Config& cfg, const std::string& input_path,
 
 int run_fretish_repair(const Config& cfg, const std::string& input_path,
                        const std::string& output_dir,
-                       const std::optional<std::string>& seed_arg) {
+                       const std::optional<std::size_t>& seed) {
     Specification original_spec;
     try {
         original_spec = load_specification(input_path);
@@ -104,18 +105,20 @@ int run_fretish_repair(const Config& cfg, const std::string& input_path,
         get_filter_functions(cfg, original_spec, global_sat_checker());
     std::vector<ScoredSpecification> population = original_population(
         original_spec, fitness_function, cfg.population_size);
-    RandomSource random_source = init_random_source(seed_arg);
+    RandomSource random_source = init_random_source(seed);
     const std::optional<std::size_t> maybe_seed = random_source.seed();
     if (!maybe_seed.has_value()) {
         std::cerr << "fatal: random source has no seed\n";
         return 1;
     }
-    const std::size_t seed = *maybe_seed;
-    std::cout << "Seed: " << seed << "\n";
-    register_crash_metadata(format_crash_metadata(seed, input_path, cfg));
+    const std::size_t effective_seed = *maybe_seed;
+    std::cout << "Seed: " << effective_seed << "\n";
+    register_crash_metadata(
+        format_crash_metadata(effective_seed, input_path, cfg));
 
     DashboardWriter dashboard(output_dir, cfg.dashboard);
-    dashboard.run_start(input_path, cfg.generations, population.size(), seed,
+    dashboard.run_start(input_path, cfg.generations, population.size(),
+                        effective_seed,
                         fitness_objective_names(fitness_function),
                         generation_stage_names(filter_functions));
     const std::string page = dashboard.write_page();

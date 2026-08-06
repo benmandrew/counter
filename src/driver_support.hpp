@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cstddef>
 #include <optional>
 #include <string>
 #include <vector>
@@ -31,3 +32,10 @@ std::vector<std::string> collect_argument_paths(int argc,
 // own way -- one throws, the others print and return -- so it is reported here
 // as absence rather than decided.
 std::optional<std::string> read_file_contents(const std::string& path);
+
+// Nullopt when @p text is not a complete run of decimal digits naming a value
+// that fits. Only a whole-string match is accepted, so "12abc" and "-1" are
+// rejected rather than silently read as 12 and as a wrapped 2^64-1: a seed is
+// what makes a run reproducible, and a typo that still starts a run pins the
+// result to a value nobody chose.
+std::optional<std::size_t> parse_seed(const std::string& text);

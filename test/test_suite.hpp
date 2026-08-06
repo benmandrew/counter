@@ -31,6 +31,7 @@ void run_well_separation_filter_tests();
 void run_requirement_tests();
 void run_serialisation_tests();
 void run_config_io_tests();
+void run_driver_support_tests();
 void run_dashboard_tests();
 void run_profile_tests();
 void run_thread_pool_tests();

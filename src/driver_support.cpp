@@ -1,9 +1,14 @@
 #include "driver_support.hpp"
 
+#include <algorithm>
+#include <cctype>
+#include <cstddef>
 #include <fstream>
 #include <iostream>
+#include <limits>
 #include <optional>
 #include <sstream>
+#include <stdexcept>
 #include <string>
 #include <vector>
 
@@ -62,4 +67,29 @@ std::optional<std::string> read_file_contents(const std::string& path) {
     std::ostringstream contents;
     contents << file.rdbuf();
     return contents.str();
+}
+
+std::optional<std::size_t> parse_seed(const std::string& text) {
+    // Checked before std::stoull rather than after, because stoull is happy to
+    // stop at the first non-digit and to wrap a leading '-' round to the top of
+    // the range; neither reports anything the caller could notice.
+    const bool all_digits =
+        !text.empty() &&
+        std::all_of(text.begin(), text.end(), [](unsigned char character) {
+            return std::isdigit(character) != 0;
+        });
+    if (!all_digits) {
+        return std::nullopt;
+    }
+    try {
+        const auto value = std::stoull(text);
+        if constexpr (sizeof(value) > sizeof(std::size_t)) {
+            if (value > std::numeric_limits<std::size_t>::max()) {
+                return std::nullopt;
+            }
+        }
+        return static_cast<std::size_t>(value);
+    } catch (const std::out_of_range&) {
+        return std::nullopt;
+    }
 }

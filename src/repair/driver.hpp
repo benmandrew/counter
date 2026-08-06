@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cstddef>
 #include <optional>
 #include <string>
 
@@ -8,14 +9,13 @@
 // The two top-level repair runs counter dispatches to, each returning the
 // process exit status.
 //
-// @p seed_arg is the unparsed --seed value rather than a number: it is read
-// where the run starts, so validating the rest of the command line never
-// depends on it.
+// @p seed is already parsed, so a malformed --seed cannot reach a run: absent
+// means seed from the random device.
 
 int run_tlsf_repair(const Config& cfg, const std::string& input_path,
                     const std::string& output_dir,
-                    const std::optional<std::string>& seed_arg);
+                    const std::optional<std::size_t>& seed);
 
 int run_fretish_repair(const Config& cfg, const std::string& input_path,
                        const std::string& output_dir,
-                       const std::optional<std::string>& seed_arg);
+                       const std::optional<std::size_t>& seed);

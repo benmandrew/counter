@@ -69,7 +69,15 @@ int main(int argc, const char* const argv[]) {
     }
     const std::optional<std::string> seed_arg =
         parse_string_arg(argc, argv, "--seed");
-    return *is_tlsf
-               ? run_tlsf_repair(cfg, *input_path, *output_dir, seed_arg)
-               : run_fretish_repair(cfg, *input_path, *output_dir, seed_arg);
+    std::optional<std::size_t> seed;
+    if (seed_arg.has_value()) {
+        seed = parse_seed(*seed_arg);
+        if (!seed.has_value()) {
+            std::cerr << "Invalid --seed value: '" << *seed_arg
+                      << "' (expected a non-negative integer)\n";
+            return 1;
+        }
+    }
+    return *is_tlsf ? run_tlsf_repair(cfg, *input_path, *output_dir, seed)
+                    : run_fretish_repair(cfg, *input_path, *output_dir, seed);
 }

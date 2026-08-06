@@ -32,6 +32,16 @@ CONFIGS_DIR = Path(__file__).parent.parent / "experiments" / "configs"
 # which is "nsga2". nsga2-replicate is appended rather than
 # ordered next to nsga2 so the first two entries keep the positions the earlier
 # grids were generated under.
+#
+# These strings are frozen data identifiers, not config spellings. Each becomes
+# a config *directory* name, scheme_of() in run_experiments.py reads that name
+# back into the `selection` column of every results CSV, and that column joins
+# KEY_FIELDS in merge_experiments.py -- the natural key for resume and merge.
+# A quarter of a million archived rows carry these values, so renaming them here
+# would make every one of them miss its key and re-run a finished campaign. The
+# config file's spelling has since moved on to "nsga2-truncate" and
+# "nsga2-apportion"; nothing breaks, because config_io.cpp keeps "nsga2" and
+# "nsga2-replicate" as permanent aliases for exactly this reason.
 SCHEMES: list[str] = ["nsga2", "weighted", "nsga2-replicate"]
 
 # run_weakening as a crossed factor: each (scheme, sweep, level) is emitted once

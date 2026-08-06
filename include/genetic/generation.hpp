@@ -332,8 +332,8 @@ std::vector<FilterFunction> get_final_filter_functions(
 
 /// Scores each specification in @p specs and returns them ordered best-first
 /// according to @p cfg's selection scheme: descending weighted fitness for
-/// WeightedAverage, or the NSGA-II crowded-comparison order for Nsga2 and
-/// Nsga2Replicate.
+/// WeightedAverage, or the NSGA-II crowded-comparison order for Nsga2Truncate
+/// and Nsga2Apportion.
 std::vector<ScoredSpecification> score_and_sort_specifications(
     const Config& cfg, const std::vector<Specification>& specs,
     const AggregateWeightedFitnessFunction& fitness_function);
@@ -451,8 +451,8 @@ const GeneticOperators<Specification>& fretish_operators();
 /// Evolves a population for one generation:
 ///   1. Order the population best-first under @p cfg's selection scheme —
 ///      descending weighted fitness for WeightedAverage, the NSGA-II
-///      crowded-comparison order for Nsga2 and Nsga2Replicate — and take the
-///      top target_size as parents
+///      crowded-comparison order for Nsga2Truncate and Nsga2Apportion — and
+///      take the top target_size as parents
 ///   2. Carry the best elitism_size parents over verbatim as elites (they skip
 ///      crossover, mutation, and the offspring filters)
 ///   3. For the remaining parents, apply crossover and mutation to produce
@@ -462,13 +462,13 @@ const GeneticOperators<Specification>& fretish_operators();
 ///   5. Pad survivors back to target_size by duplicating them if filtering
 ///      reduced the population
 ///   6. Score the resulting population with fitness functions
-///   7. Choose the survivors: under Nsga2 and Nsga2Replicate the parents are
-///      pooled with the scored offspring and the best target_size of that
-///      union are kept under the crowded-comparison order ((mu+lambda)
-///      elitism), Nsga2Replicate deduplicating the pool before ranking it and
-///      replicating the distinct survivors back up to target_size; under
-///      WeightedAverage the scored population is re-sorted by the weighted
-///      scalar
+///   7. Choose the survivors: under Nsga2Truncate and Nsga2Apportion the
+///      parents are pooled with the scored offspring and ranked under the
+///      crowded-comparison order ((mu+lambda) elitism), Nsga2Truncate keeping
+///      the best target_size of that union and Nsga2Apportion deduplicating
+///      the pool before ranking it and apportioning the target_size slots
+///      over the distinct survivors; under WeightedAverage the scored
+///      population is re-sorted by the weighted scalar
 ///
 /// If the population is smaller than target_size, all of it is used as
 /// parents. elitism_size is clamped to the number of parents.

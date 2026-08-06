@@ -12,24 +12,28 @@ selection_rate  = 0.5  # fraction of population selected as parents each generat
 elitism_rate    = 0.1  # fraction carried over verbatim each generation (must be < selection_rate)
 crossover_rate  = 0.1  # probability of crossover between parents
 mutation_rate   = 1.0  # probability of mutating an offspring
-# Selection scheme:
-#   "nsga2" (default) ranks by Pareto non-domination and crowding distance over
-#     the individual components, searching for the Pareto front of repairs
-#     rather than one weighted compromise. The [fitness] weights only select
-#     which components are active (weight > 0); they no longer bias selection,
-#     though they still order the final written repairs.
-#     NSGA-II's (mu+lambda) survivor pooling is already elitist, so
-#     elitism_rate = 0 is the natural setting.
-#   "nsga2-replicate" ranks identically, but deduplicates the pool before
-#     sorting and replicates the distinct survivors back up to
-#     population_size, apportioning copies by 1 / (1 + rank).
+# Selection scheme. The two NSGA-II schemes rank identically -- by Pareto
+# non-domination and crowding distance over the individual components, searching
+# for the Pareto front of repairs rather than one weighted compromise -- and are
+# named for the survivor step, the only thing that differs between them. Under
+# either, the [fitness] weights only select which components are active
+# (weight > 0); they no longer bias selection, though they still order the final
+# written repairs. The (mu+lambda) survivor pooling is already elitist, so
+# elitism_rate = 0 is the natural setting.
+#   "nsga2-truncate" (default) ranks the pooled parents and offspring, then cuts
+#     the pool at population_size.
+#   "nsga2-apportion" deduplicates the pool first, ranks the distinct set, and
+#     hands out the population_size slots over it by 1 / (1 + rank). It keeps
+#     far more distinct candidates, at roughly 50% more wall-clock time.
+#   Spelled "nsga2" and "nsga2-replicate" before 2026-08-06; those spellings are
+#     no longer accepted.
 #   "weighted" ranks candidates by the single weighted-average of the fitness
 #     components (the [fitness] weights below). It converges prematurely: over a
 #     50k-run parameter sweep the generation count made no difference to its
 #     results at any level from 5 to 80, and on the takeoff example it matched
 #     an ideal repair in 1.7% of runs against NSGA-II's 89.3%, while being no
 #     faster.
-selection_scheme = "nsga2"
+selection_scheme = "nsga2-truncate"
 
 [fitness]
 weight_syntactic = 0.2  # syntactic similarity component weight

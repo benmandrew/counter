@@ -148,16 +148,25 @@ void apply_genetic(const toml::table& tbl, Config& cfg) {
         cfg.mutation_rate = *val;
     }
     if (auto val = tbl["selection_scheme"].value<std::string>()) {
+        // "nsga2" and "nsga2-replicate" are the schemes' original spellings.
+        // They are permanent aliases, not a deprecation: the experiment harness
+        // turns these strings into config directory names, which reach the
+        // `selection` column of every results CSV and join archived rows on it.
+        // Renaming what the harness emits would make a quarter of a million
+        // archived rows miss their key, so the old spellings stay accepted
+        // without a warning and with no removal planned.
         if (*val == "weighted") {
             cfg.selection_scheme = SelectionScheme::WeightedAverage;
-        } else if (*val == "nsga2") {
-            cfg.selection_scheme = SelectionScheme::Nsga2;
-        } else if (*val == "nsga2-replicate") {
-            cfg.selection_scheme = SelectionScheme::Nsga2Replicate;
+        } else if (*val == "nsga2-truncate" || *val == "nsga2") {
+            cfg.selection_scheme = SelectionScheme::Nsga2Truncate;
+        } else if (*val == "nsga2-apportion" || *val == "nsga2-replicate") {
+            cfg.selection_scheme = SelectionScheme::Nsga2Apportion;
         } else {
             throw std::runtime_error(
                 "config: genetic.selection_scheme must be \"weighted\", "
-                "\"nsga2\", or \"nsga2-replicate\"");
+                "\"nsga2-truncate\", or \"nsga2-apportion\" (the older "
+                "\"nsga2\" and \"nsga2-replicate\" spellings are still "
+                "accepted)");
         }
     }
     // Elites are a subset of the selected parents, so elitism must be strictly

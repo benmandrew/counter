@@ -90,18 +90,18 @@ Selection scheme
 
 ``genetic.selection_scheme`` decides how those four components drive selection.
 
-**nsga2** (default) treats them as separate objectives and ranks candidates by
-*Non-dominated Sorting Genetic Algorithm II*
+**nsga2-truncate** (default) treats them as separate objectives and ranks
+candidates by *Non-dominated Sorting Genetic Algorithm II*
 (`NSGA-II <https://doi.org/10.1109/4235.996017>`_): Pareto non-domination first,
 then crowding distance to spread the population along the front. It searches for
 the whole Pareto front — the repairs not beaten on every objective at once —
 rather than one weighted compromise. That is useful when the right balance
 between, say, semantic similarity and size is not known in advance.
 
-**nsga2-replicate** ranks exactly as ``nsga2`` does, but changes what the
-(μ+λ) survivor step keeps. The pooled parents and offspring are mostly repeats
-of a handful of specifications, and duplicates never dominate one another, so
-they inflate the rank-0 front until truncating the pool back to
+**nsga2-apportion** ranks exactly as ``nsga2-truncate`` does, but changes what
+the (μ+λ) survivor step keeps. The pooled parents and offspring are mostly
+repeats of a handful of specifications, and duplicates never dominate one
+another, so they inflate the rank-0 front until truncating the pool back to
 ``population_size`` cuts through that front arbitrarily. Deduplicating the pool
 on its own is no fix: it leaves a handful of survivors, selection becomes a
 no-op, and breeding collapses. Instead the pool is deduplicated, ranked, and —
@@ -130,8 +130,8 @@ repair that best fits the configured trade-off; in practice it converges
 prematurely and then stagnates. Over a 50k-run parameter sweep its results did
 not move with the generation count at any level from 5 to 80, and on the
 ``takeoff`` example it matched an ideal repair in 1.7% of runs against
-``nsga2``'s 89.3%, at no saving in wall-clock time. It is kept for comparison
-rather than for use.
+``nsga2-truncate``'s 89.3%, at no saving in wall-clock time. It is kept for
+comparison rather than for use.
 
 Two consequences are worth knowing. Under either NSGA-II scheme the
 ``[fitness]`` weights only decide which components are active (weight > 0);

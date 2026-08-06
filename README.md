@@ -92,7 +92,7 @@ The full documentation is published at
 | [Architecture](https://benmandrew.com/docs/counter/architecture.html) | algorithm flow, key types, module layout |
 | [Configuration](https://benmandrew.com/docs/counter/configuration.html) | tuning via TOML, fitness weights, selection schemes |
 | [TLSF specifications](https://benmandrew.com/docs/counter/tlsf.html) | TLSF mode and a worked repair |
-| [API reference](https://benmandrew.com/docs/counter/) | the `include/` headers, plus an internal reference covering `src/` |
+| [API reference](https://benmandrew.com/docs/counter/) | the `include/` headers |
 | [Experiment scripts](scripts/README.md) | parameter sweeps and result analysis |
 
 ## Licence

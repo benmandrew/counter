@@ -107,8 +107,4 @@ cmake --build build --target format-ci     # dry-run, fails if unformatted
 cmake --build build --target docs   # Doxygen + Sphinx, requires both installed
 ```
 
-This builds the curated public site from `include/` and, nested under
-`internal/`, a full internal reference covering `src/` as well, with source
-browsing and call graphs when graphviz `dot` is present. The first build renders
-every call graph and takes minutes; warm rebuilds take seconds, as the per-graph
-cache persists in `build/docs/internal`.
+This builds the curated public site from the `include/` headers.

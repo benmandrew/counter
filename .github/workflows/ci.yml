@@ -99,11 +99,11 @@ jobs:
                   | sed "s|^|$GITHUB_WORKSPACE/|" | tr '\n' ' ')
           echo "files=$files" >> "$GITHUB_OUTPUT"
 
-          # Docs are generated from include/ and src/ (Doxygen) and docs/
-          # (Sphinx sources + Doxyfile templates); nothing else affects them.
+          # Docs are generated from include/ (Doxygen) and docs/ (Sphinx
+          # sources + the Doxyfile template); nothing else affects them.
           docs_changed=false
           if git diff --name-only --diff-filter=ACMR "$base" HEAD -- \
-               include src docs | grep -q .; then
+               include docs | grep -q .; then
             docs_changed=true
           fi
           echo "docs=$docs_changed" >> "$GITHUB_OUTPUT"
@@ -181,22 +181,6 @@ jobs:
           key: ${{ runner.os }}-ctcache-${{ github.sha }}
           restore-keys: |
             ${{ runner.os }}-ctcache-
-
-      # Persist Doxygen's per-graph .md5/.svg cache for the internal docs so the
-      # expensive call-graph render is reused across runs. A fresh key each run
-      # (immutable caches can't be overwritten) with a rolling restore-keys
-      # prefix means every run restores the previous run's graphs; Doxygen then
-      # re-renders only the graphs whose content changed.
-      - name: Cache internal docs graph cache
-        if: >-
-          github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
-          || steps.changed.outputs.heavy == 'true'
-        uses: actions/cache@v5
-        with:
-          path: build/docs/internal
-          key: ${{ runner.os }}-docs-internal-${{ github.sha }}
-          restore-keys: |
-            ${{ runner.os }}-docs-internal-
 
       # A single dev shell for configure + format + lint + docs, so the Nix
       # flake is evaluated and the shell instantiated once rather than once per

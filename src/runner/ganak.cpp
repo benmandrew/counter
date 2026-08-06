@@ -14,6 +14,7 @@
 #include <stdexcept>
 #include <string>
 #include <unordered_map>
+#include <unordered_set>
 #include <utility>
 #include <vector>
 
@@ -135,7 +136,7 @@ Count run_ganak_on_dimacs(const std::string& dimacs_path, unsigned seed,
         // Reported separately from a non-zero exit so the run's failure budget
         // can be read against the timeout rather than against ganak errors.
         GanakStats::n_timeouts++;
-        throw std::runtime_error("ganak timed out for " + dimacs_path);
+        throw GanakTimeout("ganak timed out for " + dimacs_path);
     }
     if (result.m_exit_code != 0) {
         throw std::runtime_error("ganak exited with code " +
@@ -147,6 +148,11 @@ Count run_ganak_on_dimacs(const std::string& dimacs_path, unsigned seed,
 Count run_ganak_on_formula(const std::string& formula, unsigned seed) {
     const std::string normalised = normalize_ltl(formula);
     static std::unordered_map<std::string, Count> cache;
+    // Keys whose count was abandoned at the budget. Memoised like the counts
+    // themselves: a formula hard enough to blow the budget is hard every time,
+    // and the individual is dropped either way, so re-running it spends the
+    // budget for a result already known.
+    static std::unordered_set<std::string> timed_out;
     static std::mutex cache_mutex;
     const std::string key = normalised + "|" + std::to_string(seed);
     {
@@ -156,6 +162,12 @@ Count run_ganak_on_formula(const std::string& formula, unsigned seed) {
             GanakStats::n_cache_hits++;
             return found->second;
         }
+        if (timed_out.count(key) != 0) {
+            // Same error the exec would have raised, so a caller sees one
+            // behaviour whether or not this key has been tried before.
+            GanakStats::n_cache_hits++;
+            throw GanakTimeout("ganak timed out for " + normalised);
+        }
         GanakStats::n_cache_misses++;
     }
     const Formula parsed = Formula(normalised);
@@ -163,11 +175,25 @@ Count run_ganak_on_formula(const std::string& formula, unsigned seed) {
         write_temporary_dimacs(parsed.to_dimacs());
     const TempFileGuard dimacs_guard(formula_dimacs_path);
     const auto start = std::chrono::steady_clock::now();
-    double cpu_s = 0.0;
-    const Count count = run_ganak_on_dimacs(formula_dimacs_path, seed, &cpu_s);
-    const double elapsed =
-        std::chrono::duration<double>(std::chrono::steady_clock::now() - start)
+    const auto elapsed_since_start = [&start] {
+        return std::chrono::duration<double>(std::chrono::steady_clock::now() -
+                                             start)
             .count();
+    };
+    double cpu_s = 0.0;
+    Count count = 0;
+    try {
+        count = run_ganak_on_dimacs(formula_dimacs_path, seed, &cpu_s);
+    } catch (const GanakTimeout&) {
+        // run_ganak_on_dimacs writes cpu_s before it raises, so the abandoned
+        // exec is billed to the totals rather than vanishing from them.
+        const std::scoped_lock lock(cache_mutex);
+        GanakStats::total_time_s += elapsed_since_start();
+        GanakStats::total_cpu_s += cpu_s;
+        timed_out.insert(key);
+        throw;
+    }
+    const double elapsed = elapsed_since_start();
     std::scoped_lock lock(cache_mutex);
     GanakStats::total_time_s += elapsed;
     GanakStats::total_cpu_s += cpu_s;

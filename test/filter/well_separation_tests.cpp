@@ -1,3 +1,5 @@
+#include <chrono>
+#include <cstddef>
 #include <string>
 #include <utility>
 #include <vector>
@@ -9,6 +11,22 @@
 #include "test_support.hpp"
 
 namespace {
+
+// Restores the process-global ltlsynt timeout, which expect() would otherwise
+// leave set when it throws.
+class ScopedLtlsyntTimeout {
+   public:
+    explicit ScopedLtlsyntTimeout(std::chrono::milliseconds timeout) {
+        RealizabilityChecker::set_timeout(timeout);
+    }
+    ScopedLtlsyntTimeout(const ScopedLtlsyntTimeout&) = delete;
+    ScopedLtlsyntTimeout& operator=(const ScopedLtlsyntTimeout&) = delete;
+    ScopedLtlsyntTimeout(ScopedLtlsyntTimeout&&) = delete;
+    ScopedLtlsyntTimeout& operator=(ScopedLtlsyntTimeout&&) = delete;
+    ~ScopedLtlsyntTimeout() {
+        RealizabilityChecker::set_timeout(std::chrono::milliseconds(0));
+    }
+};
 
 Requirement continual(const std::string& response, const Timing& tim) {
     return Requirement(Formula("true"), Formula(response), tim);
@@ -135,6 +153,33 @@ void test_filter_drops_only_the_non_well_separated_spec() {
            "spec");
 }
 
+// The filter asks whether `(assumptions) -> false` is *realizable*, so an
+// undecided query must not fall back on "unrealizable" the way an
+// admit-the-repair caller does: that would keep a candidate nobody checked,
+// and the filter's own ltlsynt load is what makes timeouts likely. G(req ->
+// grant) is genuinely well-separated (see above) and reaches the solver, so a
+// budget too short to decide it must flip the verdict to not-well-separated.
+void test_undecided_query_reads_as_not_well_separated() {
+    RealizabilityChecker checker;
+    const Specification spec = with_assumptions(
+        {continual_when("req", "grant", timing::immediately())});
+    const std::size_t before = RealizabilityChecker::n_timeouts;
+    {
+        const ScopedLtlsyntTimeout timeout(std::chrono::milliseconds(1));
+        expect(specification_is_not_well_separated(spec, checker),
+               "well-separation: an undecided query should drop the candidate "
+               "rather than keep it unchecked");
+    }
+    // The undecided outcome is memoised, so this checker keeps dropping the
+    // candidate without re-running ltlsynt. That is the intended trade: the
+    // budget is paid once, and the direction it resolves to is the safe one.
+    expect(specification_is_not_well_separated(spec, checker),
+           "well-separation: a memoised undecided query should keep dropping "
+           "the candidate");
+    expect(RealizabilityChecker::n_timeouts == before + 1,
+           "well-separation: the memoised query should not re-run ltlsynt");
+}
+
 }  // namespace
 
 void run_well_separation_filter_tests() {
@@ -146,4 +191,5 @@ void run_well_separation_filter_tests() {
     test_grant_liveness_assumption_is_not_well_separated();
     test_request_response_assumption_is_well_separated();
     test_filter_drops_only_the_non_well_separated_spec();
+    test_undecided_query_reads_as_not_well_separated();
 }

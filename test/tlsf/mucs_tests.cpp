@@ -149,8 +149,11 @@ const char* const k_unrealizable_arbiter =
     "}\n";
 
 bool is_realizable(const tlsf::Specification& spec) {
-    return global_real_checker().check_realizability_ltl(
-        spec.to_ltl(), spec.m_inputs, spec.m_outputs);
+    // No timeout is set in the tests, so every query is decided; value_or's
+    // argument is unreachable rather than a policy choice.
+    return global_real_checker()
+        .check_realizability_ltl(spec.to_ltl(), spec.m_inputs, spec.m_outputs)
+        .value_or(false);
 }
 
 tlsf::Specification without(const tlsf::Specification& base,

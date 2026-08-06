@@ -86,8 +86,15 @@ bool specification_is_not_well_separated(const Specification& specification,
     // the definition of not being well-separated. The input/output partition is
     // the original spec's.
     const std::string formula = "(" + conjunction + ") -> (false)";
-    return checker.check_realizability_ltl(formula, specification.m_in_atoms,
-                                           specification.m_out_atoms);
+    // An undecided query reads as not-well-separated, so the candidate is
+    // dropped. This filter inverts the usual reading of a failed synthesis:
+    // "unrealizable" is what keeps a candidate here, so defaulting a timeout to
+    // it would admit specifications nobody checked, and the filter's own cost
+    // is what makes timeouts more likely in the first place.
+    return checker
+        .check_realizability_ltl(formula, specification.m_in_atoms,
+                                 specification.m_out_atoms)
+        .value_or(true);
 }
 
 FilterFunction make_well_separation_filter(RealizabilityChecker& checker,

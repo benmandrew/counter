@@ -41,8 +41,13 @@ std::optional<bool> check_tlsf_realizable(const std::string& path,
     contents << file.rdbuf();
     try {
         const tlsf::Specification spec = tlsf::parse(contents.str());
-        return checker.check_realizability_ltl(spec.to_ltl(), spec.m_inputs,
-                                               spec.m_outputs);
+        const std::optional<bool> realizable = checker.check_realizability_ltl(
+            spec.to_ltl(), spec.m_inputs, spec.m_outputs);
+        if (!realizable.has_value()) {
+            std::cerr << path
+                      << ": ltlsynt timed out, realizability undecided\n";
+        }
+        return realizable;
     } catch (const std::exception& exc) {
         std::cerr << path << ": " << exc.what() << "\n";
         return std::nullopt;
@@ -59,7 +64,9 @@ bool has_flag(int argc, const char* const* argv, const char* flag) {
 }
 
 // Resolves a single path's realizability, dispatching on the .tlsf extension.
-// Returns nullopt (after printing the error) if the file cannot be loaded.
+// Returns nullopt (after printing the error) if the file cannot be loaded, or
+// if ltlsynt hit its timeout: this tool reports what was decided, so undecided
+// is an error rather than a verdict in either direction.
 std::optional<bool> realize_one(const std::string& path,
                                 RealizabilityChecker& checker, bool multi) {
     if (std::filesystem::path(path).extension() == ".tlsf") {
@@ -72,7 +79,12 @@ std::optional<bool> realize_one(const std::string& path,
         std::cerr << (multi ? path + ": " : "") << exc.what() << "\n";
         return std::nullopt;
     }
-    return checker.check_realizability(spec);
+    const std::optional<bool> realizable = checker.check_realizability(spec);
+    if (!realizable.has_value()) {
+        std::cerr << (multi ? path + ": " : "")
+                  << "ltlsynt timed out, realizability undecided\n";
+    }
+    return realizable;
 }
 
 }  // namespace

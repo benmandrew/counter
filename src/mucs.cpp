@@ -3,6 +3,7 @@
 #include <filesystem>
 #include <fstream>
 #include <iostream>
+#include <optional>
 #include <sstream>
 #include <string>
 
@@ -81,8 +82,16 @@ int main(int argc, const char* const argv[]) {
     }
 
     RealizabilityChecker& checker = global_real_checker();
-    if (checker.check_realizability_ltl(spec.to_ltl(), spec.m_inputs,
-                                        spec.m_outputs)) {
+    const std::optional<bool> realizable = checker.check_realizability_ltl(
+        spec.to_ltl(), spec.m_inputs, spec.m_outputs);
+    // Undecided is an error, not a licence to extract: extract_muc asserts an
+    // unrealizable input, and every oracle call inside it would face the same
+    // budget that just ran out.
+    if (!realizable.has_value()) {
+        std::cerr << path << ": ltlsynt timed out, realizability undecided\n";
+        return 1;
+    }
+    if (*realizable) {
         std::cout << "REALIZABLE (no core)\n";
         return 0;
     }

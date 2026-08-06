@@ -288,13 +288,16 @@ FilterFunctionT<tlsf::Specification> tlsf_make_well_separation_filter(
                     }
                     // Not well-separated exactly when (assumptions) ->
                     // false is realizable: the system has a strategy
-                    // forcing its own assumptions to fail. A timed-out
-                    // query returns false (unrealizable), keeping the
-                    // candidate.
+                    // forcing its own assumptions to fail. An undecided
+                    // query reads as realizable and so drops the
+                    // candidate, for the reason given in
+                    // filter/well_separation.cpp.
                     const std::string formula =
                         "(" + spec.assumption_ltl() + ") -> (false)";
-                    return !checker.check_realizability_ltl(
-                        formula, spec.m_inputs, spec.m_outputs);
+                    return !checker
+                                .check_realizability_ltl(formula, spec.m_inputs,
+                                                         spec.m_outputs)
+                                .value_or(true);
                 });
         }};
 }

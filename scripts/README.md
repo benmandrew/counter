@@ -192,9 +192,9 @@ smaller-RAM box should pass `--tlsf --max-realizability 6`. Second, `ltlsynt` ha
 no internal timeout and the genetic search occasionally generates a synthesis
 query that runs for minutes; the campaign sets `runtime.ltlsynt_timeout_ms`
 (500 ms — call durations are sharply bimodal, 95% finishing under 50 ms with an
-almost-empty 0.5-1 s band) so such a query is killed and its candidate treated
-as unrealizable
-rather than stalling the run — the count of these appears as `(N timeouts)` in
+almost-empty 0.5-1 s band) so such a query is killed and reported as undecided
+rather than stalling the run: it admits no repair, and drops its candidate at
+the well-separation filter — the count of these appears as `(N timeouts)` in
 each run's `ltlsynt` timing row. `compare` decides implies-ideal on TLSF the
 same way it does on FRETISH, via the whole-formula implication check, so
 `results-tlsf.csv` carries the same columns.

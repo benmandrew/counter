@@ -137,7 +137,9 @@ black_timeout_ms = 1000  # timeout per black SAT query in milliseconds
 dashboard = false
 # Per-call ltlsynt realizability timeout in ms. 0 (default) is no timeout;
 # ltlsynt has no internal one, so on hard specs a single synthesis query can run
-# for minutes. A call exceeding this is killed and treated as unrealizable.
+# for minutes. A call exceeding this is killed and reported as undecided: a
+# repair is not admitted on it, and the well-separation filter drops the
+# candidate rather than keeping one it never checked.
 ltlsynt_timeout_ms = 0
 # Per-call ltl2tgba timeout in ms. 0 (default) is no timeout; the -D
 # determinization blows up on deeply nested formulae. A call exceeding this is

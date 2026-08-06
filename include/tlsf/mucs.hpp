@@ -44,8 +44,9 @@ struct MinimalUnrealizableCore {
 };
 
 /// Realizability oracle: returns true iff `spec` is realizable. Matches the
-/// sense of RealizabilityChecker::check_realizability_ltl. Injected so the
-/// extractor's logic is testable without invoking ltlsynt.
+/// sense of RealizabilityChecker::check_realizability_ltl, minus its undecided
+/// case, which the oracle's author resolves. Injected so the extractor's logic
+/// is testable without invoking ltlsynt.
 using RealizabilityOracle = std::function<bool(const Specification&)>;
 
 /// Extracts a minimal unrealizable core from `spec` using the given oracle.

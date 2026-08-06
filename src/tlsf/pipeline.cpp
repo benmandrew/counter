@@ -1,36 +1,29 @@
 #include "tlsf/pipeline.hpp"
 
-#include <algorithm>
+#include <chrono>
 #include <cstddef>
 #include <fstream>
-#include <iomanip>
 #include <iostream>
 #include <optional>
 #include <sstream>
 #include <stdexcept>
 #include <string>
-#include <utility>
 #include <vector>
 
-#include <nlohmann/json.hpp>
-
-#include "bounded_async.hpp"
 #include "config.hpp"
 #include "dashboard.hpp"
+#include "evolve.hpp"
+#include "fitness/function.hpp"
 #include "genetic/generation.hpp"
 #include "genetic/random_source.hpp"
 #include "genetic/scored.hpp"
+#include "repair_modes.hpp"
+#include "repair_output.hpp"
 #include "runner/black.hpp"
-#include "runner/spot.hpp"
-#include "serialisation.hpp"
-#include "thread_pool.hpp"
-#include "tlsf/filter.hpp"
+#include "survivors.hpp"
 #include "tlsf/fitness.hpp"
-#include "tlsf/mucs.hpp"
-#include "tlsf/operators.hpp"
 #include "tlsf/parser.hpp"
 #include "tlsf/specification.hpp"
-#include "tlsf/writer.hpp"
 
 namespace tlsf {
 
@@ -44,413 +37,6 @@ std::optional<std::string> read_file(const std::string& path) {
     std::ostringstream contents;
     contents << file.rdbuf();
     return contents.str();
-}
-
-// A candidate counts as a repair only when it is realizable and not vacuously
-// so. Elites and final-generation offspring reach this collection without
-// necessarily having passed the vacuity filter -- that filter can be turned
-// off outright -- so the check is repeated here,
-// mirroring the FRETISH path's is_realizable_repair, which screens the same
-// conditions before any repair is written out. Unconditional on both paths:
-// run_vacuity_filter tunes search pressure, never output correctness.
-//
-// The satisfiability query runs first: it is a `black` call against the
-// assumption side alone, far cheaper than the `ltlsynt` query behind
-// tlsf_status, so a vacuous candidate is rejected without paying for synthesis.
-bool is_tlsf_repair(const Specification& spec, const Config& cfg) {
-    return !tlsf_has_unsatisfiable_assumptions(spec, global_sat_checker()) &&
-           tlsf_status(spec, cfg) == 1.0;
-}
-
-// Realizable survivors of the final population, deduplicated by value while
-// preserving fitness order.
-std::vector<Scored<Specification>> realizable_survivors(
-    const std::vector<Scored<Specification>>& population, const Config& cfg,
-    const AggregateWeightedFitnessFunctionT<Specification>& fitness) {
-    // Each status check is an `ltlsynt` query and the whole final population
-    // is checked, so a serial sweep here costs a subprocess per distinct
-    // candidate. Verdicts are collected by index and the survivors compacted
-    // in population order, so the output matches a serial sweep exactly.
-    const std::size_t max_in_flight = dispatch_window();
-    std::vector<char> keep(population.size(), 0);
-    if (max_in_flight <= 1) {
-        for (std::size_t idx = 0; idx < population.size(); ++idx) {
-            keep[idx] =
-                is_tlsf_repair(population[idx].specification, cfg) ? 1 : 0;
-        }
-    } else {
-        run_bounded_async(
-            population.size(), max_in_flight,
-            [&population, &cfg](std::size_t idx) {
-                return [&spec = population[idx].specification, &cfg] {
-                    return is_tlsf_repair(spec, cfg);
-                };
-            },
-            [&keep](std::size_t idx, bool realizable) {
-                keep[idx] = realizable ? 1 : 0;
-            });
-    }
-    std::vector<Scored<Specification>> survivors;
-    for (std::size_t idx = 0; idx < population.size(); ++idx) {
-        if (keep[idx] == 0) {
-            continue;
-        }
-        const Scored<Specification>& scored = population[idx];
-        const bool seen =
-            std::any_of(survivors.begin(), survivors.end(),
-                        [&scored](const Scored<Specification>& kept) {
-                            return kept.specification == scored.specification;
-                        });
-        if (!seen) {
-            // Serial on purpose: the final generation scored these same specs,
-            // so the fitness cache is warm and each rescore is a cache hit;
-            // fanning it out would nest solver dispatch inside solver dispatch
-            // for nothing.
-            auto [objectives, scalar] =
-                fitness.objectives_and_fitness(scored.specification);
-            Scored<Specification> survivor;
-            survivor.specification = scored.specification;
-            survivor.fitness = scalar;
-            survivor.objectives = std::move(objectives);
-            survivors.push_back(std::move(survivor));
-        }
-    }
-    order_population(cfg, survivors);
-    return survivors;
-}
-
-// Applies the implication (maximality) filter to the survivor specifications
-// and returns the Scored entries whose spec survived, in the original order.
-std::vector<Scored<Specification>> keep_maximal(
-    const std::vector<Scored<Specification>>& survivors,
-    SatisfiabilityChecker& checker) {
-    std::vector<Specification> specs;
-    specs.reserve(survivors.size());
-    for (const Scored<Specification>& scored : survivors) {
-        specs.push_back(scored.specification);
-    }
-    const std::vector<Specification> maximal =
-        tlsf_make_implication_filter(checker)(specs);
-    std::vector<Scored<Specification>> result;
-    result.reserve(maximal.size());
-    for (const Scored<Specification>& scored : survivors) {
-        const bool kept = std::any_of(maximal.begin(), maximal.end(),
-                                      [&scored](const Specification& spec) {
-                                          return spec == scored.specification;
-                                      });
-        if (kept) {
-            result.push_back(scored);
-        }
-    }
-    return result;
-}
-
-void write_survivors(
-    const std::vector<Scored<Specification>>& survivors,
-    const AggregateWeightedFitnessFunctionT<Specification>& fitness,
-    const std::string& output_dir) {
-    for (std::size_t i = 0; i < survivors.size(); ++i) {
-        const std::string base = output_dir + "/repair_" + std::to_string(i);
-        std::ofstream spec_file(base + ".tlsf");
-        if (!spec_file) {
-            throw std::runtime_error("cannot open output file: " + base +
-                                     ".tlsf");
-        }
-        spec_file << write(survivors[i].specification);
-
-        std::ofstream fitness_file(base + ".fitness.json");
-        if (!fitness_file) {
-            throw std::runtime_error("cannot open output file: " + base +
-                                     ".fitness.json");
-        }
-        // Mirror the FRETISH per-objective breakdown: the weighted total plus
-        // each component's score and weight, in registration order.
-        serialisation::FitnessRecord record;
-        record.total = survivors[i].fitness;
-        for (const WeightedFitnessFunctionT<Specification>& wff : fitness) {
-            record.components.push_back(
-                {wff.name, wff.function(survivors[i].specification),
-                 wff.weight});
-        }
-        const nlohmann::json jobj = record;
-        fitness_file << jobj.dump(2) << "\n";
-    }
-}
-
-struct FilterRunStats {
-    std::string name;
-    std::size_t total_in = 0;
-    std::size_t total_out = 0;
-};
-
-void print_filter_report(const std::vector<FilterRunStats>& stats) {
-    const bool any =
-        std::any_of(stats.begin(), stats.end(), [](const FilterRunStats& stat) {
-            return !stat.name.empty() && stat.total_in > 0;
-        });
-    if (!any) {
-        return;
-    }
-    std::cout << "\nFilter report:\n";
-    for (const FilterRunStats& stat : stats) {
-        if (stat.name.empty() || stat.total_in == 0) {
-            continue;
-        }
-        const double pct_drop =
-            100.0 * (1.0 - static_cast<double>(stat.total_out) /
-                               static_cast<double>(stat.total_in));
-        std::cout << std::left << std::setw(20) << stat.name << std::right
-                  << std::setw(8) << stat.total_in << " in  " << std::setw(8)
-                  << stat.total_out << " out  " << std::fixed
-                  << std::setprecision(1) << std::setw(5) << pct_drop
-                  << "% avg drop\n";
-    }
-}
-
-bool is_realizable(const Specification& spec) {
-    // Undecided reads as unrealizable: the repair loop keeps going rather than
-    // declaring a specification repaired on a query that never finished.
-    return global_real_checker()
-        .check_realizability_ltl(spec.to_ltl(), spec.m_inputs, spec.m_outputs)
-        .value_or(false);
-}
-
-// Builds the per-generation filters, the TLSF counterparts of the FRETISH set
-// (dedup, bloat cap, the optional assumption-vacuity and well-separation
-// filters).
-//
-// There is no counterpart to the FRETISH false-condition filter, and none is
-// wanted. That filter is syntactic -- it rejects a requirement whose trigger is
-// the literal `false` -- and a tlsf::Specification has no condition/response
-// split to carry such a trigger. The antecedent of `(assumptions) ->
-// (guarantees)` is the assumption side, and the vacuity filter above already
-// decides it *semantically*, so it catches an assumption merely equivalent to
-// false where the syntactic check would not. Porting the FRETISH check here
-// would add nothing it does not already subsume.
-//
-// The unchecked half is the dual: a guarantee side equivalent to `true`, which
-// makes the implication a tautology just as a false antecedent does. Nothing on
-// this path tests it -- least of all the final weakening screen, since
-// `original implies true` holds trivially and a gutted guarantee is therefore a
-// perfect weakening.
-std::vector<FilterFunctionT<Specification>> build_per_gen_filters(
-    const Specification& spec, const Config& cfg) {
-    const std::size_t max_in_flight = dispatch_window();
-    std::vector<FilterFunctionT<Specification>> filters;
-    FilterFunctionT<Specification> dedup = tlsf_make_dedup_filter();
-    filters.push_back(std::move(dedup));
-    FilterFunctionT<Specification> bloat = tlsf_make_bloat_cap_filter(spec);
-    filters.push_back(std::move(bloat));
-    if (cfg.run_vacuity_filter) {
-        FilterFunctionT<Specification> vacuity =
-            tlsf_make_vacuity_filter(max_in_flight);
-        filters.push_back(std::move(vacuity));
-    }
-    if (cfg.run_well_separation_filter) {
-        FilterFunctionT<Specification> well_separation =
-            tlsf_make_well_separation_filter(global_real_checker(),
-                                             max_in_flight);
-        filters.push_back(std::move(well_separation));
-    }
-    return filters;
-}
-
-// Says where one evolve run should report its progress, and how to place it in
-// a run that evolves more than once. MUC repair calls evolve_population per
-// core, so gen_offset keeps the dashboard's generation numbering monotonic
-// across those calls while muc_iter records which core a generation belonged
-// to. A null writer disables reporting entirely.
-struct DashboardProgress {
-    DashboardWriter* writer = nullptr;
-    std::vector<std::string> objective_names;
-    std::size_t gen_offset = 0;
-    std::size_t muc_iter = 0;
-};
-
-// Evolves `spec` under `cfg` against `fitness`, returning the final scored
-// population and, via `filter_stats_out`, this run's per-filter in/out totals.
-// Shared by both repair modes; in MUC mode `spec` is a core sub-specification.
-std::vector<Scored<Specification>> evolve_population(
-    const Specification& spec, const Config& cfg,
-    const RandomSource& random_source,
-    const AggregateWeightedFitnessFunctionT<Specification>& fitness,
-    std::vector<FilterRunStats>& filter_stats_out,
-    const DashboardProgress& progress = {}) {
-    const std::vector<FilterFunctionT<Specification>> per_gen_filters =
-        build_per_gen_filters(spec, cfg);
-
-    const std::vector<Specification> seed_population(cfg.population_size, spec);
-    std::vector<Scored<Specification>> population =
-        score_population(cfg, seed_population, fitness);
-
-    // Population sizing, matching the FRETISH path: each generation breeds
-    // selection_size offspring and carries the best elitism_size parents over
-    // verbatim. Both are derived once from the seed population size (cfg
-    // guarantees elitism_rate < selection_rate). Which candidates count as
-    // "best" is not truncation on the weighted scalar: order_population applies
-    // cfg.selection_scheme, which defaults to NSGA-II.
-    const std::size_t selection_size = std::max(
-        std::size_t{1},
-        static_cast<std::size_t>(static_cast<double>(cfg.population_size) *
-                                 cfg.selection_rate));
-    const auto elitism_size = static_cast<std::size_t>(
-        static_cast<double>(cfg.population_size) * cfg.elitism_rate);
-
-    filter_stats_out.clear();
-    filter_stats_out.reserve(per_gen_filters.size());
-    for (const FilterFunctionT<Specification>& filter : per_gen_filters) {
-        filter_stats_out.push_back({filter.name(), 0, 0});
-    }
-
-    for (std::size_t gen = 0; gen < cfg.generations; ++gen) {
-        const auto gen_start = std::chrono::steady_clock::now();
-        // MUC repair restarts its generation count on every core it evolves, so
-        // the dashboard is given a number that keeps climbing across
-        // iterations; muc_iter carries the structure that flattens away.
-        const std::size_t dashboard_gen = progress.gen_offset + gen + 1;
-        std::size_t stage_index = 0;
-        auto on_stage = [&progress, &stage_index,
-                         dashboard_gen](const StageObservation& obs) {
-            if (progress.writer != nullptr) {
-                progress.writer->stage(dashboard_gen, stage_index++, obs,
-                                       progress.muc_iter);
-            }
-        };
-        population = evolve_generation_generic(
-            cfg, population, selection_size, elitism_size, fitness,
-            per_gen_filters, tlsf_operators(), random_source, nullptr,
-            on_stage);
-        // Each filter records this generation's in/out sizes in its own mutable
-        // counters; fold them into the running totals for the end-of-run
-        // report.
-        for (std::size_t k = 0; k < per_gen_filters.size(); ++k) {
-            filter_stats_out[k].total_in += per_gen_filters[k].n_in();
-            filter_stats_out[k].total_out += per_gen_filters[k].n_out();
-        }
-        const double best =
-            population.empty() ? 0.0 : population.front().fitness;
-        std::cout << "gen " << (gen + 1) << "/" << cfg.generations
-                  << "  best fitness " << best << "\n";
-        if (progress.writer != nullptr) {
-            // The maximum, not front(): NSGA-II orders by front rank and
-            // crowding distance, so the leading individual need not hold the
-            // highest weighted scalar.
-            double total = 0.0;
-            double maximum = 0.0;
-            std::vector<std::vector<double>> objectives;
-            objectives.reserve(population.size());
-            for (const Scored<Specification>& cand : population) {
-                total += cand.fitness;
-                maximum = std::max(maximum, cand.fitness);
-                objectives.push_back(cand.objectives);
-            }
-            progress.writer->generation(
-                dashboard_gen,
-                std::chrono::duration<double>(std::chrono::steady_clock::now() -
-                                              gen_start)
-                    .count(),
-                maximum,
-                population.empty()
-                    ? 0.0
-                    : total / static_cast<double>(population.size()),
-                // No count: this path checks realizability once, after
-                // evolution, so any number here would be one the run never
-                // measured.
-                mean_objectives(progress.objective_names, objectives),
-                std::nullopt, population.size(), progress.muc_iter);
-        }
-    }
-    return population;
-}
-
-// Merges one evolve run's per-filter totals into a running aggregate (the MUC
-// loop sums them across iterations for a single end-of-run report). Filters are
-// built in the same order every call, so accumulation is positional.
-void accumulate_filter_stats(std::vector<FilterRunStats>& aggregate,
-                             const std::vector<FilterRunStats>& run) {
-    if (aggregate.empty()) {
-        aggregate = run;
-        return;
-    }
-    for (std::size_t i = 0; i < run.size() && i < aggregate.size(); ++i) {
-        aggregate[i].total_in += run[i].total_in;
-        aggregate[i].total_out += run[i].total_out;
-    }
-}
-
-// Monolithic repair: evolve the whole spec once, collect realizable survivors.
-std::vector<Scored<Specification>> run_monolithic(
-    const Specification& original, const Config& cfg,
-    const RandomSource& random_source,
-    const AggregateWeightedFitnessFunctionT<Specification>& fitness,
-    const DashboardProgress& progress) {
-    std::vector<FilterRunStats> filter_stats;
-    const std::vector<Scored<Specification>> population = evolve_population(
-        original, cfg, random_source, fitness, filter_stats, progress);
-    std::vector<Scored<Specification>> survivors =
-        realizable_survivors(population, cfg, fitness);
-    print_filter_report(filter_stats);
-    return survivors;
-}
-
-// MUC repair: iteratively extract a minimal unrealizable core, evolve only that
-// sub-specification, reintegrate the best realizable-on-sub-spec repair with
-// the untouched non-core guarantees, and repeat on the recombined spec until it
-// is realizable or the iteration cap trips. Returns the single realizable
-// repair (scored against the original for output), or empty if none was found.
-std::vector<Scored<Specification>> run_muc(
-    const Specification& original, const Config& cfg,
-    const RandomSource& random_source,
-    const AggregateWeightedFitnessFunctionT<Specification>& output_fitness,
-    const DashboardProgress& progress) {
-    std::vector<FilterRunStats> aggregate_stats;
-    Specification current = original;
-    std::size_t gen_offset = 0;
-    for (std::size_t iter = 0; iter < cfg.muc_max_iterations; ++iter) {
-        if (is_realizable(current)) {
-            break;
-        }
-        const MinimalUnrealizableCore muc = extract_muc(current);
-        if (muc.formulae.empty()) {
-            // No guarantee-side core: the environment side alone is
-            // unrealizable, which this repair strategy cannot address.
-            std::cout << "muc: no guarantee-side core to repair; stopping\n";
-            break;
-        }
-        std::cout << "muc iteration " << (iter + 1) << "/"
-                  << cfg.muc_max_iterations << ": core of "
-                  << muc.formulae.size() << " formula(s)\n";
-        const std::vector<CoreFormula> carried =
-            non_core_formulae(current, muc.formulae);
-        const AggregateWeightedFitnessFunctionT<Specification> sub_fitness =
-            tlsf_get_fitness_function(muc.spec, cfg);
-        std::vector<FilterRunStats> iter_stats;
-        DashboardProgress iter_progress = progress;
-        iter_progress.gen_offset = gen_offset;
-        iter_progress.muc_iter = iter + 1;
-        const std::vector<Scored<Specification>> population =
-            evolve_population(muc.spec, cfg, random_source, sub_fitness,
-                              iter_stats, iter_progress);
-        gen_offset += cfg.generations;
-        accumulate_filter_stats(aggregate_stats, iter_stats);
-        const std::vector<Scored<Specification>> sub_survivors =
-            realizable_survivors(population, cfg, sub_fitness);
-        if (sub_survivors.empty()) {
-            std::cout << "muc: core could not be made realizable; stopping\n";
-            break;
-        }
-        current = reintegrate(sub_survivors.front().specification, carried);
-    }
-    print_filter_report(aggregate_stats);
-    if (!is_realizable(current)) {
-        return {};
-    }
-    auto [objectives, scalar] = output_fitness.objectives_and_fitness(current);
-    Scored<Specification> repaired;
-    repaired.specification = current;
-    repaired.fitness = scalar;
-    repaired.objectives = std::move(objectives);
-    return {std::move(repaired)};
 }
 
 }  // namespace
@@ -480,7 +66,7 @@ int run_repair(const std::string& input_path, const std::string& output_dir,
     const AggregateWeightedFitnessFunctionT<Specification> fitness =
         tlsf_get_fitness_function(original, cfg);
 
-    DashboardProgress progress;
+    internal::DashboardProgress progress;
     DashboardWriter dashboard(output_dir, cfg.dashboard);
     progress.writer = &dashboard;
     for (const WeightedFitnessFunctionT<Specification>& objective : fitness) {
@@ -492,7 +78,7 @@ int run_repair(const std::string& input_path, const std::string& output_dir,
     dashboard.run_start(
         input_path, cfg.generations, cfg.population_size,
         maybe_seed.value_or(0), progress.objective_names,
-        generation_stage_names(build_per_gen_filters(original, cfg)));
+        generation_stage_names(internal::build_per_gen_filters(original, cfg)));
     const auto wall_start = std::chrono::steady_clock::now();
     if (!dashboard.write_page().empty()) {
         std::cout << "Progress: " << dashboard.path() << "\n"
@@ -502,54 +88,24 @@ int run_repair(const std::string& input_path, const std::string& output_dir,
 
     std::vector<Scored<Specification>> survivors =
         cfg.repair_mode == RepairMode::Muc
-            ? run_muc(original, cfg, random_source, fitness, progress)
-            : run_monolithic(original, cfg, random_source, fitness, progress);
+            ? internal::run_muc(original, cfg, random_source, fitness, progress)
+            : internal::run_monolithic(original, cfg, random_source, fitness,
+                                       progress);
     const std::size_t n_realizable = survivors.size();
-    // Final weakening screen, as on the FRETISH path: keep only repairs the
-    // original logically implies. The check here is exact rather than the
-    // FRETISH assume-guarantee decomposition -- a tlsf::Specification lowers to
-    // one LTL formula -- so a rejection means the candidate genuinely forbids
-    // behaviour the original allowed, not that the decomposition lost it.
     if (cfg.run_weakening_filter && !survivors.empty()) {
-        std::vector<Specification> specs;
-        specs.reserve(survivors.size());
-        for (const Scored<Specification>& scored : survivors) {
-            specs.push_back(scored.specification);
-        }
-        const std::vector<Specification> weakenings =
-            tlsf_make_weakening_filter(original, global_sat_checker())(specs);
-        std::vector<Scored<Specification>> kept;
-        kept.reserve(weakenings.size());
-        for (const Scored<Specification>& scored : survivors) {
-            const bool is_weakening =
-                std::any_of(weakenings.begin(), weakenings.end(),
-                            [&scored](const Specification& spec) {
-                                return spec == scored.specification;
-                            });
-            if (is_weakening) {
-                kept.push_back(scored);
-            }
-        }
-        survivors = std::move(kept);
+        survivors = internal::keep_weakenings(survivors, original,
+                                              global_sat_checker());
     }
-    // Final maximality pass: keep only realizable repairs not strictly implied
-    // by another, mirroring the FRETISH final implication filter.
     if (cfg.run_implication_filter && survivors.size() > 1) {
-        survivors = keep_maximal(survivors, global_sat_checker());
+        survivors = internal::keep_maximal(survivors, global_sat_checker());
     }
-    write_survivors(survivors, fitness, output_dir);
+    internal::write_survivors(survivors, fitness, output_dir);
     dashboard.run_end(cfg.generations, n_realizable, survivors.size(),
                       std::chrono::duration<double>(
                           std::chrono::steady_clock::now() - wall_start)
                           .count());
-    std::cout << "Realizable specifications: " << n_realizable;
-    if (cfg.run_implication_filter) {
-        std::cout << " (" << survivors.size() << " maximal)";
-    }
-    if (!survivors.empty()) {
-        std::cout << ", written to " << output_dir << "/";
-    }
-    std::cout << "\n";
+    internal::print_repair_summary(n_realizable, survivors.size(),
+                                   cfg.run_implication_filter, output_dir);
     return 0;
 }
 

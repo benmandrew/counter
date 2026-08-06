@@ -1,17 +1,16 @@
+#include <exception>
 #include <filesystem>
-#include <fstream>
 #include <iostream>
 #include <optional>
-#include <sstream>
 #include <string>
 #include <vector>
 
+#include "driver_support.hpp"
 #include "requirement.hpp"
 #include "runner/spot.hpp"
 #include "serialisation.hpp"
 #include "tlsf/parser.hpp"
 #include "tlsf/specification.hpp"
-#include "version.hpp"
 
 namespace {
 
@@ -32,15 +31,13 @@ void print_usage(const char* prog) {
 
 std::optional<bool> check_tlsf_realizable(const std::string& path,
                                           RealizabilityChecker& checker) {
-    std::ifstream file(path);
-    if (!file) {
+    const std::optional<std::string> contents = read_file_contents(path);
+    if (!contents.has_value()) {
         std::cerr << path << ": cannot read file\n";
         return std::nullopt;
     }
-    std::ostringstream contents;
-    contents << file.rdbuf();
     try {
-        const tlsf::Specification spec = tlsf::parse(contents.str());
+        const tlsf::Specification spec = tlsf::parse(*contents);
         const std::optional<bool> realizable = checker.check_realizability_ltl(
             spec.to_ltl(), spec.m_inputs, spec.m_outputs);
         if (!realizable.has_value()) {
@@ -52,15 +49,6 @@ std::optional<bool> check_tlsf_realizable(const std::string& path,
         std::cerr << path << ": " << exc.what() << "\n";
         return std::nullopt;
     }
-}
-
-bool has_flag(int argc, const char* const* argv, const char* flag) {
-    for (int i = 1; i < argc; ++i) {
-        if (argv[i] != nullptr && std::string(argv[i]) == flag) {
-            return true;
-        }
-    }
-    return false;
 }
 
 // Resolves a single path's realizability, dispatching on the .tlsf extension.
@@ -94,22 +82,11 @@ int main(int argc, const char* const argv[]) {
         std::cerr << "fatal: missing argv[0]\n";
         return 1;
     }
-    if (has_flag(argc, argv, "--version")) {
-        version::print(std::cout);
-        return 0;
-    }
-    if (has_flag(argc, argv, "-h") || has_flag(argc, argv, "--help")) {
-        print_usage(argv[0]);
+    if (handle_info_flags(argc, argv, print_usage)) {
         return 0;
     }
 
-    std::vector<std::string> paths;
-    for (int i = 1; i < argc; ++i) {
-        if (argv[i] != nullptr) {
-            paths.emplace_back(argv[i]);
-        }
-    }
-
+    const std::vector<std::string> paths = collect_argument_paths(argc, argv);
     if (paths.empty()) {
         print_usage(argv[0]);
         return 1;

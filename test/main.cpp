@@ -104,6 +104,10 @@ bool run_infrastructure_suite(std::string_view suite_name) {
         run_dashboard_tests();
         return true;
     }
+    if (suite_name == "driver_support") {
+        run_driver_support_tests();
+        return true;
+    }
     if (suite_name == "profile") {
         run_profile_tests();
         return true;
@@ -251,6 +255,7 @@ int main(int argc, const char* const argv[]) {
             run_serialisation_tests();
             run_config_io_tests();
             run_dashboard_tests();
+            run_driver_support_tests();
             run_profile_tests();
             run_tlsf_parser_tests();
             run_tlsf_writer_tests();

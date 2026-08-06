@@ -1,0 +1,156 @@
+#include "evolve.hpp"
+
+#include <algorithm>
+#include <chrono>
+#include <cstddef>
+#include <iostream>
+#include <optional>
+#include <utility>
+#include <vector>
+
+#include "config.hpp"
+#include "dashboard.hpp"
+#include "filter_report.hpp"
+#include "fitness/function.hpp"
+#include "genetic/generation.hpp"
+#include "genetic/pipeline.hpp"
+#include "genetic/random_source.hpp"
+#include "genetic/scored.hpp"
+#include "runner/spot.hpp"
+#include "thread_pool.hpp"
+#include "tlsf/filter.hpp"
+#include "tlsf/operators.hpp"
+#include "tlsf/specification.hpp"
+
+namespace tlsf::internal {
+
+// There is no counterpart to the FRETISH false-condition filter, and none is
+// wanted. That filter is syntactic -- it rejects a requirement whose trigger is
+// the literal `false` -- and a tlsf::Specification has no condition/response
+// split to carry such a trigger. The antecedent of `(assumptions) ->
+// (guarantees)` is the assumption side, and the vacuity filter this builds
+// already decides it *semantically*, so it catches an assumption merely
+// equivalent to false where the syntactic check would not. Porting the FRETISH
+// check here would add nothing it does not already subsume.
+//
+// The unchecked half is the dual: a guarantee side equivalent to `true`, which
+// makes the implication a tautology just as a false antecedent does. Nothing on
+// this path tests it -- least of all the final weakening screen, since
+// `original implies true` holds trivially and a gutted guarantee is therefore a
+// perfect weakening.
+std::vector<FilterFunctionT<Specification>> build_per_gen_filters(
+    const Specification& spec, const Config& cfg) {
+    const std::size_t max_in_flight = dispatch_window();
+    std::vector<FilterFunctionT<Specification>> filters;
+    FilterFunctionT<Specification> dedup = tlsf_make_dedup_filter();
+    filters.push_back(std::move(dedup));
+    FilterFunctionT<Specification> bloat = tlsf_make_bloat_cap_filter(spec);
+    filters.push_back(std::move(bloat));
+    if (cfg.run_vacuity_filter) {
+        FilterFunctionT<Specification> vacuity =
+            tlsf_make_vacuity_filter(max_in_flight);
+        filters.push_back(std::move(vacuity));
+    }
+    if (cfg.run_well_separation_filter) {
+        FilterFunctionT<Specification> well_separation =
+            tlsf_make_well_separation_filter(global_real_checker(),
+                                             max_in_flight);
+        filters.push_back(std::move(well_separation));
+    }
+    return filters;
+}
+
+std::vector<Scored<Specification>> evolve_population(
+    const Specification& spec, const Config& cfg,
+    const RandomSource& random_source,
+    const AggregateWeightedFitnessFunctionT<Specification>& fitness,
+    std::vector<FilterRunStats>& filter_stats_out,
+    const DashboardProgress& progress) {
+    const std::vector<FilterFunctionT<Specification>> per_gen_filters =
+        build_per_gen_filters(spec, cfg);
+
+    const std::vector<Specification> seed_population(cfg.population_size, spec);
+    std::vector<Scored<Specification>> population =
+        score_population(cfg, seed_population, fitness);
+
+    // Population sizing, matching the FRETISH path: each generation breeds
+    // selection_size offspring and carries the best elitism_size parents over
+    // verbatim. Both are derived once from the seed population size (cfg
+    // guarantees elitism_rate < selection_rate). Which candidates count as
+    // "best" is not truncation on the weighted scalar: order_population applies
+    // cfg.selection_scheme, which defaults to NSGA-II.
+    const std::size_t selection_size = std::max(
+        std::size_t{1},
+        static_cast<std::size_t>(static_cast<double>(cfg.population_size) *
+                                 cfg.selection_rate));
+    const auto elitism_size = static_cast<std::size_t>(
+        static_cast<double>(cfg.population_size) * cfg.elitism_rate);
+
+    filter_stats_out.clear();
+    filter_stats_out.reserve(per_gen_filters.size());
+    for (const FilterFunctionT<Specification>& filter : per_gen_filters) {
+        filter_stats_out.push_back({filter.name(), 0, 0});
+    }
+
+    for (std::size_t gen = 0; gen < cfg.generations; ++gen) {
+        const auto gen_start = std::chrono::steady_clock::now();
+        // MUC repair restarts its generation count on every core it evolves, so
+        // the dashboard is given a number that keeps climbing across
+        // iterations; muc_iter carries the structure that flattens away.
+        const std::size_t dashboard_gen = progress.gen_offset + gen + 1;
+        std::size_t stage_index = 0;
+        auto on_stage = [&progress, &stage_index,
+                         dashboard_gen](const StageObservation& obs) {
+            if (progress.writer != nullptr) {
+                progress.writer->stage(dashboard_gen, stage_index++, obs,
+                                       progress.muc_iter);
+            }
+        };
+        population = evolve_generation_generic(
+            cfg, population, selection_size, elitism_size, fitness,
+            per_gen_filters, tlsf_operators(), random_source, nullptr,
+            on_stage);
+        // Each filter records this generation's in/out sizes in its own mutable
+        // counters; fold them into the running totals for the end-of-run
+        // report.
+        for (std::size_t k = 0; k < per_gen_filters.size(); ++k) {
+            filter_stats_out[k].total_in += per_gen_filters[k].n_in();
+            filter_stats_out[k].total_out += per_gen_filters[k].n_out();
+        }
+        const double best =
+            population.empty() ? 0.0 : population.front().fitness;
+        std::cout << "gen " << (gen + 1) << "/" << cfg.generations
+                  << "  best fitness " << best << "\n";
+        if (progress.writer != nullptr) {
+            // The maximum, not front(): NSGA-II orders by front rank and
+            // crowding distance, so the leading individual need not hold the
+            // highest weighted scalar.
+            double total = 0.0;
+            double maximum = 0.0;
+            std::vector<std::vector<double>> objectives;
+            objectives.reserve(population.size());
+            for (const Scored<Specification>& cand : population) {
+                total += cand.fitness;
+                maximum = std::max(maximum, cand.fitness);
+                objectives.push_back(cand.objectives);
+            }
+            progress.writer->generation(
+                dashboard_gen,
+                std::chrono::duration<double>(std::chrono::steady_clock::now() -
+                                              gen_start)
+                    .count(),
+                maximum,
+                population.empty()
+                    ? 0.0
+                    : total / static_cast<double>(population.size()),
+                // No count: this path checks realizability once, after
+                // evolution, so any number here would be one the run never
+                // measured.
+                mean_objectives(progress.objective_names, objectives),
+                std::nullopt, population.size(), progress.muc_iter);
+        }
+    }
+    return population;
+}
+
+}  // namespace tlsf::internal

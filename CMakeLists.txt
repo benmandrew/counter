@@ -40,10 +40,14 @@ target_sources(counter_core PRIVATE
     src/prop_formula/core.cpp
     src/prop_formula/dimacs_api.cpp
     src/prop_formula/parser.cpp
+    src/prop_formula/render.cpp
+    src/prop_formula/rewrite.cpp
     src/prop_formula/similarity.cpp
+    src/prop_formula/simplify.cpp
     src/prop_formula/transform.cpp
     src/profile.cpp
     src/requirement.cpp
+    src/tlsf/lexer.cpp
     src/tlsf/parser.cpp
     src/tlsf/specification.cpp
     src/tlsf/writer.cpp
@@ -90,8 +94,14 @@ target_sources(counter_fitness PRIVATE
     src/tlsf/filter.cpp
     src/tlsf/mucs.cpp
     src/tlsf/pipeline.cpp
+    src/tlsf/evolve.cpp
+    src/tlsf/filter_report.cpp
+    src/tlsf/repair_modes.cpp
+    src/tlsf/repair_output.cpp
+    src/tlsf/survivors.cpp
     src/config_io.cpp
     src/dashboard.cpp
+    src/driver_support.cpp
 )
 target_include_directories(counter_fitness PUBLIC include)
 target_link_libraries(counter_fitness PUBLIC counter_core tomlplusplus::tomlplusplus)
@@ -140,7 +150,14 @@ endif()
 target_compile_definitions(counter_fitness PRIVATE
     COUNTER_DASHBOARD_PAGE_PATH="${COUNTER_DASHBOARD_PAGE_PATH}")
 
-add_executable(counter src/main.cpp src/crash/crash_handler.cpp)
+add_executable(counter
+    src/main.cpp
+    src/crash/crash_handler.cpp
+    src/repair/cli.cpp
+    src/repair/driver.cpp
+    src/repair/evolution.cpp
+    src/repair/reports.cpp
+)
 target_link_libraries(counter PRIVATE counter_fitness cpptrace::cpptrace)
 
 add_executable(signal_tracer src/crash/signal_tracer.cpp)

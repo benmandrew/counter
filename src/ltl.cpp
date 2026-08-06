@@ -1,16 +1,16 @@
 #include <filesystem>
-#include <fstream>
 #include <iostream>
-#include <sstream>
+#include <optional>
+#include <stdexcept>
 #include <string>
 #include <vector>
 
+#include "driver_support.hpp"
 #include "prop_formula.hpp"
 #include "requirement.hpp"
 #include "serialisation.hpp"
 #include "tlsf/parser.hpp"
 #include "tlsf/specification.hpp"
-#include "version.hpp"
 
 namespace {
 
@@ -28,13 +28,11 @@ void print_usage(const char* prog) {
 }
 
 void print_tlsf_ltl(const std::string& path, bool show_path) {
-    std::ifstream file(path);
-    if (!file) {
+    const std::optional<std::string> contents = read_file_contents(path);
+    if (!contents.has_value()) {
         throw std::runtime_error("cannot read file");
     }
-    std::ostringstream contents;
-    contents << file.rdbuf();
-    const tlsf::Specification spec = tlsf::parse(contents.str());
+    const tlsf::Specification spec = tlsf::parse(*contents);
     if (show_path) {
         std::cout << path << ":\n";
     }
@@ -58,15 +56,6 @@ void print_tlsf_ltl(const std::string& path, bool show_path) {
     if (show_path) {
         std::cout << "\n";
     }
-}
-
-bool has_flag(int argc, const char* const* argv, const char* flag) {
-    for (int i = 1; i < argc; ++i) {
-        if (argv[i] != nullptr && std::string(argv[i]) == flag) {
-            return true;
-        }
-    }
-    return false;
 }
 
 void print_spec_ltl(const std::string& path, const Specification& prefixed_spec,
@@ -97,22 +86,11 @@ int main(int argc, const char* const argv[]) {
         std::cerr << "fatal: missing argv[0]\n";
         return 1;
     }
-    if (has_flag(argc, argv, "--version")) {
-        version::print(std::cout);
-        return 0;
-    }
-    if (has_flag(argc, argv, "-h") || has_flag(argc, argv, "--help")) {
-        print_usage(argv[0]);
+    if (handle_info_flags(argc, argv, print_usage)) {
         return 0;
     }
 
-    std::vector<std::string> paths;
-    for (int i = 1; i < argc; ++i) {
-        if (argv[i] != nullptr) {
-            paths.emplace_back(argv[i]);
-        }
-    }
-
+    const std::vector<std::string> paths = collect_argument_paths(argc, argv);
     if (paths.empty()) {
         print_usage(argv[0]);
         return 1;

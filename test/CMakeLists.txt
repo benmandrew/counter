@@ -30,6 +30,7 @@ add_executable(counter_tests
     serialisation_tests.cpp
     config_io_tests.cpp
     dashboard_tests.cpp
+    driver_support_tests.cpp
     profile_tests.cpp
     thread_pool_tests.cpp
     tlsf/parser_tests.cpp
@@ -41,7 +42,12 @@ add_executable(counter_tests
     tlsf/pipeline_tests.cpp
 )
 
-target_include_directories(counter_tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+# src/ as well as test/, so suites can reach the private headers next to the
+# implementation they cover (driver_support.hpp and the like). Those are
+# deliberately not in include/, which is the published API surface.
+target_include_directories(counter_tests PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}
+    ${CMAKE_SOURCE_DIR}/src)
 target_link_libraries(counter_tests PRIVATE counter_fitness)
 
 if(MSVC)
@@ -97,6 +103,7 @@ add_test(NAME counter_tests.requirement COMMAND counter_tests requirement)
 add_test(NAME counter_tests.serialisation COMMAND counter_tests serialisation)
 add_test(NAME counter_tests.config_io COMMAND counter_tests config_io)
 add_test(NAME counter_tests.dashboard COMMAND counter_tests dashboard)
+add_test(NAME counter_tests.driver_support COMMAND counter_tests driver_support)
 add_test(NAME counter_tests.tlsf_parser COMMAND counter_tests tlsf_parser)
 add_test(NAME counter_tests.tlsf_writer COMMAND counter_tests tlsf_writer)
 add_test(NAME counter_tests.tlsf_filter COMMAND counter_tests tlsf_filter)

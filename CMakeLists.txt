@@ -47,6 +47,7 @@ target_sources(counter_core PRIVATE
     src/prop_formula/transform.cpp
     src/profile.cpp
     src/requirement.cpp
+    src/tlsf/lexer.cpp
     src/tlsf/parser.cpp
     src/tlsf/specification.cpp
     src/tlsf/writer.cpp

@@ -2,12 +2,12 @@
 
 #include <cctype>
 #include <cstddef>
-#include <cstdint>
 #include <stdexcept>
 #include <string>
 #include <utility>
 #include <vector>
 
+#include "lexer.hpp"
 #include "prop_formula.hpp"
 #include "tlsf/specification.hpp"
 
@@ -15,37 +15,8 @@ namespace tlsf {
 
 namespace {
 
-enum class Tok : std::uint8_t {
-    Ident,
-    Number,
-    String,
-    LBrace,
-    RBrace,
-    LParen,
-    RParen,
-    LBracket,
-    RBracket,
-    Semicolon,
-    Colon,
-    Comma,
-    DotDot,
-    Not,
-    And,
-    Or,
-    Implies,
-    Iff,
-    AndAnd,
-    OrOr,
-    At,
-    Prime,
-    Unknown,
-    End,
-};
-
-struct Token {
-    Tok m_type = Tok::End;
-    std::string m_text;
-};
+using internal::Tok;
+using internal::Token;
 
 [[noreturn]] void reject_construct(const std::string& construct) {
     throw std::invalid_argument(
@@ -62,205 +33,41 @@ std::string to_lower(const std::string& value) {
     return result;
 }
 
-bool is_ident_start(char character) {
-    return (std::isalpha(static_cast<unsigned char>(character)) != 0) ||
-           character == '_';
-}
-
-bool is_ident_char(char character) {
-    return (std::isalnum(static_cast<unsigned char>(character)) != 0) ||
-           character == '_';
-}
-
-class Lexer {
-   public:
-    explicit Lexer(const std::string& text) : m_text(text) {}
-
-    std::vector<Token> tokenize() {
-        std::vector<Token> tokens;
-        while (true) {
-            Token token = next_token();
-            const bool is_end = token.m_type == Tok::End;
-            tokens.push_back(std::move(token));
-            if (is_end) {
-                break;
-            }
-        }
-        return tokens;
-    }
-
-   private:
-    const std::string& m_text;
-    std::size_t m_pos = 0;
-
-    [[nodiscard]] char peek(std::size_t offset = 0) const {
-        const std::size_t idx = m_pos + offset;
-        return idx < m_text.size() ? m_text[idx] : '\0';
-    }
-
-    void skip_trivia() {
-        while (m_pos < m_text.size()) {
-            const char character = m_text[m_pos];
-            if (std::isspace(static_cast<unsigned char>(character)) != 0) {
-                ++m_pos;
-                continue;
-            }
-            if (character == '/' && peek(1) == '/') {
-                while (m_pos < m_text.size() && m_text[m_pos] != '\n') {
-                    ++m_pos;
-                }
-                continue;
-            }
-            if (character == '/' && peek(1) == '*') {
-                m_pos += 2;
-                while (m_pos < m_text.size() &&
-                       (m_text[m_pos] != '*' || peek(1) != '/')) {
-                    ++m_pos;
-                }
-                if (m_pos < m_text.size()) {
-                    m_pos += 2;
-                }
-                continue;
-            }
-            break;
-        }
-    }
-
-    Token next_token() {
-        skip_trivia();
-        if (m_pos >= m_text.size()) {
-            return {Tok::End, ""};
-        }
-        const char character = m_text[m_pos];
-        if (is_ident_start(character)) {
-            return lex_ident();
-        }
-        if (std::isdigit(static_cast<unsigned char>(character)) != 0) {
-            return lex_number();
-        }
-        if (character == '"') {
-            return lex_string();
-        }
-        return lex_symbol();
-    }
-
-    Token lex_ident() {
-        const std::size_t start = m_pos;
-        while (m_pos < m_text.size() && is_ident_char(m_text[m_pos])) {
-            ++m_pos;
-        }
-        return {Tok::Ident, m_text.substr(start, m_pos - start)};
-    }
-
-    Token lex_number() {
-        const std::size_t start = m_pos;
-        while (m_pos < m_text.size() &&
-               std::isdigit(static_cast<unsigned char>(m_text[m_pos])) != 0) {
-            ++m_pos;
-        }
-        return {Tok::Number, m_text.substr(start, m_pos - start)};
-    }
-
-    Token lex_string() {
-        ++m_pos;  // opening quote
-        std::string value;
-        while (m_pos < m_text.size() && m_text[m_pos] != '"') {
-            if (m_text[m_pos] == '\\' && m_pos + 1 < m_text.size()) {
-                value.push_back(m_text[m_pos + 1]);
-                m_pos += 2;
-                continue;
-            }
-            value.push_back(m_text[m_pos]);
-            ++m_pos;
-        }
-        if (m_pos >= m_text.size()) {
+// The SEMANTICS value is an unordered, case-insensitive list; unrecognised
+// entries are ignored, and a later machine or strictness word overrides an
+// earlier one.
+Semantics semantics_from_idents(const std::vector<std::string>& idents) {
+    bool machine_moore = false;
+    bool machine_found = false;
+    bool strict = false;
+    for (const std::string& ident : idents) {
+        const std::string lower = to_lower(ident);
+        if (lower == "finite") {
             throw std::invalid_argument(
-                "TLSF parse error: unterminated string");
+                "TLSF semantics not supported: finite (LTLf) semantics are "
+                "out of scope");
         }
-        ++m_pos;  // closing quote
-        return {Tok::String, value};
-    }
-
-    Token lex_symbol() {
-        const char character = m_text[m_pos];
-        switch (character) {
-            case '{':
-                ++m_pos;
-                return {Tok::LBrace, "{"};
-            case '}':
-                ++m_pos;
-                return {Tok::RBrace, "}"};
-            case '(':
-                ++m_pos;
-                return {Tok::LParen, "("};
-            case ')':
-                ++m_pos;
-                return {Tok::RParen, ")"};
-            case '[':
-                ++m_pos;
-                return {Tok::LBracket, "["};
-            case ']':
-                ++m_pos;
-                return {Tok::RBracket, "]"};
-            case ';':
-                ++m_pos;
-                return {Tok::Semicolon, ";"};
-            case ':':
-                ++m_pos;
-                return {Tok::Colon, ":"};
-            case ',':
-                ++m_pos;
-                return {Tok::Comma, ","};
-            case '@':
-                ++m_pos;
-                return {Tok::At, "@"};
-            case '\'':
-                ++m_pos;
-                return {Tok::Prime, "'"};
-            case '!':
-                ++m_pos;
-                return {Tok::Not, "!"};
-            case '.':
-                if (peek(1) == '.') {
-                    m_pos += 2;
-                    return {Tok::DotDot, ".."};
-                }
-                ++m_pos;
-                return {Tok::Unknown, "."};
-            case '&':
-                if (peek(1) == '&') {
-                    m_pos += 2;
-                    return {Tok::AndAnd, "&&"};
-                }
-                ++m_pos;
-                return {Tok::And, "&"};
-            case '|':
-                if (peek(1) == '|') {
-                    m_pos += 2;
-                    return {Tok::OrOr, "||"};
-                }
-                ++m_pos;
-                return {Tok::Or, "|"};
-            case '-':
-                if (peek(1) == '>') {
-                    m_pos += 2;
-                    return {Tok::Implies, "->"};
-                }
-                ++m_pos;
-                return {Tok::Unknown, "-"};
-            case '<':
-                if (peek(1) == '-' && peek(2) == '>') {
-                    m_pos += 3;
-                    return {Tok::Iff, "<->"};
-                }
-                ++m_pos;
-                return {Tok::Unknown, "<"};
-            default:
-                ++m_pos;
-                return {Tok::Unknown, std::string(1, character)};
+        if (lower == "mealy") {
+            machine_moore = false;
+            machine_found = true;
+        } else if (lower == "moore") {
+            machine_moore = true;
+            machine_found = true;
+        } else if (lower == "strict") {
+            strict = true;
+        } else if (lower == "standard") {
+            strict = false;
         }
     }
-};
+    if (!machine_found) {
+        throw std::invalid_argument(
+            "TLSF parse error: SEMANTICS must name Mealy or Moore");
+    }
+    if (machine_moore) {
+        return strict ? Semantics::MooreStrict : Semantics::MooreStandard;
+    }
+    return strict ? Semantics::MealyStrict : Semantics::MealyStandard;
+}
 
 bool is_ltl_operator_ident(const std::string& text) {
     return text == "X" || text == "F" || text == "G" || text == "U" ||
@@ -325,22 +132,28 @@ class Parser {
         return advance();
     }
 
+    // Stops a `{ ... }` body loop at the closing brace, or at end of input so
+    // a truncated document falls through to the expect() that reports it
+    // rather than spinning on the clamped End token.
+    [[nodiscard]] bool at_block_end() const {
+        return peek().m_type == Tok::RBrace || peek().m_type == Tok::End;
+    }
+
     // --- INFO ---
 
     // True at the end of the INFO block or the start of the next `KEY:` entry —
     // the boundaries that terminate a semicolon-less INFO value.
     [[nodiscard]] bool at_info_boundary() const {
-        const Tok type = peek().m_type;
-        if (type == Tok::RBrace || type == Tok::End || type == Tok::Semicolon) {
+        if (at_block_end() || peek().m_type == Tok::Semicolon) {
             return true;
         }
-        return type == Tok::Ident && peek(1).m_type == Tok::Colon;
+        return peek().m_type == Tok::Ident && peek(1).m_type == Tok::Colon;
     }
 
     void parse_info(Specification& spec) {
         expect_ident("INFO");
         expect(Tok::LBrace, "'{'");
-        while (peek().m_type != Tok::RBrace && peek().m_type != Tok::End) {
+        while (!at_block_end()) {
             parse_info_entry(spec);
         }
         expect(Tok::RBrace, "'}'");
@@ -376,39 +189,7 @@ class Parser {
             advance();
         }
         accept(Tok::Semicolon);
-        bool machine_moore = false;
-        bool machine_found = false;
-        bool strict = false;
-        for (const std::string& ident : idents) {
-            const std::string lower = to_lower(ident);
-            if (lower == "finite") {
-                throw std::invalid_argument(
-                    "TLSF semantics not supported: finite (LTLf) semantics are "
-                    "out of scope");
-            }
-            if (lower == "mealy") {
-                machine_moore = false;
-                machine_found = true;
-            } else if (lower == "moore") {
-                machine_moore = true;
-                machine_found = true;
-            } else if (lower == "strict") {
-                strict = true;
-            } else if (lower == "standard") {
-                strict = false;
-            }
-        }
-        if (!machine_found) {
-            throw std::invalid_argument(
-                "TLSF parse error: SEMANTICS must name Mealy or Moore");
-        }
-        if (machine_moore) {
-            spec.m_semantics =
-                strict ? Semantics::MooreStrict : Semantics::MooreStandard;
-        } else {
-            spec.m_semantics =
-                strict ? Semantics::MealyStrict : Semantics::MealyStandard;
-        }
+        spec.m_semantics = semantics_from_idents(idents);
     }
 
     void skip_info_value() {
@@ -423,7 +204,7 @@ class Parser {
     void parse_main(Specification& spec) {
         expect_ident("MAIN");
         expect(Tok::LBrace, "'{'");
-        while (peek().m_type != Tok::RBrace && peek().m_type != Tok::End) {
+        while (!at_block_end()) {
             parse_main_section(spec);
         }
         expect(Tok::RBrace, "'}'");
@@ -478,7 +259,7 @@ class Parser {
 
     void parse_signal_list(std::vector<std::string>& out) {
         expect(Tok::LBrace, "'{'");
-        while (peek().m_type != Tok::RBrace && peek().m_type != Tok::End) {
+        while (!at_block_end()) {
             const Token signal = expect(Tok::Ident, "a signal name");
             if (peek().m_type == Tok::LBracket) {
                 reject_construct("bus declaration");
@@ -494,7 +275,7 @@ class Parser {
 
     void parse_formula_section(std::vector<Formula>& out) {
         expect(Tok::LBrace, "'{'");
-        while (peek().m_type != Tok::RBrace && peek().m_type != Tok::End) {
+        while (!at_block_end()) {
             out.push_back(parse_expr());
             expect(Tok::Semicolon, "';'");
         }
@@ -526,8 +307,7 @@ class Parser {
     // TLSF's boolean connectives are the doubled `&&`/`||`; the
     // single-character
     // `&`/`|` are accepted too so SPOT-syntax formulae (e.g. Formula::to_string
-    // output) round-trip. The bracketed `&&[...]`/`||[...]` loop aggregates are
-    // rejected as operands in parse_unary/parse_primary, not here.
+    // output) round-trip.
     Formula parse_or() {
         Formula lhs = parse_and();
         while (peek().m_type == Tok::Or || peek().m_type == Tok::OrOr) {
@@ -566,14 +346,27 @@ class Parser {
         return lhs;
     }
 
-    Formula parse_unary() {
+    // `@` and `'` mark bus access and primed signals. Both may follow a signal
+    // name as well as open one, so this is checked in more than one place.
+    void reject_signal_access() const {
+        if (peek().m_type == Tok::At || peek().m_type == Tok::Prime) {
+            reject_construct("primed/bus-access signal syntax");
+        }
+    }
+
+    // Full-format syntax that can only appear where an operand may start.
+    // The `&&[...]`/`||[...]` loop aggregates are rejected here rather than in
+    // parse_or/parse_and, where the same two tokens are ordinary connectives.
+    void reject_unsupported_operand() const {
         if ((peek().m_type == Tok::AndAnd || peek().m_type == Tok::OrOr) &&
             peek(1).m_type == Tok::LBracket) {
             reject_construct("loop aggregate");
         }
-        if (peek().m_type == Tok::At || peek().m_type == Tok::Prime) {
-            reject_construct("primed/bus-access signal syntax");
-        }
+        reject_signal_access();
+    }
+
+    Formula parse_unary() {
+        reject_unsupported_operand();
         if (accept(Tok::Not)) {
             return Formula::make_unary(Formula::Kind::Not, parse_unary());
         }
@@ -666,42 +459,37 @@ class Parser {
             expect(Tok::RParen, "')'");
             return inner;
         }
-        if ((peek().m_type == Tok::AndAnd || peek().m_type == Tok::OrOr) &&
-            peek(1).m_type == Tok::LBracket) {
-            reject_construct("loop aggregate");
-        }
-        if (peek().m_type == Tok::At || peek().m_type == Tok::Prime) {
-            reject_construct("primed/bus-access signal syntax");
-        }
+        reject_unsupported_operand();
         if (peek().m_type == Tok::Ident) {
-            const Token token = advance();
-            if (token.m_text == "true" || token.m_text == "false") {
-                return Formula(token.m_text);
-            }
-            if (is_ltl_operator_ident(token.m_text)) {
-                throw std::invalid_argument(
-                    "TLSF parse error: operator '" + token.m_text +
-                    "' used where an operand was expected");
-            }
-            if (peek().m_type == Tok::At || peek().m_type == Tok::Prime) {
-                reject_construct("primed/bus-access signal syntax");
-            }
-            if (peek().m_type == Tok::LBracket) {
-                reject_construct("bus access");
-            }
-            return Formula::make_atom(token.m_text);
+            return parse_ident_operand();
         }
         throw std::invalid_argument("TLSF parse error: unexpected token '" +
                                     peek().m_text +
                                     "' where an expression was expected");
+    }
+
+    Formula parse_ident_operand() {
+        const Token token = advance();
+        if (token.m_text == "true" || token.m_text == "false") {
+            return Formula(token.m_text);
+        }
+        if (is_ltl_operator_ident(token.m_text)) {
+            throw std::invalid_argument("TLSF parse error: operator '" +
+                                        token.m_text +
+                                        "' used where an operand was expected");
+        }
+        reject_signal_access();
+        if (peek().m_type == Tok::LBracket) {
+            reject_construct("bus access");
+        }
+        return Formula::make_atom(token.m_text);
     }
 };
 
 }  // namespace
 
 Specification parse(const std::string& text) {
-    Lexer lexer(text);
-    Parser parser(lexer.tokenize());
+    Parser parser(internal::tokenize(text));
     return parser.parse();
 }
 

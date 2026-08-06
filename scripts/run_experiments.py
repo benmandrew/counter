@@ -404,7 +404,7 @@ PROFILES: dict[str, dict] = {
     # repair_mode is a no-op on the FRETISH specs, so crossing it over them would
     # compare two identical arms. The split interacts with repair_mode: muc keeps
     # the environment side at full size while shrinking the guarantee side to the
-    # minimal core, so at a fixed p_guarantee it spends a larger share of its
+    # minimal core, so at a fixed p_assumption it spends a larger share of its
     # guarantee mutations on the culprit formulae (verified: the assumption side
     # stays live in muc, so the factor is not confounded). Responses are
     # implies_ideal and wall_time_s co-equal — muc's pitch is quality where

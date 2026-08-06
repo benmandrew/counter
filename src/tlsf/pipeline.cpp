@@ -227,9 +227,9 @@ bool is_realizable(const Specification& spec) {
 //
 // The unchecked half is the dual: a guarantee side equivalent to `true`, which
 // makes the implication a tautology just as a false antecedent does. Nothing on
-// this path tests it -- least of all the weakening screen, since `original
-// implies true` holds trivially and a gutted guarantee is therefore a perfect
-// weakening.
+// this path tests it -- least of all the final weakening screen, since
+// `original implies true` holds trivially and a gutted guarantee is therefore a
+// perfect weakening.
 std::vector<FilterFunctionT<Specification>> build_per_gen_filters(
     const Specification& spec, const Config& cfg) {
     const std::size_t max_in_flight = dispatch_window();
@@ -502,12 +502,33 @@ int run_repair(const std::string& input_path, const std::string& output_dir,
             ? run_muc(original, cfg, random_source, fitness, progress)
             : run_monolithic(original, cfg, random_source, fitness, progress);
     const std::size_t n_realizable = survivors.size();
-    // No weakening screen here: run_weakening_filter is FRETISH-only. A MUC
-    // repair evolves a minimal core and reintegrates it, and the recombined
-    // spec does not satisfy `original implies candidate` under the filter's
-    // decomposition, so screening the output drops every repair the mode
-    // produces. Tracked as issue #71; until that is settled the TLSF path
-    // keeps the maximality screen alone.
+    // Final weakening screen, as on the FRETISH path: keep only repairs the
+    // original logically implies. The check here is exact rather than the
+    // FRETISH assume-guarantee decomposition -- a tlsf::Specification lowers to
+    // one LTL formula -- so a rejection means the candidate genuinely forbids
+    // behaviour the original allowed, not that the decomposition lost it.
+    if (cfg.run_weakening_filter && !survivors.empty()) {
+        std::vector<Specification> specs;
+        specs.reserve(survivors.size());
+        for (const Scored<Specification>& scored : survivors) {
+            specs.push_back(scored.specification);
+        }
+        const std::vector<Specification> weakenings =
+            tlsf_make_weakening_filter(original, global_sat_checker())(specs);
+        std::vector<Scored<Specification>> kept;
+        kept.reserve(weakenings.size());
+        for (const Scored<Specification>& scored : survivors) {
+            const bool is_weakening =
+                std::any_of(weakenings.begin(), weakenings.end(),
+                            [&scored](const Specification& spec) {
+                                return spec == scored.specification;
+                            });
+            if (is_weakening) {
+                kept.push_back(scored);
+            }
+        }
+        survivors = std::move(kept);
+    }
     // Final maximality pass: keep only realizable repairs not strictly implied
     // by another, mirroring the FRETISH final implication filter.
     if (cfg.run_implication_filter && survivors.size() > 1) {

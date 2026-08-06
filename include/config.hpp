@@ -58,8 +58,17 @@ struct Config {
     // costing 20 points of implies-ideal on fsm), whereas screening the final
     // population leaves the search bit-identical. On by default, since it is
     // the only check that a written repair does not forbid behaviour the
-    // original allowed. FRETISH-only: on the TLSF path the screen drops every
-    // repair MUC mode produces, so it is not applied there (issue #71).
+    // original allowed.
+    //
+    // Applies on both paths, but the check behind it differs in strength. The
+    // FRETISH spec_implies is an assume-guarantee decomposition that pairs each
+    // requirement against a single counterpart, and so under-detects: it can
+    // reject a genuine weakening that only holds via several requirements
+    // together. The TLSF tlsf_spec_implies lowers the whole specification to
+    // one LTL formula and is exact, so a rejection there is a fact about the
+    // two specs. Expect the TLSF screen to reject more, and to be right when
+    // it does -- mutation can delete a safety guarantee and add a stronger one,
+    // reaching realizability without weakening anything.
     bool run_weakening_filter = true;
     bool run_implication_filter = true;
     // Drop candidates whose assumptions are jointly unsatisfiable: they are

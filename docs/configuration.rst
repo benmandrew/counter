@@ -160,6 +160,22 @@ a 26% wall-time saving with repair quality. Screening only the final population
 leaves the search bit-identical while still guaranteeing that a written repair
 does not forbid behaviour the original allowed.
 
+The screen applies on both paths, but the implication check behind it differs
+in strength. On FRETISH, ``spec_implies`` decomposes the assume-guarantee pair
+and matches each requirement against a *single* counterpart, so it under-detects
+— an implication that only holds via several requirements together is missed,
+and a genuine weakening can be rejected. On TLSF, ``tlsf_spec_implies`` lowers
+the whole specification to one LTL formula and asks ``black`` whether
+``(original) & !(candidate)`` is unsatisfiable, which is exact.
+
+Expect the TLSF screen to reject more, and to be right when it does. Nothing
+constrains mutation to weaken: it can delete a safety guarantee and add a
+stronger one, reaching realizability while forbidding behaviour the original
+allowed. The MUC repair of the two-client arbiter fixture does exactly this —
+it drops the mutex ``G !(g0 & g1)`` and adds ``G g1`` — and is rejected. Turning
+``run_weakening`` off on a TLSF run will therefore produce more written repairs,
+not better ones.
+
 The per-filter run intervals that once throttled these were removed: across
 every archived campaign not one config had ever set them.
 

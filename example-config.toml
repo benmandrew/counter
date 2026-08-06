@@ -99,8 +99,10 @@ metric        = "logarithmic" # default; "logarithmic" (growth-rate ratio; stays
 # is a final screen over the realizable survivors, not a per-generation filter:
 # pruning non-weakenings mid-search measurably costs repair quality and never
 # gains it, while screening the output leaves the search untouched. With it off
-# a written repair may forbid behaviour the original allowed. FRETISH-only: on
-# the TLSF path the screen drops every repair MUC mode produces (issue #71).
+# a written repair may forbid behaviour the original allowed. Applies on both
+# paths; the TLSF check is exact where the FRETISH one under-detects, so the
+# TLSF screen rejects more -- and is right to, since mutation can delete a
+# safety guarantee and add a stronger one.
 run_weakening   = true
 run_implication = true  # enable final implication maximality filter
 # Drop candidates whose assumptions are jointly unsatisfiable. Those are

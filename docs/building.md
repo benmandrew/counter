@@ -1,8 +1,6 @@
 # Building
 
-Counter builds with CMake presets. There are two workflows: a Nix dev shell that
-provides every dependency, and a manual one that needs a handful of system
-packages installed first.
+Counter builds with CMake presets. There are two workflows: a Nix dev shell that provides every dependency, and a manual one that needs a handful of system packages installed first.
 
 ## With Nix
 
@@ -13,8 +11,7 @@ nix develop                          # enter dev shell (first run fetches depend
 cmake --workflow --preset debug      # configure + build + test
 ```
 
-A `.envrc` (`use flake`) is committed, so the dev shell can be entered
-automatically on `cd` by installing [direnv](https://direnv.net) and allowing it:
+A `.envrc` (`use flake`) is committed, so the dev shell can be entered automatically on `cd` by installing [direnv](https://direnv.net) and allowing it:
 
 ```sh
 direnv allow
@@ -49,21 +46,13 @@ cmake --workflow --preset debug      # configure + build + test
 | `tsan` | `build-tsan/` | ThreadSanitizer; disables address space layout randomisation (ASLR) for the tests |
 | `bench` | `build-bench/` | release, plus the benchmarks in [`bench/`](../bench) registered as tests |
 
-`cmake --workflow --preset <name>` configures, builds and tests in one step.
-After the first configure, `cmake --build build` rebuilds incrementally.
+`cmake --workflow --preset <name>` configures, builds and tests in one step. After the first configure, `cmake --build build` rebuilds incrementally.
 
-Always go through a preset. `cmake -B build` on its own configures with CMake's
-default generator — Unix Makefiles on Linux — which conflicts with the Ninja tree
-every preset produces. The conflict reaches the sub-builds that CMake uses to
-fetch dependencies too, so the failure can be reported against one of those
-rather than against the generator. To recover, delete `CMakeCache.txt` and
-`CMakeFiles/` from the affected build directory and configure again with the
-preset. `build/third_party` survives that, so Spot is not rebuilt.
+Always go through a preset. `cmake -B build` on its own configures with CMake's default generator — Unix Makefiles on Linux — which conflicts with the Ninja tree every preset produces. The conflict reaches the sub-builds that CMake uses to fetch dependencies too, so the failure can be reported against one of those rather than against the generator. To recover, delete `CMakeCache.txt` and `CMakeFiles/` from the affected build directory and configure again with the preset. `build/third_party` survives that, so Spot is not rebuilt.
 
 ## Fetched dependencies
 
-These are obtained by CMake regardless of workflow, so they need no manual
-installation:
+These are obtained by CMake regardless of workflow, so they need no manual installation:
 
 | Dependency | How obtained |
 |---|---|
@@ -72,23 +61,15 @@ installation:
 | [Black](https://www.black-sat.org) | pre-built `.deb` (Ubuntu 24.04 x86\_64) or built from source — [`cmake/black.cmake`](../cmake/black.cmake) |
 | Eigen, nlohmann\_json, tomlplusplus, cpptrace | FetchContent, header-only — [`cmake/dependencies.cmake`](../cmake/dependencies.cmake) |
 
-Building Spot from source dominates the first configure. Subsequent configures
-reuse it.
+Building Spot from source dominates the first configure. Subsequent configures reuse it.
 
 ### Node.js
 
-The FRET requirement-formaliser command-line interface (CLI) is vendored as a
-plain script ([`vendor/fretCLI.main.js`](../vendor/fretCLI.main.js), see
-[`vendor/README.md`](../vendor/README.md)) and run with `node` looked up on
-`PATH` at run time. CMake neither builds nor fetches it, so `node` must be
-installed separately. The Nix dev shell provides it via the `nodejs` package.
+The FRET requirement-formaliser command-line interface (CLI) is vendored as a plain script ([`vendor/fretCLI.main.js`](../vendor/fretCLI.main.js), see [`vendor/README.md`](../vendor/README.md)) and run with `node` looked up on `PATH` at run time. CMake neither builds nor fetches it, so `node` must be installed separately. The Nix dev shell provides it via the `nodejs` package.
 
 ### libfmt
 
-`black` needs `libfmt.so.9` at run time, whether it is a system binary found on
-`PATH` or the pre-built `.deb` that `cmake/black.cmake` downloads as a fallback —
-the `.deb` does not bundle it. The Nix dev shell provides this via the `fmt_9`
-package; otherwise install `libfmt-dev` (or the equivalent) system-wide.
+`black` needs `libfmt.so.9` at run time, whether it is a system binary found on `PATH` or the pre-built `.deb` that `cmake/black.cmake` downloads as a fallback — the `.deb` does not bundle it. The Nix dev shell provides this via the `fmt_9` package; otherwise install `libfmt-dev` (or the equivalent) system-wide.
 
 ## Tests, linting and formatting
 

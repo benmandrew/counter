@@ -1,12 +1,9 @@
 config_io.hpp
 =============
 
-Parses a TOML configuration file and returns a :cpp:struct:`Config` with
-overridden values. Fields absent from the file take their default values from
-:cpp:struct:`Config`.
+Parses a TOML configuration file and returns a :cpp:struct:`Config` with overridden values. Fields absent from the file take their default values from :cpp:struct:`Config`.
 
-Pass the file to the ``counter`` binary with ``--config <file.toml>``.  All
-sections and keys are optional:
+Pass the file to the ``counter`` binary with ``--config <file.toml>``.  All sections and keys are optional:
 
 .. code-block:: toml
 
@@ -22,7 +19,6 @@ sections and keys are optional:
    black_timeout_ms = 2000
    parallel         = 8
 
-A fully-annotated template with every key and its default is provided in
-``counter.toml.example`` at the repository root.
+A fully-annotated template with every key and its default is provided in ``counter.toml.example`` at the repository root.
 
 .. doxygenfile:: config_io.hpp

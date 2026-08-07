@@ -32,12 +32,7 @@ ctest --preset debug -R syntactic     # run tests matching a regex
 
 Test binaries land at `build/test/counter_tests`. The test framework uses `expect(bool, message)` and `fail(message)` from `test/test_support.hpp`; each test suite is a free function declared in `test/test_suite.hpp`.
 
-The dashboard page's script is tested separately, under node's built-in runner
-(`test/web/*.test.mjs`, registered with ctest as `dashboard_page`; run directly
-with `node --test "test/web/*.test.mjs"`). `test/web/harness.mjs` extracts the
-`<script>` block from `web/dashboard.html` and evaluates it, so the tests run
-against the page that actually ships rather than a copy of it. CMake skips them
-when `node` is absent.
+The dashboard page's script is tested separately, under node's built-in runner (`test/web/*.test.mjs`, registered with ctest as `dashboard_page`; run directly with `node --test "test/web/*.test.mjs"`). `test/web/harness.mjs` extracts the `<script>` block from `web/dashboard.html` and evaluates it, so the tests run against the page that actually ships rather than a copy of it. CMake skips them when `node` is absent.
 
 ## Lint & Format
 
@@ -72,46 +67,13 @@ Campaigns closed before this existed carry a reconstructed `PROVENANCE.json` in 
 
 Each archived campaign also carries `experiments/<campaign>/scripts/` — verbatim copies of the `gen_configs.py`, `run_experiments.py` and `merge_experiments.py` that ran it, so the directory reproduces without the git history. `vendored_scripts` in its `PROVENANCE.json` records the source commit and blob sha per file; check a copy with `git hash-object`. Attribution defaults to `profile_commit`, but campaign content overrides it where the two disagree: `CSV_FIELDS` in `run_experiments.py` grew one column at a time, so a header pins the runner revision independently of any mtime, and the profile's seed budget, spec set and timeout caps narrow it further. The column count alone is necessary but not sufficient — a runner must also define the profile the campaign ran. Four campaigns (`factorial`, `wellsep`, `genpop-sweeps`, `tlsf-genpop`) are attributed against their anchor on that basis; do not "correct" them back. The last two ran off the unmerged TLSF branch and their source commits are not ancestors of `main` (`reachable_from_main: false`); the annotated tag `provenance/tlsf-branch` points at that branch's tip and holds all of them reachable, so never delete it — without it they are dangling objects that `git gc` collects and the recorded shas stop resolving. `2026-07-31-replicate` sits in the same position for a different reason: its branch `feat/replicate-campaign` was split into reconstructed pull requests rather than merged, so the same content reached `main` under fresh shas while every sha its `PROVENANCE.json` names still points into the branch, and `provenance/replicate-campaign` holds those under the same never-delete rule. Splitting a branch instead of merging it silently invalidates any recorded sha pointing into it, so re-check a campaign archive whenever its branch is split rather than merged. These paths plus `README.md` and `experiments/<campaign>/PLAN.md`, a campaign's pre-registered plan where one was written before launch, are the only tracked files under `experiments/`, via negations in `.gitignore` that need each directory level to be ignored by content rather than by name; adding a tracked file under a new subdirectory means re-opening descent into it first. The plan is tracked so its decision rule stays checkable against the result it was meant to bind; the root `PLAN.md` stays gitignored, a working file with no such claim on it.
 
-A campaign's archived config is a partial record: `gen_configs.py` emits a key
-only where a sweep overrides it, so everything else comes from the binary's
-default at run time. Changing a C++ default therefore changes what every
-archived config *means* without touching a byte of it. Two keys have crossed
-that line, both in the same commit: `allow_output_assumptions` and
-`run_well_separation` were `false` for every campaign archived under
-`experiments/` and are `true` from that commit on. Reproducing any archived
-campaign therefore requires writing both keys back to `false` explicitly.
-Archived configs are not edited to compensate; the note in
-`experiments/README.md` ("Config vintage") is the record. Flipping a default
-that archived configs omit means adding to that note.
+A campaign's archived config is a partial record: `gen_configs.py` emits a key only where a sweep overrides it, so everything else comes from the binary's default at run time. Changing a C++ default therefore changes what every archived config *means* without touching a byte of it. Two keys have crossed that line, both in the same commit: `allow_output_assumptions` and `run_well_separation` were `false` for every campaign archived under `experiments/` and are `true` from that commit on. Reproducing any archived campaign therefore requires writing both keys back to `false` explicitly. Archived configs are not edited to compensate; the note in `experiments/README.md` ("Config vintage") is the record. Flipping a default that archived configs omit means adding to that note.
 
-*Removing* a key is the sharper version of the same problem: an archived config
-that sets one is no longer merely reinterpreted, it is rejected. The
-`[filters.intervals]` table went that way, which retired the `wellsep-timing`
-profile and TLSF sweep V along with it — that campaign's arms were three values
-of `well_separation`, so it cannot be regenerated at all and its archive is the
-only record. Retire the sweep and profile when their key goes; a generator that
-emits a key the binary warns on is worse than an absent one.
+*Removing* a key is the sharper version of the same problem: an archived config that sets one is no longer merely reinterpreted, it is rejected. The `[filters.intervals]` table went that way, which retired the `wellsep-timing` profile and TLSF sweep V along with it — that campaign's arms were three values of `well_separation`, so it cannot be regenerated at all and its archive is the only record. Retire the sweep and profile when their key goes; a generator that emits a key the binary warns on is worse than an absent one.
 
-Retiring a key's *value* lands in the same place. The selection schemes were
-renamed on 2026-08-06 — `nsga2` to `nsga2-truncate`, `nsga2-replicate` to
-`nsga2-apportion` — and the old spellings are rejected rather than aliased, by
-name and with a message saying what to do. Every archived campaign config sets
-one of them, so none of them runs against a current binary; reproduce those at
-the commit their `PROVENANCE.json` names, which is what the vendored
-per-campaign `scripts/` exists for.
+Retiring a key's *value* lands in the same place. The selection schemes were renamed on 2026-08-06 — `nsga2` to `nsga2-truncate`, `nsga2-replicate` to `nsga2-apportion` — and the old spellings are rejected rather than aliased, by name and with a message saying what to do. Every archived campaign config sets one of them, so none of them runs against a current binary; reproduce those at the commit their `PROVENANCE.json` names, which is what the vendored per-campaign `scripts/` exists for.
 
-Archived *results* are the separate half, and the one that needed work.
-`gen_configs.py` turns the scheme name into a config directory name,
-`scheme_of()` in `run_experiments.py` reads it back into the `selection` column
-of every results CSV, and that column joins `KEY_FIELDS` in
-`merge_experiments.py` — so renaming what the harness emits would have made all
-224,861 archived rows reading `nsga2` miss their resume key and re-run finished
-campaigns. `canonical_scheme()` in both scripts maps the retired spellings onto
-the new ones wherever a `selection` value is read back, which is what keeps
-resume and merge joining those rows. The scheme itself never changed, only its
-name, so the mapping is an identity on behaviour. Renaming any other factor
-directory means adding to that mapping in the same way; leaving it out is
-silent, and shows up as a finished campaign re-running from zero.
+Archived *results* are the separate half, and the one that needed work. `gen_configs.py` turns the scheme name into a config directory name, `scheme_of()` in `run_experiments.py` reads it back into the `selection` column of every results CSV, and that column joins `KEY_FIELDS` in `merge_experiments.py` — so renaming what the harness emits would have made all 224,861 archived rows reading `nsga2` miss their resume key and re-run finished campaigns. `canonical_scheme()` in both scripts maps the retired spellings onto the new ones wherever a `selection` value is read back, which is what keeps resume and merge joining those rows. The scheme itself never changed, only its name, so the mapping is an identity on behaviour. Renaming any other factor directory means adding to that mapping in the same way; leaving it out is silent, and shows up as a finished campaign re-running from zero.
 
 ## Docs
 
@@ -139,61 +101,23 @@ Every header file in `include/` must have a corresponding `.rst` page under `doc
 
 ## Profiling
 
-`COUNTER_PROFILE=<path>` turns on the *scope profiler* (`include/profile.hpp`),
-which writes a table to stderr and JSON to that path; `COUNTER_PROFILE=1` gives
-the table alone. Every binary reports. The report registers with `atexit` on the
-first scope opened, so `realize`, `mucs` and `compare` need no wiring of their
-own — and a binary that opens no scope prints nothing at all.
+`COUNTER_PROFILE=<path>` turns on the *scope profiler* (`include/profile.hpp`), which writes a table to stderr and JSON to that path; `COUNTER_PROFILE=1` gives the table alone. Every binary reports. The report registers with `atexit` on the first scope opened, so `realize`, `mucs` and `compare` need no wiring of their own — and a binary that opens no scope prints nothing at all.
 
-Read wall time against per-thread CPU time. A site with large wall and near-zero
-CPU is blocked on a child process, not computing: `proc/read` sits at a cpu/wall
-ratio of about 0.01 on a real run. That ratio is the diagnostic.
+Read wall time against per-thread CPU time. A site with large wall and near-zero CPU is blocked on a child process, not computing: `proc/read` sits at a cpu/wall ratio of about 0.01 on a real run. That ratio is the diagnostic.
 
-It is in-process instrumentation rather than `perf` or `gdb` because neither is
-available on the dev box — `kernel.perf_event_paranoid=4` and yama
-`ptrace_scope` rule out both. `strace` works only by launching the process,
-never by attaching. The counter registry is deliberately leaked so that it
-outlives the `atexit` report; destroying it first would free the names the
-report is about to print.
+It is in-process instrumentation rather than `perf` or `gdb` because neither is available on the dev box — `kernel.perf_event_paranoid=4` and yama `ptrace_scope` rule out both. `strace` works only by launching the process, never by attaching. The counter registry is deliberately leaked so that it outlives the `atexit` report; destroying it first would free the names the report is about to print.
 
 ## Live dashboard
 
-Opt-in, via `counter --dashboard` or `[runtime] dashboard = true` (the flag can
-only enable). Off by default so a campaign of many runs does not pay for the
-file and its flushes with nobody watching. When on, both drivers stream progress
-to `<output-dir>/progress.jsonl` (one JSON object per line, flushed as written)
-and copy `web/dashboard.html` there as `index.html`. To watch a run:
-`python3 -m http.server -d <output-dir> 8000`. The page polls once a second;
-`?poll=<seconds>` overrides that (`?poll=0` loads once and stops polling).
+Opt-in, via `counter --dashboard` or `[runtime] dashboard = true` (the flag can only enable). Off by default so a campaign of many runs does not pay for the file and its flushes with nobody watching. When on, both drivers stream progress to `<output-dir>/progress.jsonl` (one JSON object per line, flushed as written) and copy `web/dashboard.html` there as `index.html`. To watch a run: `python3 -m http.server -d <output-dir> 8000`. The page polls once a second; `?poll=<seconds>` overrides that (`?poll=0` loads once and stops polling).
 
-Each `stage` record carries `distinct` beside `n_in`/`n_out`: how many of the
-survivors are distinct specifications. The population is largely repeats, which
-no size can show, so this is the field that measures whether a selection scheme
-actually keeps diversity. Computing it hashes the whole population, so
-`run_generation_pipeline` only does so when an observer is attached — a run
-without the dashboard pays nothing.
+Each `stage` record carries `distinct` beside `n_in`/`n_out`: how many of the survivors are distinct specifications. The population is largely repeats, which no size can show, so this is the field that measures whether a selection scheme actually keeps diversity. Computing it hashes the whole population, so `run_generation_pipeline` only does so when an observer is attached — a run without the dashboard pays nothing.
 
-The page's script keeps everything above its `boot()` call free of DOM access at
-load time: `boot()` runs only when `document` exists, and otherwise the script
-exports its functions for `test/web/` to test under node. Adding a top-level
-`document.getElementById` (rather than one inside a function) breaks that and
-takes the JS tests with it.
+The page's script keeps everything above its `boot()` call free of DOM access at load time: `boot()` runs only when `document` exists, and otherwise the script exports its functions for `test/web/` to test under node. Adding a top-level `document.getElementById` (rather than one inside a function) breaks that and takes the JS tests with it.
 
-The page derives its stage list from the `stage` records of the latest
-generation, so a new filter or pipeline stage shows up with no change to either
-side. Generation stages come from `make_generation_pipeline`
-(`include/genetic/pipeline.hpp`), which returns an ordered vector of named
-`PipelineStage`s; `run_generation_pipeline` reports each to an optional
-`StageObserver`. Breeding must stay a single stage — crossover and mutation
-interleave per offspring slot, so splitting them reorders every RNG draw after
-the first and breaks seed reproducibility. The `determinism` test suite pins the
-draw stream against exactly that.
+The page derives its stage list from the `stage` records of the latest generation, so a new filter or pipeline stage shows up with no change to either side. Generation stages come from `make_generation_pipeline` (`include/genetic/pipeline.hpp`), which returns an ordered vector of named `PipelineStage`s; `run_generation_pipeline` reports each to an optional `StageObserver`. Breeding must stay a single stage — crossover and mutation interleave per offspring slot, so splitting them reorders every RNG draw after the first and breaks seed reproducibility. The `determinism` test suite pins the draw stream against exactly that.
 
-Two calls that both draw from the `RandomSource` must never be arguments of the
-same call: argument evaluation order is unspecified, and gcc and clang pick
-opposite orders, so a seed stops reproducing across compilers. Sequence each
-draw into its own local (as `rewrite_post_order` does). The CI matrix's gcc job
-is what catches this, since the goldens are pinned under clang.
+Two calls that both draw from the `RandomSource` must never be arguments of the same call: argument evaluation order is unspecified, and gcc and clang pick opposite orders, so a seed stops reproducing across compilers. Sequence each draw into its own local (as `rewrite_post_order` does). The CI matrix's gcc job is what catches this, since the goldens are pinned under clang.
 
 ## TLSF repair modes
 
@@ -205,42 +129,13 @@ The same core extraction drives an alternative TLSF **repair mode**. `Config::re
 
 ## Tool subprocesses
 
-Every pipe a runner opens must be created with `pipe2(..., O_CLOEXEC)` —
-`execute_and_capture` in `src/runner/process.cpp` and the formaliser's
-bidirectional pair in `src/runner/formaliser.cpp`. These runners are called
-from many scoring-pool threads at once, so a fork on one thread inherits the
-pipes every other in-flight call has open and holds them past its own exec.
-The reader waiting on such a call never sees end of file. `pipe2` sets the flag
-atomically; `pipe` followed by `fcntl` races a concurrent fork. The `dup2` onto
-the child's own stdin, stdout and stderr clears the flag on those copies, which
-is what lets the descriptors the child actually needs survive.
+Every pipe a runner opens must be created with `pipe2(..., O_CLOEXEC)` — `execute_and_capture` in `src/runner/process.cpp` and the formaliser's bidirectional pair in `src/runner/formaliser.cpp`. These runners are called from many scoring-pool threads at once, so a fork on one thread inherits the pipes every other in-flight call has open and holds them past its own exec. The reader waiting on such a call never sees end of file. `pipe2` sets the flag atomically; `pipe` followed by `fcntl` races a concurrent fork. The `dup2` onto the child's own stdin, stdout and stderr clears the flag on those copies, which is what lets the descriptors the child actually needs survive.
 
-`spawn_piped_child` in `process.hpp` is the one fork behind any bidirectional
-child — currently the formaliser alone — so `ParentDeathPolicy` and
-`ExecutableLookup` stay the only two things a second user would differ in.
-Nothing may fork outside `process.cpp`: `posix_spawn` in particular has no
-attribute for `PR_SET_PDEATHSIG`, which is the whole reason these run on `fork`
-at all.
+`spawn_piped_child` in `process.hpp` is the one fork behind any bidirectional child — currently the formaliser alone — so `ParentDeathPolicy` and `ExecutableLookup` stay the only two things a second user would differ in. Nothing may fork outside `process.cpp`: `posix_spawn` in particular has no attribute for `PR_SET_PDEATHSIG`, which is the whole reason these run on `fork` at all.
 
-A tool's peak resident set cannot be measured below counter's own. A forked
-child starts as a copy-on-write copy of its parent, and `exec` folds that
-pre-exec high-water into the child's `maxrss`, so `wait4` reports
-`max(parent RSS at fork, the tool's true peak)`. `ProcessResult` therefore
-carries `m_peak_rss_floor_kb` — counter's resident set sampled just before the
-fork — and reports `m_peak_rss_kb` as zero at or below it rather than passing
-counter's own footprint off as the tool's. The `tool/<name>/rss_*` counters
-follow: `calls` counts every invocation, `rss_measured` only those that cleared
-the floor, and the max, total and threshold counters are over the latter alone,
-so a mean is `rss_kb_total / rss_measured`. Any change here has to keep that
-distinction; the `process_runner` suite pins it by spawning a bare shell while
-holding a 512MB buffer.
+A tool's peak resident set cannot be measured below counter's own. A forked child starts as a copy-on-write copy of its parent, and `exec` folds that pre-exec high-water into the child's `maxrss`, so `wait4` reports `max(parent RSS at fork, the tool's true peak)`. `ProcessResult` therefore carries `m_peak_rss_floor_kb` — counter's resident set sampled just before the fork — and reports `m_peak_rss_kb` as zero at or below it rather than passing counter's own footprint off as the tool's. The `tool/<name>/rss_*` counters follow: `calls` counts every invocation, `rss_measured` only those that cleared the floor, and the max, total and threshold counters are over the latter alone, so a mean is `rss_kb_total / rss_measured`. Any change here has to keep that distinction; the `process_runner` suite pins it by spawning a bare shell while holding a 512MB buffer.
 
-`simplify_ltl` runs one `ltlfilt` exec per cache miss. Coalescing concurrent
-misses into one exec was tried and removed: measured over the corpus at
-`parallel = 8`, the misses do not coincide, so the mean batch size was 1.012,
-exec count fell 1.9%, and wall time rose 37% on 46 of 46 paired examples. Any
-second attempt has to show a batch size above 1 before anything else about it
-matters.
+`simplify_ltl` runs one `ltlfilt` exec per cache miss. Coalescing concurrent misses into one exec was tried and removed: measured over the corpus at `parallel = 8`, the misses do not coincide, so the mean batch size was 1.012, exec count fell 1.9%, and wall time rose 37% on 46 of 46 paired examples. Any second attempt has to show a batch size above 1 before anything else about it matters.
 
 ## External tools
 

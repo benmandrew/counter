@@ -17,6 +17,7 @@
 #include "fitness/function.hpp"
 #include "genetic/generation.hpp"
 #include "genetic/random_source.hpp"
+#include "manifest.hpp"
 #include "reports.hpp"
 #include "requirement.hpp"
 #include "runner/black.hpp"
@@ -79,6 +80,13 @@ int run_tlsf_repair(const Config& cfg, const std::string& input_path,
         print_timing_report();
         if (cfg.report_cpu_timing) {
             print_cpu_report(seconds_since(wall_start));
+        }
+        // After the reports, so the per-tool counts it records are the run's
+        // totals. Skipped when run_repair failed to read or parse the input,
+        // since there is then no output directory worth describing.
+        if (result == 0 && effective_seed.has_value()) {
+            write_run_manifest(output_dir, input_path, *effective_seed, cfg,
+                               seconds_since(wall_start));
         }
         return result;
     } catch (const std::exception& exc) {
@@ -156,6 +164,10 @@ int run_fretish_repair(const Config& cfg, const std::string& input_path,
         if (cfg.report_cpu_timing) {
             print_cpu_report(seconds_since(wall_start));
         }
+        // After the reports, so the per-tool counts it records are the run's
+        // totals.
+        write_run_manifest(output_dir, input_path, effective_seed, cfg,
+                           seconds_since(wall_start));
     } catch (const std::exception& exc) {
         std::cerr << "fatal: " << exc.what() << "\n";
         return 1;

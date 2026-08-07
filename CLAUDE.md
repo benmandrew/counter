@@ -81,6 +81,8 @@ Every header file in `include/` must have a corresponding `.rst` page under `doc
 
 Only `///` reaches the site. A `//` comment on a declaration is invisible to Doxygen, which is why every `Config` member read as undocumented until its block was converted. The conversion is not free: `///` text goes through Doxygen's comment parser, so a bare `<input>` or `<output-dir>` parses as an HTML tag and `WARN_AS_ERROR` fails the build — wrap those in backticks, which also renders them as code.
 
+Maths is `\f$ ... \f$` / `\f[ ... \f]`, rendered by KaTeX, not the MathJax that Sphinx would default to. Nothing is fetched at view time, which is the point: `sphinxcontrib-katex` bundles its JS but leaves `katex_css_path` pointing at a CDN, so `cmake/docs.cmake` stages `katex.min.css` and its fonts from the `katex` package into `_static/katex/` and `docs/conf.py.in` overrides that default. The stylesheet resolves its fonts relatively, so the two must stay in the same directory.
+
 ## Code style
 
 - **Standard**: C++17, `-Wall -Wextra -Wpedantic -Werror` on all targets.

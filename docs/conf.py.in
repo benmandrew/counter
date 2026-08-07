@@ -1,12 +1,20 @@
 project = "@PROJECT_NAME@"
 release = "@PROJECT_VERSION@"
 
-extensions = ["breathe"]
+extensions = ["breathe", "sphinxcontrib.katex"]
 
 breathe_projects = {"@PROJECT_NAME@": "@DOXYGEN_XML_DIR@"}
 breathe_default_project = "@PROJECT_NAME@"
 
 html_theme = "furo"
+
+# KaTeX rather than Sphinx's default MathJax, and served from the site rather
+# than from a CDN: cmake/docs.cmake stages katex.min.css and its fonts here, and
+# the extension copies its own JS into _static already. Overriding
+# katex_css_path is the whole point -- its default is a jsdelivr URL, which
+# would leave a reader of an offline copy with unrendered maths.
+html_static_path = ["@KATEX_STATIC_DIR@"]
+katex_css_path = "katex/katex.min.css"
 
 # Multiple headers share `namespace tlsf`; Breathe re-emits the namespace
 # declaration on each per-file page, which Sphinx's C++ domain flags as a

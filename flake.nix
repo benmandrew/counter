@@ -63,7 +63,18 @@
 
             # Docs targets (doxygen + sphinx)
             doxygen
-            (python3.withPackages (ps: with ps; [ sphinx breathe furo ]))
+            (python3.withPackages (ps: with ps; [
+              sphinx
+              breathe
+              furo
+              sphinxcontrib-katex
+            ]))
+
+            # KaTeX renders the maths in doc comments. The extension above
+            # bundles the JS but not the stylesheet, whose upstream default is a
+            # CDN URL; cmake/docs.cmake copies katex.min.css and its fonts out of
+            # this package so the built site fetches nothing at view time.
+            katex
 
             # SMT backend for building black-sat from source (cmake/black.cmake's
             # fallback path on non-Ubuntu-24.04 hosts, where the prebuilt deb doesn't apply).

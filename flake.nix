@@ -15,9 +15,10 @@
         # client is a single stdlib-only Python script (server-only extras like
         # flask/redis are lazily imported and unused in local CTCACHE_DIR mode),
         # so we vendor just that script and expose it on PATH as
-        # `clang-tidy-cache`. The lint path opts in only when CTCACHE_DIR is set
-        # (see cmake/run_clang_tidy.cmake); merely having it on PATH changes
-        # nothing, so local `nix develop` is unaffected.
+        # `clang-tidy-cache`. Being on PATH is what turns the lint path's
+        # caching on (see cmake/run_clang_tidy.cmake), which by default stores
+        # results under the build directory rather than ctcache's own /tmp
+        # default.
         ctcacheSrc = pkgs.fetchFromGitHub {
           owner = "matus-chochlik";
           repo = "ctcache";
@@ -31,7 +32,7 @@
       in {
         devShells.default = pkgs.mkShell {
           packages = with pkgs; [
-            # clang-tidy result cache (opt-in via CTCACHE_DIR; see above)
+            # clang-tidy result cache (used whenever present; see above)
             clang-tidy-cache
 
             # Core build system

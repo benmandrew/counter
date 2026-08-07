@@ -1,0 +1,89 @@
+{
+  "campaign": "2026-08-07-elitism",
+  "attribution": "recorded",
+  "generated_on": "2026-08-07",
+  "status": "running",
+  "status_note": "Launched 2026-08-07T18:18Z on av2 and av3; this file is written at launch with everything already fixed, and gains `decision`, the closing timestamp and the row counts when the campaign lands. Nothing recorded here is inferred from an mtime.",
+  "kind": "repair campaign (FRETISH + TLSF), two-arm",
+  "kind_note": "A standard gen_configs.py / run_experiments.py / merge_experiments.py repair campaign, run once per path against two separate CSVs. The only factor is genetic.elitism_rate, carried by sweep R on both paths. Unusually for this repo the campaign re-runs a factor an earlier campaign already carried: `replicate` (2026-07-31) crossed sweep R as a nuisance variable, and 6000 of its rows were recovered from av2/av3 and analysed before this one was designed. See PLAN.md section 3 for that prior and the three reasons it does not close the question.",
+  "question": "Whether the shipped `genetic.elitism_rate` default should be 0.0 or 0.1. This is a production-defaults question rather than a search-behaviour one: counter is meant to be push-button, so the default has to hold across a corpus rather than on the spec that motivated it. The design argument says 0.0 — both NSGA-II schemes pool survivors (mu+lambda) and are already elitist, and elites bypass the offspring filter chain including the vacuity and well-separation screens. Against it stood one measurement, n=1, on examples/lily02 at seed 42, where elitism_rate = 0 returned a repair whose guarantee reduced to `true`. That anecdote is what include/config.hpp and example-config.toml currently cite as the reason the default stays at 0.1.",
+  "decision": null,
+  "decision_rule": "Pre-registered in PLAN.md section 7, before any row at this commit was collected. Switch the default to 0.0 only if all four hold: (1) upper bound of the 95% CI on the implies_ideal difference below +0.05 absolute on both paths; (2) the same on found_repair; (3) zero trivial repairs in the elit0 arm under the post-hoc ltlfilt audit; (4) mean wall_time_s at 0.0 no more than 10% above 0.1 on both paths. Otherwise keep 0.1 and rewrite the justification comment in include/config.hpp and example-config.toml to cite this campaign and the criterion that failed, replacing the n=1 lily02 anecdote. The prior data predicts criterion 4 is the one that fails, at a wall ratio of 0.87-0.88.",
+  "profile_commit": {
+    "sha": "4ea255bd7b6988734065341aec16c2d4b5bbed0e",
+    "subject": "chore(experiments): add elitism-default campaign profiles and plan",
+    "branch": "feat/elitism-campaign",
+    "reachable_from_main": false,
+    "held_by_tag": null,
+    "held_by_tag_note": "Not an ancestor of main at launch; held by the pushed branch feat/elitism-campaign. It becomes reachable when that branch merges, and no provenance/ tag is needed on that path. If the branch is split into reconstructed pull requests rather than merged, the same content reaches main under fresh shas while every sha named here still points into the branch — the failure mode CLAUDE.md records for feat/replicate-campaign — and an annotated provenance/elitism-campaign tag must be created and pushed before the branch is deleted."
+  },
+  "profile_commit_confidence": "recorded",
+  "profile_commit_evidence": "Both hosts were reset to origin/feat/elitism-campaign and rebuilt before launch; `counter --version` reads commit=4ea255b, dirty=0 on both. run_experiments.py's own launch gate refuses a binary whose commit differs from the working tree's HEAD or was built dirty, and it was left on — no --allow-stale-binary. Every CSV row carries the commit and dirty columns independently.",
+  "binary_commit": {
+    "sha": "4ea255bd7b6988734065341aec16c2d4b5bbed0e",
+    "short": "4ea255b",
+    "dirty": false,
+    "source": "counter --version, captured on both hosts after the pre-launch rebuild"
+  },
+  "engine_commits_that_motivated_the_rerun": [
+    {"sha": "3869c53", "why": "added the tautology screen to the vacuity filter; decides exactly the `G true` guarantee case the lily02 anecdote exhibited"},
+    {"sha": "01a4308", "why": "rescue correct offspring only when filters empty the population"},
+    {"sha": "8440904", "why": "resolve realizability timeouts as undecided rather than unrealizable"},
+    {"sha": "86e463c", "why": "flipped run_well_separation and allow_output_assumptions to true; well-separation interacts with elitism directly, since elites bypass the offspring filter chain that applies it"}
+  ],
+  "vendored_scripts": {
+    "source_commit": "4ea255bd7b6988734065341aec16c2d4b5bbed0e",
+    "files": {
+      "gen_configs.py": "8adc54fe14442051c5b96f9b6bca400e04823ac5",
+      "run_experiments.py": "5f8692f62bf1455724428cda531feb3c188c5291",
+      "merge_experiments.py": "48b67aa1a807a4e1dfb1542e519ddd60ec1faddd",
+      "campaign_driver.sh": "44d623427534b6af2451e561bfa901580ac63899"
+    },
+    "check": "git hash-object experiments/2026-08-07-elitism/scripts/<file>"
+  },
+  "design": {
+    "factor": "genetic.elitism_rate",
+    "arms": ["elit0 (0.0)", "elit0.1 (0.1)"],
+    "sweep": "R (FRETISH) and TLSF sweep R — the same letter because it is the same factor",
+    "scheme": "nsga2-truncate only, not crossed; it is the shipped default and the question is about the shipped configuration",
+    "profiles": {
+      "elitism-fret": {
+        "corpus": "4 FRETISH families (takeoff, fsm, fsm-timing, fsm-combined)",
+        "operating_point": "generations 40, population_size 1000",
+        "seeds": 150,
+        "runs": 1200,
+        "jobs": 4,
+        "results_csv": "results-elitism.csv"
+      },
+      "elitism-tlsf": {
+        "corpus": "20 fixes-backed TLSF ablation families",
+        "operating_point": "generations 10, population_size 200",
+        "seeds": 40,
+        "runs": 1600,
+        "jobs": 1,
+        "jobs_note": "jobs=1 for the same RAM reason as every other TLSF profile: max_concurrent_realizability is per-process, so concurrent counter processes multiply peak ltlsynt residency",
+        "results_csv": "results-elitism-tlsf.csv"
+      }
+    },
+    "total_runs": 2800,
+    "config_deviation_from_shipped_defaults": "gen_configs.py's baseline pins the fitness weights at 0.33/0.33/0.1/0.33 rather than config.hpp's 0.2/0.5/0.1/0.5, plus model_counting.default_bound = 20 and runtime.black_timeout_ms = 1000. These are campaign conventions shared with every prior sweep; changing them here would make this campaign incomparable with the replicate rows it re-tests. Under nsga2-truncate the weights only select which components are active — all four are non-zero either way — so they do not bias selection and reach only the reported best_fitness scalar, which is not among the outcomes. run_vacuity and run_well_separation are deliberately left unpinned so both take the binary's current default of true."
+  },
+  "host_split": {
+    "method": "seed-major, disjoint, never by spec or arm — so a host lost mid-campaign still leaves a balanced design over every spec and arm",
+    "av2": {"hostname": "avlab12", "arm": "lo", "fretish_seeds": "0-74", "tlsf_seeds": "0-19"},
+    "av3": {"hostname": "av3", "arm": "hi", "fretish_seeds": "75-149", "tlsf_seeds": "20-39"},
+    "hostname_note": "The per-host manifest filename uses the machine's real hostname, not the ssh alias, so av2's manifest is results-elitism-manifest-avlab12.json",
+    "phase_order": "FRETISH first, then TLSF, sequentially on each host. The two never co-schedule: the FRETISH arm runs jobs=4 and the TLSF arm jobs=1, and overlapping them would contaminate wall_time_s, which is criterion 4 of the decision rule."
+  },
+  "run_window": {
+    "launched_utc": "2026-08-07T18:18:42Z",
+    "finished_utc": null,
+    "note": "av3's clock runs ~17 minutes fast with NTP off. No figure in this campaign derives from cross-host timestamps, so the skew is recorded and left uncorrected, as in 2026-08-06-wellsep-timing."
+  },
+  "caveats": [
+    "The post-hoc triviality audit (PLAN.md section 5) is not part of the run. It reads the retained per-run repair files offline with ltlfilt, so it needs no C++ change and cannot affect the campaign. Its pre-registered expectation is zero trivial repairs in both arms, because the final repair screen applies the vacuity predicate unconditionally at write time; a non-zero count in either arm is a bug in that screen and is reported as such rather than as an elitism result.",
+    "The campaign says nothing about intermediate elitism rates. The two arms are the two candidate defaults; no claim about 0.05 or 0.2 follows from this data.",
+    "Timeout caps are raised above the equivalent prior profiles (FRETISH 900/1800 against replicate's 900/1500; TLSF a flat 900 against ablate-tlsf's 600) because this campaign runs with well-separation on by default and those profiles did not. A cap that fires records implies_ideal = 0 for a run that was merely slow, so the caps are sized never to bite; if any row lands with timed_out = 1, the affected cells are reported rather than pooled.",
+    "The ltl2tgba orphan-reaper cron was verified installed on both hosts before launch (0 */2 * * *), and both hosts showed zero live ltl2tgba processes at launch."
+  ]
+}

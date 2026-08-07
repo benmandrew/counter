@@ -71,7 +71,7 @@
       "properties": {
         "run_weakening":   { "type": "boolean", "default": true, "description": "Keep only repairs the original logically implies -- genuine weakenings. A final screen over the realizable survivors, not a per-generation filter: pruning non-weakenings mid-search costs repair quality and never gains it, while screening the output leaves the search untouched. With it off a written repair may forbid behaviour the original allowed. Applies on both paths; the TLSF check is an exact whole-formula query where the FRETISH one is an under-detecting assume-guarantee decomposition, so the TLSF screen rejects more." },
         "run_implication": { "type": "boolean", "description": "Enable final implication maximality filter." },
-        "run_vacuity":     { "type": "boolean", "description": "Drop candidates whose assumptions are jointly unsatisfiable, which are realizable for free." },
+        "run_vacuity":     { "type": "boolean", "description": "Drop candidates that are realizable for free: ones carrying a requirement whose condition is the literal false, ones with a valid guarantee that demands nothing, and ones whose assumptions are jointly unsatisfiable." },
         "run_well_separation": { "type": "boolean", "default": true, "description": "Drop candidates that are not well-separated: ones the system can satisfy vacuously by forcing its own assumptions to fail. Strictly stronger than run_vacuity. Each test is a full ltlsynt query, but a candidate dropped before scoring costs no model-count and no synthesis query, so it is on by default. Stays a per-generation filter rather than a final screen: an end-of-run pass is re-admitted by the elites and by NSGA-II parent pooling." }
       }
     },

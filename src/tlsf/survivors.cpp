@@ -28,11 +28,12 @@ namespace {
 // conditions before any repair is written out. Unconditional on both paths:
 // run_vacuity_filter tunes search pressure, never output correctness.
 //
-// The satisfiability query runs first: it is a `black` call against the
-// assumption side alone, far cheaper than the `ltlsynt` query behind
-// tlsf_status, so a vacuous candidate is rejected without paying for synthesis.
+// The vacuity check runs first: its syntactic screen is free and its `black`
+// queries are per-section-formula or over the assumption side alone, far
+// cheaper than the `ltlsynt` query behind tlsf_status, so a vacuous candidate
+// is rejected without paying for synthesis.
 bool is_tlsf_repair(const Specification& spec, const Config& cfg) {
-    return !tlsf_has_unsatisfiable_assumptions(spec, global_sat_checker()) &&
+    return !tlsf_is_vacuous(spec, global_sat_checker()) &&
            tlsf_status(spec, cfg) == 1.0;
 }
 

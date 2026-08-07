@@ -152,6 +152,12 @@ struct State {
 /// requirement is vacuously satisfied by every trace and imposes no
 /// constraint, so specifications containing one should be excluded from the
 /// population rather than treated as ordinary candidates.
+/// The condition sits only in the antecedent of the lowered implication, under
+/// every timing and both ConditionTypes, so a false one is vacuous
+/// unconditionally. There is deliberately no syntactic dual over responses: the
+/// AfterTicks lowering negates the response, so a `true` response there is the
+/// *strongest* guarantee rather than a no-op. That case is left to
+/// specification_has_valid_guarantee, which decides it per timing.
 bool specification_has_false_condition(const Specification& specification);
 
 /// Converts a Timing enum value to a human-readable string representation.

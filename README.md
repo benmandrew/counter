@@ -35,29 +35,21 @@ the external solvers get scheduled.
 The example is a two-client arbiter that must grant each client infinitely
 often, but nothing forces clients to keep requesting — so it cannot be
 implemented. The top repair adds the missing fairness assumptions, `G F r0` and
-`G F r1`, recovering the standard fix. Lower-ranked repairs instead weaken the
-guarantees, which also works but is rarely what you want; reading down the
-fitness order is the intended way to use the output. The [TLSF
+`G F r1`, recovering the standard fix. The [TLSF
 guide](https://benmandrew.com/docs/counter/tlsf.html) walks through this run in
 full.
 
 ## Commands
 
-```console
-$ counter --input <spec.json|spec.tlsf> --output-dir <dir> [--config <file.toml>] [--format <fretish|tlsf>] [--seed <n>]
-$ compare --repairs <dir> --ideals <dir>
-$ realize <spec.json|spec.tlsf> [...]
-$ ltl     <spec.json|spec.tlsf> [...]
-$ mucs    <spec.tlsf>
-```
-
 | Command | Purpose |
 |---|---|
-| `counter` | repair an unrealisable specification |
-| `realize` | report whether a specification is realisable |
-| `ltl` | print the LTL formulae a specification translates to |
-| `compare` | compare a directory of repairs against known-ideal ones |
-| `mucs` | extract a minimal unrealizable core from a TLSF specification |
+| `counter --input <spec> --output-dir <dir>` | repair an unrealisable specification |
+| `realize <spec>...` | report whether a specification is realisable |
+| `ltl <spec>...` | print the LTL formulae a specification translates to |
+| `compare --repairs <dir> --ideals <dir>` | compare repairs against known-ideal ones |
+| `mucs <spec.tlsf>` | extract a minimal unrealisable core from a TLSF spec |
+
+A `<spec>` is either a FRETISH `.json` or a `.tlsf` file.
 
 Run any command with `--help` for full option descriptions.
 
@@ -66,13 +58,12 @@ Run any command with `--help` for full option descriptions.
 Counter evolves a population of candidate specifications over several
 generations, keeping those that are realisable and close to the original.
 
-1. **Seed** a population of `population_size` (default 200) specifications, each
-   mutated slightly from the input.
+1. **Seed** a population of specifications, each mutated slightly from the
+   input.
 2. **Score** each candidate on four weighted components: semantic similarity
    (bounded model counting of satisfying traces), realisability status,
    syntactic similarity, and a Halstead size penalty.
-3. **Evolve** for `generations` (default 10) rounds of selection, crossover,
-   mutation, and filtering.
+3. **Evolve** through rounds of selection, crossover, mutation, and filtering.
 4. **Collect** the realisable survivors, keep only the maximal ones under
    implication, and write each to the output directory.
 

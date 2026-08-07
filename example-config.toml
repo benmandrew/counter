@@ -1,172 +1,78 @@
 #:schema ./schemas/config-schema.json
 # counter configuration file
-# All sections and keys are optional; absent keys use the built-in defaults.
-# Every value shown below IS that default, so copying this file whole changes
-# nothing. scripts/check_config_schema.py enforces that against config.hpp as
-# part of the lint target -- a default may not drift from this template.
+#
+# Every section and key is optional; absent keys use the built-in defaults. Every
+# value below IS that default, so copying this file whole changes nothing.
+# scripts/check_config_schema.py enforces that against include/config.hpp as part
+# of the lint target -- a default may not drift from this template.
+#
+# What each key means is in schemas/config-schema.json, which an editor reads via
+# the #:schema line above. What to set and why -- the measurements behind each
+# default -- is in docs/configuration.rst. Comments here cover only what neither
+# of those records.
 
 [genetic]
-generations     = 10   # number of evolution rounds
-population_size = 200  # candidates per generation
-selection_rate  = 0.5  # fraction of population selected as parents each generation
-elitism_rate    = 0.1  # fraction carried over verbatim each generation (must be < selection_rate)
-crossover_rate  = 0.1  # probability of crossover between parents
-mutation_rate   = 1.0  # probability of mutating an offspring
-# Selection scheme. The two NSGA-II schemes rank identically -- by Pareto
-# non-domination and crowding distance over the individual components, searching
-# for the Pareto front of repairs rather than one weighted compromise -- and are
-# named for the survivor step, the only thing that differs between them. Under
-# either, the [fitness] weights only select which components are active
-# (weight > 0); they no longer bias selection, though they still order the final
-# written repairs. The (mu+lambda) survivor pooling is already elitist, so
-# elitism_rate = 0 is the natural setting.
-#   "nsga2-truncate" (default) ranks the pooled parents and offspring, then cuts
-#     the pool at population_size.
-#   "nsga2-apportion" deduplicates the pool first, ranks the distinct set, and
-#     hands out the population_size slots over it by 1 / (1 + rank). It keeps
-#     far more distinct candidates, at roughly 50% more wall-clock time.
-#   Spelled "nsga2" and "nsga2-replicate" before 2026-08-06; those spellings are
-#     no longer accepted.
-#   "weighted" ranks candidates by the single weighted-average of the fitness
-#     components (the [fitness] weights below). It converges prematurely: over a
-#     50k-run parameter sweep the generation count made no difference to its
-#     results at any level from 5 to 80, and on the takeoff example it matched
-#     an ideal repair in 1.7% of runs against NSGA-II's 89.3%, while being no
-#     faster.
+generations     = 10
+population_size = 200
+selection_rate  = 0.5
+elitism_rate    = 0.1  # elites are a subset of the parents, so this must stay < selection_rate
+crossover_rate  = 0.1
+mutation_rate   = 1.0  # per offspring, unlike the per-requirement rates in [mutation]
+# "nsga2-truncate" | "nsga2-apportion" | "weighted". Under either NSGA-II scheme
+# the [fitness] weights only select which components are active (weight > 0);
+# they no longer bias selection, and the (mu+lambda) survivor pooling is already
+# elitist, so elitism_rate = 0 is the natural companion.
 selection_scheme = "nsga2-truncate"
 
 [fitness]
-weight_syntactic = 0.2  # syntactic similarity component weight
-weight_semantic  = 0.5  # semantic similarity (model counting) component weight
-weight_halstead  = 0.1  # Halstead complexity penalty weight
-weight_status    = 0.5  # realizability status weight
+weight_syntactic = 0.2
+weight_semantic  = 0.5
+weight_halstead  = 0.1
+weight_status    = 0.5
 
 [mutation]
-p_trigger  = 0.5    # per-requirement probability of mutating the trigger
-p_response = 0.5    # per-requirement probability of mutating the response
-p_timing   = 0.15   # per-requirement probability of mutating the timing
-# Shared by both modes: probability that a mutation instead appends a new
-# environment assumption (a fairness assumption over an input) rather than
-# rewriting an existing requirement/formula. Enables repairs that require
-# strengthening the environment (e.g. adding request fairness to an
-# unrealizable GR(1) spec).
-p_add_assumption = 0.05
-# Of those appended assumptions, the fraction guarded by a random input atom
-# rather than by `true`. G F <input> is strictly stronger than
-# G(c -> F <input>) and so the more powerful repair, which is why the
-# unconditional form keeps the majority of the draw.
+# Per-requirement probabilities of rewriting each part of a FRETISH requirement.
+p_trigger  = 0.5
+p_response = 0.5
+p_timing   = 0.15
+# Both modes: the probability that a mutation instead appends a new environment
+# assumption, and the fraction of those guarded by a random input atom rather
+# than by `true`.
+p_add_assumption         = 0.05
 p_conditional_assumption = 0.25
-# Mutate assumption timings in the strengthening direction rather than the
-# weakening one: weakening the overall assume-guarantee specification means
-# weakening a guarantee but strengthening an assumption. Setting this false
-# weakens both, which makes every assumption mutation a move away from a
-# repair; kept only so the two directions can be compared.
-strengthen_assumptions = true
-# When true (the default), environment assumptions may reference output atoms as
-# well as inputs — both freshly added assumptions and rewrites of existing ones,
-# in FRETISH and TLSF mode alike. False keeps them input-only and so
-# well-separated by construction. Pair the default with
-# filters.run_well_separation, which prunes any not-well-separated assumption the
-# wider draw produces.
-allow_output_assumptions = true
+strengthen_assumptions   = true
+allow_output_assumptions = true  # meant to move with filters.run_well_separation
 
 [tlsf]
-# Applies only in TLSF mode (a .tlsf input or --format tlsf).
-# Repair strategy:
-#   "monolithic" (default) evolves the whole specification at once.
-#   "muc" repairs iteratively -- extract a minimal unrealizable core, evolve only
-#   that sub-specification, reintegrate the repaired core with the untouched
-#   non-core guarantees, and repeat until the whole spec is realizable. Focuses
-#   the search (and the per-candidate ltlsynt cost) on the culprit formulae.
-repair_mode = "monolithic"
-# muc mode only: cap on the outer extract-repair-reintegrate loop. A spec whose
-# core never becomes realizable ends the run without a repair rather than
-# looping forever.
-muc_max_iterations = 32
+# TLSF mode only (a .tlsf input or --format tlsf); ignored on the FRETISH path.
+repair_mode        = "monolithic"  # or "muc"
+muc_max_iterations = 32            # muc mode only
 
 [tlsf.mutation]
-# Applies only in TLSF mode (a .tlsf input or --format tlsf). Probability of
-# mutating an assumption-side section (INITIALLY/REQUIRE/ASSUME); the guarantee
-# side (PRESET/ASSERT/GUARANTEE) takes the complement.
 p_assumption = 0.3
-# Once a section formula is chosen, probability of applying the temporal-structure
-# mutation (may insert/drop/swap X/F/G/U/R/W operators) rather than the
-# skeleton-preserving propositional rewrite. At 0 temporal skeletons are fixed.
 p_temporal   = 0.2
 
 [model_counting]
-default_bound = 20            # trace-length bound k for bounded model counting
-metric        = "logarithmic" # default; "logarithmic" (growth-rate ratio; stays
-                              # stable as the bound grows) or "direct" (count
-                              # ratio)
+default_bound = 20
+metric        = "logarithmic"  # or "direct"
 
 [filters]
-# Keep only repairs the original logically implies -- genuine weakenings. This
-# is a final screen over the realizable survivors, not a per-generation filter:
-# pruning non-weakenings mid-search measurably costs repair quality and never
-# gains it, while screening the output leaves the search untouched. With it off
-# a written repair may forbid behaviour the original allowed. Applies on both
-# paths; the TLSF check is exact where the FRETISH one under-detects, so the
-# TLSF screen rejects more -- and is right to, since mutation can delete a
-# safety guarantee and add a stronger one.
 run_weakening   = true
-run_implication = true  # enable final implication maximality filter
-# Drop candidates whose assumptions are jointly unsatisfiable. Those are
-# realizable for free, since a false antecedent makes the assume-guarantee
-# implication a tautology. Costs nothing when there are no assumptions.
-# Applies on both paths. Turning it off only relaxes search pressure: the
-# final screen rejects a vacuous candidate before writing it either way.
+run_implication = true
 run_vacuity     = true
-# Drop candidates that are not well-separated: ones the system can satisfy
-# vacuously by forcing its own assumptions to fail (i.e. (assumptions) -> false
-# is realizable). Strictly stronger than run_vacuity. Each test is a full
-# ltlsynt query, but a candidate dropped before it is scored costs no
-# model-count and no synthesis query, so on is both the default and the
-# cheaper setting. Unlike run_weakening this stays a per-generation filter
-# rather than a final screen: an end-of-run pass is re-admitted by the elites
-# and by NSGA-II parent pooling, and measured no better than no filter at all.
 run_well_separation = true
 
 [runtime]
-black_timeout_ms = 1000  # timeout per black SAT query in milliseconds
-# Stream per-stage and per-generation progress to <output-dir>/progress.jsonl
-# and copy the live dashboard page beside it, so serving the output directory
-# shows the run as it happens. Off by default: a campaign of many runs pays for
-# the file and its flushes with nobody watching. `counter --dashboard` turns it
-# on for a single run without editing a config.
-dashboard = false
-# Per-call ltlsynt realizability timeout in ms. 0 (default) is no timeout;
-# ltlsynt has no internal one, so on hard specs a single synthesis query can run
-# for minutes. A call exceeding this is killed and reported as undecided: a
-# repair is not admitted on it, and the well-separation filter drops the
-# candidate rather than keeping one it never checked.
-ltlsynt_timeout_ms = 0
-# Per-call ltl2tgba timeout in ms. 0 (default) is no timeout; the -D
-# determinization blows up on deeply nested formulae. A call exceeding this is
-# killed and the individual is dropped.
+# Per-call wall-clock budgets in ms; 0 disables one. ltlfilt is the only one
+# defaulting on, because an abandoned call there costs a missed simplification
+# rather than the candidate.
+black_timeout_ms    = 1000
+ltlsynt_timeout_ms  = 0
 ltl2tgba_timeout_ms = 0
-# Per-call ltlfilt timeout in ms. Unlike the budgets above this defaults to
-# 10000 rather than off, because --simplify is super-exponential on deep
-# nested-X conjunctions and an abandoned call only costs a simplification: the
-# formula is used unsimplified. 0 disables it.
-ltlfilt_timeout_ms = 10000
-# Per-call ganak model-counting timeout in ms. 0 (default) is no timeout.
-# Counting is the fitness function's real work, so a slow count is usually a
-# hard one rather than a blowup; a call exceeding this drops the individual and
-# spends the max_scoring_failure_rate budget below.
-ganak_timeout_ms = 0
-# Cap on ltlsynt processes running at once, independent of the thread pool. 0
-# (default) is unlimited; ltlsynt is multi-GB resident per call on hard specs,
-# so a positive value bounds peak RAM (roughly cap * per-call GB) to avoid OOM.
+ltlfilt_timeout_ms  = 10000
+ganak_timeout_ms    = 0
 max_concurrent_realizability = 0
-# An individual whose fitness scoring throws is dropped from its generation
-# rather than aborting the run. Above this fraction of a generation the tooling
-# is assumed broken rather than the formula, and the run aborts. A single
-# failure per generation is always tolerated, whatever the population size.
-max_scoring_failure_rate = 0.05
-# The CPU-attribution report is `counter --cpu-report`, not a key here: it asks
-# about one interactive run rather than about the search, as COUNTER_PROFILE
-# does for the scope profiler.
-#
+max_scoring_failure_rate     = 0.05
+dashboard = false
 # parallel = 8   # thread pool size; the default is hardware concurrency, so
                  # this key has no fixed default to pin and stays commented out.

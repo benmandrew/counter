@@ -196,6 +196,10 @@ namespace std {  // NOLINT(build/namespaces)
 
 template <>
 struct hash<Timing> {
+    // std::visit is specified as throwing bad_variant_access on a
+    // valueless variant. Every Timing alternative is nothrow-copyable, so
+    // Timing can never become valueless and the throw is unreachable.
+    // NOLINTNEXTLINE(bugprone-exception-escape)
     std::size_t operator()(const Timing& timing) const noexcept {
         auto combine = [](std::size_t seed, std::size_t val) noexcept {
             return seed ^ (val + 0x9e3779b9U + (seed << 6) + (seed >> 2));

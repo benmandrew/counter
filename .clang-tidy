@@ -7,8 +7,7 @@ Checks: >
   google-*,
   -modernize-use-trailing-return-type,
   -readability-magic-numbers,
-  -bugprone-easily-swappable-parameters,
-  -bugprone-exception-escape
+  -bugprone-easily-swappable-parameters
 
 WarningsAsErrors: "*"
 

@@ -1,20 +1,14 @@
-missingIncludeSystem
-noExplicitConstructor
 unusedStructMember
 useStlAlgorithm
+
+# The one implicit single-argument constructor in the tree, deliberate: a
+# FilterFunctionT is meant to be constructible from a bare callable. Scoped to
+# that file so the check still fires anywhere else.
+noExplicitConstructor:*/genetic/generation.hpp
 
 # next_bool() is non-pure — each call returns a different value, so the
 # "identical condition" check is a false positive here.
 identicalConditionAfterEarlyExit
-
-# Eigen's comma-initializer syntax (operator<<) is flagged as a suspicious
-# comma operator. This is a known false positive with Eigen.
-constStatement
-
-# Structured bindings (const auto& [a, b]) are not understood by cppcheck 2.7 —
-# it reports the destructured variables as "not assigned a value" even when they
-# are read. Suppress globally since all uses in this codebase are legitimate.
-unassignedVariable
 
 # benchmark::State must be non-const (its begin()/end() advance internal
 # iteration state). cppcheck doesn't know this and suggests const.

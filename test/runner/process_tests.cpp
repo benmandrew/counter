@@ -5,7 +5,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <cstdio>
-#include <filesystem>  // NOLINT(build/c++17)
+#include <filesystem>
 #include <fstream>
 #include <string>
 #include <thread>

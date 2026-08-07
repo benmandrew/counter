@@ -25,6 +25,12 @@ struct Node;
 /// representation) from the public interface.
 class Formula {
    public:
+    /// Node kind. The trailing six are temporal operators (LTL), only produced
+    /// by the temporal construction path (make_unary/make_binary with a
+    /// temporal Kind) and the TLSF front end; the propositional parser never
+    /// emits them, so FRETISH formulae stay propositional. New values are
+    /// appended so the NodeType/Kind ordinals of the propositional kinds — and
+    /// therefore every existing formula hash and ordering — are unchanged.
     enum class Kind : std::uint8_t {
         Atom,
         Not,
@@ -32,18 +38,12 @@ class Formula {
         Or,
         Implies,
         Iff,
-        // Temporal operators (LTL). Only produced by the temporal
-        // construction path (make_unary/make_binary with a temporal Kind) and
-        // the TLSF front end; the propositional parser never emits them, so
-        // FRETISH formulae stay propositional. New values are appended so the
-        // NodeType/Kind ordinals of the propositional kinds — and therefore
-        // every existing formula hash and ordering — are unchanged.
-        Next,        // X phi
-        Eventually,  // F phi
-        Globally,    // G phi
-        Until,       // phi U psi
-        Release,     // phi R psi
-        WeakUntil,   // phi W psi
+        Next,        ///< X phi
+        Eventually,  ///< F phi
+        Globally,    ///< G phi
+        Until,       ///< phi U psi
+        Release,     ///< phi R psi
+        WeakUntil,   ///< phi W psi
     };
 
     using RewriteCallback =

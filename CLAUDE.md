@@ -79,6 +79,8 @@ Archived *results* are the separate half, and the one that needed work. `gen_con
 
 Every header file in `include/` must have a corresponding `.rst` page under `docs/api/` and be listed in `docs/index.rst`. When adding a new header, add the page and toctree entry before committing. The site covers `include/` alone: implementation detail under `src/` is deliberately not published.
 
+Only `///` reaches the site. A `//` comment on a declaration is invisible to Doxygen, which is why every `Config` member read as undocumented until its block was converted. The conversion is not free: `///` text goes through Doxygen's comment parser, so a bare `<input>` or `<output-dir>` parses as an HTML tag and `WARN_AS_ERROR` fails the build — wrap those in backticks, which also renders them as code.
+
 ## Code style
 
 - **Standard**: C++17, `-Wall -Wextra -Wpedantic -Werror` on all targets.

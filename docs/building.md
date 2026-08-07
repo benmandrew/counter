@@ -85,7 +85,9 @@ cmake --build build --target format-ci     # dry-run, fails if unformatted
 ## Documentation
 
 ```sh
-cmake --build build --target docs   # Doxygen + Sphinx, requires both installed
+cmake --build build --target docs   # Doxygen + Sphinx + KaTeX, all three required
 ```
 
 This builds the curated public site from the `include/` headers.
+
+Maths in doc comments is written as Doxygen's `\f$ ... \f$` (inline) and `\f[ ... \f]` (display), and rendered by KaTeX rather than Sphinx's default MathJax. The site fetches nothing at view time: `sphinxcontrib-katex` copies its own JS into `_static`, and `cmake/docs.cmake` stages `katex.min.css` and its fonts beside it out of the `katex` package, which `KATEX_DIST_DIR` locates. Set that variable by hand if the package sits somewhere the search does not reach.

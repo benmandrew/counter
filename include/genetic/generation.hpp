@@ -132,8 +132,8 @@ FilterFunction make_predicate_filter(
 /// reported at the end of a run: a silent drop must never be mistaken for a
 /// clean sweep.
 struct ScoringStats {
-    // Distinct error messages are capped: a message names the offending
-    // formula, so an uncapped tally would grow with the search.
+    /// Distinct error messages are capped: a message names the offending
+    /// formula, so an uncapped tally would grow with the search.
     static constexpr std::size_t k_max_distinct_reasons = 8;
 
     inline static std::size_t n_dropped = 0;

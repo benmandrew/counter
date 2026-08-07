@@ -108,7 +108,11 @@ All three schemes still emit the weighted-average scalar in each repair's fitnes
 Search size and operators
 -------------------------
 
-``[genetic]`` sizes the search. ``generations`` and ``population_size`` are the two that matter. ``selection_rate`` (0.5) is the share of the population that breeds, and ``elitism_rate`` (0.1) the share carried into the next generation verbatim, bypassing crossover, mutation and the offspring filters. Elites are a subset of the parents, so ``elitism_rate`` must stay strictly below ``selection_rate``. Under either NSGA-II scheme the survivor step is already elitist, which is why ``elitism_rate = 0`` is their natural companion. ``crossover_rate`` (0.1) and ``mutation_rate`` (1.0) are the per-offspring probabilities of applying each operator.
+``[genetic]`` sizes the search. ``generations`` and ``population_size`` are the two that matter. ``selection_rate`` (0.5) is the share of the population that breeds, and ``elitism_rate`` (0.1) the share carried into the next generation verbatim, bypassing crossover, mutation and the offspring filters. Elites are a subset of the parents, so ``elitism_rate`` must stay strictly below ``selection_rate``. ``crossover_rate`` (0.1) and ``mutation_rate`` (1.0) are the per-offspring probabilities of applying each operator.
+
+``elitism_rate`` looks redundant under the default scheme and is kept anyway. Under either NSGA-II scheme the (μ+λ) survivor step already pools parents with offspring and keeps the best, so an elite carry-over on top adds nothing in principle — and it is not free, because elites bypass the offspring filter chain, so that fraction of every generation skips ``run_vacuity`` and ``run_well_separation``. Both arguments say 0.
+
+The one measurement taken says otherwise. Dropping it to 0 on ``examples/lily02`` at seed 42 leaves the weighted scalar a shade higher (best 0.954 against 0.950) but returns structurally weaker repairs, one of which — ``req W (F(G cancel | G true))`` — reduces to ``true`` and so deletes the guarantee outright, where 0.1 returns three structured rewrites of it. That repair passes every screen honestly: deleting a guarantee *is* a weakening, and a weaker specification is implication-maximal. Aggregate fitness prefers a gutted specification and nothing on the TLSF path screens one out, so elitism appears to be acting as a brake on that pathology rather than as dead weight. One example is not a result; treat this as a reason not to change the default on the redundancy argument alone.
 
 ``[mutation]`` weights what a mutation does. ``p_trigger`` (0.5), ``p_response`` (0.5) and ``p_timing`` (0.15) select which part of a FRETISH requirement is rewritten.
 
@@ -161,9 +165,15 @@ Runtime
 
 ``runtime.parallel`` overrides the thread pool size, which otherwise follows ``std::thread::hardware_concurrency()``.
 
-``runtime.max_concurrent_realizability`` caps how many ``ltlsynt`` processes run at once across the whole program, independently of ``parallel``. ``ltlsynt`` can go multi-gigabyte resident per call on the harder TLSF examples, so a pool of ``parallel`` workers each spawning one can exhaust memory and take the machine down with it. The default, 0, means unlimited; a positive value serialises the surplus while the other workers carry on with non-``ltlsynt`` work. Size it to roughly ``available_GB / per-call_GB``.
+``runtime.max_concurrent_realizability`` caps how many ``ltlsynt`` processes run at once across the whole program, independently of ``parallel``. The default, 0, means unlimited; a positive value serialises the surplus while the other workers carry on with non-``ltlsynt`` work.
 
-``runtime.max_scoring_failure_rate`` (0.05) bounds what fraction of a generation may fail to score before the run aborts. A fitness function that throws — in practice an external tool failing on one evolved formula — costs that individual rather than the whole run. The search is stochastic, so one lost candidate out of a population is noise, whereas aborting at generation 23 of 40 loses everything. Above this fraction the tooling is broken rather than the formula, and continuing would only evolve noise into the output.
+It was added on the premise that ``ltlsynt`` is *the* memory hog, and measurement qualified that. Over 149,153 tool invocations across the corpus, ``ltlsynt`` peaked at 260 MB, against 1.8 GB for ``ltl2tgba`` and 3.4 GB for ``ltlfilt`` — which is 51% of all invocations and has by far the worst tail. On the calls that sample captured, ``ltlfilt`` is the hog and ``ltlsynt`` is not.
+
+What that sample cannot do is bound ``ltlsynt``. It is censored precisely where the blowups live: six of the heaviest runs (``amba``, ``full-arbiter``, ``prioritized-arbiter``) were killed on a 600 s wall-clock cap, skipped the ``atexit`` report and wrote no profile at all. Rare multi-gigabyte ``ltlsynt`` calls do happen, and none of them are in those figures. Treat 260 MB as what the common case costs, not as a ceiling.
+
+So the cap stays a real safety valve for a rare tail rather than a defence against the typical call, and it stays unlimited by default: the event is infrequent enough that serialising every realizability query against it would cost throughput on every run to bound a few. Set it on a memory-constrained machine, or on a corpus with the heavy SYNTCOMP arbiters in it. Do not size it off the figures above — the maximum is censored, and on one example the tail moved 26x between two seeds. Bounding ``ltlfilt`` concurrency is the lever for the *common* case, and there is no key for it yet.
+
+``runtime.max_scoring_failure_rate`` (0.15) bounds what fraction of a generation may fail to score before the run aborts. A fitness function that throws — in practice an external tool failing on one evolved formula — costs that individual rather than the whole run. The search is stochastic, so one lost candidate out of a population is noise, whereas aborting at generation 23 of 40 loses everything. Above this fraction the tooling is broken rather than the formula, and continuing would only evolve noise into the output.
 
 Per-tool budgets
 ~~~~~~~~~~~~~~~~
@@ -184,16 +194,26 @@ Each external tool has a per-call wall-clock budget in milliseconds. A budget of
      - 10000
      - The formula goes unsimplified.
    * - ``runtime.ltlsynt_timeout_ms``
-     - 0 (off)
+     - 500
      - The realisability query is undecided.
    * - ``runtime.ltl2tgba_timeout_ms``
-     - 0 (off)
+     - 60000
      - The individual is dropped.
    * - ``runtime.ganak_timeout_ms``
      - 0 (off)
      - The individual is dropped.
 
-What decides whether a budget defaults on is the cost of abandoning a call. ``black`` has its own internal timeout, so bounding it is routine. ``ltlfilt`` is bounded because ``--simplify`` is super-exponential on the deep nested-``X`` conjunctions the search builds, and an abandoned call there costs only a missed simplification, never a candidate. The other three are left off by default and set explicitly by the heavy TLSF runs, because abandoning any of them costs a candidate: ``ltl2tgba`` has the same blowup in its deterministic construction and ``ltlsynt`` occasionally runs for minutes with no upper bound, but a dropped individual is a real loss. ``ganak`` is the clearest case of the three — counting is the fitness function's real work, so a slow count is usually a legitimately hard one rather than a blowup.
+What decides whether a budget defaults on is the cost of abandoning a call weighed against the cost of not doing so. ``black`` has its own internal timeout, so bounding it is routine. ``ltlfilt`` is bounded because ``--simplify`` is super-exponential on the deep nested-``X`` conjunctions the search builds, and an abandoned call there costs only a missed simplification, never a candidate.
+
+``ltlsynt`` and ``ltl2tgba`` are bounded despite an abandoned call costing a candidate, because an unbounded one can cost the whole run: ``ltlsynt`` occasionally runs for minutes with no upper limit, and ``ltl2tgba``'s deterministic construction has the same super-exponential blowup as ``ltlfilt``, running for hours and leaking orphaned multi-gigabyte processes over a long campaign. Losing one candidate out of a population is the noise ``max_scoring_failure_rate`` already exists to absorb; losing the run at generation 23 of 40 is not. Both defaults are what every archived TLSF campaign set explicitly, which is the other half of the argument — the shipped default should be the configuration real runs use.
+
+The two budgets differ by two orders of magnitude because the tools' distributions do. ``ltlsynt`` call durations are sharply bimodal: 95% of a TLSF campaign's calls finished under 50 ms, the 0.5–1 s band was almost empty, and a 500 ms cap abandoned within 0.1% of the calls a 10 s cap did — so a query that blows 500 ms is in the minutes-long tail rather than near the boundary. A legitimate ``ltl2tgba`` determinisation, by contrast, can genuinely take tens of seconds, so its budget is set to bound the blowup rather than to discriminate a tail.
+
+``ganak`` stays off. Counting is the fitness function's real work, so a slow count is usually a legitimately hard one rather than a blowup, and there is no equivalent runaway to bound.
+
+.. note::
+
+   A wall-clock budget makes a run's output depend on the machine it ran on. A slower host abandons a call that a faster one completes, so the same ``--seed`` can give different repairs on different hardware — and a loaded machine differs from an idle one. The seed fixes the search; the budgets do not. When reproducing a result exactly, match the hardware, and read the timeout counts in the tool timing report to tell a genuine difference from an abandoned call.
 
 An undecided ``ltlsynt`` answer is resolved by each caller in its own direction — no repair is admitted on one, and the well-separation filter drops the candidate, for the reason given above. A dropped individual counts against ``max_scoring_failure_rate``.
 

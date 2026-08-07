@@ -156,6 +156,7 @@ add_executable(counter
     src/repair/cli.cpp
     src/repair/driver.cpp
     src/repair/evolution.cpp
+    src/repair/manifest.cpp
     src/repair/reports.cpp
 )
 target_link_libraries(counter PRIVATE counter_fitness cpptrace::cpptrace)

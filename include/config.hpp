@@ -104,17 +104,31 @@ struct Config {
     // upper bound, stalling a run on the tail. A call exceeding this is killed
     // and reported as undecided, which each caller resolves its own way: no
     // repair is admitted on it, and the well-separation filter drops the
-    // candidate. 0 (the default) disables the timeout, preserving prior
-    // behaviour; the heavy TLSF specs set it.
-    std::chrono::milliseconds ltlsynt_timeout{0};
+    // candidate. 0 disables the timeout.
+    //
+    // 500 ms by default because that is what every archived TLSF campaign set
+    // and because the call durations are sharply bimodal: 95% of that
+    // campaign's calls finished under 50 ms, the 0.5-1 s band was almost
+    // empty, and a 500 ms cap abandoned within 0.1% of the calls a 10 s cap
+    // did. A formula that blows this budget is in the minutes-long tail, not
+    // near the boundary. Losing one candidate out of a population is the same
+    // noise max_scoring_failure_rate already tolerates; an unbounded call
+    // costs the whole run.
+    std::chrono::milliseconds ltlsynt_timeout{500};
     // Per-call wall-clock budget for the ltl2tgba model-counting exec. Like
     // ltlsynt, ltl2tgba has no internal timeout, and the deterministic (-D)
     // construction blows up super-exponentially on the deeply nested formulae
     // the search occasionally builds (multi-GB, minutes-to-hours). A call
     // exceeding this is killed and the individual is dropped (counted against
-    // max_scoring_failure_rate). 0 (the default) disables the timeout,
-    // preserving prior behaviour; the heavy TLSF specs set it.
-    std::chrono::milliseconds ltl2tgba_timeout{0};
+    // max_scoring_failure_rate). 0 disables the timeout.
+    //
+    // 60 s by default, the value every archived TLSF campaign set. Far looser
+    // than the ltlsynt budget because a legitimate determinisation can take
+    // tens of seconds, where an ltlsynt call that has not finished in half a
+    // second is in the tail. This is the budget that bounds the multi-GB
+    // blowups: an untimed construction has been seen to run for hours and
+    // leak orphaned processes across a long run.
+    std::chrono::milliseconds ltl2tgba_timeout{60'000};
     // Per-call wall-clock budget for each ltlfilt exec. Unlike the budgets
     // above this defaults to a real value rather than to "off": --simplify is
     // super-exponential on the deep nested-X conjunctions the search builds,
@@ -145,6 +159,21 @@ struct Config {
     // the offspring filters, so the best candidates are never lost to a
     // stochastic operator. Must be strictly less than selection_rate (the
     // elites are a subset of the selected parents).
+    //
+    // Under either NSGA-II scheme this is redundant on paper -- the
+    // (mu+lambda) survivor step already pools parents with offspring and keeps
+    // the best -- and it costs something, because elites bypass the offspring
+    // filter chain, so this fraction of every generation skips
+    // run_well_separation_filter and run_vacuity_filter. Both point at 0, and
+    // it stays 0.1 anyway, because the one measurement taken disagrees:
+    // dropping it to 0 on examples/lily02 at seed 42 leaves the scalar fitness
+    // a shade higher but returns structurally weaker repairs, one of them a
+    // tautology (`req W true`), where 0.1 returns three structured rewrites of
+    // the culprit guarantee. Aggregate fitness prefers a gutted specification,
+    // and nothing on the TLSF path screens one out, so elitism is evidently
+    // acting as a brake on that. Do not change this default on the argument
+    // from redundancy alone; it needs an A/B over the corpus that counts
+    // tautological repairs, not just implies_ideal.
     double elitism_rate = 0.1;
     double crossover_rate = 0.1;
     double mutation_rate = 1.0;
@@ -199,13 +228,24 @@ struct Config {
     std::size_t muc_max_iterations = 32;
     std::size_t parallel = std::thread::hardware_concurrency();
     // Upper bound on ltlsynt processes running concurrently across the whole
-    // program, independent of `parallel`. ltlsynt is by far the heaviest
-    // external tool on hard specs (multi-GB resident per call for the TLSF
-    // examples), so a scoring pool of `parallel` workers each spawning one can
-    // exhaust RAM and OOM the machine. 0 means unlimited (the default, which
-    // preserves prior behaviour); a positive value serialises the surplus while
-    // the other workers keep doing non-ltlsynt work. Size it to fit RAM:
-    // roughly (available_GB / per-call_GB).
+    // program, independent of `parallel`. 0 means unlimited (the default); a
+    // positive value serialises the surplus while the other workers keep doing
+    // non-ltlsynt work.
+    //
+    // Added on the premise that ltlsynt is *the* memory hog; measurement
+    // qualified that. Over 149,153 tool invocations on 2026-08-05, ltlsynt
+    // peaked at 260 MB (21.3 MB mean) against ltlfilt's 3.4 GB and ltl2tgba's
+    // 1.8 GB. On the calls that sample captured, ltlfilt is the hog.
+    //
+    // But that sample cannot bound ltlsynt: it is censored exactly where the
+    // blowups are, since 6 of the heaviest runs died on a 600 s cap before the
+    // atexit report and wrote no profile at all. Rare multi-GB ltlsynt calls
+    // do happen and are absent from those figures. So this stays a safety
+    // valve for a rare tail, and stays unlimited by default because
+    // serialising every realizability query would cost throughput on every run
+    // to bound a few. Set it on a memory-constrained machine. Do not size it
+    // off the figures above -- the max is censored and the tail swings 26x
+    // between seeds on one example.
     std::size_t max_concurrent_realizability = 0;
     // A fitness function that throws (in practice an external tool failing on
     // one evolved formula) costs that individual rather than the whole run:
@@ -214,7 +254,14 @@ struct Config {
     // this fraction of a generation the tooling is broken rather than the
     // formula, and the run aborts instead of evolving noise into the output.
     // A single failure is always tolerated, whatever the population size.
-    double max_scoring_failure_rate = 0.05;
+    //
+    // 0.15 rather than 0.05 because the ltl2tgba and ganak budgets now drop
+    // individuals by design: an abandoned call is a lost candidate, and on the
+    // heavy TLSF specifications enough of them land in one generation to trip
+    // a 5% bound. Every archived TLSF campaign raised it to 0.15 for that
+    // reason. It still catches genuinely broken tooling, which fails on
+    // essentially every candidate rather than on a tail of them.
+    double max_scoring_failure_rate = 0.15;
 };
 
 /// Applies every per-tool timeout in `cfg` to the process-global runner

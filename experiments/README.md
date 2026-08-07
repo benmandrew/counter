@@ -63,6 +63,14 @@ describes. The arms that set the keys themselves (the wellsep and ablation
 factorials, and wellsep-timing's own three levels) are unaffected, since they
 state them either way.
 
+Three more moved in the commit that narrowed the defaults for push-button use:
+`ltlsynt_timeout_ms` `0` → `500`, `ltl2tgba_timeout_ms` `0` → `60000` and
+`max_scoring_failure_rate` `0.05` → `0.15`. Every TLSF campaign archived here
+already set all three to those exact values, so the TLSF archives are
+unaffected and reproduce as they stand. The FRETISH campaigns state none of
+them, and so now run under bounded tools where they ran unbounded; write the
+three in as `0`, `0` and `0.05` to reproduce one.
+
 A third change is sharper than a shifted default, because it stops an archived
 config from running at all. On 2026-08-06 the two NSGA-II selection schemes were
 renamed: `nsga2` became `nsga2-truncate` and `nsga2-replicate` became

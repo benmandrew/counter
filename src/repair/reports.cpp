@@ -52,8 +52,11 @@ void print_scoring_report() {
 }
 
 void print_timing_report() {
+    // timeouts has no default argument on purpose: it used to, and three of
+    // the five rows quietly took it, so the counts they were keeping never
+    // reached the report. Every tool has the counter; make every caller say so.
     auto print_row = [](const char* name, std::size_t calls, double total_s,
-                        std::size_t cache_hits, std::size_t timeouts = 0) {
+                        std::size_t cache_hits, std::size_t timeouts) {
         const double avg_s =
             calls > 0 ? total_s / static_cast<double>(calls) : 0.0;
         std::cout << std::left << std::setw(12) << name << std::right
@@ -70,9 +73,11 @@ void print_timing_report() {
     };
     std::cout << "\nTool timing report:\n";
     print_row("ltl2tgba", Ltl2tgbaStats::n_cache_misses,
-              Ltl2tgbaStats::total_time_s, Ltl2tgbaStats::n_cache_hits);
+              Ltl2tgbaStats::total_time_s, Ltl2tgbaStats::n_cache_hits,
+              Ltl2tgbaStats::n_timeouts);
     print_row("ltlfilt", LtlfiltStats::n_cache_misses,
-              LtlfiltStats::total_time_s, LtlfiltStats::n_cache_hits);
+              LtlfiltStats::total_time_s, LtlfiltStats::n_cache_hits,
+              LtlfiltStats::n_timeouts);
     print_row("ltlsynt", RealizabilityChecker::n_cache_misses,
               RealizabilityChecker::total_time_s,
               RealizabilityChecker::n_cache_hits,
@@ -82,7 +87,7 @@ void print_timing_report() {
               SatisfiabilityChecker::n_cache_hits,
               SatisfiabilityChecker::n_timeouts);
     print_row("ganak", GanakStats::n_cache_misses, GanakStats::total_time_s,
-              GanakStats::n_cache_hits);
+              GanakStats::n_cache_hits, GanakStats::n_timeouts);
     if (Ltl2tgbaStats::n_tautology_substitutions > 0) {
         std::cout << "\nltl2tgba tautology substitutions (SPOT exit-2 bug, "
                      "treated as trivially true): "

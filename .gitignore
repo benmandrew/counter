@@ -73,6 +73,12 @@ semantics.txt
 !/experiments/*/scripts/
 /experiments/*/scripts/*
 !/experiments/*/scripts/*.py
+# .sh as well as .py since 2026-08-07-elitism, whose driver is the shell script
+# that ran on each host rather than a Python one. It encodes the seed split and
+# the phase ordering, so the archive does not reproduce without it, and its blob
+# sha is recorded in that campaign's PROVENANCE.json either way -- a sha naming
+# an untracked file is a dangling reference, not a record.
+!/experiments/*/scripts/*.sh
 # scripts/merge_experiments.py scratch dir + per-run results (also covered by
 # /experiments/, but kept explicit so they stay ignored if that's relaxed).
 .merge_tmp/

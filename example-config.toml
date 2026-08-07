@@ -15,7 +15,9 @@
 generations     = 10
 population_size = 200
 selection_rate  = 0.5
-elitism_rate    = 0.1  # elites are a subset of the parents, so this must stay < selection_rate
+elitism_rate    = 0.1  # elites are a subset of the parents, so this must stay < selection_rate.
+                       # Redundant on paper under NSGA-II, but 0 measurably admits
+                       # tautological repairs on lily02 -- see include/config.hpp.
 crossover_rate  = 0.1
 mutation_rate   = 1.0  # per offspring, unlike the per-requirement rates in [mutation]
 # "nsga2-truncate" | "nsga2-apportion" | "weighted". Under either NSGA-II scheme
@@ -63,16 +65,19 @@ run_vacuity     = true
 run_well_separation = true
 
 [runtime]
-# Per-call wall-clock budgets in ms; 0 disables one. ltlfilt is the only one
-# defaulting on, because an abandoned call there costs a missed simplification
-# rather than the candidate.
+# Per-call wall-clock budgets in ms; 0 disables one. Only ganak is unbounded:
+# counting is the fitness function's real work, so a slow count is usually a
+# legitimately hard one rather than a blowup. The rest are bounded because an
+# unbounded call can stall a whole run.
 black_timeout_ms    = 1000
-ltlsynt_timeout_ms  = 0
-ltl2tgba_timeout_ms = 0
+ltlsynt_timeout_ms  = 500
+ltl2tgba_timeout_ms = 60000
 ltlfilt_timeout_ms  = 10000
 ganak_timeout_ms    = 0
 max_concurrent_realizability = 0
-max_scoring_failure_rate     = 0.05
+# 0.15, not 0.05: the ltl2tgba budget drops individuals by design, and enough
+# land in one generation on the heavy TLSF specs to trip a tighter bound.
+max_scoring_failure_rate     = 0.15
 dashboard = false
 # parallel = 8   # thread pool size; the default is hardware concurrency, so
                  # this key has no fixed default to pin and stays commented out.

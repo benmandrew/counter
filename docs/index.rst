@@ -1,9 +1,9 @@
 Counter
 =======
 
-Repairing unrealisable FRETish specifications.
+Repairing unrealisable reactive specifications, written either as FRETISH requirements or as TLSF.
 
-The pages below are the curated public API — the ``include/`` headers.
+The overview pages describe the algorithm, the tuning knobs, and the TLSF path. The pages below them are the curated public API — the ``include/`` headers.
 
 .. toctree::
    :maxdepth: 1

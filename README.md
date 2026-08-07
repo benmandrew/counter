@@ -8,22 +8,23 @@ Inputs are either *FRETISH* requirements as JSON, or basic *TLSF* — the Tempor
 
 ## Quickstart
 
-Build, then repair the bundled arbiter example ([building from source](docs/building.md) covers the non-Nix route):
+Build, then repair one of the bundled examples ([building from source](docs/building.md) covers the non-Nix route):
 
 ```console
 $ nix develop
 $ cmake --workflow --preset release
 
-$ ./build-release/realize examples/arbiter-gr1/spec.tlsf
-examples/arbiter-gr1/spec.tlsf: UNREALIZABLE
+$ ./build-release/realize examples/lily02/spec.tlsf
+UNREALIZABLE
 
 $ mkdir -p out
-$ ./build-release/counter --input examples/arbiter-gr1/spec.tlsf --output-dir out --seed 42
+$ ./build-release/counter --input examples/lily02/spec.tlsf --output-dir out --seed 42
+Realizable specifications: 11 (3 maximal), written to out/
 ```
 
-That writes 19 candidate repairs to `out/`, best first, each `repair_N.tlsf` paired with a `repair_N.fitness.json` holding its score. Expect roughly 10–30 s on 20 threads; the seed fixes the repairs, not the runtime, which swings with how the external solvers get scheduled.
+That writes the 3 maximal repairs to `out/`, each `repair_N.tlsf` paired with a `repair_N.fitness.json` holding its score. Expect a few seconds on 20 threads; the seed fixes the repairs, not the runtime, which swings with how the external solvers get scheduled.
 
-The example is a two-client arbiter that must grant each client infinitely often, but nothing forces clients to keep requesting — so it cannot be implemented. The top repair adds the missing fairness assumptions, `G F r0` and `G F r1`, recovering the standard fix. The [TLSF guide](https://benmandrew.com/docs/counter/tlsf.html) walks through this run in full.
+The example is a grant arbiter that must answer every request within three ticks, never grant twice in a row, and withhold grants after a `cancel` until a `go` arrives. Nothing forces `go` to ever arrive, so a cancelled request can be neither granted nor refused — and the specification cannot be implemented. All three repairs rewrite that third guarantee, which is also the one `mucs` identifies as the minimal unrealisable core. The [TLSF guide](https://benmandrew.com/docs/counter/tlsf.html) walks through this run in full.
 
 ## Commands
 
@@ -46,7 +47,7 @@ Counter evolves a population of candidate specifications over several generation
 1. **Seed** a population of specifications, each mutated slightly from the input.
 2. **Score** each candidate on four weighted components: semantic similarity (bounded model counting of satisfying traces), realisability status, syntactic similarity, and a Halstead size penalty.
 3. **Evolve** through rounds of selection, crossover, mutation, and filtering.
-4. **Collect** the realisable survivors, keep only the maximal ones under implication, and write each to the output directory.
+4. **Collect** the realisable survivors, keep the genuine weakenings of the original and, of those, only the maximal ones under implication, then write each to the output directory.
 
 Model counting uses [Ganak](https://github.com/meelgroup/ganak) over the transition matrices of SPOT-generated automata. Satisfiability and realisability queries use [black](https://www.black-sat.org) and [ltlsynt](https://spot.lre.epita.fr) respectively.
 

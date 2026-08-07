@@ -72,16 +72,67 @@ Selection scheme
 
 The measured effect is diversity. An A/B over the four FRETISH examples at ``generations = 10``, ``population_size = 200`` and ``elitism_rate = 0``, with 20 seeds each for 80 paired runs, raised the distinct candidates held at generation 9 from 5.9 to 98.3, ``n_repairs`` from 3.43 to 9.94, and the share of runs finding any repair at all from 0.966 to 1.000 — for roughly 50% more wall-clock time. Repair quality did not move: pooled ``implies_ideal`` was 0.500 under both schemes. That figure is uninformative here rather than reassuring, because the corpus sits at its extremes — ``takeoff`` and ``fsm-timing`` score 1.000 either way, ``fsm`` and ``fsm-combined`` score 0.000 either way — so it leaves no headroom in which a quality difference could show. The diversity gain is measured; the quality gain is unproven.
 
-**weighted** collapses them into a single weighted average and ranks by that scalar, using truncation selection with elitism. In principle this finds the one repair that best fits the configured trade-off; in practice it converges prematurely and then stagnates. Over a 50k-run parameter sweep its results did not move with the generation count at any level from 5 to 80, and on the ``takeoff`` example it matched an ideal repair in 1.7% of runs against ``nsga2-truncate``'s 89.3%, at no saving in wall-clock time. It is kept for comparison rather than for use.
+That A/B is FRETISH, and the picture on TLSF is different. The ``2026-07-24-ablation`` campaign crossed the two schemes over 21 TLSF specifications at 80 seeds each, 3,076 runs, and they split the two measures between them:
+
+.. list-table::
+   :header-rows: 1
+   :widths: 34 22 22 22
+
+   * - Measure
+     - ``nsga2``
+     - ``weighted``
+     - Winner
+   * - Found any repair
+     - 0.764
+     - 0.868
+     - ``weighted``
+   * - Matched an ideal (all runs)
+     - 0.245
+     - 0.148
+     - ``nsga2``
+   * - Matched an ideal (runs that found one)
+     - 0.321
+     - 0.170
+     - ``nsga2``
+
+Per specification the yield difference is narrow but lopsided where it lands: 15 ties, 4 wins for ``weighted``, 1 for ``nsga2``. Two of those wins are total. On ``arbiter`` — the GR(1) two-client arbiter, whose repair needs a fairness assumption added — ``nsga2`` finds nothing in 80 runs and ``weighted`` finds a repair in all 80, matching an ideal in 31 of them. On ``rg1`` the counts are 4 of 80 against 80 of 80. Both still hold at the current default: on ``arbiter`` at seed 42, ``nsga2-truncate`` returns no repair and pins at fitness 0.807692, while ``weighted`` returns 22 realisable survivors and 6 maximal repairs at 0.928367.
+
+So the schemes are not ordered on TLSF, they trade. ``weighted`` finds a repair more often; ``nsga2`` finds the *right* repair about twice as often, on either denominator, and on ``lily02`` the gap is stark — both schemes repair it in nearly every run, but ``nsga2`` matches an ideal 80 times out of 80 against ``weighted``'s 39. Treat a TLSF specification that yields nothing under the default as a candidate for ``weighted`` rather than as unrepairable, and read what comes back with the quality figures above in mind.
+
+**weighted** collapses them into a single weighted average and ranks by that scalar, using truncation selection with elitism. In principle this finds the one repair that best fits the configured trade-off; in practice it converges prematurely and then stagnates. Over a 50k-run parameter sweep its results did not move with the generation count at any level from 5 to 80, and on the ``takeoff`` example it matched an ideal repair in 1.7% of runs against ``nsga2-truncate``'s 89.3%, at no saving in wall-clock time. On the FRETISH corpus it is kept for comparison rather than for use; on TLSF it is the scheme of last resort for a specification the default cannot repair at all, at the cost of repair quality noted above.
 
 Two consequences are worth knowing. Under either NSGA-II scheme the ``[fitness]`` weights only decide which components are active (weight > 0); they no longer bias selection. And their survivor selection pools each generation's parents with their offspring and keeps the best — a (μ+λ) scheme, already elitist — so ``elitism_rate = 0`` is the natural companion setting.
 
 All three schemes still emit the weighted-average scalar in each repair's fitness record, so outputs stay comparable across runs.
 
+Search size and operators
+-------------------------
+
+``[genetic]`` sizes the search. ``generations`` and ``population_size`` are the two that matter. ``selection_rate`` (0.5) is the share of the population that breeds, and ``elitism_rate`` (0.1) the share carried into the next generation verbatim, bypassing crossover, mutation and the offspring filters. Elites are a subset of the parents, so ``elitism_rate`` must stay strictly below ``selection_rate``. Under either NSGA-II scheme the survivor step is already elitist, which is why ``elitism_rate = 0`` is their natural companion. ``crossover_rate`` (0.1) and ``mutation_rate`` (1.0) are the per-offspring probabilities of applying each operator.
+
+``[mutation]`` weights what a mutation does. ``p_trigger`` (0.5), ``p_response`` (0.5) and ``p_timing`` (0.15) select which part of a FRETISH requirement is rewritten.
+
+``p_add_assumption`` (0.05) is the structural operator shared by both paths: rather than rewriting an existing requirement, it appends a new environment assumption. It is the only way the search can repair an unrealisability that needs the environment strengthened — adding a fairness assumption to an unrealisable *generalised reactivity of rank 1* (GR(1)) specification, say. The rewrite-only operators cannot express that move. Of the assumptions it appends, ``p_conditional_assumption`` (0.25) is the fraction guarded by a random input atom rather than by ``true``; ``G F <input>`` is strictly stronger than ``G(c -> F <input>)`` and so the more effective repair, which is why the unconditional form keeps most of the draw.
+
+``allow_output_assumptions`` (on) lets an assumption reference output atoms as well as inputs. It buys the reactive-environment assumptions ``G(<output> -> F <input>)`` that an input-only draw cannot express. Stopping the system from writing itself an assumption it can defeat is then ``run_well_separation``'s job rather than a syntactic ban's. The two are meant to move together.
+
+``strengthen_assumptions`` (on) mutates assumption timings in the strengthening direction. Weakening the overall assume-guarantee pair means weakening a guarantee but *strengthening* an assumption. Weakening both would therefore make every assumption mutation a move away from a repair. It is a flag only so the two directions can be crossed as an experiment factor.
+
+TLSF mode
+---------
+
+``[tlsf]`` applies on the TLSF path alone and is ignored on the FRETISH one.
+
+``repair_mode`` chooses the repair strategy. **monolithic** (the default) evolves the whole specification at once, exactly as the FRETISH path does. **muc** instead extracts a *minimal unrealisable core* and evolves only that sub-specification. It then reintegrates the repaired core with the untouched non-core guarantees, and repeats on the recombined specification until it is realisable. ``muc_max_iterations`` (32) caps that outer loop, so a specification whose core never becomes realisable ends the run without a repair rather than looping forever. :doc:`tlsf` describes the mode and the ``mucs`` tool that exposes the same extraction on its own.
+
+``[tlsf.mutation]`` tunes the TLSF operators. ``p_assumption`` (0.3) is the probability of mutating an assumption-side section (``INITIALLY``, ``REQUIRE``, ``ASSUME``) rather than a guarantee-side one (``PRESET``, ``ASSERT``, ``GUARANTEE``); the guarantee side takes the complement. ``p_temporal`` (0.2) is the probability that a chosen formula gets the temporal-structure mutation — inserting, dropping or swapping ``X``/``F``/``G``/``U``/``R``/``W`` — rather than the skeleton-preserving propositional rewrite. At ``p_temporal = 0`` the temporal skeleton of an existing formula is never altered.
+
 Filters
 -------
 
-``[filters]`` toggles the per-generation and final filters; each runs every generation when enabled.
+``[filters]`` toggles the filters. Most run once per generation, before scoring, so a dropped candidate never costs a model-count or a synthesis query; ``run_weakening`` is the exception and is described first.
+
+``run_implication`` keeps only the specifications that are maximal under the implication partial order, discarding any repair another repair already subsumes. Like ``run_weakening`` it is a final screen rather than a per-generation filter, and it is on by default. ``run_vacuity`` drops candidates whose assumptions are *jointly unsatisfiable*, and is the weaker relative of ``run_well_separation`` below. A false antecedent makes ``(assumptions) -> (guarantees)`` a tautology, so such a candidate is realizable for free and is not a repair — and ``run_weakening`` cannot catch it, because unsatisfiable assumptions imply every other assumption and so pass every implication test. It too is on by default.
 
 ``run_weakening`` keeps only repairs the original logically implies — the genuine weakenings. It is a **final screen** over the realizable survivors rather than a per-generation filter, and is on by default.
 
@@ -108,7 +159,46 @@ The per-filter run intervals that once throttled these were removed: across ever
 Runtime
 -------
 
-``runtime.parallel`` overrides the thread pool size, which otherwise follows ``std::thread::hardware_concurrency()``. ``runtime.black_timeout_ms`` bounds each ``black`` satisfiability query, defaulting to 1000 ms.
+``runtime.parallel`` overrides the thread pool size, which otherwise follows ``std::thread::hardware_concurrency()``.
+
+``runtime.max_concurrent_realizability`` caps how many ``ltlsynt`` processes run at once across the whole program, independently of ``parallel``. ``ltlsynt`` can go multi-gigabyte resident per call on the harder TLSF examples, so a pool of ``parallel`` workers each spawning one can exhaust memory and take the machine down with it. The default, 0, means unlimited; a positive value serialises the surplus while the other workers carry on with non-``ltlsynt`` work. Size it to roughly ``available_GB / per-call_GB``.
+
+``runtime.max_scoring_failure_rate`` (0.05) bounds what fraction of a generation may fail to score before the run aborts. A fitness function that throws — in practice an external tool failing on one evolved formula — costs that individual rather than the whole run. The search is stochastic, so one lost candidate out of a population is noise, whereas aborting at generation 23 of 40 loses everything. Above this fraction the tooling is broken rather than the formula, and continuing would only evolve noise into the output.
+
+Per-tool budgets
+~~~~~~~~~~~~~~~~
+
+Each external tool has a per-call wall-clock budget in milliseconds. A budget of 0 means no timeout.
+
+.. list-table::
+   :header-rows: 1
+   :widths: 34 12 54
+
+   * - Key
+     - Default
+     - On expiry
+   * - ``runtime.black_timeout_ms``
+     - 1000
+     - The satisfiability query is undecided.
+   * - ``runtime.ltlfilt_timeout_ms``
+     - 10000
+     - The formula goes unsimplified.
+   * - ``runtime.ltlsynt_timeout_ms``
+     - 0 (off)
+     - The realisability query is undecided.
+   * - ``runtime.ltl2tgba_timeout_ms``
+     - 0 (off)
+     - The individual is dropped.
+   * - ``runtime.ganak_timeout_ms``
+     - 0 (off)
+     - The individual is dropped.
+
+What decides whether a budget defaults on is the cost of abandoning a call. ``black`` has its own internal timeout, so bounding it is routine. ``ltlfilt`` is bounded because ``--simplify`` is super-exponential on the deep nested-``X`` conjunctions the search builds, and an abandoned call there costs only a missed simplification, never a candidate. The other three are left off by default and set explicitly by the heavy TLSF runs, because abandoning any of them costs a candidate: ``ltl2tgba`` has the same blowup in its deterministic construction and ``ltlsynt`` occasionally runs for minutes with no upper bound, but a dropped individual is a real loss. ``ganak`` is the clearest case of the three — counting is the fitness function's real work, so a slow count is usually a legitimately hard one rather than a blowup.
+
+An undecided ``ltlsynt`` answer is resolved by each caller in its own direction — no repair is admitted on one, and the well-separation filter drops the candidate, for the reason given above. A dropped individual counts against ``max_scoring_failure_rate``.
+
+Reporting
+~~~~~~~~~
 
 ``runtime.dashboard`` streams per-stage and per-generation progress to ``<output-dir>/progress.jsonl`` and copies the live dashboard page beside it, so ``python3 -m http.server -d <output-dir> 8000`` shows the run as it happens. It defaults to false, because a campaign of many runs pays for the extra file and its flushes with nobody watching; ``counter --dashboard`` enables it for a single run without editing a config. The flag can only turn the dashboard on — a config that already asked for it is not disabled by omitting the flag.
 

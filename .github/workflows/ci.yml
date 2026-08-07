@@ -192,8 +192,10 @@ jobs:
         env:
           CMAKE_C_COMPILER_LAUNCHER: sccache
           CMAKE_CXX_COMPILER_LAUNCHER: sccache
-          # ctcache stores clang-tidy results here; the lint wiring is a no-op
-          # when this is unset (see cmake/run_clang_tidy.cmake).
+          # ctcache stores clang-tidy results here, overriding the in-tree
+          # default of <build-dir>/ctcache (see cmake/run_clang_tidy.cmake):
+          # the build directory is configured fresh each run, so the cache has
+          # to sit at a fixed workspace path for actions/cache to restore it.
           CTCACHE_DIR: ${{ github.workspace }}/.ctcache
           EVENT: ${{ github.event_name }}
           FORCE_FULL: ${{ steps.changed.outputs.full }}

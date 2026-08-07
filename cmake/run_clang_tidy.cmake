@@ -10,17 +10,32 @@
 # which can silently diverge from the clang-tidy CMake resolved on PATH).
 set(CLANG_TIDY_INVOKED_BINARY "${CLANG_TIDY_EXE}")
 
-# Opt-in ctcache interposition: only when a clang-tidy-cache binary is on PATH
-# AND CTCACHE_DIR is set in the environment. In that case run-clang-tidy is
-# pointed at a wrapper that routes each clang-tidy call through the cache, so
-# unchanged translation units skip re-analysis. When either condition is
-# absent, the invocation below is byte-for-byte the previous behavior (real
-# clang-tidy, invoked directly), so local `nix develop` is unaffected.
+# ctcache interposition, on whenever a clang-tidy-cache binary is on PATH:
+# run-clang-tidy is pointed at a wrapper that routes each clang-tidy call
+# through the cache, so a translation unit whose preprocessed content and
+# .clang-tidy config are unchanged skips re-analysis. Without that binary the
+# invocation below is byte-for-byte the uncached one (real clang-tidy, invoked
+# directly).
+#
+# The cache directory is passed explicitly rather than left to be inherited,
+# because ctcache's own default is a per-user directory under /tmp: shared
+# across every checkout, and gone at boot on a machine that clears /tmp.
+# Defaulting it under the build directory keeps it with the other generated
+# artifacts, already gitignored and wiped by the same rm -rf that wipes a
+# build, at the cost of one cold sweep per fresh build directory. An
+# externally set CTCACHE_DIR still wins, which is how CI points it at a path
+# its cache action can restore between runs.
 set(RUN_CLANG_TIDY_LAUNCHER "")
 find_program(CLANG_TIDY_CACHE_EXE NAMES clang-tidy-cache)
-if(CLANG_TIDY_EXE AND CLANG_TIDY_CACHE_EXE AND DEFINED ENV{CTCACHE_DIR})
+if(CLANG_TIDY_EXE AND CLANG_TIDY_CACHE_EXE)
+    if(DEFINED ENV{CTCACHE_DIR})
+        set(CTCACHE_DIR "$ENV{CTCACHE_DIR}")
+    else()
+        set(CTCACHE_DIR "${BUILD_DIR}/ctcache")
+    endif()
     set(CLANG_TIDY_INVOKED_BINARY "${CMAKE_CURRENT_LIST_DIR}/clang_tidy_cache_wrapper.sh")
     set(RUN_CLANG_TIDY_LAUNCHER ${CMAKE_COMMAND} -E env
+        "CTCACHE_DIR=${CTCACHE_DIR}"
         "CTCACHE_CACHE_BIN=${CLANG_TIDY_CACHE_EXE}"
         "CTCACHE_REAL_CLANG_TIDY=${CLANG_TIDY_EXE}"
         --)

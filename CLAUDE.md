@@ -47,6 +47,8 @@ cmake --build build --target format        # apply clang-format in-place
 cmake --build build --target format-ci     # dry-run (fails if unformatted)
 ```
 
+clang-tidy results are cached through ctcache, which the dev shell puts on PATH; being on PATH is the whole switch, and a translation unit is re-analysed only when its preprocessed content or the `.clang-tidy` config changed. The cache defaults to `<build-dir>/ctcache` rather than ctcache's own per-user `/tmp` directory, so it is gitignored with the rest of the build and each preset keeps its own — a deleted build directory costs one cold sweep. `CTCACHE_DIR` overrides the location, which is what CI sets so `actions/cache` can restore it between runs.
+
 The same checks run from `.githooks/pre-commit`, which is tracked. Git refuses to clone hooks, so `core.hooksPath` has to be set locally once per clone; `cmake/githooks.cmake` does it at configure time, since the hooks shell out to build targets and cannot work before that anyway. Edit the hook in `.githooks/`, not in `.git/hooks/`, which git no longer reads once the path is set. Bypass a hook with `git commit --no-verify`; CI is the real enforcement.
 
 ## Config keys

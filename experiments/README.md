@@ -89,6 +89,12 @@ read, so archived rows still join new ones for resume, merge and cross-campaign
 comparison. Nothing under `experiments/` was rewritten to match the new names,
 and nothing should be: the column records the name the campaign ran under.
 
+A fourth change keeps both its key and its value and moves only what they mean. The per-generation false-condition filter has been folded into the *vacuity* filter, which has also gained a semantic screen: a specification is rejected if any one of its guarantees is *valid*, tested one guarantee at a time by asking whether that guarantee's negation is satisfiable. Previously `filters.run_vacuity` gated a satisfiability check on the conjoined assumption side and nothing else, while the false-condition screen — a syntactically `false` condition on any assumption or guarantee — ran unconditionally, outside the flag entirely. All three screens are now one filter under `run_vacuity` alone.
+
+The default did not move: `filters.run_vacuity` was `true` and still is. No archived config sets it, so every campaign archived here ran the filter on, under the older and weaker meaning of the same word. That puts this change outside both cases above. Unlike the shifted defaults there is no key to write back, the archived value being the one a current binary reads; unlike the rename the config still runs, because nothing about it is rejected. It is the quietest of the four. An affected campaign re-run today raises no error and no warning, and simply searches under a stricter filter than the campaign did, discarding tautological guarantees the campaign was free to keep. The remedy is the one the rename already prescribes: build the commit the campaign's `PROVENANCE.json` names and run the vendored `scripts/` beside it.
+
+One consequence reaches forward rather than back. Setting `run_vacuity = false` now also switches off the false-condition screen, which used to run whichever way the flag was set. No archived config sets the key, so no archive here is affected, but an ablation that turns vacuity off is no longer isolating the assumption satisfiability check — it drops three screens and prices them as one. A flag that gains screens gains them for its off position too, which is the half of a merge that is easy to leave unstated.
+
 ## Commit attribution
 
 Every campaign directory carries a `PROVENANCE.json`. For campaigns closed

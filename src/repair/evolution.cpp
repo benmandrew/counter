@@ -27,16 +27,14 @@
 namespace {
 
 // A specification counts as a realizable repair only if it is realizable and
-// neither vacuously satisfied by a false condition nor built on unsatisfiable
-// assumptions. Elites and final-generation offspring can reach these checks
-// unscreened, so both the live "real" counter and the final collection apply
-// the same predicate.
+// not vacuous. Elites and final-generation offspring can reach these checks
+// unscreened -- and run_vacuity_filter can turn the per-generation filter off
+// outright -- so both the live "real" counter and the final collection apply
+// the same predicate, unconditionally.
 bool is_realizable_repair(const Specification& spec) {
     return specification_status(spec, global_sat_checker(),
                                 global_real_checker()) == 1.0 &&
-           !specification_has_false_condition(spec) &&
-           !specification_has_unsatisfiable_assumptions(spec,
-                                                        global_sat_checker());
+           !specification_is_vacuous(spec, global_sat_checker());
 }
 
 }  // namespace
@@ -202,10 +200,9 @@ std::vector<Specification> collect_realizable_specifications(
     const std::size_t max_in_flight = dispatch_window();
     std::vector<char> keep(population.size(), 0);
     // The per-generation filter only screens offspring during evolution, so a
-    // false-condition result from the final generation would otherwise never be
-    // re-screened before being reported here. The same applies to
-    // vacuously-realizable candidates: elites bypass the offspring filters
-    // entirely, so one can reach the output unscreened.
+    // vacuous result from the final generation would otherwise never be
+    // re-screened before being reported here. Elites bypass the offspring
+    // filters entirely, so one can reach the output unscreened either way.
     if (max_in_flight <= 1) {
         for (std::size_t idx = 0; idx < population.size(); ++idx) {
             keep[idx] =

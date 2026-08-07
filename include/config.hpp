@@ -73,10 +73,20 @@ struct Config {
     /// one, reaching realizability without weakening anything.
     bool run_weakening_filter = true;
     bool run_implication_filter = true;
-    /// Drop candidates whose assumptions are jointly unsatisfiable: they are
-    /// realizable for free, since a false antecedent makes
-    /// (assumptions) -> (guarantees) a tautology. A no-op for specifications
-    /// with no assumptions, which short-circuit before any solver call.
+    /// Drop candidates that hold for free rather than because anything was
+    /// repaired: ones carrying a requirement whose condition is the literal
+    /// `false`, ones with a *valid* guarantee, which demands nothing, and ones
+    /// whose assumptions are jointly
+    /// unsatisfiable, since a false antecedent makes
+    /// (assumptions) -> (guarantees) a tautology. Applied in that order, which
+    /// is cheapest first: the syntactic screen costs no solver call, the
+    /// guarantee queries are small and cached per requirement, and the
+    /// assumption query is one large one, skipped entirely when a specification
+    /// has no assumptions.
+    ///
+    /// Search pressure only. Collecting the repairs applies the same predicate
+    /// unconditionally on both paths, so turning this off never admits a
+    /// vacuous repair to the output.
     bool run_vacuity_filter = true;
     /// Drop candidates that are not well-separated: ones the system can satisfy
     /// vacuously by forcing its own assumptions to fail. Realizability is

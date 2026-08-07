@@ -251,6 +251,20 @@ FilterFunctionT<tlsf::Specification> tlsf_make_dedup_filter() {
             FilterKind::Preference};
 }
 
+bool tlsf_is_trivially_vacuous(const tlsf::Specification& spec) {
+    auto any_atom = [](const std::vector<Formula>& section, const char* atom) {
+        return std::any_of(section.begin(), section.end(),
+                           [atom](const Formula& formula) {
+                               return formula.atom_name() == atom;
+                           });
+    };
+    return any_atom(spec.m_initially, "false") ||
+           any_atom(spec.m_require, "false") ||
+           any_atom(spec.m_assume, "false") ||
+           any_atom(spec.m_preset, "true") || any_atom(spec.m_assert, "true") ||
+           any_atom(spec.m_guarantee, "true");
+}
+
 bool tlsf_has_unsatisfiable_assumptions(const tlsf::Specification& spec,
                                         SatisfiabilityChecker& checker) {
     const bool no_assumptions = spec.m_initially.empty() &&
@@ -263,14 +277,44 @@ bool tlsf_has_unsatisfiable_assumptions(const tlsf::Specification& spec,
     return !checker.check_satisfiability(spec.assumption_ltl()).value_or(true);
 }
 
+bool tlsf_has_valid_guarantee(const tlsf::Specification& spec,
+                              SatisfiabilityChecker& checker) {
+    auto any_valid = [&checker](const std::vector<Formula>& section) {
+        for (const Formula& formula : section) {
+            // Keyed on the negated formula alone, so the cache hits across
+            // candidates and generations rather than once per guarantee side.
+            const std::optional<bool> falsifiable =
+                checker.check_satisfiability("!(" + formula.to_string() + ")");
+            // Timeout: treat as falsifiable, as the assumption check treats an
+            // unknown answer as satisfiable. A non-answer never drops a
+            // candidate.
+            if (!falsifiable.value_or(true)) {
+                return true;
+            }
+        }
+        return false;
+    };
+    // ASSERT is G-wrapped by the lowering, but `G psi` is valid exactly when
+    // psi is, so the raw formula is the query either way -- and the smaller
+    // one.
+    return any_valid(spec.m_preset) || any_valid(spec.m_assert) ||
+           any_valid(spec.m_guarantee);
+}
+
+bool tlsf_is_vacuous(const tlsf::Specification& spec,
+                     SatisfiabilityChecker& checker) {
+    return tlsf_is_trivially_vacuous(spec) ||
+           tlsf_has_valid_guarantee(spec, checker) ||
+           tlsf_has_unsatisfiable_assumptions(spec, checker);
+}
+
 FilterFunctionT<tlsf::Specification> tlsf_make_vacuity_filter(
     std::size_t max_in_flight) {
-    return {"vacuous-assumptions",
+    return {"vacuity",
             [max_in_flight](const std::vector<tlsf::Specification>& pop) {
                 return filter_in_parallel(
                     pop, max_in_flight, [](const tlsf::Specification& spec) {
-                        return !tlsf_has_unsatisfiable_assumptions(
-                            spec, global_sat_checker());
+                        return !tlsf_is_vacuous(spec, global_sat_checker());
                     });
             }};
 }

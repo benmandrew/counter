@@ -24,20 +24,12 @@
 
 namespace tlsf::internal {
 
-// There is no counterpart to the FRETISH false-condition filter, and none is
-// wanted. That filter is syntactic -- it rejects a requirement whose trigger is
-// the literal `false` -- and a tlsf::Specification has no condition/response
-// split to carry such a trigger. The antecedent of `(assumptions) ->
-// (guarantees)` is the assumption side, and the vacuity filter this builds
-// already decides it *semantically*, so it catches an assumption merely
-// equivalent to false where the syntactic check would not. Porting the FRETISH
-// check here would add nothing it does not already subsume.
-//
-// The unchecked half is the dual: a guarantee side equivalent to `true`, which
-// makes the implication a tautology just as a false antecedent does. Nothing on
-// this path tests it -- least of all the final weakening screen, since
-// `original implies true` holds trivially and a gutted guarantee is therefore a
-// perfect weakening.
+// The vacuity filter this builds carries all three tests the FRETISH one does:
+// the syntactic screen for a trivial section literal, the per-formula guarantee
+// validity check, and the assumption-satisfiability conjunction. The guarantee
+// half earns its place because nothing else rejects a gutted guarantee -- least
+// of all the final weakening screen, since `original implies true` holds
+// trivially and a no-op guarantee is therefore a perfect weakening.
 std::vector<FilterFunctionT<Specification>> build_per_gen_filters(
     const Specification& spec, const Config& cfg) {
     const std::size_t max_in_flight = dispatch_window();

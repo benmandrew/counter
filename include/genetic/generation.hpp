@@ -293,8 +293,8 @@ std::vector<Spec> filter_population(
 }
 
 /// Returns the standard set of filter functions used during evolution, in
-/// order: deduplication, a bloat cap, a false-condition filter, a vacuity
-/// filter (if enabled) and a well-separation filter (if enabled). Every one
+/// order: deduplication, a bloat cap, a vacuity filter (if enabled) and a
+/// well-separation filter (if enabled). Every one
 /// runs on every generation; the weakening and implication screens are not
 /// here but in get_final_filter_functions, which runs once over the survivors.
 ///

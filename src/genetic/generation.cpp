@@ -115,19 +115,12 @@ std::vector<FilterFunction> get_filter_functions(
     filters.push_back(std::move(dedup));
     FilterFunction bloat = make_bloat_cap_filter(original);
     filters.push_back(std::move(bloat));
-    // A false condition is vacuously satisfied by every trace, so it
-    // imposes no constraint; forbid it from surviving as a breeding
-    // candidate rather than letting the fitness function alone
-    // discourage it.
-    FilterFunction false_condition =
-        make_predicate_filter("false-condition", [](const Specification& spec) {
-            return !specification_has_false_condition(spec);
-        });
-    filters.push_back(std::move(false_condition));
     if (cfg.run_vacuity_filter) {
         // Contradictory assumptions make (A) -> (G) a tautology, so the
         // candidate reads as realizable without repairing anything. Reachable
-        // whenever mutation can strengthen an assumption.
+        // whenever mutation can strengthen an assumption. The filter also
+        // rejects a false condition and a guarantee that is valid, both of
+        // which hold for free the same way.
         FilterFunction vacuity = make_vacuity_filter(checker, max_in_flight);
         filters.push_back(std::move(vacuity));
     }

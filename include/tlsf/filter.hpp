@@ -2,9 +2,8 @@
 
 /// @file filter.hpp
 /// @brief Population filters for tlsf::Specification: the TLSF counterparts of
-///        the FRETISH deduplication, false-condition (assumption
-///        satisfiability), well-separation, bloat-cap, weakening, and
-///        implication filters.
+///        the FRETISH deduplication, vacuity, well-separation, bloat-cap,
+///        weakening, and implication filters.
 
 #include <optional>
 
@@ -17,6 +16,22 @@
 /// std::hash / operator== on tlsf::Specification).
 FilterFunctionT<tlsf::Specification> tlsf_make_dedup_filter();
 
+/// Whether @p spec carries a section formula that is a trivial literal: `false`
+/// in an assumption section (INITIALLY, REQUIRE, ASSUME), or `true` in a
+/// guarantee section (PRESET, ASSERT, GUARANTEE). Either makes
+/// `(assumptions) -> (guarantees)` hold for free — the first falsifies the
+/// antecedent, the second contributes a no-op conjunct to the consequent.
+/// A tlsf::Specification has no condition/response split, so this is where the
+/// FRETISH false-condition and true-guarantee tests land on this path.
+///
+/// Purely syntactic, so it costs no solver call and is checked first. `true`
+/// and `false` are ordinary atoms in this AST. Both cases are subsumed by the
+/// semantic tests below — a `false` conjunct makes the assumption side
+/// unsatisfiable, a `true` one makes a guarantee valid — and are kept as their
+/// fast path. Unlike on the FRETISH path, where a `false` *condition* lowers to
+/// a satisfiable assumption and nothing semantic rejects it.
+bool tlsf_is_trivially_vacuous(const tlsf::Specification& spec);
+
 /// Whether @p spec's assumption-side conjunction (INITIALLY, REQUIRE, ASSUME)
 /// is unsatisfiable, making the spec vacuously realizable: a false antecedent
 /// turns `(assumptions) -> (guarantees)` into a tautology whatever the
@@ -27,20 +42,38 @@ FilterFunctionT<tlsf::Specification> tlsf_make_dedup_filter();
 /// Conservative under uncertainty: a spec with no assumption formulae, or one
 /// whose satisfiability check times out, is reported as not vacuous, so a slow
 /// check never silently discards a candidate.
+bool tlsf_has_unsatisfiable_assumptions(const tlsf::Specification& spec,
+                                        SatisfiabilityChecker& checker);
+
+/// Whether any single guarantee-section formula of @p spec (PRESET, ASSERT,
+/// GUARANTEE) is *valid* — its negation unsatisfiable — and so demands nothing
+/// of the system. The TLSF counterpart of specification_has_valid_guarantee,
+/// including its reasons for splitting the guarantee side per formula while
+/// the assumption side stays one joint satisfiability query. ASSERT is
+/// G-wrapped by the lowering, but `G psi` is valid exactly when psi is, so the
+/// raw section formula is the query. Returns on the first valid formula found;
+/// a formula whose check times out is read as falsifiable.
+bool tlsf_has_valid_guarantee(const tlsf::Specification& spec,
+                              SatisfiabilityChecker& checker);
+
+/// Whether @p spec is vacuous by any of the tests above, cheapest first: the
+/// syntactic screen costs nothing, the guarantee check is a small query against
+/// a cache keyed per section formula, and the assumption conjunction is one
+/// large query whose key changes whenever any assumption mutates. The TLSF
+/// counterpart of specification_is_vacuous.
 ///
 /// Shared by the per-generation filter below and the final repair screen in
 /// tlsf::run_repair — the filter can be disabled outright, and elites bypass
 /// the offspring filters anyway, so the screen cannot rely on it having seen
 /// the specifications it is about to write out.
-bool tlsf_has_unsatisfiable_assumptions(const tlsf::Specification& spec,
-                                        SatisfiabilityChecker& checker);
+bool tlsf_is_vacuous(const tlsf::Specification& spec,
+                     SatisfiabilityChecker& checker);
 
-/// Returns a filter dropping specifications that are vacuously realizable
-/// because their assumptions are jointly unsatisfiable — the TLSF counterpart
-/// of make_vacuity_filter, carrying the same "vacuous-assumptions" stage name
-/// so filter reports and dashboard labels line up across the two paths. A spec
-/// with no assumption formulae is kept; an uncertain (timed-out) satisfiability
-/// result is treated as satisfiable and the spec is kept.
+/// Returns a filter dropping the specifications tlsf_is_vacuous accepts — the
+/// TLSF counterpart of make_vacuity_filter, carrying the same "vacuity" stage
+/// name so filter reports and dashboard labels line up across the two paths. A
+/// spec with no assumption formulae is kept; an uncertain (timed-out)
+/// satisfiability result is treated as satisfiable and the spec is kept.
 ///
 /// Gated by Config::run_vacuity_filter, as on the FRETISH path. The final
 /// repair screen applies the predicate unconditionally either way, so turning

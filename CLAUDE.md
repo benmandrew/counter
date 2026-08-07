@@ -89,7 +89,7 @@ Maths is `\f$ ... \f$` / `\f[ ... \f]`, rendered by KaTeX, not the MathJax that 
 
 - **Standard**: C++17, `-Wall -Wextra -Wpedantic -Werror` on all targets.
 - **Formatting**: clang-format (`.clang-format` at repo root). Run `format` target before committing.
-- **Linting**: clang-tidy (`.clang-tidy`), cpplint (`CPPLINT.cfg`), cppcheck (`cppcheck_suppressions.txt`).
+- **Linting**: clang-tidy (`.clang-tidy`), cpplint (`.cpplint.cfg`), cppcheck (`.cppcheck_suppressions.txt`). A blanket suppression in any of the three hides every future instance, not just the one that prompted it, so prefer a path-scoped entry or an inline `NOLINT` carrying the reason. Suppressions also go stale silently: check a candidate by removing it and re-running the linter before assuming it still does anything.
 - **Comments**: only when the WHY is non-obvious — no narrating what the code does, no docstrings repeating parameter names already clear from the signature.
 - **Assertions**: use `assert()` for internal invariants; `throw` only at API boundaries.
 - **Overflow**: arithmetic on `Count` values must go through `count_add_overflow` / `count_mul_overflow` with an assert on the overflow flag.

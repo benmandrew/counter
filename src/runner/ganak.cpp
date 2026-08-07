@@ -8,7 +8,7 @@
 #include <chrono>
 #include <cstdint>
 #include <cstdio>
-#include <filesystem>  // NOLINT(build/c++17)
+#include <filesystem>
 #include <fstream>
 #include <mutex>
 #include <stdexcept>

@@ -146,8 +146,7 @@ std::pair<std::string, bool> read_until(
             return {output, true};
         }
         const ssize_t bytes_read =
-            read(  // NOLINT(clang-analyzer-unix.BlockInCriticalSection)
-                read_fd, read_buf.data(), read_buf.size());
+            read(read_fd, read_buf.data(), read_buf.size());
         if (bytes_read > 0) {
             output.append(read_buf.data(),
                           static_cast<std::size_t>(bytes_read));

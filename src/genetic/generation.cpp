@@ -150,7 +150,6 @@ std::vector<FilterFunction> get_final_filter_functions(
     std::vector<FilterFunction> filters;
     filters.push_back(make_dedup_filter());
     if (cfg.run_weakening_filter) {
-        // NOLINTNEXTLINE(clang-analyzer-cplusplus.NewDeleteLeaks)
         filters.push_back(make_weakening_filter(std::move(original), checker));
     }
     if (cfg.run_implication_filter) {

@@ -3,6 +3,7 @@
 #include <chrono>
 #include <cstddef>
 #include <exception>
+#include <iomanip>
 #include <iostream>
 #include <optional>
 #include <random>
@@ -18,6 +19,7 @@
 #include "genetic/generation.hpp"
 #include "genetic/random_source.hpp"
 #include "manifest.hpp"
+#include "profile.hpp"
 #include "reports.hpp"
 #include "requirement.hpp"
 #include "runner/black.hpp"
@@ -77,10 +79,16 @@ int run_tlsf_repair(const Config& cfg, const std::string& input_path,
         const int result =
             tlsf::run_repair(input_path, output_dir, cfg, random_source);
         print_scoring_report();
-        print_timing_report();
+        if (cfg.report_diagnostics) {
+            print_diagnostics_report();
+        }
         if (cfg.report_cpu_timing) {
             print_cpu_report(seconds_since(wall_start));
         }
+        // The per-tool rows say how long each tool took; the scope profile says
+        // where inside a call that went. No-op unless COUNTER_PROFILE is set,
+        // so it is not tied to --diagnostics.
+        profile::report_if_enabled();
         // After the reports, so the per-tool counts it records are the run's
         // totals. Skipped when run_repair failed to read or parse the input,
         // since there is then no output directory worth describing.
@@ -88,6 +96,9 @@ int run_tlsf_repair(const Config& cfg, const std::string& input_path,
             write_run_manifest(output_dir, input_path, *effective_seed, cfg,
                                seconds_since(wall_start));
         }
+        // Last on both paths, so the figure covers the same work either way.
+        std::cout << "Done in " << std::fixed << std::setprecision(2)
+                  << seconds_since(wall_start) << "s\n";
         return result;
     } catch (const std::exception& exc) {
         std::cerr << "fatal: " << exc.what() << "\n";
@@ -105,8 +116,6 @@ int run_fretish_repair(const Config& cfg, const std::string& input_path,
         std::cerr << exc.what() << "\n";
         return 1;
     }
-    std::cout << "Original specification:\n"
-              << strip_atom_prefix(original_spec).to_string() << "\n";
     AggregateWeightedFitnessFunction fitness_function =
         get_fitness_function(original_spec, cfg);
     const std::vector<FilterFunction> filter_functions =
@@ -153,21 +162,31 @@ int run_fretish_repair(const Config& cfg, const std::string& input_path,
         if (cfg.run_implication_filter) {
             std::cout << " (" << maximal.size() << " maximal)";
         }
-        std::cout << ", written to " << output_dir << "/\n";
+        // Only when something was written: the line otherwise names an output
+        // directory that the run left empty, which reads as success.
+        if (!scored_maximal.empty()) {
+            std::cout << ", written to " << output_dir << "/";
+        }
+        std::cout << "\n";
         dashboard.run_end(cfg.generations, realizable_vec.size(),
                           maximal.size(), seconds_since(wall_start));
         filter_stats.insert(filter_stats.end(), final_filter_stats.begin(),
                             final_filter_stats.end());
         print_filter_report(filter_stats);
         print_scoring_report();
-        print_timing_report();
+        if (cfg.report_diagnostics) {
+            print_diagnostics_report();
+        }
         if (cfg.report_cpu_timing) {
             print_cpu_report(seconds_since(wall_start));
         }
+        profile::report_if_enabled();
         // After the reports, so the per-tool counts it records are the run's
         // totals.
         write_run_manifest(output_dir, input_path, effective_seed, cfg,
                            seconds_since(wall_start));
+        std::cout << "Done in " << std::fixed << std::setprecision(2)
+                  << seconds_since(wall_start) << "s\n";
     } catch (const std::exception& exc) {
         std::cerr << "fatal: " << exc.what() << "\n";
         return 1;

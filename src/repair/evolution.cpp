@@ -82,7 +82,9 @@ run_evolution(const Config& cfg, std::vector<ScoredSpecification> population,
     }
     StatusLine status;
     const std::size_t col_gen = status.add("gen");
-    const std::size_t col_pct = status.add("%");
+    // Transient: within-generation progress is the reason the line updates at
+    // all, and reads 100% on every committed line by construction.
+    const std::size_t col_pct = status.add("%", true);
     const std::size_t col_time = status.add("time");
     const std::size_t col_best = status.add("best");
     const std::size_t col_real = status.add("real");
@@ -147,27 +149,15 @@ run_evolution(const Config& cfg, std::vector<ScoredSpecification> population,
         const double elapsed = std::chrono::duration<double>(
                                    std::chrono::steady_clock::now() - start)
                                    .count();
-        status.set(col_pct, "100%");
         status.set(col_time, format_elapsed(elapsed));
-        if (!population.empty()) {
-            std::ostringstream oss;
-            oss << std::fixed << std::setprecision(3) << population[0].fitness;
-            status.set(col_best, oss.str());
-        }
-        std::size_t n_real = 0;
-        for (const ScoredSpecification& cand : population) {
-            if (is_realizable_repair(cand.specification)) {
-                ++n_real;
-            }
-        }
-        status.set(col_real, std::to_string(n_real));
-        status.render();
-        status.finish();
 
         // The maximum, not population[0]: under NSGA-II the population is
         // ordered by front rank and crowding distance, so the first individual
         // need not hold the highest weighted scalar. Reporting it as "best"
-        // would put a number on the dashboard below the mean beside it.
+        // would put a number on the dashboard below the mean beside it -- and
+        // put one on the status line that falls between generations while the
+        // search is still improving, which reads as the search going backwards.
+        // Computed before the status line rather than after so both report it.
         double fitness_total = 0.0;
         double fitness_best = 0.0;
         std::vector<std::vector<double>> objectives;
@@ -177,6 +167,20 @@ run_evolution(const Config& cfg, std::vector<ScoredSpecification> population,
             fitness_best = std::max(fitness_best, cand.fitness);
             objectives.push_back(cand.objectives);
         }
+        if (!population.empty()) {
+            std::ostringstream oss;
+            oss << std::fixed << std::setprecision(3) << fitness_best;
+            status.set(col_best, oss.str());
+        }
+        std::size_t n_real = 0;
+        for (const ScoredSpecification& cand : population) {
+            if (is_realizable_repair(cand.specification)) {
+                ++n_real;
+            }
+        }
+        status.set(col_real, std::to_string(n_real));
+        status.finish();
+
         dashboard.generation(
             gen_idx + 1, elapsed, fitness_best,
             population.empty()
@@ -234,6 +238,12 @@ filter_maximal_specifications(
     const std::vector<Specification>& realizable_vec) {
     const auto impl_start = std::chrono::steady_clock::now();
     auto on_impl_progress = [&impl_start](std::size_t done, std::size_t total) {
+        // Off a terminal this frame is never overwritten, so it would land in
+        // the log once per comparison; the committed line below says the same
+        // thing once.
+        if (!stdout_is_tty()) {
+            return;
+        }
         const double elapsed =
             std::chrono::duration<double>(std::chrono::steady_clock::now() -
                                           impl_start)
@@ -264,7 +274,10 @@ filter_maximal_specifications(
             std::chrono::duration<double>(std::chrono::steady_clock::now() -
                                           impl_start)
                 .count();
-        std::cout << "\r\033[KImplication filter: 100%  " << std::fixed
+        if (stdout_is_tty()) {
+            std::cout << "\r\033[K";
+        }
+        std::cout << "Implication filter: 100%  " << std::fixed
                   << std::setprecision(2) << impl_elapsed << "s  ("
                   << ImplicationFilterStats::n_comparisons << " cmp, "
                   << ImplicationFilterStats::n_skipped << " skip, "

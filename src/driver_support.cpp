@@ -69,6 +69,33 @@ std::optional<std::string> read_file_contents(const std::string& path) {
     return contents.str();
 }
 
+std::optional<std::string> find_unknown_arg(
+    int argc, const char* const* argv,
+    const std::vector<std::string>& value_flags,
+    const std::vector<std::string>& bare_flags) {
+    auto contains = [](const std::vector<std::string>& flags,
+                       const std::string& arg) {
+        return std::find(flags.begin(), flags.end(), arg) != flags.end();
+    };
+    for (int i = 1; i < argc; ++i) {
+        if (argv[i] == nullptr) {
+            continue;
+        }
+        std::string arg(argv[i]);
+        if (contains(value_flags, arg)) {
+            // Skip the value, so a path or a seed that happens to look like a
+            // flag is not itself reported as unknown.
+            ++i;
+            continue;
+        }
+        if (contains(bare_flags, arg)) {
+            continue;
+        }
+        return arg;
+    }
+    return std::nullopt;
+}
+
 std::optional<std::size_t> parse_seed(const std::string& text) {
     // Checked before std::stoull rather than after, because stoull is happy to
     // stop at the first non-digit and to wrap a leading '-' round to the top of

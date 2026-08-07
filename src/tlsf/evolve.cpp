@@ -117,21 +117,24 @@ std::vector<Scored<Specification>> evolve_population(
             filter_stats_out[k].total_in += per_gen_filters[k].n_in();
             filter_stats_out[k].total_out += per_gen_filters[k].n_out();
         }
-        const double best =
-            population.empty() ? 0.0 : population.front().fitness;
+        // The maximum, not front(): NSGA-II orders by front rank and
+        // crowding distance, so the leading individual need not hold the
+        // highest weighted scalar. Reporting front() made the printed best
+        // fall between generations while the search was still improving.
+        // Scalars only, so a run without a dashboard pays a single pass and
+        // no copies; the objectives vector below is the part worth gating.
+        double total = 0.0;
+        double maximum = 0.0;
+        for (const Scored<Specification>& cand : population) {
+            total += cand.fitness;
+            maximum = std::max(maximum, cand.fitness);
+        }
         std::cout << "gen " << (gen + 1) << "/" << cfg.generations
-                  << "  best fitness " << best << "\n";
+                  << "  best fitness " << maximum << "\n";
         if (progress.writer != nullptr) {
-            // The maximum, not front(): NSGA-II orders by front rank and
-            // crowding distance, so the leading individual need not hold the
-            // highest weighted scalar.
-            double total = 0.0;
-            double maximum = 0.0;
             std::vector<std::vector<double>> objectives;
             objectives.reserve(population.size());
             for (const Scored<Specification>& cand : population) {
-                total += cand.fitness;
-                maximum = std::max(maximum, cand.fitness);
                 objectives.push_back(cand.objectives);
             }
             progress.writer->generation(

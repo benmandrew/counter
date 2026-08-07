@@ -39,3 +39,19 @@ std::optional<std::string> read_file_contents(const std::string& path);
 // what makes a run reproducible, and a typo that still starts a run pins the
 // result to a value nobody chose.
 std::optional<std::size_t> parse_seed(const std::string& text);
+
+// The first argument that is neither a flag the driver knows nor the value
+// belonging to one, or nullopt when every argument is accounted for.
+// @p value_flags take the following argument as their value; @p bare_flags
+// stand alone.
+//
+// Callers used to look up only the flags they recognised and ignore the rest,
+// so a plausible-looking flag the binary does not have ran a whole search
+// against the defaults without a word. The ones that catch people name real
+// config keys, generations and population size among them, which is exactly
+// why they look like they should work. Silently running something other than
+// what was asked for is worse than refusing to start.
+std::optional<std::string> find_unknown_arg(
+    int argc, const char* const* argv,
+    const std::vector<std::string>& value_flags,
+    const std::vector<std::string>& bare_flags);

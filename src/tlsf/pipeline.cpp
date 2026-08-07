@@ -56,8 +56,6 @@ int run_repair(const std::string& input_path, const std::string& output_dir,
         return 1;
     }
 
-    std::cout << "Original specification (LTL):\n  " << original.to_ltl()
-              << "\n";
     const std::optional<std::size_t> maybe_seed = random_source.seed();
     if (maybe_seed.has_value()) {
         std::cout << "Seed: " << *maybe_seed << "\n";

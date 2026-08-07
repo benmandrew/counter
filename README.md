@@ -20,6 +20,7 @@ UNREALIZABLE
 $ mkdir -p out
 $ ./build-release/counter --input examples/lily02/spec.tlsf --output-dir out --seed 42
 Realizable specifications: 11 (3 maximal), written to out/
+Done in 4.12s
 ```
 
 That writes the 3 maximal repairs to `out/`, each `repair_N.tlsf` paired with a `repair_N.fitness.json` holding its score. Expect a few seconds on 20 threads; the seed fixes the repairs, not the runtime, which swings with how the external solvers get scheduled.

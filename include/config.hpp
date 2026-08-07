@@ -147,6 +147,15 @@ struct Config {
     /// question about one interactive run rather than about the search, exactly
     /// as COUNTER_PROFILE does for the scope profiler.
     bool report_cpu_timing = false;
+    /// When true, print the engine-internal counters at exit: per-tool call and
+    /// cache totals, the ltl2tgba tautology substitutions, the constant-folded
+    /// count, and the fitness cache hit rate. Set by `counter --diagnostics`
+    /// alone, a flag rather than a TOML key for the same reason
+    /// report_cpu_timing is. Off by default because stdout is for watching a
+    /// run in progress and none of these say anything about the run's repairs.
+    /// Nothing is lost by omitting them: every one is written to
+    /// `<output-dir>/run.json` on every successful run either way.
+    bool report_diagnostics = false;
     /// When true, stream per-stage and per-generation progress to
     /// `<output-dir>/progress.jsonl` and copy the dashboard page beside it.
     /// Opt-in

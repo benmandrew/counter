@@ -253,7 +253,9 @@ SUMMARY_RE = re.compile(
 PER_REPAIR_RE = re.compile(
     r"^\S.*?\s+:\s+(equivalent|strictly stronger|strictly weaker|incomparable|timeout)"
 )
-# counter's scoring report (src/main.cpp print_scoring_report). Individuals
+# counter's scoring report (src/repair/reports.cpp print_scoring_report).
+# That report prints unconditionally, unlike the rest of counter's end-of-run
+# counters, precisely because this regex reads it out of the log. Individuals
 # whose fitness scoring throws are dropped from their generation rather than
 # aborting the run, up to Config::max_scoring_failure_rate. The report is
 # silent when nothing was dropped, so an absent match means zero — but a run

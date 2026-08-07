@@ -12,6 +12,7 @@
 
 #include <nlohmann/json.hpp>
 
+#include "fitness/function.hpp"
 #include "runner/black.hpp"
 #include "runner/ganak.hpp"
 #include "runner/ltlfilt.hpp"
@@ -24,7 +25,11 @@ constexpr const char* k_manifest_filename = "run.json";
 
 // Bumped when a key changes meaning or leaves, so a reader can tell which
 // shape it is holding rather than guessing from which keys are present.
-constexpr int k_schema_version = 1;
+// 2 added fitness_cache, n_constant_folded and n_tautology_substitutions, when
+// those counters stopped printing to stdout by default and this became their
+// only unconditional record. Anything print_diagnostics_report shows has to
+// appear here too, or turning the flag off loses it.
+constexpr int k_schema_version = 2;
 
 // The inverse of the spellings config_io.cpp parses. It has no table to
 // borrow -- it only ever goes string to enum -- so these must be kept in step
@@ -174,24 +179,33 @@ nlohmann::json tool_calls_json() {
                           GanakStats::n_timeouts, GanakStats::total_time_s)}};
 }
 
+nlohmann::json fitness_cache_json() {
+    return {{"hits", AggregateWeightedFitnessFunction::n_cache_hits},
+            {"misses", AggregateWeightedFitnessFunction::n_cache_misses}};
+}
+
 }  // namespace
 
 void write_run_manifest(const std::string& output_dir,
                         const std::string& input_path, std::size_t seed,
                         const Config& cfg, double wall_s) {
     const std::filesystem::path dir(output_dir);
-    const nlohmann::json manifest{{"schema_version", k_schema_version},
-                                  {"tool", "counter"},
-                                  {"commit", version::commit()},
-                                  {"commit_short", version::commit_short()},
-                                  {"dirty", version::dirty()},
-                                  {"finished_utc", utc_timestamp()},
-                                  {"wall_s", wall_s},
-                                  {"input", input_path},
-                                  {"seed", seed},
-                                  {"n_repairs", count_repairs(dir)},
-                                  {"config", config_json(cfg)},
-                                  {"tool_calls", tool_calls_json()}};
+    const nlohmann::json manifest{
+        {"schema_version", k_schema_version},
+        {"tool", "counter"},
+        {"commit", version::commit()},
+        {"commit_short", version::commit_short()},
+        {"dirty", version::dirty()},
+        {"finished_utc", utc_timestamp()},
+        {"wall_s", wall_s},
+        {"input", input_path},
+        {"seed", seed},
+        {"n_repairs", count_repairs(dir)},
+        {"config", config_json(cfg)},
+        {"tool_calls", tool_calls_json()},
+        {"n_constant_folded", SatisfiabilityChecker::n_constant_folded.load()},
+        {"n_tautology_substitutions", Ltl2tgbaStats::n_tautology_substitutions},
+        {"fitness_cache", fitness_cache_json()}};
 
     const std::filesystem::path path = dir / k_manifest_filename;
     std::ofstream out(path);

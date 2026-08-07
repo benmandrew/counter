@@ -9,7 +9,6 @@
 
 #include "fitness/function.hpp"
 #include "genetic/generation.hpp"
-#include "profile.hpp"
 #include "runner/black.hpp"
 #include "runner/ganak.hpp"
 #include "runner/ltlfilt.hpp"
@@ -51,7 +50,7 @@ void print_scoring_report() {
     }
 }
 
-void print_timing_report() {
+void print_diagnostics_report() {
     // timeouts has no default argument on purpose: it used to, and three of
     // the five rows quietly took it, so the counts they were keeping never
     // reached the report. Every tool has the counter; make every caller say so.
@@ -99,9 +98,6 @@ void print_timing_report() {
               << AggregateWeightedFitnessFunction::n_cache_hits << " hits / "
               << AggregateWeightedFitnessFunction::n_cache_misses
               << " misses\n";
-    // The per-tool rows above say how long each tool took; the scope profile
-    // says where inside a call that went. No-op unless COUNTER_PROFILE is set.
-    profile::report_if_enabled();
 }
 
 // Reports where CPU actually went: this process's own code (all threads) vs.

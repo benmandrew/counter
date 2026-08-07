@@ -22,6 +22,20 @@ int main(int argc, const char* const argv[]) {
         return 0;
     }
     init_cpptrace(argv[0]);
+    // Before any of the lookups below, so an argument this binary does not have
+    // stops the run rather than being read past.
+    const std::optional<std::string> unknown = find_unknown_arg(
+        argc, argv,
+        {"--input", "--output-dir", "--config", "--format", "--seed"},
+        {"--dashboard", "--cpu-report", "--diagnostics", "--version", "-h",
+         "--help"});
+    if (unknown.has_value()) {
+        std::cerr << "Unknown argument: '" << *unknown << "'\n"
+                  << "Try '" << argv[0] << " --help' for the accepted flags. "
+                  << "Search parameters such as generations and population size"
+                  << " are config keys, set with --config <file>.\n";
+        return 1;
+    }
     Config cfg;
     const std::optional<std::string> config_path =
         parse_string_arg(argc, argv, "--config");
@@ -38,6 +52,7 @@ int main(int argc, const char* const argv[]) {
     // for the dashboard is not turned off by its absence.
     cfg.dashboard = cfg.dashboard || has_flag(argc, argv, "--dashboard");
     cfg.report_cpu_timing = has_flag(argc, argv, "--cpu-report");
+    cfg.report_diagnostics = has_flag(argc, argv, "--diagnostics");
     apply_tool_timeouts(cfg);
     RealizabilityChecker::set_max_concurrency(cfg.max_concurrent_realizability);
     set_thread_pool_size(cfg.parallel);

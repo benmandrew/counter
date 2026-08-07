@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1785995850465,
+  "lastUpdate": 1786078913717,
   "repoUrl": "https://github.com/benmandrew/counter",
   "entries": {
     "counter benchmarks": [
@@ -5020,6 +5020,76 @@ window.BENCHMARK_DATA = {
             "value": 3523.9486736044773,
             "unit": "ns/iter",
             "extra": "iterations: 197754\ncpu: 3522.621509552272 ns\nthreads: 1"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "name": "benmandrew",
+            "username": "benmandrew",
+            "email": "benmandrew@gmail.com"
+          },
+          "committer": {
+            "name": "benmandrew",
+            "username": "benmandrew",
+            "email": "benmandrew@gmail.com"
+          },
+          "id": "55b72aa61a8b8464605f5dcc3ba7d23288b6873c",
+          "message": "docs(readme): merge duplicated commands section, drop stale defaults\n\nThe Commands section listed each binary twice — a `console` synopsis\nblock and a purpose table — and repeated flags `--help` already\ndocuments. Fold them into one table carrying invocation and purpose,\nwith a single line explaining `<spec>` instead of repeating\n`<spec.json|spec.tlsf>` five times.\n\nDrop the inline `population_size` (200) and `generations` (10)\ndefaults from \"How it works\": they duplicate the configuration docs\npage and go stale in the README whenever a default changes there. Drop\nthe fitness-order sentence from the quickstart, which the linked TLSF\nguide already covers. Fix \"unrealizable\" to \"unrealisable\" in the\n`mucs` row to match the spelling used everywhere else in the file.",
+          "timestamp": "2026-08-07T00:01:23Z",
+          "url": "https://github.com/benmandrew/counter/commit/55b72aa61a8b8464605f5dcc3ba7d23288b6873c"
+        },
+        "date": 1786078913077,
+        "tool": "googlecpp",
+        "benches": [
+          {
+            "name": "Syntactic similarity - small formulas (3 variables)",
+            "value": 542.1697811290234,
+            "unit": "ns/iter",
+            "extra": "iterations: 1298619\ncpu: 542.1362847763663 ns\nthreads: 1"
+          },
+          {
+            "name": "Syntactic similarity - large formulas (11 variables, O(n*m) shared_subformulae)",
+            "value": 2222.7009921313233,
+            "unit": "ns/iter",
+            "extra": "iterations: 312761\ncpu: 2222.6121767100117 ns\nthreads: 1"
+          },
+          {
+            "name": "Spec implication check - warm black cache",
+            "value": 632.7769645325858,
+            "unit": "ns/iter",
+            "extra": "iterations: 1103125\ncpu: 632.7630594900849 ns\nthreads: 1"
+          },
+          {
+            "name": "Trace model counting - matrix exponentiation/steps:5",
+            "value": 197.0089012761393,
+            "unit": "ns/iter",
+            "extra": "iterations: 3545222\ncpu: 197.00449224336307 ns\nthreads: 1"
+          },
+          {
+            "name": "Trace model counting - matrix exponentiation/steps:10",
+            "value": 222.446454069028,
+            "unit": "ns/iter",
+            "extra": "iterations: 3126344\ncpu: 222.43410545992379 ns\nthreads: 1"
+          },
+          {
+            "name": "Trace model counting - matrix exponentiation/steps:20",
+            "value": 249.423644484751,
+            "unit": "ns/iter",
+            "extra": "iterations: 2818467\ncpu: 249.41116394124896 ns\nthreads: 1"
+          },
+          {
+            "name": "Trace model counting - matrix exponentiation/steps:50",
+            "value": 298.33262507770144,
+            "unit": "ns/iter",
+            "extra": "iterations: 2347081\ncpu: 298.31996211464383 ns\nthreads: 1"
+          },
+          {
+            "name": "Mutate specification - 3-guarantee takeoff spec",
+            "value": 3451.2950208986217,
+            "unit": "ns/iter",
+            "extra": "iterations: 202406\ncpu: 3451.1297935831935 ns\nthreads: 1"
           }
         ]
       }

@@ -90,11 +90,12 @@ const StageObservation& stage(const std::vector<StageObservation>& observations,
 
 void test_pipeline_reports_every_fixed_stage() {
     const std::vector<std::string> names = stage_names(observe_generation({}));
-    for (const std::string& expected :
+    for (const char* const expected :
          {"order-parents", "breed", "filter-fallback", "restore-elites", "pad",
           "score", "select"}) {
         expect(contains(names, expected),
-               "pipeline: the observer should see the " + expected + " stage");
+               "pipeline: the observer should see the " +
+                   std::string(expected) + " stage");
     }
     expect(names.size() == 7,
            "pipeline: a generation with no filters should report exactly the "

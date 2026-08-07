@@ -8,6 +8,10 @@ FILE_PATTERNS   = *.hpp *.h *.cpp
 OUTPUT_DIRECTORY = @DOXYGEN_OUTPUT_DIR@
 GENERATE_HTML   = NO
 GENERATE_XML    = YES
+# Breathe consumes the XML alone. Doxygen defaults GENERATE_LATEX to YES, which
+# needs epstopdf to convert images and, under WARN_AS_ERROR, fails the build
+# where no TeX installation exists -- for output nothing reads.
+GENERATE_LATEX  = NO
 XML_OUTPUT      = xml
 
 EXTRACT_ALL     = YES

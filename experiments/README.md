@@ -63,6 +63,10 @@ describes. The arms that set the keys themselves (the wellsep and ablation
 factorials, and wellsep-timing's own three levels) are unaffected, since they
 state them either way.
 
+`run_well_separation` has now crossed the line a second time, in the other direction: it defaults to `false` again from the commit that folded well-separation into the status score. It is the only key to have moved twice, so an archived campaign needs it written in explicitly at whichever value it ran under — `false` for the campaigns archived under the pre-2026-08-06 default named above, `true` for anything that inherited the default between the two commits. That makes three keys to restore by hand alongside `allow_output_assumptions`, not two.
+
+The same commit changed what the status *scale* means rather than what a config says, which no amount of writing keys back repairs. `k_status_realizable` (1.0) now requires a candidate to be well-separated as well as realizable, and one the system can satisfy only by forcing its own assumptions to fail scores `k_status_unrealizable` (0.5) — level with a candidate no strategy exists for, where it previously scored the top tier. Status is a selection objective on both paths, so status-derived numbers and every quality figure downstream of selection are on different scales either side of this commit and do not compare across it.
+
 Three more moved in the commit that narrowed the defaults for push-button use:
 `ltlsynt_timeout_ms` `0` → `500`, `ltl2tgba_timeout_ms` `0` → `60000` and
 `max_scoring_failure_rate` `0.05` → `0.15`. Every TLSF campaign archived here

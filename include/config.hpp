@@ -106,7 +106,16 @@ struct Config {
     /// counterpart to allow_output_assumptions, which without it admits
     /// assumptions the system can defeat. A no-op for specs with no
     /// assumptions, which short-circuit before any solver call.
-    bool run_well_separation_filter = true;
+    ///
+    /// Off by default since well-separation joined the status score. Filters
+    /// run before scoring, so leaving this on drops an ill-separated candidate
+    /// before anything can score it, and the status tier that ranks it below a
+    /// genuine repair never fires -- the same way an earlier assumption-side
+    /// tier sat unreachable behind the vacuity filter. On costs less wall time
+    /// and gives the search no gradient off ill-separation; off pays to score
+    /// candidates the search then ranks down. Output correctness does not turn
+    /// on it either way: the gate screens every survivor whatever this says.
+    bool run_well_separation_filter = false;
     std::chrono::milliseconds black_timeout{1000};
     /// Per-call wall-clock budget for ltlsynt realizability checks. Unlike
     /// black, ltlsynt has no internal timeout, and the genetic search

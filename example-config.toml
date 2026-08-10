@@ -43,7 +43,7 @@ p_timing   = 0.15
 p_add_assumption         = 0.05
 p_conditional_assumption = 0.25
 strengthen_assumptions   = true
-allow_output_assumptions = true  # meant to move with filters.run_well_separation
+allow_output_assumptions = true  # guarded by the status score, not by a filter
 
 [tlsf]
 # TLSF mode only (a .tlsf input or --format tlsf); ignored on the FRETISH path.
@@ -62,7 +62,7 @@ metric        = "logarithmic"  # or "direct"
 run_weakening   = true
 run_implication = true
 run_vacuity     = true
-run_well_separation = true
+run_well_separation = false
 
 [runtime]
 # Per-call wall-clock budgets in ms; 0 disables one. Only ganak is unbounded:

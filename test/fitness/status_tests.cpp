@@ -109,6 +109,39 @@ void test_status_realizable_returns_one() {
            "status: satisfiable and realizable spec should score 1.0");
 }
 
+// `G o` as an assumption over the system's own output: the system satisfies
+// the specification by holding o false, which breaks the assumption and makes
+// the implication hold for nothing. Realizable, so the old three-point scale
+// scored it 1.0 -- level with a genuine repair. It now scores level with
+// unrealizable instead, which is the whole of the change: the search is paid
+// for repairing, not for cheating.
+void test_status_ill_separated_scores_level_with_unrealizable() {
+    SatisfiabilityChecker sat;
+    RealizabilityChecker real;
+    const Specification spec(
+        {Requirement(Formula("true"), Formula("o"), timing::always())},
+        {Requirement(Formula("i"), Formula("o"), timing::immediately())}, {"i"},
+        {"o"});
+    expect(specification_status(spec, sat, real) == k_status_unrealizable,
+           "status: a spec realizable only by defeating its own assumptions "
+           "should score level with unrealizable, not with a genuine repair");
+}
+
+// The counterpart, so the tier above is not passing for the wrong reason: an
+// assumption over an input atom alone cannot be defeated by the system, and
+// still scores as a genuine repair.
+void test_status_input_only_assumption_still_scores_one() {
+    SatisfiabilityChecker sat;
+    RealizabilityChecker real;
+    const Specification spec(
+        {Requirement(Formula("true"), Formula("i"), timing::always())},
+        {Requirement(Formula("i"), Formula("o"), timing::immediately())}, {"i"},
+        {"o"});
+    expect(specification_status(spec, sat, real) == k_status_realizable,
+           "status: a realizable spec whose assumption is over inputs alone "
+           "should still score 1.0");
+}
+
 void test_status_no_guarantees_skips_the_solver() {
     // An empty guarantee side leaves a `true` consequent, so the score is
     // realizable without a solver call. RealizabilityChecker is left
@@ -131,5 +164,7 @@ void run_status_tests() {
     test_status_jointly_unsat_responses_pass_individual_checks();
     test_status_unrealizable_returns_point_five();
     test_status_realizable_returns_one();
+    test_status_ill_separated_scores_level_with_unrealizable();
+    test_status_input_only_assumption_still_scores_one();
     test_status_no_guarantees_skips_the_solver();
 }

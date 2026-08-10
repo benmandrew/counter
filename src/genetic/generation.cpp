@@ -6,9 +6,8 @@
 
 #include "bounded_async.hpp"
 #include "filter/bloat.hpp"
+#include "filter/correctness.hpp"
 #include "filter/implication.hpp"
-#include "filter/vacuity.hpp"
-#include "filter/well_separation.hpp"
 #include "runner/spot.hpp"
 #include "thread_pool.hpp"
 
@@ -115,24 +114,17 @@ std::vector<FilterFunction> get_filter_functions(
     filters.push_back(std::move(dedup));
     FilterFunction bloat = make_bloat_cap_filter(original);
     filters.push_back(std::move(bloat));
-    if (cfg.run_vacuity_filter) {
-        // Contradictory assumptions make (A) -> (G) a tautology, so the
-        // candidate reads as realizable without repairing anything. Reachable
-        // whenever mutation can strengthen an assumption. The filter also
-        // rejects a false condition and a guarantee that is valid, both of
-        // which hold for free the same way.
-        FilterFunction vacuity = make_vacuity_filter(checker, max_in_flight);
-        filters.push_back(std::move(vacuity));
-    }
-    if (cfg.run_well_separation_filter) {
-        // A non-well-separated candidate satisfies (A) -> (G) for free because
-        // the system can force A to fail; the vacuity filter above misses it
-        // when A is satisfiable but forcibly falsifiable. Uses the shared
-        // global realizability checker so its ltlsynt results are memoised
-        // alongside the survivor re-checks.
-        FilterFunction well_separation =
-            make_well_separation_filter(global_real_checker(), max_in_flight);
-        filters.push_back(std::move(well_separation));
+    // Built from correctness_checks rather than listed here, so a property
+    // cannot be enforced per generation without also being enforced by the
+    // final gate and the input screen, which read the same table. Both stages
+    // use the shared global checkers, so the queries a filter pays for are the
+    // ones the gate later hits in cache.
+    for (const CorrectnessCheck& check :
+         correctness_checks(checker, global_real_checker())) {
+        if (cfg.*check.per_generation_flag) {
+            filters.push_back(make_predicate_filter(
+                check.name, check.admissible, max_in_flight));
+        }
     }
     return filters;
 }

@@ -44,6 +44,10 @@ bool run_genetic_suite(std::string_view suite_name) {
 // Handles the population-filter suites. Split out of run_suite for the same
 // reason as run_tlsf_suite below.
 bool run_filter_suite(std::string_view suite_name) {
+    if (suite_name == "correctness") {
+        run_correctness_tests();
+        return true;
+    }
     if (suite_name == "implication_filter") {
         run_implication_filter_tests();
         return true;
@@ -248,6 +252,7 @@ int main(int argc, const char* const argv[]) {
             run_syntactic_similarity_tests();
             run_fitness_function_tests();
             run_status_tests();
+            run_correctness_tests();
             run_implication_filter_tests();
             run_vacuity_filter_tests();
             run_well_separation_filter_tests();

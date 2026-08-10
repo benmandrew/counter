@@ -7,10 +7,12 @@
 
 #include "bounded_async.hpp"
 #include "config.hpp"
+#include "filter/correctness.hpp"
 #include "fitness/function.hpp"
 #include "genetic/pipeline.hpp"
 #include "genetic/scored.hpp"
 #include "runner/black.hpp"
+#include "runner/spot.hpp"
 #include "thread_pool.hpp"
 #include "tlsf/filter.hpp"
 #include "tlsf/fitness.hpp"
@@ -20,21 +22,27 @@ namespace tlsf::internal {
 
 namespace {
 
-// A candidate counts as a repair only when it is realizable and not vacuously
-// so. Elites and final-generation offspring reach this collection without
-// necessarily having passed the vacuity filter -- that filter can be turned
-// off outright -- so the check is repeated here,
-// mirroring the FRETISH path's is_realizable_repair, which screens the same
-// conditions before any repair is written out. Unconditional on both paths:
-// run_vacuity_filter tunes search pressure, never output correctness.
+// The correctness checks, built once. Their predicates capture the global
+// checkers, which outlive every caller.
+const std::vector<CorrectnessCheckT<Specification>>& gate_checks() {
+    static const std::vector<CorrectnessCheckT<Specification>> checks =
+        tlsf_correctness_checks(global_sat_checker(), global_real_checker());
+    return checks;
+}
+
+// A candidate counts as a repair only when it is realizable and passes every
+// correctness check. Elites and the seed population reach this collection
+// without having passed the per-generation chain, and any of those checks can
+// be turned off outright, so the whole table is re-applied here -- mirroring
+// the FRETISH path's is_realizable_repair. Unconditional on both paths: the
+// per-generation flags tune search pressure, never output correctness.
 //
-// The vacuity check runs first: its syntactic screen is free and its `black`
-// queries are per-section-formula or over the assumption side alone, far
-// cheaper than the `ltlsynt` query behind tlsf_status, so a vacuous candidate
-// is rejected without paying for synthesis.
+// Status leads, as it does on the FRETISH path: it is a scored objective, so
+// its verdict is memoised for everything the last generation scored, while a
+// check whose per-generation stage was off has nothing warming its queries.
 bool is_tlsf_repair(const Specification& spec, const Config& cfg) {
-    return !tlsf_is_vacuous(spec, global_sat_checker()) &&
-           tlsf_status(spec, cfg) == 1.0;
+    return tlsf_status(spec, cfg) == 1.0 &&
+           !first_failing_check(spec, gate_checks()).has_value();
 }
 
 std::vector<Specification> specifications_of(

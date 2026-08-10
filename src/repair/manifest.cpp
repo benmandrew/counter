@@ -12,6 +12,7 @@
 
 #include <nlohmann/json.hpp>
 
+#include "filter/correctness.hpp"
 #include "fitness/function.hpp"
 #include "runner/black.hpp"
 #include "runner/ganak.hpp"
@@ -29,7 +30,10 @@ constexpr const char* k_manifest_filename = "run.json";
 // those counters stopped printing to stdout by default and this became their
 // only unconditional record. Anything print_diagnostics_report shows has to
 // appear here too, or turning the flag off loses it.
-constexpr int k_schema_version = 2;
+// 3 added input_screen, so a campaign can partition its runs on whether the
+// input itself failed a correctness check rather than grepping the log for the
+// warning.
+constexpr int k_schema_version = 3;
 
 // The inverse of the spellings config_io.cpp parses. It has no table to
 // borrow -- it only ever goes string to enum -- so these must be kept in step
@@ -201,6 +205,11 @@ void write_run_manifest(const std::string& output_dir,
         {"input", input_path},
         {"seed", seed},
         {"n_repairs", count_repairs(dir)},
+        // Null when the input passed every check, which is the ordinary case;
+        // the name of the check it failed otherwise.
+        {"input_screen", InputScreen::failed_check.empty()
+                             ? nlohmann::json(nullptr)
+                             : nlohmann::json(InputScreen::failed_check)},
         {"config", config_json(cfg)},
         {"tool_calls", tool_calls_json()},
         {"n_constant_folded", SatisfiabilityChecker::n_constant_folded.load()},

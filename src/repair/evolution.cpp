@@ -15,8 +15,8 @@
 #include <nlohmann/json.hpp>
 
 #include "bounded_async.hpp"
+#include "filter/correctness.hpp"
 #include "filter/implication.hpp"
-#include "filter/vacuity.hpp"
 #include "fitness/status.hpp"
 #include "runner/black.hpp"
 #include "runner/spot.hpp"
@@ -26,15 +26,29 @@
 
 namespace {
 
+// The correctness checks, built once. Their predicates capture the global
+// checkers, which outlive every caller.
+const std::vector<CorrectnessCheck>& gate_checks() {
+    static const std::vector<CorrectnessCheck> checks =
+        correctness_checks(global_sat_checker(), global_real_checker());
+    return checks;
+}
+
 // A specification counts as a realizable repair only if it is realizable and
-// not vacuous. Elites and final-generation offspring can reach these checks
-// unscreened -- and run_vacuity_filter can turn the per-generation filter off
-// outright -- so both the live "real" counter and the final collection apply
-// the same predicate, unconditionally.
+// passes every correctness check. Elites and the seed population reach this
+// unscreened, and the per-generation flags can turn any of those checks off
+// outright, so both the live "real" counter and the final collection apply the
+// whole table here, unconditionally.
+//
+// Status leads. Most of the final population is unrealizable -- that is why the
+// collection drops most of it -- and status is a scored objective, so its
+// verdict is already memoised for anything the last generation scored, whereas
+// the checks behind it are only warm where their per-generation stage ran.
+// Asking the warm question first short-circuits the common case for free.
 bool is_realizable_repair(const Specification& spec) {
     return specification_status(spec, global_sat_checker(),
                                 global_real_checker()) == 1.0 &&
-           !specification_is_vacuous(spec, global_sat_checker());
+           !first_failing_check(spec, gate_checks()).has_value();
 }
 
 }  // namespace

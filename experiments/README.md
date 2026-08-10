@@ -95,6 +95,8 @@ The default did not move: `filters.run_vacuity` was `true` and still is. No arch
 
 One consequence reaches forward rather than back. Setting `run_vacuity = false` now also switches off the false-condition screen, which used to run whichever way the flag was set. No archived config sets the key, so no archive here is affected, but an ablation that turns vacuity off is no longer isolating the assumption satisfiability check — it drops three screens and prices them as one. A flag that gains screens gains them for its off position too, which is the half of a merge that is easy to leave unstated.
 
+A fifth change moves no key, no value and no default, and still stops archived numbers from comparing. From this commit the gate that collects the realizable survivors applies the well-separation check to every one of them, whatever `filters.run_well_separation` says. Before it that check ran per generation alone, so a not-well-separated specification still reached the output whenever it arrived by a route the offspring filters never cover — an elite carried through unchanged, or a copy of the seed population. Those repairs are now rejected at the gate, so written-repair yield falls from this commit on and a campaign's repair counts do not compare across it. Which candidates are bred and scored is unchanged; only which survivors are written out is.
+
 ## Commit attribution
 
 Every campaign directory carries a `PROVENANCE.json`. For campaigns closed

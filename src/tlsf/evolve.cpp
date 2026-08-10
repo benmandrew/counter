@@ -10,12 +10,14 @@
 
 #include "config.hpp"
 #include "dashboard.hpp"
+#include "filter/correctness.hpp"
 #include "filter_report.hpp"
 #include "fitness/function.hpp"
 #include "genetic/generation.hpp"
 #include "genetic/pipeline.hpp"
 #include "genetic/random_source.hpp"
 #include "genetic/scored.hpp"
+#include "runner/black.hpp"
 #include "runner/spot.hpp"
 #include "thread_pool.hpp"
 #include "tlsf/filter.hpp"
@@ -38,16 +40,15 @@ std::vector<FilterFunctionT<Specification>> build_per_gen_filters(
     filters.push_back(std::move(dedup));
     FilterFunctionT<Specification> bloat = tlsf_make_bloat_cap_filter(spec);
     filters.push_back(std::move(bloat));
-    if (cfg.run_vacuity_filter) {
-        FilterFunctionT<Specification> vacuity =
-            tlsf_make_vacuity_filter(max_in_flight);
-        filters.push_back(std::move(vacuity));
-    }
-    if (cfg.run_well_separation_filter) {
-        FilterFunctionT<Specification> well_separation =
-            tlsf_make_well_separation_filter(global_real_checker(),
-                                             max_in_flight);
-        filters.push_back(std::move(well_separation));
+    // From the shared table, as on the FRETISH path: a property enforced here
+    // is enforced by the final gate and the input screen too, because all three
+    // read the same rows.
+    for (const CorrectnessCheckT<Specification>& check :
+         tlsf_correctness_checks(global_sat_checker(), global_real_checker())) {
+        if (cfg.*check.per_generation_flag) {
+            filters.push_back(tlsf_make_predicate_filter(
+                check.name, check.admissible, max_in_flight));
+        }
     }
     return filters;
 }

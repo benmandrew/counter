@@ -52,6 +52,7 @@ The overview pages describe the algorithm, the tuning knobs, and the TLSF path. 
    :caption: Filter
 
    api/filter/bloat
+   api/filter/correctness
    api/filter/implication
    api/filter/implication_check
    api/filter/vacuity

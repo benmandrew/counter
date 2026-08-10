@@ -1712,16 +1712,34 @@ def main() -> None:
     # balanced design: every level sampled at the same seeds, just fewer of
     # them. The natural (config-major) order would instead finish the first
     # levels and leave the last ones at zero seeds, which is not analysable.
+    #
+    # Within a seed the order is spec, then the factor cell, so the arms of a
+    # comparison run adjacently: at any kill point two cells of the same spec
+    # and seed differ by at most one run. A profile whose factor is the thing
+    # under test depends on that ordering for its design to survive an early
+    # stop, not merely on its seeds being disjoint across hosts.
+    def execution_order(key: tuple) -> tuple:
+        (scheme, weakening, metric, repair, c_sweep, c_level,
+         spec_name, seed) = key
+        return (seed, spec_name, scheme, weakening, metric, repair,
+                c_sweep, c_level)
+
     to_execute = sorted(
         (key for key, row_list in runs.items()
          if any(row_key(key, s, l) not in done for s, l in row_list)),
-        key=lambda k: (k[7], k[6], k[0], k[1], k[2], k[3], k[4], k[5]),
+        key=execution_order,
     )
     print(f"Plan: {n_rows} result rows ({n_aliased} via aliasing), "
           f"{n_done} already done; {len(to_execute)} runs to execute")
 
     if args.dry_run:
-        for key, row_list in runs.items():
+        # Same order as `to_execute`. Printing the dict's config-major
+        # insertion order instead would show every run of the first factor cell
+        # before any of the second, which is what the ordering above exists to
+        # avoid -- so the plan a launch is checked against would misreport the
+        # one property (balance under an early stop) it is read to confirm.
+        for key, row_list in sorted(runs.items(),
+                                    key=lambda kv: execution_order(kv[0])):
             (scheme, weakening, metric, repair, c_sweep, c_level,
              spec_name, seed) = key
             for sweep, level_name in row_list:

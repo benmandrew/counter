@@ -2,20 +2,25 @@
   "campaign": "2026-08-10-arbiter-probe",
   "attribution": "recorded",
   "generated_on": "2026-08-10",
-  "status": "launched 2026-08-10T15:37+0100 on av2 and av3 — 800 runs (400 per host), single stage, in progress",
+  "status": "launched 2026-08-10T17:51+0100 on av2 and av3 — 800 runs (400 per host), single stage, in progress",
   "method": "Recorded at launch, not reconstructed. Both hosts report counter --version and compare --version into the per-host launch manifest, and run_experiments.py refused to start until each binary's commit matched the working tree's HEAD with dirty=0; that gate was left on, so no --allow-stale-binary was used.",
+  "superseded_execution": {
+    "what": "The same design ran once at 536a3ae, launched 2026-08-10T15:37+0100, and completed 800 runs (av2 400/400, av3 399/400, one counter exit-1 on round-robin-arbiter seed 21). That data was DISCARDED, not archived: the CSVs, run directories and per-host manifests were deleted from both hosts before this launch.",
+    "why": "Three engine commits landed on main while it ran. d7733fc gates written repairs on a shared correctness table, which changes what counts as a repair and so redefines this campaign's primary outcome. fb4c3ed stops black answering validity wrong on weak-until, which the elitism campaign found had produced tautological repairs. b101ada folds well-separation into the status score, and experiments/README.md records that status is a selection objective on both paths, so quality figures do not compare across it.",
+    "disposition": "Discarded on the owner's instruction rather than kept as a pre-b101ada record. 536a3ae is not reachable from main and no provenance tag holds it, so the shas naming that execution will stop resolving once the objects are collected. This is deliberate — nothing cites them."
+  },
   "question": "Whether nsga2-apportion's yield advantage on examples/arbiter (120/120 against nsga2-truncate's 0/120 in 2026-07-31-replicate) is a family-level effect across arbitration specifications or a property of that one spec. The pre-registered decision rule is in PLAN.md §7.",
   "stages": [
     {
       "stage": "arbiter-probe",
       "rows_expected": 800,
       "binary_commit": {
-        "sha": "536a3aeb017811331e454004cf34bd1bddc12db2",
-        "short": "536a3ae",
-        "subject": "chore(experiments): add the arbiter-probe campaign profile and plan",
-        "commit_date": "2026-08-10 15:36",
+        "sha": "df66e447a4557fe3c369f7031a26cfe5c64f013a",
+        "short": "df66e44",
+        "subject": "chore(experiments): re-target the arbiter probe at the current engine",
+        "commit_date": "2026-08-10 17:47",
         "confidence": "recorded",
-        "evidence": "counter --version and compare --version both reported commit=536a3ae, dirty=0 on each host at launch, written into experiments/results-arbiter-probe-manifest-avlab12.json and -av3.json. Every CSV row carries the commit and dirty columns."
+        "evidence": "counter --version and compare --version both reported commit=df66e44, dirty=0 on each host at launch, written into experiments/results-arbiter-probe-manifest-avlab12.json and -av3.json. Every CSV row carries the commit and dirty columns."
       },
       "hosts": {
         "av2 (avlab12)": "seeds 0-19, 400 runs",
@@ -40,16 +45,16 @@
     }
   ],
   "config_vintage": {
-    "elitism_rate": "Pinned to 0.1 in the emitted config rather than inherited from the binary. 2026-08-07-elitism may move that default, and gen_configs.py writes a key only where a sweep overrides it, so an inherited value would leave this archive silently restating whatever the binary later defaults to. Sweep R restricted to its elit0.1 level writes the number down.",
+    "elitism_rate": "Pinned to 0.1 in the emitted config rather than inherited. 2026-08-07-elitism closed on 2026-08-10 keeping 0.1 on cost alone, so the pin and the current default agree; the pin is kept regardless, because gen_configs.py writes a key only where a sweep overrides it and an inherited value would leave this archive restating whatever the binary later defaults to.",
     "metric": "The emitted config pins model_counting.metric = \"direct\", where config.hpp defaults to Logarithmic. This is the gen_configs.py campaign baseline that every prior sweep shares, including 2026-07-31-replicate, whose finding this campaign extends. Matching the campaign under test was preferred to matching the shipped default; see PLAN.md §4.",
-    "unpinned": "run_vacuity and run_well_separation are deliberately left unpinned and take the binary's defaults at 536a3ae, both true. Reproducing this campaign requires building 536a3ae rather than writing those keys back."
+    "unpinned": "run_vacuity and run_well_separation are deliberately left unpinned and take the binary's defaults at df66e44: run_vacuity true, run_well_separation FALSE. The latter is the second move of a key that has now crossed the line twice — false before 86e463c, true between it and b101ada, false again from b101ada, which folded the property into the status score. Reproducing this campaign means building df66e44; writing the key back at any single value does not reconstruct it, because b101ada also changed what the status scale means and no config key restores that."
   },
   "comparability": {
-    "to_2026-07-31-replicate": "Not comparable row for row. The engine has since gained the tautology screen (3869c53), the fold of the false-condition filter into vacuity, the correct-offspring rescue fix, and the flip of run_well_separation and allow_output_assumptions to true (86e463c). Both arms here are collected fresh at one commit, so the paired within-campaign comparison is internally valid and no cross-campaign join is required by the decision rule.",
+    "to_2026-07-31-replicate": "Not comparable row for row. The engine has since gained the tautology screen (3869c53), the fold of the false-condition filter into vacuity, the correct-offspring rescue fix, the flip of run_well_separation and allow_output_assumptions to true (86e463c) and its partial reversal (b101ada), the shared correctness gate on written repairs (d7733fc), and the weak-until rewrite before black (fb4c3ed). The last three postdate this campaign's own first execution. Both arms here are collected fresh at one commit, so the paired within-campaign comparison is internally valid and no cross-campaign join is required by the decision rule.",
     "selection_scheme_names": "This is the first campaign archived under the post-2026-08-06 spellings. Its configs set nsga2-truncate and nsga2-apportion, and its CSV selection column reads the same, so canonical_scheme() is an identity on these rows rather than a rename."
   },
   "vendored_scripts": {
-    "source_commit": "536a3aeb017811331e454004cf34bd1bddc12db2",
+    "source_commit": "df66e447a4557fe3c369f7031a26cfe5c64f013a",
     "files": {
       "gen_configs.py": "8adc54fe14442051c5b96f9b6bca400e04823ac5",
       "run_experiments.py": "1310882e52b1b33173b8cfbbcfb07a88500ea86e",
@@ -59,5 +64,5 @@
   },
   "reachable_from_main": false,
   "branch": "feat/arbiter-probe",
-  "branch_note": "Branched from feat/elitism-campaign at 2ebe3a9, which is itself unmerged. Both branches are pushed to origin. If either is split into reconstructed pull requests rather than merged, the shas recorded here stop resolving and an annotated provenance tag must be created to hold them, as provenance/replicate-campaign does for 2026-07-31-replicate."
+  "branch_note": "Rebased onto feat/elitism-campaign at e8ccfe7, which contains all of main plus the compare run-manifest fix that main lacks and implies_ideal scoring depends on. That branch is unmerged and has already been rebased once under this campaign, orphaning its first base; an annotated provenance tag must hold df66e44 before this branch is rebased or split, as provenance/elitism-campaign does for 2026-08-07-elitism."
 }

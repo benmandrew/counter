@@ -13,6 +13,7 @@
 #include "prop_formula.hpp"
 #include "runner/black.hpp"
 #include "runner/spot.hpp"
+#include "tlsf/filter.hpp"
 
 namespace {
 
@@ -200,10 +201,13 @@ double tlsf_status(const tlsf::Specification& spec,
         }
     }
     return status_score(components, sat, [&spec, &real] {
-        return real
-            .check_realizability_ltl(spec.to_ltl(), spec.m_inputs,
-                                     spec.m_outputs)
-            .value_or(false);
+        const bool realizable =
+            real.check_realizability_ltl(spec.to_ltl(), spec.m_inputs,
+                                         spec.m_outputs)
+                .value_or(false);
+        // Behind the realizability query, as on the FRETISH path: an
+        // unrealizable candidate cannot be realizable for the wrong reason.
+        return realizable && !tlsf_is_not_well_separated(spec, real);
     });
 }
 

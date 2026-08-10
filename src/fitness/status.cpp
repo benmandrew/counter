@@ -6,6 +6,7 @@
 #include <string>
 #include <vector>
 
+#include "filter/well_separation.hpp"
 #include "requirement.hpp"
 
 double status_score(const std::vector<std::string>& components,
@@ -50,7 +51,13 @@ double specification_status(const Specification& specification,
         // No guarantees leaves the implication with a `true` consequent, which
         // is realizable whatever the assumptions say; skip the solver rather
         // than ask it a question with a known answer.
-        return specification.m_guarantees.empty() ||
-               real.check_realizability(specification).value_or(false);
+        const bool realizable =
+            specification.m_guarantees.empty() ||
+            real.check_realizability(specification).value_or(false);
+        // Second, and only where the first said yes: a candidate that is
+        // already unrealizable cannot be realizable for the wrong reason, and
+        // the query is a whole ltlsynt call.
+        return realizable &&
+               !specification_is_not_well_separated(specification, real);
     });
 }

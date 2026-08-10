@@ -19,6 +19,7 @@
 #include "config.hpp"
 #include "driver_support.hpp"
 #include "filter/implication_check.hpp"
+#include "repair/manifest.hpp"
 #include "requirement.hpp"
 #include "runner/black.hpp"
 #include "serialisation.hpp"
@@ -93,6 +94,16 @@ load_repairs(const std::string& dir) {
         repairs;
     for (const auto& entry : std::filesystem::directory_iterator(dir)) {
         if (entry.path().extension() != ".json") {
+            continue;
+        }
+        // A repairs directory is a run's output directory, so it also holds the
+        // run manifest write_run_manifest left there. Loading that as a
+        // specification throws, and the throw aborts the whole comparison --
+        // which reads downstream as implies_ideal = 0 for a run whose repairs
+        // were never scored at all, not as an error. The TLSF loader below is
+        // immune only because repairs are .tlsf there and the manifest is
+        // .json.
+        if (entry.path().filename() == k_run_manifest_name) {
             continue;
         }
         repairs.emplace_back(entry.path().filename().string(),

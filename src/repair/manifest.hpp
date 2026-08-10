@@ -8,6 +8,11 @@
 
 #include "config.hpp"
 
+/// The manifest's filename within a run's output directory. Exposed because
+/// that directory is also the one `compare --repairs` is pointed at, so every
+/// reader walking it for repairs has to know which entry is not one.
+inline constexpr const char* k_run_manifest_name = "run.json";
+
 /// Writes `<output_dir>/run.json`: what produced this directory.
 ///
 /// An output directory used to name its own inputs nowhere. The seed went to

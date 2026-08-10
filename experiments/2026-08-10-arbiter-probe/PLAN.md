@@ -2,6 +2,8 @@
 
 Pre-registered 2026-08-10, before any row at the campaign commit was collected. Written to bind the decision rule to the result it was meant to decide.
 
+**Superseded execution.** This design ran once at `536a3ae` and finished 800 runs before three engine commits landed on `main`: `d7733fc` (written repairs gated on a shared correctness table), `fb4c3ed` (weak-until rewritten before `black` sees it, `black` having answered validity wrong on that operator), and `b101ada` (well-separation folded into the status score). The first changes what counts as a repair, which is this campaign's primary outcome; the third rescales an objective selection ranks on, and `experiments/README.md` records that quality figures do not compare across it. That data was discarded rather than archived, on the principle that a superseded measurement kept beside a current one gets cited. Nothing below was changed to fit it, and none of its numbers appear in this file.
+
 ## 1. Question
 
 On `examples/arbiter`, `nsga2-apportion` repaired 120 runs of 120 where `nsga2-truncate` repaired 0 of 120. Does that hold across arbitration specifications, or is it a property of that one file?
@@ -50,6 +52,8 @@ One profile, `arbiter-probe`. Selection scheme is the only factor; everything el
 **The cost ratio on this corpus is not replicate's 1.51.** A single paired run on `round-robin-arbiter` at seed 0, same host and binary, measured 18.47 s under truncate against 67.75 s under apportion — a ratio of 3.67. Replicate's 1.51 was pooled over five families, only one of which was an arbiter, so it does not transfer to a corpus that is nine-tenths arbitration. This is `n = 1` and is stated as a budgeting input, not a result; §8 calibrates before launch rather than trusting either figure.
 
 **`elitism_rate` is pinned to 0.1 in the emitted config rather than inherited.** `2026-08-07-elitism` may yet move that default, and `gen_configs.py` writes a key only where a sweep overrides it — so an inherited value would leave the archived config silently restating whatever the binary later defaults to. Sweep R restricted to its `elit0.1` level writes the number down.
+
+**Well-separation is a scored objective here, not a filter stage.** `b101ada` folded the property into the status score — `k_status_realizable` now requires a candidate to be well-separated as well as realizable, and one realizable only by defeating its own assumptions scores the middle tier — and restored `run_well_separation` to defaulting `false`. This campaign inherits that default, so no `not-well-separated` stage runs and the property reaches selection through the status objective instead. That is the shipped configuration, which is what a probe about a selection scheme should sample. It also matters more here than it would elsewhere: status is one of the objectives both NSGA-II schemes rank on, so the change alters the very gradient the two schemes sort by.
 
 **One deviation from the shipped defaults, recorded rather than fixed.** `gen_configs.py`'s baseline pins `model_counting.metric = "direct"`, where `config.hpp` defaults to `Logarithmic`, along with fitness weights of 0.33 / 0.33 / 0.1 / 0.33 and `runtime.black_timeout_ms = 1000`. These are the campaign conventions every prior sweep shares, and `2026-07-31-replicate` ran under them too. Matching the campaign this one extends matters more than matching the shipped default, because the finding under test was measured there.
 

@@ -78,6 +78,7 @@ PROFILE_CSVS: dict[str, str] = {
     # datasets under one set of keys.
     "elitism-fret": "results-elitism.csv",
     "elitism-tlsf": "results-elitism-tlsf.csv",
+    "arbiter-probe": "results-arbiter-probe.csv",
 }
 
 # Per-run output directory each profile writes under experiments/. Most profiles
@@ -103,6 +104,7 @@ PROFILE_RESULT_DIRS: dict[str, str] = {
     "replicate-tlsf": "results-replicate-tlsf",
     "elitism-fret": "results-elitism",
     "elitism-tlsf": "results-elitism-tlsf",
+    "arbiter-probe": "results-arbiter-probe",
 }
 
 # Natural key of a results row: one run per (sweep, level_name, selection,

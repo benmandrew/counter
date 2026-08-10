@@ -143,6 +143,26 @@ H2H_TLSF_SPECS: list[str] = [
     "arbiter-aurus",
 ]
 
+# The arbitration corpus of the 2026-08-10 diversity probe. 2026-07-31-replicate
+# found nsga2-apportion (then nsga2-replicate) repairing `arbiter` 120/120 where
+# nsga2-truncate managed 0/120 — the only place either NSGA-II scheme has ever
+# separated on found_repair, and the lever the arbiter-hp and arbiter-padd
+# campaigns hunted through p_add_assumption without finding. That result rests on
+# one family, so this list is every fixes-backed family whose unrealizability is
+# an arbitration conflict: the seven arbiters, plus amba (a bus arbiter) and
+# load-balancer (arbitration over servers). Six of the nine did not exist in the
+# corpus when replicate ran.
+#
+# lily02 is the tenth and is not an arbiter. It is the counter-signal control:
+# replicate's apportion arm cost it implies_ideal 1.00 -> 0.44, so a probe that
+# only sampled families the scheme helps would report the upside alone.
+ARBITER_PROBE_SPECS: list[str] = [
+    "arbiter", "arbiter-aurus", "arbiter-handshake", "full-arbiter",
+    "prioritized-arbiter", "round-robin-arbiter", "simple-arbiter",
+    "amba", "load-balancer",
+    "lily02",
+]
+
 # Unified lookup for run_one()/--specs; each profile picks its own subset.
 SPECS: dict[str, dict[str, Path]] = {**FRETISH_SPECS, **TLSF_SPECS}
 
@@ -998,6 +1018,51 @@ PROFILES: dict[str, dict] = {
         "configs_dir": EXPERIMENTS_DIR / "configs-elitism-tlsf",
         "results_dir": EXPERIMENTS_DIR / "results-elitism-tlsf",
         "results_csv": EXPERIMENTS_DIR / "results-elitism-tlsf.csv",
+        # jobs=1 for the same RAM reason as every other TLSF profile.
+        "default_jobs": 1,
+    },
+    # Does nsga2-apportion's diversity unlock the arbiter family, or only the one
+    # `arbiter` spec? See experiments/2026-08-10-arbiter-probe/PLAN.md for the
+    # pre-registered decision rule. This is a generality probe, not a rerun of
+    # 2026-07-31-replicate: that campaign's decision failed on FRETISH cost and
+    # on the compute-matched control, neither of which this can reopen, and it
+    # deliberately carries no arm C for the same reason.
+    #
+    # Both schemes, one level. Sweep R restricted to elit0.1 pins elitism_rate
+    # into the archived config at the shipped default rather than inheriting it,
+    # because 2026-08-07-elitism may yet move that default and an inherited key
+    # would silently restate what this campaign ran under.
+    #
+    # Generate the configs with
+    #   python scripts/gen_configs.py --tlsf \
+    #       --schemes nsga2-truncate nsga2-apportion --sweeps R --levels elit0.1 \
+    #       --out-dir experiments/configs-arbiter-probe
+    "arbiter-probe": {
+        "schemes": ["nsga2-truncate", "nsga2-apportion"],
+        "weakenings": None,
+        "metrics": None,
+        "repair_modes": None,
+        "sweeps": ["R"],
+        "levels": {"R": ["elit0.1"]},
+        "specs": list(ARBITER_PROBE_SPECS),
+        # 40 seeds x 9 arbiter families = 360 pooled pairs. The effect under test
+        # is the replicate arbiter split (0/120 vs 120/120); 40 pairs per family
+        # resolve ~0.3 absolute on found_repair, which is far coarser than that
+        # split and still fine enough to separate "unlocks the family" from
+        # "unlocked one spec". Seed-major disjoint ranges across av2/av3.
+        "seeds": list(range(40)),
+        # elitism-tlsf's flat 900 s on the same operating point and hosts. Sized
+        # never to bite: replicate censored its treatment arm alone with caps cut
+        # to nsga2's costs, and apportion is the treatment arm here too.
+        "timeout_caps": {spec: 900 for spec in ARBITER_PROBE_SPECS},
+        # apportion's whole claim is more distinct survivors, so it returns more
+        # repairs and compare's cost scales with them — the same asymmetry that
+        # censored replicate's comparisons at the 600 s default.
+        "compare_timeout": 1800,
+        "baseline_aliases": {},
+        "configs_dir": EXPERIMENTS_DIR / "configs-arbiter-probe",
+        "results_dir": EXPERIMENTS_DIR / "results-arbiter-probe",
+        "results_csv": EXPERIMENTS_DIR / "results-arbiter-probe.csv",
         # jobs=1 for the same RAM reason as every other TLSF profile.
         "default_jobs": 1,
     },

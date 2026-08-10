@@ -33,7 +33,11 @@ constexpr const char* k_manifest_filename = "run.json";
 // 3 added input_screen, so a campaign can partition its runs on whether the
 // input itself failed a correctness check rather than grepping the log for the
 // warning.
-constexpr int k_schema_version = 3;
+// 4 added n_weak_operator_unresolved. It counts satisfiability queries
+// abandoned rather than answered, so a run that reports repairs with a
+// non-zero count screened less than a run reporting the same repairs with
+// zero -- which is not visible from any other field.
+constexpr int k_schema_version = 4;
 
 // The inverse of the spellings config_io.cpp parses. It has no table to
 // borrow -- it only ever goes string to enum -- so these must be kept in step
@@ -213,6 +217,8 @@ void write_run_manifest(const std::string& output_dir,
         {"config", config_json(cfg)},
         {"tool_calls", tool_calls_json()},
         {"n_constant_folded", SatisfiabilityChecker::n_constant_folded.load()},
+        {"n_weak_operator_unresolved",
+         SatisfiabilityChecker::n_weak_operator_unresolved.load()},
         {"n_tautology_substitutions", Ltl2tgbaStats::n_tautology_substitutions},
         {"fitness_cache", fitness_cache_json()}};
 

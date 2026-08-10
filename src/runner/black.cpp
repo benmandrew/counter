@@ -127,15 +127,50 @@ std::optional<bool> SatisfiabilityChecker::check_satisfiability(
     const auto timeout_s =
         std::chrono::ceil<std::chrono::seconds>(m_timeout).count();
     // Pass ltl_formula (not normalised) to black. black does parse SPOT's
-    // compact operator notation ("GFa", "a W b"), but not every token SPOT can
-    // emit: "0"/"1" are a syntax error and "xor" is unsupported. The original
+    // compact operator notation ("GFa"), but not every token SPOT can emit:
+    // "0"/"1" are a syntax error and "xor" is unsupported. The original
     // formula is always otherwise black-compatible because it comes from
     // requirement_to_ltl / implication check construction. The normalised form
     // is the cache key.
-    const std::vector<std::string> command = {
-        black, "solve",
-        "-t",  std::to_string(timeout_s),
-        "-f",  to_black_constants(ltl_formula)};
+    //
+    // Weak until is the exception, and it is a soundness problem rather than a
+    // parsing one. black reads "a W b" as weak until, exactly as SPOT writes
+    // it -- its own trace checker defines it as `G a | (a U b)`. But its
+    // infinite-trace encoding puts a negated one into NNF as `(!a) M (!b)`,
+    // and the loop-closure rules recognise only F and U as eventualities, so
+    // an M request is never forced to be fulfilled and a lasso that never
+    // satisfies it is accepted. A validity check is phrased as "is !(phi)
+    // unsatisfiable", which puts every W under exactly one negation, so black
+    // answers SAT where the truth is UNSAT -- a guarantee that says nothing
+    // then reads as one that says something, and the vacuity screen passes it.
+    // Confirmed against black 25.09.0 (encoding.cpp `_get_ev` handles only
+    // `eventually` and `until`); `(G !a) & (a M b)` is SAT there, and black's
+    // own `check` rejects the model its `solve` returns. Unchanged from
+    // v0.10.8 to v26.05.0, so no upgrade retires this.
+    //
+    // Rewriting W and M away in terms of U and R keeps black on the operators
+    // its loop rules do cover. Guarded by a lexical scan, so the overwhelming
+    // majority of queries -- every FRETISH one, since requirement_to_ltl never
+    // emits W -- pay nothing.
+    std::string query = ltl_formula;
+    if (has_weak_operator(query)) {
+        const std::optional<std::string> rewritten =
+            rewrite_weak_operators(query);
+        if (!rewritten.has_value()) {
+            // No answer beats a wrong one: every caller treats nullopt
+            // conservatively and keeps the candidate, whereas black's answer
+            // here would be confidently wrong in the direction that admits a
+            // vacuous repair.
+            n_weak_operator_unresolved++;
+            std::scoped_lock lock(m_cache_mutex);
+            m_cache.emplace(normalised, std::nullopt);
+            return std::nullopt;
+        }
+        query = *rewritten;
+    }
+    const std::vector<std::string> command = {black, "solve",
+                                              "-t",  std::to_string(timeout_s),
+                                              "-f",  to_black_constants(query)};
     const auto start = std::chrono::steady_clock::now();
     const ProcessResult result = execute_and_capture(command, m_timeout);
     const double elapsed =

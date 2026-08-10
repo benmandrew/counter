@@ -252,9 +252,17 @@ def hpp_defaults(source):
     Handles both spellings the struct uses: ``T name = value;`` for the scalars
     and ``std::chrono::milliseconds name{value};`` for the tool timeouts. C++
     digit separators are stripped so 10'000 reads as 10000.
+
+    Comment lines are dropped first. ``[^;]+`` spans newlines, so prose of the
+    form ``p = 0.0002`` in a doc comment matches through to the next semicolon
+    and eats the initialiser that follows it -- which is a member documenting
+    its own measured default breaking the check on that default.
     """
     body = source[source.index("struct Config {") :]
     body = body[: body.index("\n};")]
+    body = "\n".join(
+        line for line in body.splitlines() if not line.lstrip().startswith("//")
+    )
     found = {}
     for name, value in re.findall(r"(\w+)\s*=\s*([^;]+);", body):
         found[name] = value.strip()

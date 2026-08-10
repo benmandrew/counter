@@ -16,14 +16,16 @@ generations     = 10
 population_size = 200
 selection_rate  = 0.5
 elitism_rate    = 0.1  # elites are a subset of the parents, so this must stay < selection_rate.
-                       # Redundant on paper under NSGA-II, but 0 measurably admits
-                       # tautological repairs on lily02 -- see include/config.hpp.
+                       # Redundant on paper under NSGA-II. Kept at 0.1 on cost alone:
+                       # 0 buys a little yield for 8-16% more wall time -- see
+                       # include/config.hpp and experiments/2026-08-07-elitism.
 crossover_rate  = 0.1
 mutation_rate   = 1.0  # per offspring, unlike the per-requirement rates in [mutation]
 # "nsga2-truncate" | "nsga2-apportion" | "weighted". Under either NSGA-II scheme
 # the [fitness] weights only select which components are active (weight > 0);
 # they no longer bias selection, and the (mu+lambda) survivor pooling is already
-# elitist, so elitism_rate = 0 is the natural companion.
+# elitist -- which is why elitism_rate is redundant on paper, though measurably
+# cheaper than 0 in practice.
 selection_scheme = "nsga2-truncate"
 
 [fitness]

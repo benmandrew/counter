@@ -192,18 +192,29 @@ struct Config {
     ///
     /// Under either NSGA-II scheme this is redundant on paper -- the
     /// (mu+lambda) survivor step already pools parents with offspring and keeps
-    /// the best -- and it costs something, because elites bypass the offspring
-    /// filter chain, so this fraction of every generation skips
-    /// run_well_separation_filter and run_vacuity_filter. Both point at 0, and
-    /// it stays 0.1 anyway, because the one measurement taken disagrees:
-    /// dropping it to 0 on examples/lily02 at seed 42 leaves the scalar fitness
-    /// a shade higher but returns structurally weaker repairs, one of them a
-    /// tautology (`req W true`), where 0.1 returns three structured rewrites of
-    /// the culprit guarantee. Aggregate fitness prefers a gutted specification,
-    /// and nothing on the TLSF path screens one out, so elitism is evidently
-    /// acting as a brake on that. Do not change this default on the argument
-    /// from redundancy alone; it needs an A/B over the corpus that counts
-    /// tautological repairs, not just implies_ideal.
+    /// the best -- so the argument from redundancy says 0. It stays 0.1 on
+    /// cost, which is the only axis the A/B separated the two on.
+    ///
+    /// That A/B is experiments/2026-08-07-elitism: 2,794 paired runs over 24
+    /// spec families, nsga2-truncate, both paths, decision rule pre-registered.
+    /// Quality and yield came out flat or slightly *against* 0.1 -- FRETISH
+    /// implies_ideal 0.593 at 0 against 0.570 at 0.1, TLSF found_repair 0.746
+    /// against 0.714 with the interval excluding zero -- so nothing here says
+    /// elitism helps the search. What it says is that 0 costs 16% more wall
+    /// time on TLSF and 8% on FRETISH for that, which is the criterion the
+    /// rule turned on.
+    ///
+    /// The tautological repair on examples/lily02 that this default used to
+    /// rest on was not an elitism effect. The campaign leaked seven such
+    /// repairs, three at 0 and four at 0.1, so the mechanism does not
+    /// distinguish the arms; they were black answering a validity query wrong
+    /// on weak-until, fixed in fb4c3ed. Elites bypassing the offspring filter
+    /// chain no longer reaches the output either way, since the final gate
+    /// applies every correctness check unconditionally.
+    ///
+    /// So the trade is +3.3pp TLSF yield for +16% wall time. Revisit this if
+    /// throughput ever stops being the binding constraint; the redundancy
+    /// argument alone is still not a reason to move it.
     double elitism_rate = 0.1;
     double crossover_rate = 0.1;
     double mutation_rate = 1.0;

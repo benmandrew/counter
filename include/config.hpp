@@ -193,17 +193,27 @@ struct Config {
     /// Under either NSGA-II scheme this is redundant on paper -- the
     /// (mu+lambda) survivor step already pools parents with offspring and keeps
     /// the best -- and it costs something, because elites bypass the offspring
-    /// filter chain, so this fraction of every generation skips
-    /// run_well_separation_filter and run_vacuity_filter. Both point at 0, and
-    /// it stays 0.1 anyway, because the one measurement taken disagrees:
-    /// dropping it to 0 on examples/lily02 at seed 42 leaves the scalar fitness
-    /// a shade higher but returns structurally weaker repairs, one of them a
-    /// tautology (`req W true`), where 0.1 returns three structured rewrites of
-    /// the culprit guarantee. Aggregate fitness prefers a gutted specification,
-    /// and nothing on the TLSF path screens one out, so elitism is evidently
-    /// acting as a brake on that. Do not change this default on the argument
-    /// from redundancy alone; it needs an A/B over the corpus that counts
-    /// tautological repairs, not just implies_ideal.
+    /// filter chain, so this fraction of every generation skips the correctness
+    /// stages. That costs search pressure rather than output correctness, the
+    /// gate in step 5 screening what elites carried in either way (d7733fc).
+    /// Both arguments point at 0, and the A/B that
+    /// tested them (2026-08-07, 600 paired FRETISH runs and 796 paired TLSF
+    /// runs) does not contradict them: quality is non-inferior at 0, with
+    /// implies_ideal moving by -0.023 and -0.008 against a +0.05 margin fixed
+    /// before launch, and TLSF yield is better at 0 -- 0.746 against 0.714,
+    /// McNemar p = 0.0002.
+    ///
+    /// What keeps it at 0.1 is wall-clock time alone: 0 costs 16.2% more on
+    /// TLSF and 8.2% more on FRETISH, against a 10% bound. So the shipped
+    /// default trades TLSF yield for speed. Set 0 when finding a repair at all
+    /// matters more than finishing quickly.
+    ///
+    /// The lily02 anecdote this comment used to cite is retired. That campaign
+    /// audited every written repair for a guarantee that reduces to `true` and
+    /// found them in both arms (3 runs at 0, 4 at 0.1), so they never measured
+    /// elitism: each one is `black` answering SAT on the negation of a valid
+    /// weak-until formula, which fb4c3ed fixed by rewriting `W` away before
+    /// querying it.
     double elitism_rate = 0.1;
     double crossover_rate = 0.1;
     double mutation_rate = 1.0;

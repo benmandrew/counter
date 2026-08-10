@@ -1,0 +1,63 @@
+{
+  "campaign": "2026-08-10-arbiter-probe",
+  "attribution": "recorded",
+  "generated_on": "2026-08-10",
+  "status": "launched 2026-08-10T15:37+0100 on av2 and av3 — 800 runs (400 per host), single stage, in progress",
+  "method": "Recorded at launch, not reconstructed. Both hosts report counter --version and compare --version into the per-host launch manifest, and run_experiments.py refused to start until each binary's commit matched the working tree's HEAD with dirty=0; that gate was left on, so no --allow-stale-binary was used.",
+  "question": "Whether nsga2-apportion's yield advantage on examples/arbiter (120/120 against nsga2-truncate's 0/120 in 2026-07-31-replicate) is a family-level effect across arbitration specifications or a property of that one spec. The pre-registered decision rule is in PLAN.md §7.",
+  "stages": [
+    {
+      "stage": "arbiter-probe",
+      "rows_expected": 800,
+      "binary_commit": {
+        "sha": "536a3aeb017811331e454004cf34bd1bddc12db2",
+        "short": "536a3ae",
+        "subject": "chore(experiments): add the arbiter-probe campaign profile and plan",
+        "commit_date": "2026-08-10 15:36",
+        "confidence": "recorded",
+        "evidence": "counter --version and compare --version both reported commit=536a3ae, dirty=0 on each host at launch, written into experiments/results-arbiter-probe-manifest-avlab12.json and -av3.json. Every CSV row carries the commit and dirty columns."
+      },
+      "hosts": {
+        "av2 (avlab12)": "seeds 0-19, 400 runs",
+        "av3": "seeds 20-39, 400 runs"
+      },
+      "design": {
+        "schemes": ["nsga2-truncate", "nsga2-apportion"],
+        "sweep": "R",
+        "levels": ["elit0.1"],
+        "operating_point": "gen 10 / pop 200 (TLSF default)",
+        "specs": [
+          "arbiter", "arbiter-aurus", "arbiter-handshake", "full-arbiter",
+          "prioritized-arbiter", "round-robin-arbiter", "simple-arbiter",
+          "amba", "load-balancer", "lily02"
+        ],
+        "seeds_per_host": 20,
+        "jobs": 1,
+        "timeout_cap_s": 900,
+        "compare_timeout_s": 1800
+      },
+      "note": "Own CSV (results-arbiter-probe.csv) and configs (configs-arbiter-probe/), shared with no other profile. jobs=1 for ltlsynt RAM, as with every TLSF profile; the ltl2tgba orphan-reaper cron was verified installed on both hosts before launch."
+    }
+  ],
+  "config_vintage": {
+    "elitism_rate": "Pinned to 0.1 in the emitted config rather than inherited from the binary. 2026-08-07-elitism may move that default, and gen_configs.py writes a key only where a sweep overrides it, so an inherited value would leave this archive silently restating whatever the binary later defaults to. Sweep R restricted to its elit0.1 level writes the number down.",
+    "metric": "The emitted config pins model_counting.metric = \"direct\", where config.hpp defaults to Logarithmic. This is the gen_configs.py campaign baseline that every prior sweep shares, including 2026-07-31-replicate, whose finding this campaign extends. Matching the campaign under test was preferred to matching the shipped default; see PLAN.md §4.",
+    "unpinned": "run_vacuity and run_well_separation are deliberately left unpinned and take the binary's defaults at 536a3ae, both true. Reproducing this campaign requires building 536a3ae rather than writing those keys back."
+  },
+  "comparability": {
+    "to_2026-07-31-replicate": "Not comparable row for row. The engine has since gained the tautology screen (3869c53), the fold of the false-condition filter into vacuity, the correct-offspring rescue fix, and the flip of run_well_separation and allow_output_assumptions to true (86e463c). Both arms here are collected fresh at one commit, so the paired within-campaign comparison is internally valid and no cross-campaign join is required by the decision rule.",
+    "selection_scheme_names": "This is the first campaign archived under the post-2026-08-06 spellings. Its configs set nsga2-truncate and nsga2-apportion, and its CSV selection column reads the same, so canonical_scheme() is an identity on these rows rather than a rename."
+  },
+  "vendored_scripts": {
+    "source_commit": "536a3aeb017811331e454004cf34bd1bddc12db2",
+    "files": {
+      "gen_configs.py": "8adc54fe14442051c5b96f9b6bca400e04823ac5",
+      "run_experiments.py": "1310882e52b1b33173b8cfbbcfb07a88500ea86e",
+      "merge_experiments.py": "9db81e779a5e1c929a331f82e2154583ddd66af0"
+    },
+    "check": "git hash-object experiments/2026-08-10-arbiter-probe/scripts/<file>"
+  },
+  "reachable_from_main": false,
+  "branch": "feat/arbiter-probe",
+  "branch_note": "Branched from feat/elitism-campaign at 2ebe3a9, which is itself unmerged. Both branches are pushed to origin. If either is split into reconstructed pull requests rather than merged, the shas recorded here stop resolving and an annotated provenance tag must be created to hold them, as provenance/replicate-campaign does for 2026-07-31-replicate."
+}

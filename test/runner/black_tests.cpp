@@ -4,6 +4,7 @@
 #include <string>
 
 #include "runner/black.hpp"
+#include "runner/ltlfilt.hpp"
 #include "test_suite.hpp"
 #include "test_support.hpp"
 
@@ -122,6 +123,69 @@ void test_implication_check_with_vacuous_conjunct(
            "should be unsatisfiable");
 }
 
+// black parses "a W b" as weak until, as SPOT writes it, but its
+// infinite-trace encoding is unsound on the strong-release its NNF derives
+// from a negated one: the loop-closure rules treat only F and U as
+// eventualities, so nothing forces M's obligation and black reports SAT for a
+// negation that is UNSAT. Invoked directly on any case below it gets them
+// wrong. check_satisfiability rewrites W and M away first, so these are the
+// cases that pin the rewrite -- each is a validity check, the shape that puts
+// a W under exactly one negation.
+void test_weak_until_validity(const std::chrono::milliseconds& timeout) {
+    struct Case {
+        const char* formula;
+        bool satisfiable;
+    };
+    const std::array<Case, 5> cases{{
+        // The three below are guarantees the 2026-08-07 elitism campaign
+        // actually wrote out as repairs: each is valid, so each says nothing,
+        // and the vacuity screen should have caught all three. ltlfilt's
+        // --simplify does not fold any of them to a constant, so they reach
+        // black and pin the rewrite rather than the constant-folding path in
+        // front of it.
+        {"!(F((r_1) W (X(!(r_1)))))", false},
+        {"!(G(F((g1) W (X(!(g1))))))", false},
+        {"!(F(((g_1) W (!(F(r_1)))) | (!(X(X(g_1))))))", false},
+        // A W that genuinely is falsifiable must stay falsifiable: the rewrite
+        // has to preserve the answer, not force every weak-until query to
+        // UNSAT.
+        {"!((a) W (b))", true},
+        // G a entails a W b, the weak operator's defining case. ltlfilt folds
+        // this one to a constant before black is consulted, so it pins the
+        // first line of defence rather than the rewrite -- kept for the same
+        // reason test_boolean_constants keeps its folded cases.
+        {"!((G(a)) -> ((a) W (b)))", false},
+    }};
+    SatisfiabilityChecker checker;
+    checker.set_timeout(timeout);
+    for (const Case& test_case : cases) {
+        const std::optional<bool> result =
+            checker.check_satisfiability(test_case.formula);
+        if (!result.has_value()) {
+            fail(std::string("black-runner: ") + test_case.formula +
+                 " should be decided, not indeterminate");
+            continue;
+        }
+        expect(*result == test_case.satisfiable,
+               std::string("black-runner: ") + test_case.formula +
+                   " should be " +
+                   (test_case.satisfiable ? "satisfiable" : "unsatisfiable"));
+    }
+}
+
+// The lexical guard must not fire on atoms that merely contain W or M, or
+// every formula over such atoms would pay an ltlfilt exec it does not need.
+void test_weak_operator_scan_respects_token_boundaries() {
+    expect(!has_weak_operator("(G(WAIT)) & (F(ALARM))"),
+           "ltlfilt: W and M inside atom names are not operators");
+    expect(!has_weak_operator("(G(m_write)) | (F(w_M))"),
+           "ltlfilt: W and M inside underscored atoms are not operators");
+    expect(has_weak_operator("(a) W (b)"),
+           "ltlfilt: a standalone W is an operator");
+    expect(has_weak_operator("(a) M (b)"),
+           "ltlfilt: a standalone M is an operator");
+}
+
 }  // namespace
 
 void run_black_runner_tests(const std::chrono::milliseconds& timeout) {
@@ -132,4 +196,6 @@ void run_black_runner_tests(const std::chrono::milliseconds& timeout) {
     test_boolean_constants(timeout);
     test_constant_rewrite_respects_token_boundaries(timeout);
     test_implication_check_with_vacuous_conjunct(timeout);
+    test_weak_until_validity(timeout);
+    test_weak_operator_scan_respects_token_boundaries();
 }

@@ -94,6 +94,9 @@ void print_diagnostics_report() {
     }
     std::cout << "\nConstant-folded (decided by ltlfilt, no black call): "
               << SatisfiabilityChecker::n_constant_folded << "\n";
+    std::cout << "Weak-operator queries left unresolved (ltlfilt could not "
+                 "rewrite W/M, black is unsound on them): "
+              << SatisfiabilityChecker::n_weak_operator_unresolved << "\n";
     std::cout << "\nFitness cache: "
               << AggregateWeightedFitnessFunction::n_cache_hits << " hits / "
               << AggregateWeightedFitnessFunction::n_cache_misses

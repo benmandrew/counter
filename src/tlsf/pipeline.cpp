@@ -13,6 +13,7 @@
 #include "config.hpp"
 #include "dashboard.hpp"
 #include "evolve.hpp"
+#include "filter/correctness.hpp"
 #include "fitness/function.hpp"
 #include "genetic/generation.hpp"
 #include "genetic/random_source.hpp"
@@ -20,7 +21,9 @@
 #include "repair_modes.hpp"
 #include "repair_output.hpp"
 #include "runner/black.hpp"
+#include "runner/spot.hpp"
 #include "survivors.hpp"
+#include "tlsf/filter.hpp"
 #include "tlsf/fitness.hpp"
 #include "tlsf/parser.hpp"
 #include "tlsf/specification.hpp"
@@ -54,6 +57,19 @@ int run_repair(const std::string& input_path, const std::string& output_dir,
     } catch (const std::invalid_argument& exc) {
         std::cerr << "parse error: " << exc.what() << "\n";
         return 1;
+    }
+
+    // As on the FRETISH path: the seed population is copies of this
+    // specification and no filter screens them, so the run says at the start
+    // what the gate would otherwise only reveal at the end. MUC repair needs no
+    // separate screen -- extraction leaves the environment side untouched, and
+    // well-separation reads only that side.
+    if (const std::optional<std::string> failed = first_failing_check(
+            original, tlsf_correctness_checks(global_sat_checker(),
+                                              global_real_checker()));
+        failed.has_value()) {
+        InputScreen::failed_check = *failed;
+        std::cerr << input_screen_warning(*failed);
     }
 
     const std::optional<std::size_t> maybe_seed = random_source.seed();

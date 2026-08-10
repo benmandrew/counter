@@ -319,6 +319,21 @@ FilterFunctionT<tlsf::Specification> tlsf_make_vacuity_filter(
             }};
 }
 
+bool tlsf_is_not_well_separated(const tlsf::Specification& spec,
+                                RealizabilityChecker& checker) {
+    if (!assumptions_reference_output(spec)) {
+        return false;
+    }
+    // Not well-separated exactly when (assumptions) -> false is realizable: the
+    // system has a strategy forcing its own assumptions to fail. An undecided
+    // query reads as realizable and so drops the candidate, for the reason
+    // given in filter/well_separation.cpp.
+    const std::string formula = "(" + spec.assumption_ltl() + ") -> (false)";
+    return checker
+        .check_realizability_ltl(formula, spec.m_inputs, spec.m_outputs)
+        .value_or(true);
+}
+
 FilterFunctionT<tlsf::Specification> tlsf_make_well_separation_filter(
     RealizabilityChecker& checker, std::size_t max_in_flight) {
     return {
@@ -326,24 +341,37 @@ FilterFunctionT<tlsf::Specification> tlsf_make_well_separation_filter(
         [&checker, max_in_flight](const std::vector<tlsf::Specification>& pop) {
             return filter_in_parallel(
                 pop, max_in_flight,
-                [&checker](const tlsf::Specification& spec) {
-                    if (!assumptions_reference_output(spec)) {
-                        return true;
-                    }
-                    // Not well-separated exactly when (assumptions) ->
-                    // false is realizable: the system has a strategy
-                    // forcing its own assumptions to fail. An undecided
-                    // query reads as realizable and so drops the
-                    // candidate, for the reason given in
-                    // filter/well_separation.cpp.
-                    const std::string formula =
-                        "(" + spec.assumption_ltl() + ") -> (false)";
-                    return !checker
-                                .check_realizability_ltl(formula, spec.m_inputs,
-                                                         spec.m_outputs)
-                                .value_or(true);
+                [&checker](const tlsf::Specification& candidate) {
+                    return !tlsf_is_not_well_separated(candidate, checker);
                 });
         }};
+}
+
+FilterFunctionT<tlsf::Specification> tlsf_make_predicate_filter(
+    std::string name, std::function<bool(const tlsf::Specification&)> predicate,
+    std::size_t max_in_flight, FilterKind kind) {
+    return {std::move(name),
+            [predicate = std::move(predicate),
+             max_in_flight](const std::vector<tlsf::Specification>& pop) {
+                return filter_in_parallel(pop, max_in_flight, predicate);
+            },
+            kind};
+}
+
+std::vector<CorrectnessCheckT<tlsf::Specification>> tlsf_correctness_checks(
+    SatisfiabilityChecker& sat, RealizabilityChecker& real) {
+    std::vector<CorrectnessCheckT<tlsf::Specification>> checks;
+    checks.push_back({"vacuity",
+                      [&sat](const tlsf::Specification& spec) {
+                          return !tlsf_is_vacuous(spec, sat);
+                      },
+                      &Config::run_vacuity_filter});
+    checks.push_back({"not-well-separated",
+                      [&real](const tlsf::Specification& spec) {
+                          return !tlsf_is_not_well_separated(spec, real);
+                      },
+                      &Config::run_well_separation_filter});
+    return checks;
 }
 
 std::optional<bool> tlsf_spec_implies(const tlsf::Specification& from,

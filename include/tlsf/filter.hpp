@@ -6,7 +6,10 @@
 ///        weakening, and implication filters.
 
 #include <optional>
+#include <string>
+#include <vector>
 
+#include "filter/correctness.hpp"
 #include "genetic/generation.hpp"
 #include "runner/black.hpp"
 #include "runner/spot.hpp"
@@ -86,6 +89,22 @@ bool tlsf_is_vacuous(const tlsf::Specification& spec,
 FilterFunctionT<tlsf::Specification> tlsf_make_vacuity_filter(
     std::size_t max_in_flight = 1);
 
+/// Whether @p spec is *not* well-separated: whether the system can vacuously
+/// satisfy it by forcing its own assumptions to fail, i.e. whether
+/// `(assumption-side) -> false` is realizable. The TLSF counterpart of
+/// specification_is_not_well_separated, and shared the same three ways its
+/// FRETISH twin is — the per-generation filter, the final gate, and the input
+/// screen.
+///
+/// The ltlsynt query runs only when an assumption-side formula
+/// (INITIALLY/REQUIRE/ASSUME) references an output atom; assumptions over
+/// inputs alone are well-separated by construction and skip the solver. An
+/// undecided query reads as *not* well-separated, inverting the usual reading
+/// of a failed synthesis, because here unrealizable is the answer that keeps a
+/// candidate.
+bool tlsf_is_not_well_separated(const tlsf::Specification& spec,
+                                RealizabilityChecker& checker);
+
 /// Returns a filter dropping specifications that are not well-separated: ones
 /// where the system can vacuously satisfy the spec by forcing its own
 /// assumptions to fail, i.e. `(assumption-side) -> false` is realizable. The
@@ -102,6 +121,31 @@ FilterFunctionT<tlsf::Specification> tlsf_make_vacuity_filter(
 ///                      gated by Config::max_concurrent_realizability.
 FilterFunctionT<tlsf::Specification> tlsf_make_well_separation_filter(
     RealizabilityChecker& checker, std::size_t max_in_flight = 1);
+
+/// Wraps a per-element predicate as a population-level filter, the TLSF
+/// counterpart of make_predicate_filter. Verdicts are collected by index and
+/// the survivors rebuilt in population order, so a parallel filter drops
+/// exactly the same candidates in the same order as a serial one.
+///
+/// @param name          Display name used in diagnostic output
+/// @param predicate     A predicate returning true for specifications to keep
+/// @param max_in_flight Concurrent predicate evaluations; 1 evaluates serially
+/// @param kind          Whether the fallback may re-admit this filter's rejects
+FilterFunctionT<tlsf::Specification> tlsf_make_predicate_filter(
+    std::string name, std::function<bool(const tlsf::Specification&)> predicate,
+    std::size_t max_in_flight = 1, FilterKind kind = FilterKind::Correctness);
+
+/// The TLSF correctness checks, in the same order and under the same names as
+/// correctness_checks on the FRETISH path, and read the same three ways: the
+/// per-generation chain, the final gate, and the input screen. See
+/// filter/correctness.hpp for why the table is the single source rather than
+/// three hand-mirrored lists.
+///
+/// @param sat  Satisfiability checker (`black`); captured by reference into the
+///             returned predicates and must outlive them
+/// @param real Realizability checker (`ltlsynt`); likewise
+std::vector<CorrectnessCheckT<tlsf::Specification>> tlsf_correctness_checks(
+    SatisfiabilityChecker& sat, RealizabilityChecker& real);
 
 /// Whether spec @p from logically implies spec @p dest: true when
 /// `(from.to_ltl()) & !(dest.to_ltl())` is unsatisfiable, false when

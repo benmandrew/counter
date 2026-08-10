@@ -5,6 +5,7 @@ add_executable(counter_tests
     runner/ltlfilt_tests.cpp
     runner/process_tests.cpp
     runner/spot_tests.cpp
+    filter/correctness_tests.cpp
     filter/implication_tests.cpp
     filter/vacuity_tests.cpp
     filter/well_separation_tests.cpp
@@ -96,6 +97,7 @@ add_test(NAME counter_tests.semantic_similarity COMMAND counter_tests semantic_s
 add_test(NAME counter_tests.syntactic_similarity COMMAND counter_tests syntactic_similarity)
 add_test(NAME counter_tests.fitness_function COMMAND counter_tests fitness_function)
 add_test(NAME counter_tests.status COMMAND counter_tests status)
+add_test(NAME counter_tests.correctness COMMAND counter_tests correctness)
 add_test(NAME counter_tests.implication_filter COMMAND counter_tests implication_filter)
 add_test(NAME counter_tests.vacuity_filter COMMAND counter_tests vacuity_filter)
 add_test(NAME counter_tests.well_separation_filter COMMAND counter_tests well_separation_filter)

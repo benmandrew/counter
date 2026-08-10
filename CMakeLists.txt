@@ -73,6 +73,7 @@ target_sources(counter_fitness PRIVATE
     src/runner/spot.cpp
     src/thread_pool.cpp
     src/filter/bloat.cpp
+    src/filter/correctness.cpp
     src/filter/implication.cpp
     src/filter/implication_check.cpp
     src/filter/vacuity.cpp

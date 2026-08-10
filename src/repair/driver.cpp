@@ -15,6 +15,7 @@
 #include "crash/crash_handler.hpp"
 #include "dashboard.hpp"
 #include "evolution.hpp"
+#include "filter/correctness.hpp"
 #include "fitness/function.hpp"
 #include "genetic/generation.hpp"
 #include "genetic/random_source.hpp"
@@ -23,6 +24,7 @@
 #include "reports.hpp"
 #include "requirement.hpp"
 #include "runner/black.hpp"
+#include "runner/spot.hpp"
 #include "serialisation.hpp"
 #include "tlsf/pipeline.hpp"
 
@@ -115,6 +117,17 @@ int run_fretish_repair(const Config& cfg, const std::string& input_path,
     } catch (const std::exception& exc) {
         std::cerr << exc.what() << "\n";
         return 1;
+    }
+    // Screened before anything is built from it. The seed population is
+    // population_size copies of this specification and no filter ever sees
+    // them, so a property the gate will reject at the output is worth saying
+    // out loud at the start of the run rather than at the end of it.
+    if (const std::optional<std::string> failed = first_failing_check(
+            original_spec,
+            correctness_checks(global_sat_checker(), global_real_checker()));
+        failed.has_value()) {
+        InputScreen::failed_check = *failed;
+        std::cerr << input_screen_warning(*failed);
     }
     AggregateWeightedFitnessFunction fitness_function =
         get_fitness_function(original_spec, cfg);

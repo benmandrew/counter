@@ -560,7 +560,12 @@ PROFILES: dict[str, dict] = {
         # assumption at p_add_assumption=0.05), so the overhead over baseline is
         # 0-30%. Caps are ~6-20x that max: generous enough never to censor a
         # slow-but-progressing run, tight enough to kill a true runaway in
-        # minutes (ltlsynt_timeout_ms=500 already bounds each query).
+        # minutes. Those caps were sized while ltlsynt_timeout_ms was 500, so
+        # each query was bounded at half a second; it is 10000 from 2026-08-11
+        # (see TLSF_LTLSYNT_TIMEOUT_MS in gen_configs.py), which raises the
+        # per-query bound 20x. This profile's spec set is light enough that the
+        # caps still hold, but any profile covering amba is not — recalibrate
+        # before reusing a cap table across that change.
         # lift has a heavy runtime tail the 3-seed calibration missed (hard
         # seeds run 100-600s+ across all arms, intrinsic to the spec, not the
         # well-sep/output-assumption feature), so it gets the muc/padd 600s cap
@@ -743,6 +748,12 @@ PROFILES: dict[str, dict] = {
         "levels": {"C": ["default", "no-halstead"]},
         "specs": list(TLSF_ABLATION_SPECS),
         "seeds": list(range(15)),
+        # A flat 600s over the whole set, sized while ltlsynt_timeout_ms was
+        # 500. amba no longer fits it: at the 10000 budget a gen5/pop100 probe
+        # took 404s, so gen10/pop200 will run past this cap and be censored —
+        # trading its old zero-yield for a timeout rather than a result.
+        # Recalibrate amba (and re-check the rest) before launching; see
+        # TLSF_LTLSYNT_TIMEOUT_MS in gen_configs.py.
         "timeout_caps": {s: 600 for s in TLSF_ABLATION_SPECS},
         "baseline_aliases": {},
         "configs_dir": EXPERIMENTS_DIR / "configs-ablate-tlsf",

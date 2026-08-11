@@ -71,6 +71,10 @@ Rows with `compare_timed_out = 1` are excluded and their count reported; the exc
 
 Per-spec McNemar with Holm correction is **reported but does not gate**. It exists to answer "which specs, if not all of them" without letting that question steer the primary.
 
+The analysis is `scripts/analyse_selection_default.py`, committed here **before launch** alongside this plan rather than written once the rows exist. A rule fixed in prose but implemented after the fact is only half pre-registered: every judgement call the prose leaves open — how a pair with one timed-out comparison is handled, whether criterion 4 reads the point estimate or the interval — gets made with the data visible. The script evaluates all five criteria itself and prints the decision, so the analyst's remaining discretion is which CSV to pass it. Its bootstrap seed is fixed for the same reason: an interval that can be resampled is an interval that can be resampled until it agrees.
+
+It is validated against a synthetic dataset with a planted effect — B beating A on yield while tying C — and recovers exactly that, reporting "the gain is compute, not scheme". That is the discrimination `2026-07-31-replicate` could not make and `2026-08-10-arbiter-probe` had no arm for, so it is the one worth testing before trusting.
+
 ## 7. Decision rule
 
 Fixed before launch.

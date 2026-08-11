@@ -565,6 +565,13 @@ TLSF_SWEEPS: list[tuple[str, list]] = [
     ("Q", TLSF_SWEEP_Q),
     ("R", TLSF_SWEEP_R),
     ("G", TLSF_SWEEP_G),
+    # The compute-matched control, on the same terms as the FRETISH grid's S:
+    # TLSF_SWEEP_R is SWEEP_R, so make_sweep_s already emits the right levels
+    # and main() rebuilds this entry from --compute-match-factor whichever table
+    # was selected. Registered here because 2026-08-11-selection-default asks
+    # its question on both paths, and a compute control on one of them would
+    # leave the other unable to separate a better search from a longer one.
+    ("S", make_sweep_s(DEFAULTS["generations"], DEFAULT_COMPUTE_MATCH_FACTOR)),
 ]
 
 TLSF_CONFIGS_DIR = Path(__file__).parent.parent / "experiments" / "configs-tlsf"

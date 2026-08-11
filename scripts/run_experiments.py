@@ -1061,6 +1061,123 @@ PROFILES: dict[str, dict] = {
         # jobs=1 for the same RAM reason as every other TLSF profile.
         "default_jobs": 1,
     },
+    # ── 2026-08-11-selection-default ────────────────────────────────────────
+    # Whether nsga2-apportion should replace nsga2-truncate as the shipped
+    # default. See experiments/2026-08-11-selection-default/PLAN.md for the
+    # pre-registered decision rule, its five criteria and the 0.05
+    # non-inferiority margin with the power calculation behind it.
+    #
+    # Three arms, and they are split across two profiles per path rather than
+    # crossed inside one. A single profile listing both schemes and both sweeps
+    # emits the full product, which would add a fourth cell -- apportion at
+    # matched generations -- that no criterion reads and that costs a third of
+    # the campaign's wall time. The -cm profiles therefore carry the compute
+    # control alone, and share the CSV and run directory of their R half so the
+    # three arms merge and analyse as one dataset. KEY_FIELDS includes `sweep`
+    # and `level_name`, so R/elit0.1 and S/cm-elit0.1 are distinct keys and the
+    # sharing cannot collide.
+    #
+    # The corpus is deliberately not enriched: every FRETISH spec and the whole
+    # 20-family TLSF corpus, with `arbiter` one family of twenty. 2026-08-10
+    # measured its effect on a corpus picked because that effect was there,
+    # which is why it could not speak to a default.
+    #
+    # Generate the R halves with
+    #   python scripts/gen_configs.py [--tlsf] \
+    #       --schemes nsga2-truncate nsga2-apportion --sweeps R --levels elit0.1 \
+    #       --out-dir experiments/configs-seldefault[-tlsf]
+    # and the compute control with the ratio measured in calibration (PLAN §5):
+    #   python scripts/gen_configs.py [--tlsf] --schemes nsga2-truncate \
+    #       --sweeps S --levels cm-elit0.1 --compute-match-factor <measured> \
+    #       --out-dir experiments/configs-seldefault[-tlsf]
+    "seldefault-fret": {
+        "schemes": ["nsga2-truncate", "nsga2-apportion"],
+        "weakenings": None,
+        "metrics": None,
+        "repair_modes": None,
+        "sweeps": ["R"],
+        "levels": {"R": ["elit0.1"]},
+        "specs": list(FRETISH_SPECS),
+        # 4 specs x 70 seeds = 280 pairs per contrast, which is what PLAN §7's
+        # power table requires for the 0.05 margin to clear at a true adverse
+        # effect of -0.01, given the 0.341 paired SD measured on the elitism
+        # campaign's 600 FRETISH pairs.
+        "seeds": list(range(70)),
+        "timeout_caps": {"takeoff": 900, "fsm": 900, "fsm-timing": 900,
+                         "fsm-combined": 1800},
+        # As arbiter-probe: apportion returns more repairs, and compare's cost
+        # scales with them.
+        "compare_timeout": 1800,
+        "baseline_aliases": {},
+        "configs_dir": EXPERIMENTS_DIR / "configs-seldefault",
+        "results_dir": EXPERIMENTS_DIR / "results-seldefault",
+        "results_csv": EXPERIMENTS_DIR / "results-seldefault.csv",
+        # 4 as on every FRETISH profile; ltlsynt is not in play here, so the
+        # per-call RAM ceiling that pins the TLSF profiles to 1 does not bind.
+        # Both halves must agree: wall_time_s is a response variable and arm C
+        # is defined by it, so a contention difference between the arms would
+        # land straight in the ratio that sets arm C's own generation count.
+        "default_jobs": 4,
+    },
+    "seldefault-fret-cm": {
+        "schemes": ["nsga2-truncate"],
+        "weakenings": None,
+        "metrics": None,
+        "repair_modes": None,
+        "sweeps": ["S"],
+        "levels": {"S": ["cm-elit0.1"]},
+        "specs": list(FRETISH_SPECS),
+        "seeds": list(range(70)),
+        # Arm C runs more generations than arm A by construction, so it must not
+        # inherit a cap sized for A: censoring the control alone is how replicate
+        # lost its comparison.
+        "timeout_caps": {"takeoff": 1800, "fsm": 1800, "fsm-timing": 1800,
+                         "fsm-combined": 3600},
+        "compare_timeout": 1800,
+        "baseline_aliases": {},
+        "configs_dir": EXPERIMENTS_DIR / "configs-seldefault",
+        "results_dir": EXPERIMENTS_DIR / "results-seldefault",
+        "results_csv": EXPERIMENTS_DIR / "results-seldefault.csv",
+        "default_jobs": 4,
+    },
+    "seldefault-tlsf": {
+        "schemes": ["nsga2-truncate", "nsga2-apportion"],
+        "weakenings": None,
+        "metrics": None,
+        "repair_modes": None,
+        "sweeps": ["R"],
+        "levels": {"R": ["elit0.1"]},
+        "specs": list(TLSF_ABLATION_SPECS),
+        # 20 families x 25 seeds = 500 pairs, above the 420 PLAN §7 requires at
+        # the 0.418 paired SD measured on the arbiter probe's 400 TLSF pairs.
+        "seeds": list(range(25)),
+        "timeout_caps": {spec: 900 for spec in TLSF_ABLATION_SPECS},
+        "compare_timeout": 1800,
+        "baseline_aliases": {},
+        "configs_dir": EXPERIMENTS_DIR / "configs-seldefault-tlsf",
+        "results_dir": EXPERIMENTS_DIR / "results-seldefault-tlsf",
+        "results_csv": EXPERIMENTS_DIR / "results-seldefault-tlsf.csv",
+        # jobs=1 for the same RAM reason as every other TLSF profile.
+        "default_jobs": 1,
+    },
+    "seldefault-tlsf-cm": {
+        "schemes": ["nsga2-truncate"],
+        "weakenings": None,
+        "metrics": None,
+        "repair_modes": None,
+        "sweeps": ["S"],
+        "levels": {"S": ["cm-elit0.1"]},
+        "specs": list(TLSF_ABLATION_SPECS),
+        "seeds": list(range(25)),
+        # Raised over the R half for the same reason as seldefault-fret-cm.
+        "timeout_caps": {spec: 1800 for spec in TLSF_ABLATION_SPECS},
+        "compare_timeout": 1800,
+        "baseline_aliases": {},
+        "configs_dir": EXPERIMENTS_DIR / "configs-seldefault-tlsf",
+        "results_dir": EXPERIMENTS_DIR / "results-seldefault-tlsf",
+        "results_csv": EXPERIMENTS_DIR / "results-seldefault-tlsf.csv",
+        "default_jobs": 1,
+    },
 }
 
 

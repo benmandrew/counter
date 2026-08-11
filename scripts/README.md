@@ -653,6 +653,33 @@ unmerged profile is absent from it, so `collect` refuses to guess
 `results-<profile>.csv` rather than merge a campaign into a file nobody is
 watching.
 
+### Describing a closed one
+
+```sh
+# One archived campaign's declaration, derived from its directory
+python scripts/campaign.py describe 2026-08-07-elitism
+
+# Every archive, machine-readable
+python scripts/campaign.py describe --all --json
+
+# Read the archives from another checkout (results CSVs are gitignored)
+python scripts/campaign.py describe --all --archive-root ~/projects/counter/experiments
+```
+
+The campaigns under `experiments/` closed before `campaign.toml` existed, so
+none of them has a declaration. `describe` derives one and prints it: the
+factor cross from the merged results CSV, the host split from the per-host
+CSVs where their seed blocks are disjoint, and the branch from
+`PROVENANCE.json`. It writes nothing, into the archive or anywhere else.
+
+Every field printed is named against the file it came from in `derived_from`,
+and every field no file in the archive records is listed in `not_recorded`
+rather than defaulted. `attribution = "inferred"` marks the whole output as a
+reading of the archive rather than a record kept at the time. It is not
+runnable: it names retired profiles and retired selection-scheme spellings,
+and an archived campaign is reproduced from `experiments/<campaign>/scripts/`
+at the commit its `PROVENANCE.json` names.
+
 ### Tests
 
 ```sh

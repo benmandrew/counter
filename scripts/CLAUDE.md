@@ -107,6 +107,27 @@ Closing a campaign means the archive can be read without the git history. Rename
 
 The campaign's `campaign.toml` stays in the archive, which is what makes the seed split reproducible; its queue entries do not, having been on the hosts.
 
+## Describing a closed campaign
+
+```sh
+python scripts/campaign.py describe <campaign>
+python scripts/campaign.py describe --all --json
+```
+
+`describe` prints a campaign declaration for an archived campaign, derived on demand from `experiments/<campaign>/`. `--all` covers every archive and `--json` is machine-readable. It is read-only and writes nothing.
+
+The 19 closed campaigns under `experiments/` never had a declaration: their seed split was a hand-typed ssh range, and the factor cross lived only in a `PROFILES` entry in the vendored `run_experiments.py`. Writing a `campaign.toml` into each archive was considered and rejected on two grounds. An archive is reproduced at the commit its `PROVENANCE.json` names, through the vendored `scripts/`, and `campaign.py` does not exist at that revision, so a declaration written today would be unreadable in the only place the archive is ever replayed. The derivation's sources also sit in the same directory the output would, which makes the file a cache that can drift from what it caches. The precedent is in the root `CLAUDE.md`: when a C++ default flipped and silently changed what every archived config meant, the fix was a note in `experiments/README.md` rather than an edit to the archives.
+
+Auditing whether a config knob earns its keep meant counting how many configs under `experiments/` set it, across roughly 65,000 files. `describe --all --json` answers the same question over 19 archives in one command, and stays correct because it reads the archive rather than a snapshot of it.
+
+The factor cross comes from the merged results CSV, whose key columns — `sweep`, `level_name`, `selection`, `weakening`, `metric`, `repair_mode`, `spec`, `seed` — are exactly the cross that ran. The CSV is preferred over the vendored `PROFILES` dict throughout, because the dict says what was intended and the CSV says what happened. The host split comes from the per-host CSVs where their seed blocks are disjoint, which 13 of the 19 archives carry; only one `PROVENANCE.json` (elitism) records the split directly. The branch comes from `PROVENANCE.json`, where 5 of 19 state one. Phase order comes from a vendored shell driver naming its profiles in order, and only the elitism campaign has one.
+
+`attribution = "inferred"` mirrors the convention 12 of the 19 `PROVENANCE.json` files already use, and it licenses exactly one thing: that the value was read back out of a named file in the archive, which `derived_from` names per field, so any claim is checkable against its source. It does not license treating the output as a record kept at the time. A `not_recorded` list names every field no file in the archive records, and those fields are omitted rather than defaulted, because an absent field is a true statement about the archive and a plausible default is not. `jobs` is in every campaign's `not_recorded` list: the one launch script in the whole archive passes no `--jobs`, so every run took its profile's `default_jobs`, which is the runner's value rather than the campaign's. Older CSVs are narrower, 12 columns in July against 21 by August, and a campaign whose header predates the `selection` column cannot have recorded a selection scheme, so `schemes` is absent there rather than filled in with the legacy default `merge_experiments.fill_defaults` would supply.
+
+The output is not runnable. It names profiles this checkout has retired (`wellsep-timing` went with the `[filters.intervals]` key) and selection schemes it rejects (`nsga2`, renamed to `nsga2-truncate` on 2026-08-06). Reproducing an archived campaign goes through `experiments/<campaign>/scripts/` at the commit `PROVENANCE.json` names, which is what those vendored copies exist for.
+
+Three archives — `2026-07-31-replicate`, `2026-08-03-libspot-soak` and `2026-08-04-engine-comparison` — have no merged results CSV and never ran a factor cross, the last two driving `soak.py` and `compare_engines.py` rather than the runner. `describe` prints a stub for those, naming the vendored scripts and the `kind` the archive records, with `phases` in `not_recorded`. Forcing a cross onto an archive that never ran one would be the first inferred field nothing in the directory supports, and the whole value of the verb is that every line it prints has a file behind it.
+
 ## Testing this
 
 ```sh

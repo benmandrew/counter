@@ -2,7 +2,18 @@
   "campaign": "2026-08-10-arbiter-probe",
   "attribution": "recorded",
   "generated_on": "2026-08-10",
-  "status": "relaunched 2026-08-11 on av2 and av3 at b093374 — 800 runs (400 per host), single stage, in progress. Two earlier executions of this design completed and were discarded; see superseded_executions.",
+  "status": "closed 2026-08-11. 800 runs at b093374, 400 per host, 400 complete (spec, seed) pairs, zero errors, zero timeouts, zero compare timeouts. av2 88.9 min, av3 102.3 min. Two earlier executions of this design completed and were discarded; see superseded_executions.",
+  "result": {
+    "outcome": "spec-specific",
+    "decision_rule": "PLAN.md §7, pre-registered before any row at the campaign commit was collected and unchanged since.",
+    "criterion_1_breadth": "FAILS. 1 of 9 arbitration families shows found_repair higher under nsga2-apportion at Holm-corrected McNemar p < 0.05, against a threshold of 3. The one is arbiter itself: 0.000 against 0.950 over 40 pairs, 38 discordant pairs all favouring apportion, p_holm < 0.0001.",
+    "criterion_2_direction": "PASSES. No arbitration family reverses at the corrected threshold. simple-arbiter (4 against 8) and amba (2 against 6) lean truncate but reach only p_holm = 1.0000.",
+    "reading": "The replicate campaign's arbiter cell reproduces at full strength on a current engine, so it is a property of the scheme rather than of that campaign's engine vintage. It does not generalise across the arbitration corpus. The pattern is not arbitration-versus-not, and should not be described that way: load-balancer went 8 against 0 and missed only on the Holm correction (raw p = 0.0078, p_holm = 0.0625), and lily02 — chosen as a counter-signal control because apportion cost it implies_ideal 1.00 → 0.44 in the replicate campaign — moved with apportion here on both yield (10 against 1, uncorrected p = 0.0117) and quality (implies_ideal 0.525 → 0.925). Which specs the scheme helps, and why, is not answered by this design.",
+    "quality_caveat": "Reported in both directions, per PLAN.md §7. arbiter-aurus loses quality under apportion at unchanged yield (implies_ideal 0.925 → 0.575); round-robin-arbiter falls slightly (0.775 → 0.700). load-balancer (0.700 → 0.850), lily02 (0.525 → 0.925) and arbiter itself (0.000 → 0.125) gain.",
+    "cost": "Pooled median paired wall ratio 1.13 (apportion / truncate); aggregate over all 800 runs 1.21, the aggregate being pulled up by amba, the slowest family. Far below the ~3x that failed the replicate campaign's cost bound, so cost is not what keeps apportion opt-in here — breadth is.",
+    "deliverable": "PLAN.md §7 names one for this outcome: the replicate arbiter cell is recorded in experiments/README.md as a single-family result that did not generalise, so it stops being cited as evidence about the scheme. Done in the commit that closes this campaign.",
+    "not_answered": "Whether the mechanism is diversity, whether 1 / (1 + rank) is the right weighting, anything about the FRETISH path, and anything about the shipped default. All four were declared out of scope before launch."
+  },
   "method": "Recorded at launch, not reconstructed. Both hosts report counter --version and compare --version into the per-host launch manifest, and run_experiments.py refused to start until each binary's commit matched the working tree's HEAD with dirty=0; that gate was left on, so no --allow-stale-binary was used.",
   "superseded_executions": [
     {
@@ -67,8 +78,11 @@
     "files": {
       "gen_configs.py": "8adc54fe14442051c5b96f9b6bca400e04823ac5",
       "run_experiments.py": "9db81e779a5e1c929a331f82e2154583ddd66af0",
-      "merge_experiments.py": "1310882e52b1b33173b8cfbbcfb07a88500ea86e"
+      "merge_experiments.py": "1310882e52b1b33173b8cfbbcfb07a88500ea86e",
+      "analyse_arbiter_probe.py": "93b45f232d2b9174af58bf7ce9ebea14dc207e84"
     },
+    "notebook_note": "This archive carries analysis-output.txt — the vendored script's output over the merged CSV — rather than the executed analyse.ipynb the other campaigns hold. The worktree the campaign closed from has no working jupyter (jupyter_core missing) and neither pandas nor matplotlib, so an executed notebook could not be produced there and an unexecuted one would not be the artefact the convention asks for. The script is deterministic over the archived CSV, so the notebook can be written later against the same numbers; the text file is the record until then.",
+    "analysis_note": "analyse_arbiter_probe.py implements PLAN.md §5-§7 directly: the exact two-sided sign test on discordant pairs, Holm correction across the nine arbitration families with lily02 held out as the uncorrected control, and both criteria evaluated in the script rather than by hand. Run it as `python3 analyse_arbiter_probe.py results-arbiter-probe.csv`; it also accepts the two per-host CSVs and gives identical output, which is how the merge was checked.",
     "check": "git hash-object experiments/2026-08-10-arbiter-probe/scripts/<file>"
   },
   "reachable_from_main": false,

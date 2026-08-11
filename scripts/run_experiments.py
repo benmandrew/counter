@@ -739,6 +739,54 @@ PROFILES: dict[str, dict] = {
     #       --ltlsynt-timeout 500 --ltl2tgba-timeout 60000 \
     #       --max-scoring-failure-rate 0.15 \
     #       --out-dir experiments/configs-ablate-tlsf
+    # The status objective's grading scale (sweep G: tiered vs mrs), over the
+    # TLSF ablation corpus at the config defaults. Everything but the grading is
+    # held fixed -- one scheme, one metric, one operating point -- because the
+    # question is whether the finer scale changes what the search finds, and
+    # crossing more factors would spend the window on power the primary
+    # comparison needs. See experiments/2026-08-11-status-grading/PLAN.md, which
+    # pre-registers the endpoints and deliberately registers no decision rule.
+    #
+    # Generate with
+    #   python scripts/gen_configs.py --tlsf --sweeps G \
+    #       --ltlsynt-timeout 10000 \
+    #       --out-dir experiments/configs-status-grading
+    #
+    # Per-spec caps at 4x the slowest run a 3-seed pilot over this exact corpus
+    # and operating point measured, floored at 300s and rounded to the minute.
+    # 4x rather than the 6-20x the older tables used: those were sized when
+    # nothing bounded an individual ltlsynt query, whereas ltlsynt_timeout_ms is
+    # 10000 here, so the per-run tail is far shorter. amba earns 4320s against
+    # the flat 600s of ablate-tlsf -- its mrs arm alone measured 1078s -- and
+    # capping it at 600s would censor the arm rather than measure it.
+    "status-grading": {
+        "schemes": ["nsga2-truncate"],
+        "weakenings": None,
+        "metrics": None,
+        "repair_modes": None,
+        "sweeps": ["G"],
+        "levels": {"G": ["tiered", "mrs"]},
+        "specs": list(TLSF_ABLATION_SPECS),
+        "seeds": list(range(24)),
+        "timeout_caps": {
+            "amba": 4320, "humanoid-531": 1560, "lift": 840,
+            "simple-arbiter": 720, "round-robin-arbiter": 660,
+            "humanoid-458": 540, "full-arbiter": 420, "gyro-var1": 420,
+            "gyro-var2": 420, "detector": 360, "arbiter": 300,
+            "arbiter-handshake": 300, "codesample-un1": 300,
+            "codesample-un2": 300, "lily02": 300, "load-balancer": 300,
+            "minepump": 300, "prioritized-arbiter": 300, "rg1": 300,
+            "rg2": 300,
+        },
+        # Sweep G has no gen/pop axis, so there is no A/gen baseline to alias.
+        "baseline_aliases": {},
+        "configs_dir": EXPERIMENTS_DIR / "configs-status-grading",
+        "results_dir": EXPERIMENTS_DIR / "results-status-grading",
+        "results_csv": EXPERIMENTS_DIR / "results-status-grading.csv",
+        # jobs=1 for the same RAM reason as the other TLSF profiles: ltlsynt is
+        # multi-GB per call on these specs and the cap is per counter process.
+        "default_jobs": 1,
+    },
     "ablate-tlsf": {
         "schemes": ["nsga2-truncate", "weighted"],
         "weakenings": None,

@@ -140,6 +140,10 @@ DEFAULTS: dict = {
     "allow_output_assumptions": True,
     "black_timeout_ms": 1000,
     "repair_mode": "monolithic",
+    # Mirrors include/config.hpp. Emitted into [fitness] only when a
+    # sweep overrides it (see make_toml), so every existing grid stays
+    # byte-identical; sweep G varies it.
+    "status_grading": "tiered",
     # TLSF-only [tlsf.mutation] split (see config.hpp). Emitted only when a sweep
     # overrides one of them (see make_toml), so the FRETISH and A/B TLSF grids
     # stay byte-identical to the pre-factor output; the mutation-split sweep sets
@@ -203,6 +207,9 @@ def make_toml(overrides: dict, defaults: dict = DEFAULTS) -> str:
         f"weight_semantic  = {_fmt(d['weight_semantic'])}",
         f"weight_halstead  = {_fmt(d['weight_halstead'])}",
         f"weight_status    = {_fmt(d['weight_status'])}",
+    ] + ([
+        f'status_grading   = "{d["status_grading"]}"',
+    ] if "status_grading" in overrides else []) + [
         "",
         "[mutation]",
         f"p_trigger  = {_fmt(d['p_trigger'])}",
@@ -527,6 +534,25 @@ TLSF_SWEEP_Q: list[tuple[str, dict]] = [
 # two never share a table, exactly as A and B do not.
 TLSF_SWEEP_R: list[tuple[str, dict]] = list(SWEEP_R)
 
+# Sweep G: the status objective's grading scale (fitness.status_grading).
+# Expressed as a sweep rather than as a crossed factor directory, deliberately.
+# A crossed factor would need its own CSV column, and that column would have to
+# join KEY_FIELDS in merge_experiments.py to tell the two arms apart -- which
+# means every one of the ~225k archived rows, none of which carries the column,
+# would need a legacy default to keep matching. A sweep needs none of that: the
+# arm rides in `level_name`, a field the key already carries, exactly as sweep C
+# carries the halstead ablation. Cross it as a factor only when a campaign needs
+# it crossed with something else.
+#
+# "tiered" is the config.hpp default and the baseline arm; "mrs" is the greedy
+# maximal-realizable-subset scale. level_value_of() reads a trailing number off
+# the level name and finds none in either, as with sweep C's default and
+# no-halstead, so both record a null level value.
+TLSF_SWEEP_G: list[tuple[str, dict]] = [
+    ("tiered", {"status_grading": "tiered"}),
+    ("mrs",    {"status_grading": "mrs"}),
+]
+
 TLSF_SWEEPS: list[tuple[str, list]] = [
     ("A", TLSF_SWEEP_A),
     ("B", TLSF_SWEEP_B),
@@ -535,6 +561,7 @@ TLSF_SWEEPS: list[tuple[str, list]] = [
     ("W", TLSF_SWEEP_W),
     ("Q", TLSF_SWEEP_Q),
     ("R", TLSF_SWEEP_R),
+    ("G", TLSF_SWEEP_G),
 ]
 
 TLSF_CONFIGS_DIR = Path(__file__).parent.parent / "experiments" / "configs-tlsf"

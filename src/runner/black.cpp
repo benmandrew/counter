@@ -32,10 +32,19 @@ bool is_identifier_char(char chr) {
 // constants when ltlfilt happens to fold them away first, which it cannot do
 // when the binary is missing or errors. SPOT needs no equivalent: ltlfilt and
 // ltl2tgba already treat "true"/"false" as constants.
+//
+// SPOT's own spellings "0"/"1" are mapped for the mirror-image reason: black
+// rejects them as a syntax error rather than misreading them, so any formula
+// ltlfilt has printed aborts the run instead of answering it. Whole tokens
+// only, so an atom named "g0" or a "10" keeps its digits — is_identifier_char
+// counts digits, which is what makes the existing boundary test cover these.
 std::string to_black_constants(const std::string& formula) {
     static constexpr std::array<std::pair<std::string_view, std::string_view>,
-                                2>
-        k_constants{{{"true", "True"}, {"false", "False"}}};
+                                4>
+        k_constants{{{"true", "True"},
+                     {"false", "False"},
+                     {"1", "True"},
+                     {"0", "False"}}};
     std::string out;
     out.reserve(formula.size());
     std::size_t pos = 0;
@@ -61,6 +70,20 @@ std::string to_black_constants(const std::string& formula) {
         }
     }
     return out;
+}
+
+// SPOT spells the boolean constants "0" and "1", which black rejects outright
+// as a syntax error — it has no numeric literal. Any string SPOT has touched
+// can therefore arrive already decided, and must be answered here rather than
+// forwarded: "0" is unsatisfiable, "1" is satisfiable.
+std::optional<bool> constant_answer(const std::string& formula) {
+    if (formula == "0") {
+        return false;
+    }
+    if (formula == "1") {
+        return true;
+    }
+    return std::nullopt;
 }
 
 }  // namespace
@@ -93,13 +116,9 @@ std::optional<bool> SatisfiabilityChecker::check_satisfiability(
     // otherwise time out on, so answering here skips the subprocess. This is
     // an optimisation only: to_black_constants keeps black correct on these
     // formulae by itself if the folding does not fire.
-    if (normalised == "0") {
+    if (const std::optional<bool> decided = constant_answer(normalised)) {
         n_constant_folded++;
-        return false;
-    }
-    if (normalised == "1") {
-        n_constant_folded++;
-        return true;
+        return decided;
     }
     {
         std::shared_lock lock(m_cache_mutex);
@@ -167,6 +186,20 @@ std::optional<bool> SatisfiabilityChecker::check_satisfiability(
             return std::nullopt;
         }
         query = *rewritten;
+        // The guard above tested the --simplify output, which is not the same
+        // formula: simplify_ltl returns its input unchanged when ltlfilt is
+        // missing, errors or times out, and --simplify is the pass that blows
+        // up super-exponentially on deep nested-X conjunctions. --remove-wm is
+        // far cheaper and does not, so it routinely folds to a constant a
+        // formula the guard above saw unfolded. Cache it: the answer cost an
+        // ltlfilt exec, and it is the same answer for every query sharing the
+        // key.
+        if (const std::optional<bool> decided = constant_answer(query)) {
+            n_constant_folded++;
+            std::scoped_lock lock(m_cache_mutex);
+            m_cache.emplace(normalised, decided);
+            return decided;
+        }
     }
     const std::vector<std::string> command = {black, "solve",
                                               "-t",  std::to_string(timeout_s),

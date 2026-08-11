@@ -560,12 +560,7 @@ PROFILES: dict[str, dict] = {
         # assumption at p_add_assumption=0.05), so the overhead over baseline is
         # 0-30%. Caps are ~6-20x that max: generous enough never to censor a
         # slow-but-progressing run, tight enough to kill a true runaway in
-        # minutes. Those caps were sized while ltlsynt_timeout_ms was 500, so
-        # each query was bounded at half a second; it is 10000 from 2026-08-11
-        # (see TLSF_LTLSYNT_TIMEOUT_MS in gen_configs.py), which raises the
-        # per-query bound 20x. This profile's spec set is light enough that the
-        # caps still hold, but any profile covering amba is not — recalibrate
-        # before reusing a cap table across that change.
+        # minutes (ltlsynt_timeout_ms=500 already bounds each query).
         # lift has a heavy runtime tail the 3-seed calibration missed (hard
         # seeds run 100-600s+ across all arms, intrinsic to the spec, not the
         # well-sep/output-assumption feature), so it gets the muc/padd 600s cap
@@ -748,12 +743,6 @@ PROFILES: dict[str, dict] = {
         "levels": {"C": ["default", "no-halstead"]},
         "specs": list(TLSF_ABLATION_SPECS),
         "seeds": list(range(15)),
-        # A flat 600s over the whole set, sized while ltlsynt_timeout_ms was
-        # 500. amba no longer fits it: at the 10000 budget a gen5/pop100 probe
-        # took 404s, so gen10/pop200 will run past this cap and be censored —
-        # trading its old zero-yield for a timeout rather than a result.
-        # Recalibrate amba (and re-check the rest) before launching; see
-        # TLSF_LTLSYNT_TIMEOUT_MS in gen_configs.py.
         "timeout_caps": {s: 600 for s in TLSF_ABLATION_SPECS},
         "baseline_aliases": {},
         "configs_dir": EXPERIMENTS_DIR / "configs-ablate-tlsf",
@@ -966,6 +955,70 @@ PROFILES: dict[str, dict] = {
         "results_csv": EXPERIMENTS_DIR / "results-replicate-tlsf.csv",
         # jobs=1 for the same RAM reason as the tlsf profile: ltlsynt is
         # multi-GB resident per call on these specs.
+        "default_jobs": 1,
+    },
+    # Sweep R on its own, to decide whether the shipped genetic.elitism_rate
+    # default should be 0.0 or 0.1 -- see experiments/2026-08-07-elitism/PLAN.md
+    # for the pre-registered decision rule. It re-runs a factor the `replicate`
+    # campaign already carried as a nuisance variable, because that campaign's
+    # rows predate the tautology screen (3869c53), the correct-offspring rescue
+    # fix (01a4308) and the flip of run_well_separation to true (86e463c) --
+    # and well-separation interacts with elitism directly, since elites bypass
+    # the offspring filter chain that applies it.
+    #
+    # Scheme is pinned to nsga2-truncate rather than crossed. The question is
+    # about the shipped configuration, and that is the shipped scheme; the
+    # replicate rows already show the elitism effect does not change sign
+    # between the two NSGA-II schemes, so crossing would double the campaign
+    # for an arm no default user gets.
+    "elitism-fret": {
+        "schemes": ["nsga2-truncate"],
+        "weakenings": None,
+        "metrics": None,
+        "repair_modes": None,
+        "sweeps": ["R"],
+        "levels": {},
+        "specs": list(FRETISH_SPECS),
+        # Seed-major disjoint ranges across av2/av3 (pass --seeds on launch).
+        # 600 pooled pairs resolve ~0.043 absolute on implies_ideal at the 14%
+        # discordance the replicate rows measured -- under the 0.05
+        # non-inferiority margin the decision rule fixes.
+        "seeds": list(range(150)),
+        # replicate's caps at the same operating point, with fsm-combined
+        # raised: this campaign runs with well-separation on by default, which
+        # replicate's rows did not. A cap that fires records implies_ideal = 0
+        # for a run that was merely slow, so these are sized never to bite.
+        "timeout_caps": {"takeoff": 900, "fsm": 900, "fsm-timing": 900,
+                         "fsm-combined": 1800},
+        "compare_timeout": 1800,
+        "baseline_aliases": {},
+        "configs_dir": EXPERIMENTS_DIR / "configs-elitism",
+        "results_dir": EXPERIMENTS_DIR / "results-elitism",
+        "results_csv": EXPERIMENTS_DIR / "results-elitism.csv",
+        "default_jobs": 4,
+    },
+    # The TLSF half, over the 20-family fixes-backed ablation corpus rather
+    # than the 5 families replicate-tlsf used. A default has to hold across the
+    # corpus, and replicate-tlsf's narrow set produced zero discordant pairs on
+    # both primary outcomes across 300 -- too narrow to move either way.
+    "elitism-tlsf": {
+        "schemes": ["nsga2-truncate"],
+        "weakenings": None,
+        "metrics": None,
+        "repair_modes": None,
+        "sweeps": ["R"],
+        "levels": {},
+        "specs": list(TLSF_ABLATION_SPECS),
+        # 800 pooled pairs (20 x 40) resolve ~0.031 absolute at 10% discordance.
+        "seeds": list(range(40)),
+        # Flat 900 s, above ablate-tlsf's 600 at the same operating point and
+        # corpus, for the same reason the FRETISH caps were raised.
+        "timeout_caps": {spec: 900 for spec in TLSF_ABLATION_SPECS},
+        "baseline_aliases": {},
+        "configs_dir": EXPERIMENTS_DIR / "configs-elitism-tlsf",
+        "results_dir": EXPERIMENTS_DIR / "results-elitism-tlsf",
+        "results_csv": EXPERIMENTS_DIR / "results-elitism-tlsf.csv",
+        # jobs=1 for the same RAM reason as every other TLSF profile.
         "default_jobs": 1,
     },
     # Does nsga2-apportion's diversity unlock the arbiter family, or only the one

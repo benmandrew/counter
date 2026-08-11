@@ -55,7 +55,7 @@ void test_boolean_constants(const std::chrono::milliseconds& timeout) {
         const char* formula;
         bool satisfiable;
     };
-    const std::array<Case, 7> cases{{
+    const std::array<Case, 11> cases{{
         {"false", false},
         {"!true", false},
         {"G(false)", false},
@@ -63,6 +63,15 @@ void test_boolean_constants(const std::chrono::milliseconds& timeout) {
         {"true", true},
         {"G(true)", true},
         {"p | true", true},
+        // SPOT's own spellings. These reach check_satisfiability whenever a
+        // query has been through ltlfilt, which prints constants as 0/1 rather
+        // than as the atoms this codebase writes. black rejects them as a
+        // syntax error rather than misreading them, so before they were
+        // handled a folded query aborted the whole run.
+        {"0", false},
+        {"G(0)", false},
+        {"1", true},
+        {"p | 1", true},
     }};
     SatisfiabilityChecker checker;
     checker.set_timeout(timeout);
@@ -91,11 +100,19 @@ void test_constant_rewrite_respects_token_boundaries(
     // "true_count" and "True_count" are distinct atoms, so asserting one and
     // negating the other is satisfiable. A substring replacement would rewrite
     // the former into the latter, collide them, and report UNSAT.
-    const std::array<const char*, 4> formulae{{
+    const std::array<const char*, 7> formulae{{
         "true_count & !True_count",
         "is_false & !is_False",
         "falsey & X(!falsey)",
         "truth & X(!truth)",
+        // The digit spellings need the same discipline, and the corpus is full
+        // of atoms that end in one — "g_1" and "r_1" are the arbiter naming
+        // convention. A substring rewrite would turn "g_1" into "g_True",
+        // collapsing it onto the distinct atom of that name and reporting
+        // UNSAT for a satisfiable pair.
+        "g_1 & !g_True",
+        "r1 & !rTrue",
+        "a0 & !aFalse",
     }};
     for (const char* formula : formulae) {
         const std::optional<bool> result =

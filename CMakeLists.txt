@@ -94,6 +94,7 @@ target_sources(counter_fitness PRIVATE
     src/tlsf/operators.cpp
     src/tlsf/filter.cpp
     src/tlsf/mucs.cpp
+    src/tlsf/guarantee_parts.cpp
     src/tlsf/pipeline.cpp
     src/tlsf/evolve.cpp
     src/tlsf/filter_report.cpp

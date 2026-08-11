@@ -41,5 +41,6 @@ void run_tlsf_writer_tests();
 void run_tlsf_filter_tests();
 void run_tlsf_fitness_tests();
 void run_tlsf_mucs_tests();
+void run_tlsf_guarantee_parts_tests();
 void run_tlsf_genetic_tests();
 void run_tlsf_pipeline_tests();

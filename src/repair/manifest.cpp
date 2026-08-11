@@ -37,7 +37,9 @@ namespace {
 // zero -- which is not visible from any other field.
 // 5 added budget_screen, so a zero-yield run can be told apart from one whose
 // ltlsynt budget could not decide its own input specification.
-constexpr int k_schema_version = 5;
+// 6 added fitness.status_grading, since the status objective now has two
+// scales and a manifest that does not name the one in use cannot be read.
+constexpr int k_schema_version = 6;
 
 // The inverse of the spellings config_io.cpp parses. It has no table to
 // borrow -- it only ever goes string to enum -- so these must be kept in step
@@ -61,6 +63,16 @@ const char* metric_name(SimilarityMetric metric) {
             return "direct";
         case SimilarityMetric::Logarithmic:
             return "logarithmic";
+    }
+    return "unknown";
+}
+
+const char* status_grading_name(StatusGrading grading) {
+    switch (grading) {
+        case StatusGrading::Tiered:
+            return "tiered";
+        case StatusGrading::Mrs:
+            return "mrs";
     }
     return "unknown";
 }
@@ -126,7 +138,8 @@ nlohmann::json config_json(const Config& cfg) {
          {{"weight_syntactic", cfg.fitness_weight_syntactic},
           {"weight_semantic", cfg.fitness_weight_semantic},
           {"weight_halstead", cfg.fitness_weight_halstead},
-          {"weight_status", cfg.fitness_weight_status}}},
+          {"weight_status", cfg.fitness_weight_status},
+          {"status_grading", status_grading_name(cfg.status_grading)}}},
         {"mutation",
          {{"p_trigger", cfg.p_trigger},
           {"p_response", cfg.p_response},

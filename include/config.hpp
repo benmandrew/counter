@@ -44,6 +44,20 @@ enum class SimilarityMetric : std::uint8_t { Direct, Logarithmic };
 /// mode is TLSF-only; the FRETISH path ignores it.
 enum class RepairMode : std::uint8_t { Monolithic, Muc };
 
+/// How the status objective grades the region below realizability. Tiered (the
+/// default) is the three-point scale in fitness/status.hpp. Mrs replaces its
+/// middle tier with the greedy maximal-realizable-subset fraction: the
+/// guarantee side is split into parts, and the score is what fraction of them
+/// can be kept while the accumulated subset stays realizable against the full,
+/// unchanged environment side.
+///
+/// The two are crossed as an experiment factor rather than one replacing the
+/// other, and Tiered stays the default until a campaign decides it. Grading is
+/// the whole point: over the 21 specifications in `examples/`, Tiered scores
+/// every one of them 0.5, where Mrs spreads them over 14 distinct values with a
+/// median of 6 grade levels per specification.
+enum class StatusGrading : std::uint8_t { Tiered, Mrs };
+
 struct Config {
     std::size_t generations = 10;
     std::size_t population_size = 200;
@@ -51,6 +65,12 @@ struct Config {
     double fitness_weight_semantic = 0.5;
     double fitness_weight_halstead = 0.1;
     double fitness_weight_status = 0.5;
+    /// How the status objective grades below realizability (see StatusGrading).
+    /// Mrs costs more realizability queries per candidate -- a median of 4.6x
+    /// one whole-specification check across `examples/`, falling to 2.2x over a
+    /// population, since the greedy prefixes recur across near-identical
+    /// candidates and RealizabilityChecker memoises by formula string.
+    StatusGrading status_grading = StatusGrading::Tiered;
     std::size_t default_model_counting_bound = 20;
     SimilarityMetric similarity_metric = SimilarityMetric::Logarithmic;
     /// Keep only repairs the original logically implies -- genuine weakenings.

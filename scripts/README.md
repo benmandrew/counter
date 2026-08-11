@@ -413,7 +413,168 @@ Host av3 av3.cs.man.ac.uk
 	User benandrew
 ```
 
-## 6. Analyse the results
+## 6. Campaign status and collection
+
+`campaign.py` covers the two things done to a campaign that is already
+launched, polling it and bringing its results home. Both verbs reach the lab
+machines by their ssh-config alias (`av2`) rather than by the fully qualified
+domain name (FQDN) in `merge_experiments.REMOTES` — that form falls through to
+password auth under `BatchMode=yes`, and a status poll cannot answer a prompt.
+
+### Polling a running campaign
+
+```sh
+python scripts/campaign.py status                   # every host, plus this checkout
+python scripts/campaign.py status --host av3        # one host (av2, av3 or local)
+python scripts/campaign.py status --campaign tlsf   # one profile
+python scripts/campaign.py status --json            # machine-readable
+python scripts/campaign.py status --all             # include older manifests
+```
+
+A read-only poll of av2, av3 and the local checkout, taking about a second. It
+prints two tables. The first is the checkout each host is sitting on — branch,
+head, whether the working tree is clean, and which runner or engine processes
+are alive. The second is one row per campaign: rows done against rows planned,
+the percentage, the state (done, running, stuck or stalled), STALE — the age
+of the newest `run.log` under that campaign's results directory — a crude ETA,
+the
+branch the campaign was launched from, and the commit of the `counter` binary
+producing its rows.
+
+```
+HOST   MACHINE  BRANCH              HEAD     TREE   PROCESSES
+av2    avlab12  feat/arbiter-probe  b093374  clean  idle
+av3    av3      feat/arbiter-probe  b093374  clean  idle
+local  ben      feat/campaign-cli   972136c  clean  idle
+
+HOST   CAMPAIGN             ROWS     PCT   STATE  STALE  ETA  BRANCH              BINARY
+av2    arbiter-probe        400/400  100%  done   1h06m  -    feat/arbiter-probe  b093374
+av3    arbiter-probe        400/400  100%  done   53m    -    feat/arbiter-probe  b093374
+local  (busy, no manifest)  -        -     -      -      -    -                   -
+```
+
+The two branch columns can disagree, which is why both are printed. The
+checkout table names the branch a resumed run would use; a campaign row names
+the branch its manifest was written on, and so the branch its existing rows
+came from.
+
+Neither row count is re-derived here. `campaign.py` reads the per-host launch
+manifest for the selection the launch asked for (sweeps, specs, seeds),
+replays that selection onto `run_experiments.py --dry-run` on the same host,
+and takes both numbers off the `Plan:` line. The runner stays the only thing
+that expands a sweep, so a profile edit cannot make the two disagree about the
+size of a campaign. `--no-plan` skips the query, and planned totals then read
+as unknown.
+
+Rows done is that same plan's already-done count, not the length of the
+results CSV, and the two are not interchangeable. Profiles share CSVs —
+`replicate`, `replicate-wkoff` and `replicate-recap` all write
+`results-replicate.csv` — and a top-up relaunch rewrites the manifest to a
+handful of seeds while the file still holds every earlier row. Reading the
+file's length as progress reports 400/40 in that second case and calls a
+campaign that started minutes ago finished. Where no plan came back the file's
+length is used as a fallback, and the cell is prefixed with `~` and explained
+in a note, since that is the one row that can still overstate progress.
+
+Times are differenced against each host's own clock, sampled in the same call.
+av3 drifts minutes away from av2 whenever the Network Time Protocol (NTP) is
+off, and a staleness measured across that skew is fiction.
+
+Process detection matches on `comm`, never on the whole command line. `pgrep
+-f run_experiments.py` would match this script's own ssh command, whose text
+names it, and report an idle machine as running.
+
+A process is attributed to a campaign only when it names that campaign's
+profile, and a process that names none — a bare `counter` or `ltlsynt` — is
+attributed to no campaign at all. It still appears in the checkout table's
+PROCESSES column, which is the honest place for something that cannot be tied
+to a campaign. Matching those against every campaign instead had one unrelated
+`counter` on av2 report all six of its archived campaigns as running while
+idle av3 reported the same six, from the same data, as stalled.
+
+A matched process is then corroborated against the campaign's own output
+before it counts as progress. STATE reads `running` only where the newest
+`run.log` is fresher than three hours; where a runner is alive over an older
+log it reads `stuck`, with a note. The threshold is the harness's own bound on
+how long one run can be silent rather than a guess: the largest per-run
+`counter` timeout any profile allows is 3600s and the largest `compare`
+timeout is 1800s, so 90 minutes bounds a single run, doubled for the
+granularity of the log writes and for a `--jobs 1` host where the next
+`run.log` only appears once the previous run has finished. `running` beside a
+nine-day staleness is the reading that stops someone investigating a dead run,
+which is the failure this tool exists to prevent, so it is reported as neither
+`running` nor plain `stalled`.
+
+Manifests accumulate — a machine keeps one per campaign it has ever launched.
+Only those whose branch matches the host's current checkout are shown by
+default, since the rest cannot be in flight and their profile is usually no
+longer defined; `--all` shows them. A campaign whose launch branch differs
+from the checkout's current branch is flagged with `!`, and one launched off a
+binary built dirty — which needs `--allow-stale-binary`, so its rows name a
+commit they did not come from — is flagged with `*` on BINARY.
+
+An unreachable host prints a row saying so rather than aborting the poll, and
+sets a non-zero exit status, so a wrapper can tell a full poll from a partial
+one.
+
+### Collecting a finished one
+
+```sh
+# What would move, without moving any of it
+python scripts/campaign.py collect --profile tlsf --dry-run
+
+# rsync back, merge, verify
+python scripts/campaign.py collect --profile tlsf
+
+# One host, or the CSV without the per-run trees
+python scripts/campaign.py collect --profile tlsf --host av2
+python scripts/campaign.py collect --profile tlsf --no-results
+```
+
+`collect` supersedes running `merge_experiments.py` by hand. It rsyncs each
+host's per-run tree and results CSV back and merges them on the same natural
+key through `merge_experiments.py` itself, so nothing is reimplemented, then
+verifies the outcome against three counts — the merged row count, a
+duplicate-key scan, and every source's rows against the merged union.
+
+The arithmetic is a union rather than a sum. Two hosts on disjoint seed ranges
+overlap on nothing while a re-collect of an already merged campaign overlaps
+on everything, and only the union separates either from a silent loss.
+Discrepancies print as MISMATCH and set a non-zero exit status.
+
+A host that was asked for and contributed nothing is the one case that
+arithmetic cannot see: computed over the hosts that did answer it agrees with
+itself perfectly. Such a host is therefore carried into the check explicitly,
+printed as INCOMPLETE, and sets a non-zero exit status. What did arrive is
+still merged — the merge is keyed and idempotent, so a later run against the
+recovered host completes the file rather than redoing it.
+
+`--dry-run` reports what would move — rows on each host, the size and file
+count of its results directory, and what `rsync -a --dry-run --stats` says it
+would actually transfer. It transfers nothing and writes nothing.
+
+`--csv NAME` and `--results-dir NAME` exist for a campaign whose profile this
+checkout does not define, which is the normal case while the campaign is still
+on its own branch. `merge_experiments.PROFILE_CSVS` is the authority and an
+unmerged profile is absent from it, so `collect` refuses to guess
+`results-<profile>.csv` rather than merge a campaign into a file nobody is
+watching.
+
+### Tests
+
+```sh
+python scripts/test_campaign.py
+```
+
+A plain script that exits non-zero on the first failure, the same convention
+as `test_experiment_paths.py`. It runs against temporary fixture checkouts and
+never touches a lab machine.
+
+The verification is the half worth having. A merge that quietly drops one
+machine's share of a campaign reads the same as a merge that worked, and the
+union check is what separates them before any analysis is run on the file.
+
+## 7. Analyse the results
 
 Launch Jupyter and open the notebook:
 

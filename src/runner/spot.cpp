@@ -10,6 +10,7 @@
 #include <condition_variable>
 #include <cstdlib>
 #include <fstream>
+#include <functional>
 #include <iostream>
 #include <memory>
 #include <mutex>
@@ -368,4 +369,32 @@ std::optional<bool> RealizabilityChecker::check_realizability_ltl(
     // direction on every hit.
     m_cache.emplace(cache_key, realizable);
     return realizable;
+}
+
+std::string ltlsynt_budget_screen(
+    const std::function<std::optional<bool>()>& query,
+    std::chrono::milliseconds budget) {
+    if (budget.count() <= 0) {
+        return {};
+    }
+    const auto start = std::chrono::steady_clock::now();
+    const std::optional<bool> decided = query();
+    const auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
+        std::chrono::steady_clock::now() - start);
+    BudgetScreen::observed_ms = elapsed.count();
+    BudgetScreen::decided = decided.has_value();
+    if (decided.has_value()) {
+        return {};
+    }
+    // Elapsed is reported rather than the true cost, which is unobservable:
+    // the child was killed at the budget, so all this says is "at least".
+    return "warning: the input specification's own realizability query did "
+           "not finish within runtime.ltlsynt_timeout_ms = " +
+           std::to_string(budget.count()) +
+           " ms.\n         Every realizability query this run makes is "
+           "likely to be abandoned the same way, which leaves the status "
+           "objective\n         constant, costs that budget per distinct "
+           "candidate, and makes the final gate reject even a correct "
+           "repair.\n         Raise runtime.ltlsynt_timeout_ms (0 disables "
+           "the budget) if this run is meant to decide realizability.\n";
 }

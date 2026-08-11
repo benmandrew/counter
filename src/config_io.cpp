@@ -109,8 +109,9 @@ const KeySpec& config_key_spec() {
               section({"generations", "population_size", "selection_rate",
                        "elitism_rate", "crossover_rate", "mutation_rate",
                        "selection_scheme"})},
-             {"fitness", section({"weight_syntactic", "weight_semantic",
-                                  "weight_halstead", "weight_status"})},
+             {"fitness",
+              section({"weight_syntactic", "weight_semantic", "weight_halstead",
+                       "weight_status", "status_grading"})},
              {"mutation",
               section({"p_trigger", "p_response", "p_timing",
                        "p_add_assumption", "p_conditional_assumption",
@@ -214,6 +215,16 @@ void apply_fitness(const toml::table& tbl, Config& cfg) {
     if (auto val = tbl["weight_status"].value<double>()) {
         require_nonnegative(*val, "fitness.weight_status");
         cfg.fitness_weight_status = *val;
+    }
+    if (auto val = tbl["status_grading"].value<std::string>()) {
+        if (*val == "tiered") {
+            cfg.status_grading = StatusGrading::Tiered;
+        } else if (*val == "mrs") {
+            cfg.status_grading = StatusGrading::Mrs;
+        } else {
+            throw std::runtime_error(
+                R"(config: fitness.status_grading must be "tiered" or "mrs")");
+        }
     }
 }
 

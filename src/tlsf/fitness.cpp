@@ -10,10 +10,12 @@
 #include "fitness/halstead.hpp"
 #include "fitness/semantic_similarity.hpp"
 #include "fitness/status.hpp"
+#include "guarantee_parts.hpp"
 #include "prop_formula.hpp"
 #include "runner/black.hpp"
 #include "runner/spot.hpp"
 #include "tlsf/filter.hpp"
+#include "tlsf/mucs.hpp"
 
 namespace {
 
@@ -187,8 +189,7 @@ double tlsf_halstead_fitness(const tlsf::Specification& spec,
     return std::min(1.0, original_volume / volume);
 }
 
-double tlsf_status(const tlsf::Specification& spec,
-                   [[maybe_unused]] const Config& cfg) {
+double tlsf_status(const tlsf::Specification& spec, const Config& cfg) {
     SatisfiabilityChecker& sat = global_sat_checker();
     RealizabilityChecker& real = global_real_checker();
     // A TLSF specification's components are the individual formulae of its six
@@ -200,6 +201,24 @@ double tlsf_status(const tlsf::Specification& spec,
             components.push_back(formula.to_string());
         }
     }
+    if (cfg.status_grading == StatusGrading::Mrs) {
+        const std::vector<tlsf::CoreFormula> parts =
+            tlsf::split_guarantee_parts(spec);
+        return status_score_mrs(
+            components, parts.size(), sat,
+            [&spec, &parts, &real](const std::vector<std::size_t>& indices) {
+                const tlsf::Specification subset =
+                    tlsf::build_part_subset(spec, parts, indices);
+                // Undecided resolves as unrealizable, so the part is rejected:
+                // a timed-out query must not buy a candidate a point.
+                return real.check_realizability_ltl(subset.to_ltl(),
+                                                    subset.m_inputs,
+                                                    subset.m_outputs)
+                           .value_or(false) &&
+                       !tlsf_is_not_well_separated(subset, real);
+            });
+    }
+
     return status_score(components, sat, [&spec, &real] {
         const bool realizable =
             real.check_realizability_ltl(spec.to_ltl(), spec.m_inputs,

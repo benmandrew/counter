@@ -33,6 +33,7 @@ weight_syntactic = 0.2
 weight_semantic  = 0.5
 weight_halstead  = 0.1
 weight_status    = 0.5
+status_grading   = "tiered"  # or "mrs"
 
 [mutation]
 # Per-requirement probabilities of rewriting each part of a FRETISH requirement.

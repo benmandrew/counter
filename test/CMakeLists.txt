@@ -39,6 +39,7 @@ add_executable(counter_tests
     tlsf/filter_tests.cpp
     tlsf/fitness_tests.cpp
     tlsf/mucs_tests.cpp
+    tlsf/guarantee_parts_tests.cpp
     tlsf/genetic_tests.cpp
     tlsf/pipeline_tests.cpp
 )

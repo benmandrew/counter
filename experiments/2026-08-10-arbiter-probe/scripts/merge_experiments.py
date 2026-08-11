@@ -76,6 +76,8 @@ PROFILE_CSVS: dict[str, str] = {
     # Its own CSVs, never replicate's: sweep R's level names are the same but
     # the campaign, corpus and commit differ, so sharing would interleave two
     # datasets under one set of keys.
+    "elitism-fret": "results-elitism.csv",
+    "elitism-tlsf": "results-elitism-tlsf.csv",
     "arbiter-probe": "results-arbiter-probe.csv",
 }
 
@@ -100,6 +102,8 @@ PROFILE_RESULT_DIRS: dict[str, str] = {
     "replicate-wkoff": "results-replicate",
     "replicate-recap": "results-replicate",
     "replicate-tlsf": "results-replicate-tlsf",
+    "elitism-fret": "results-elitism",
+    "elitism-tlsf": "results-elitism-tlsf",
     "arbiter-probe": "results-arbiter-probe",
 }
 

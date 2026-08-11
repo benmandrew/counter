@@ -957,6 +957,70 @@ PROFILES: dict[str, dict] = {
         # multi-GB resident per call on these specs.
         "default_jobs": 1,
     },
+    # Sweep R on its own, to decide whether the shipped genetic.elitism_rate
+    # default should be 0.0 or 0.1 -- see experiments/2026-08-07-elitism/PLAN.md
+    # for the pre-registered decision rule. It re-runs a factor the `replicate`
+    # campaign already carried as a nuisance variable, because that campaign's
+    # rows predate the tautology screen (3869c53), the correct-offspring rescue
+    # fix (01a4308) and the flip of run_well_separation to true (86e463c) --
+    # and well-separation interacts with elitism directly, since elites bypass
+    # the offspring filter chain that applies it.
+    #
+    # Scheme is pinned to nsga2-truncate rather than crossed. The question is
+    # about the shipped configuration, and that is the shipped scheme; the
+    # replicate rows already show the elitism effect does not change sign
+    # between the two NSGA-II schemes, so crossing would double the campaign
+    # for an arm no default user gets.
+    "elitism-fret": {
+        "schemes": ["nsga2-truncate"],
+        "weakenings": None,
+        "metrics": None,
+        "repair_modes": None,
+        "sweeps": ["R"],
+        "levels": {},
+        "specs": list(FRETISH_SPECS),
+        # Seed-major disjoint ranges across av2/av3 (pass --seeds on launch).
+        # 600 pooled pairs resolve ~0.043 absolute on implies_ideal at the 14%
+        # discordance the replicate rows measured -- under the 0.05
+        # non-inferiority margin the decision rule fixes.
+        "seeds": list(range(150)),
+        # replicate's caps at the same operating point, with fsm-combined
+        # raised: this campaign runs with well-separation on by default, which
+        # replicate's rows did not. A cap that fires records implies_ideal = 0
+        # for a run that was merely slow, so these are sized never to bite.
+        "timeout_caps": {"takeoff": 900, "fsm": 900, "fsm-timing": 900,
+                         "fsm-combined": 1800},
+        "compare_timeout": 1800,
+        "baseline_aliases": {},
+        "configs_dir": EXPERIMENTS_DIR / "configs-elitism",
+        "results_dir": EXPERIMENTS_DIR / "results-elitism",
+        "results_csv": EXPERIMENTS_DIR / "results-elitism.csv",
+        "default_jobs": 4,
+    },
+    # The TLSF half, over the 20-family fixes-backed ablation corpus rather
+    # than the 5 families replicate-tlsf used. A default has to hold across the
+    # corpus, and replicate-tlsf's narrow set produced zero discordant pairs on
+    # both primary outcomes across 300 -- too narrow to move either way.
+    "elitism-tlsf": {
+        "schemes": ["nsga2-truncate"],
+        "weakenings": None,
+        "metrics": None,
+        "repair_modes": None,
+        "sweeps": ["R"],
+        "levels": {},
+        "specs": list(TLSF_ABLATION_SPECS),
+        # 800 pooled pairs (20 x 40) resolve ~0.031 absolute at 10% discordance.
+        "seeds": list(range(40)),
+        # Flat 900 s, above ablate-tlsf's 600 at the same operating point and
+        # corpus, for the same reason the FRETISH caps were raised.
+        "timeout_caps": {spec: 900 for spec in TLSF_ABLATION_SPECS},
+        "baseline_aliases": {},
+        "configs_dir": EXPERIMENTS_DIR / "configs-elitism-tlsf",
+        "results_dir": EXPERIMENTS_DIR / "results-elitism-tlsf",
+        "results_csv": EXPERIMENTS_DIR / "results-elitism-tlsf.csv",
+        # jobs=1 for the same RAM reason as every other TLSF profile.
+        "default_jobs": 1,
+    },
     # Does nsga2-apportion's diversity unlock the arbiter family, or only the one
     # `arbiter` spec? See experiments/2026-08-10-arbiter-probe/PLAN.md for the
     # pre-registered decision rule. This is a generality probe, not a rerun of

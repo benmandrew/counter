@@ -1324,7 +1324,7 @@ class CampaignError(Exception):
 
 CAMPAIGN_KEYS = {"name", "branch", "profile", "hosts", "phases", "build",
                  "description"}
-PHASE_KEYS = {"name", "profile", "jobs", "sweeps", "specs"}
+PHASE_KEYS = {"name", "profile", "jobs", "sweeps", "specs", "hosts"}
 
 # `describe` prints a declaration for a campaign that has already closed. It
 # is not one of these: the factor cross below is what the results CSV carries,
@@ -1362,6 +1362,36 @@ def parse_seed_range(text: str, where: str) -> list:
     if len(set(seeds)) != len(seeds):
         raise CampaignError(f"{where}: {text!r} repeats a seed")
     return sorted(seeds)
+
+
+def parse_host_split(hosts, where: str) -> dict:
+    """A ``hosts`` table to a host -> seed list map, checked for overlap.
+
+    Shared by the campaign-level table and a phase's override, so a phase's
+    split is held to exactly the standard the campaign's is: the overlap check
+    is the one that has to run at both levels, since a phase that re-declares
+    a split is a second chance to write the same seed twice.
+    """
+    if not isinstance(hosts, dict) or not hosts:
+        raise CampaignError(f"{where} must be a non-empty table, "
+                            f"e.g. hosts = {{ av2 = \"0-99\" }}")
+    seeds_by_host: dict = {}
+    for host, text in hosts.items():
+        if host not in HOSTS and host != LOCAL:
+            raise CampaignError(f"{where}: unknown host {host!r}; "
+                                f"known: {', '.join([*HOSTS, LOCAL])}")
+        seeds_by_host[host] = parse_seed_range(text, f"{where}.{host}")
+    pairs = list(seeds_by_host.items())
+    for i, (h1, s1) in enumerate(pairs):
+        for h2, s2 in pairs[i + 1:]:
+            shared = sorted(set(s1) & set(s2))
+            if shared:
+                raise CampaignError(
+                    f"{where}: hosts {h1} and {h2} share {len(shared)} seed(s) "
+                    f"(e.g. {', '.join(str(s) for s in shared[:5])}). Both "
+                    f"hosts would run them and the merge would keep one row "
+                    f"per key, so the overlap costs time and yields nothing.")
+    return seeds_by_host
 
 
 def format_seed_range(seeds: list) -> str:
@@ -1425,26 +1455,7 @@ def load_campaign(name: str, root: Path | None = None) -> dict:
     if not isinstance(branch, str) or not branch:
         raise CampaignError(f"{path}: branch must be a non-empty string")
 
-    hosts = raw.get("hosts")
-    if not isinstance(hosts, dict) or not hosts:
-        raise CampaignError(f"{path}: hosts must be a non-empty table, "
-                            f"e.g. hosts = {{ av2 = \"0-99\" }}")
-    seeds_by_host: dict = {}
-    for host, text in hosts.items():
-        if host not in HOSTS and host != LOCAL:
-            raise CampaignError(f"{path}: unknown host {host!r}; "
-                                f"known: {', '.join([*HOSTS, LOCAL])}")
-        seeds_by_host[host] = parse_seed_range(text, f"{path}: hosts.{host}")
-    pairs = list(seeds_by_host.items())
-    for i, (h1, s1) in enumerate(pairs):
-        for h2, s2 in pairs[i + 1:]:
-            shared = sorted(set(s1) & set(s2))
-            if shared:
-                raise CampaignError(
-                    f"{path}: hosts {h1} and {h2} share {len(shared)} seed(s) "
-                    f"(e.g. {', '.join(str(s) for s in shared[:5])}). Both "
-                    f"hosts would run them and the merge would keep one row "
-                    f"per key, so the overlap costs time and yields nothing.")
+    seeds_by_host = parse_host_split(raw.get("hosts"), f"{path}: hosts")
 
     phases = raw.get("phases")
     if not isinstance(phases, list) or not phases:
@@ -1481,10 +1492,21 @@ def load_campaign(name: str, root: Path | None = None) -> dict:
                     and all(isinstance(v, str) for v in value)):
                 raise CampaignError(f"{where}: {key} must be an array of "
                                     f"strings")
+        phase_hosts = None
+        if phase.get("hosts") is not None:
+            phase_hosts = parse_host_split(phase["hosts"], f"{where}: hosts")
+            extra = sorted(set(phase_hosts) - set(seeds_by_host))
+            if extra:
+                raise CampaignError(
+                    f"{where}: hosts {', '.join(extra)} are not declared at "
+                    f"the campaign level. A phase narrows the split; it "
+                    f"cannot add a host, which stage never staged and the "
+                    f"other phases would never run on.")
         normalised.append({"name": phase.get("name", profile),
                            "profile": profile, "jobs": jobs,
                            "sweeps": phase.get("sweeps"),
-                           "specs": phase.get("specs")})
+                           "specs": phase.get("specs"),
+                           "hosts": phase_hosts})
 
     build = raw.get("build", DEFAULT_BUILD_CMD)
     if not isinstance(build, str) or not build:
@@ -1505,6 +1527,39 @@ def campaign_hosts(campaign: dict, only: list | None) -> list:
             f"{campaign['name']} declares no host(s) {', '.join(unknown)}; "
             f"declared: {', '.join(declared)}")
     return [h for h in declared if h in only]
+
+
+def phase_seeds(phase: dict, host: str, default: list) -> list:
+    """One host's seeds for one phase: the phase's own split, or the campaign's.
+
+    A phase overrides the split where its row count is set by something other
+    than the campaign's seed budget — two paths whose sample sizes come from
+    separate power calculations are the motivating case, since one range
+    cannot serve both and the wider one silently multiplies the narrower
+    phase's cost.
+
+    A phase that declares a split and omits a host runs nowhere on it: an
+    absent host is a deliberate narrowing, and falling back to the campaign
+    range there would hand it the seeds the override exists to withhold.
+    """
+    if phase.get("hosts") is None:
+        return default
+    return phase["hosts"].get(host, [])
+
+
+def entry_phase_seeds(entry: dict, index: int) -> str:
+    """The frozen seed range one queue entry runs its `index`-th phase on.
+
+    An entry enqueued before phases could narrow the split carries no
+    `phase_seeds`, and falls back to the campaign range it was enqueued under:
+    that range is what its finished phases ran on and what their rows are
+    keyed by, so re-reading it from a since-edited declaration is the one
+    thing the freeze exists to prevent.
+    """
+    frozen = list(entry.get("phase_seeds") or [])
+    if index < len(frozen):
+        return frozen[index]
+    return entry.get("seeds", "")
 
 
 def phase_args(phase: dict, seeds: list) -> list:
@@ -2336,7 +2391,16 @@ def cmd_start(args: argparse.Namespace) -> int:
     rows, ok = [], True
     for host in hosts:
         seeds = campaign["hosts"][host]
-        chain = " && ".join(phase_command(p, seeds) for p in phases)
+        # A phase narrowed away from this host contributes no command at all.
+        # An empty --seeds is an argparse error rather than a no-op, and the
+        # phases are joined with &&, so emitting one would take every later
+        # phase on the host down with it.
+        chain = " && ".join(phase_command(p, s) for p in phases
+                            if (s := phase_seeds(p, host, seeds)))
+        if not chain:
+            rows.append([host, format_seed_range(seeds), "-",
+                         "no phase runs here; every phase narrows it away"])
+            continue
         probe = probe_host(host)
         if probe.error:
             ok = False
@@ -2468,8 +2532,13 @@ def new_entry(campaign: dict, host: str, max_attempts: int) -> dict:
         "branch": campaign["branch"],
         # Frozen at enqueue: an edit to campaign.toml between enqueue and tick
         # must not silently move a host's share of the seeds under a run that
-        # has already produced rows against the old split.
+        # has already produced rows against the old split. Phases that narrow
+        # the split are frozen one by one for the same reason — freezing the
+        # campaign range alone would leave every override free to move.
         "seeds": format_seed_range(campaign["hosts"][host]),
+        "phase_seeds": [format_seed_range(phase_seeds(p, host,
+                                                      campaign["hosts"][host]))
+                        for p in campaign["phases"]],
         "phase": 0,
         "phases": len(campaign["phases"]),
         "state": "queued",
@@ -2694,7 +2763,17 @@ def tick_entry(entry: dict, campaign: dict, root: Path,
         write_entry(entry["path"], entry)
         return 0
     phase = campaign["phases"][index]
-    seeds = parse_seed_range(entry["seeds"], f"{entry['file']}: seeds")
+    text = entry_phase_seeds(entry, index)
+    if not text:
+        entry["phase"] = index + 1
+        log_line(entry, f"phase {index} ({phase['name']}) runs no seeds "
+                        f"on {entry['host']}; skipped")
+        entry["state"] = ("done" if entry["phase"] >= len(campaign["phases"])
+                          else "queued")
+        write_entry(entry["path"], entry)
+        print(f"tick: {entry['file']} phase {index} ({phase['name']}) skipped")
+        return 0
+    seeds = parse_seed_range(text, f"{entry['file']}: phase {index} seeds")
     log_path = queue_dir(root) / (Path(entry["file"]).stem + ".log")
 
     entry["state"] = "running"
@@ -2702,7 +2781,7 @@ def tick_entry(entry: dict, campaign: dict, root: Path,
     log_line(entry, f"phase {index} ({phase['name']}) started")
     write_entry(entry["path"], entry)
     print(f"tick: {entry['file']} phase {index} ({phase['name']}) "
-          f"on seeds {entry['seeds']}")
+          f"on seeds {text}")
     if args.dry_run:
         entry["state"] = "queued"
         log_line(entry, "dry run, phase not executed")

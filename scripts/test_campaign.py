@@ -724,6 +724,76 @@ phases = [ { profile = "no-such-profile", jobs = 1 } ]
         missing = str(exc)
     check_true("no campaign declaration" in missing,
                "and a campaign with no declaration at all names the path")
+
+    # A phase may narrow the split. Two paths whose sample sizes come from
+    # separate power calculations cannot share one range: the wider one
+    # multiplies the narrower phase's row count without saying so.
+    write_declaration(decl_root, "narrowed", """
+name = "narrowed"
+branch = "feat/x"
+hosts = { av2 = "0-34", av3 = "35-69" }
+
+[[phases]]
+name = "wide"
+profile = "full"
+jobs = 4
+
+[[phases]]
+name = "narrow"
+profile = "tlsf"
+jobs = 1
+hosts = { av2 = "0-12", av3 = "13-24" }
+
+[[phases]]
+name = "av2-only"
+profile = "tlsf"
+jobs = 1
+hosts = { av2 = "0-4" }
+""")
+    narrowed = C.load_campaign("narrowed", decl_root)
+    wide, narrow, only = narrowed["phases"]
+    check(wide["hosts"], None, "a phase that declares no split carries none")
+    check(C.phase_seeds(wide, "av2", narrowed["hosts"]["av2"]),
+          list(range(35)), "and falls back to the campaign's range")
+    check(C.phase_seeds(narrow, "av2", narrowed["hosts"]["av2"]),
+          list(range(13)), "a narrowed phase takes its own range")
+    check(C.phase_seeds(narrow, "av3", narrowed["hosts"]["av3"]),
+          list(range(13, 25)), "on each host independently")
+    # An absent host is a deliberate narrowing, not a gap to fill in: falling
+    # back would hand it the seeds the override exists to withhold.
+    check(C.phase_seeds(only, "av3", narrowed["hosts"]["av3"]), [],
+          "a phase that omits a host runs nowhere on it")
+
+    phase_overlap = declaration_error(decl_root, "phase-overlap", """
+name = "phase-overlap"
+branch = "feat/x"
+hosts = { av2 = "0-34", av3 = "35-69" }
+phases = [ { profile = "full", hosts = { av2 = "0-12", av3 = "10-24" } } ]
+""")
+    check_true("share 3 seed(s)" in phase_overlap,
+               f"a phase's split is held to the overlap rule too: "
+               f"{phase_overlap!r}")
+    check_true("phases[0]" in phase_overlap, "and the phase is named")
+
+    # `local` is a known host, so this clears the known-host check and can
+    # only be caught by the subset rule.
+    added = declaration_error(decl_root, "phase-adds-host", """
+name = "phase-adds-host"
+branch = "feat/x"
+hosts = { av2 = "0-34" }
+phases = [ { profile = "full", hosts = { av2 = "0-9", local = "10-19" } } ]
+""")
+    check_true("not declared at the campaign level" in added and "local" in added,
+               f"a phase narrows the split; it cannot add a host: {added!r}")
+
+    phase_bad = declaration_error(decl_root, "phase-bad-range", """
+name = "phase-bad-range"
+branch = "feat/x"
+hosts = { av2 = "0-34" }
+phases = [ { profile = "full", hosts = { av2 = "9-0" } } ]
+""")
+    check_true("backwards" in phase_bad,
+               f"and a malformed phase range is refused: {phase_bad!r}")
 finally:
     shutil.rmtree(decl_root, ignore_errors=True)
 
@@ -740,6 +810,35 @@ check(C.phase_args(phase, [0, 1, 2]),
       ["--profile", "tlsf", "--jobs", "4", "--sweeps", "R",
        "--seeds", "0", "1", "2"],
       "a phase becomes runner arguments, seeds last")
+
+# The freeze has to reach the overrides. Freezing the campaign range alone
+# would pin the phases that do not narrow it and leave every phase that does
+# free to move under rows already written against the old split.
+frozen_campaign = {
+    "name": "frozen", "hosts": {"av2": list(range(35))},
+    "phases": [
+        {"name": "wide", "profile": "tlsf", "jobs": 4, "sweeps": None,
+         "specs": None, "hosts": None},
+        {"name": "narrow", "profile": "tlsf", "jobs": 1, "sweeps": None,
+         "specs": None, "hosts": {"av2": list(range(13))}},
+        {"name": "elsewhere", "profile": "tlsf", "jobs": 1, "sweeps": None,
+         "specs": None, "hosts": {"av3": list(range(13, 25))}},
+    ],
+    "branch": "feat/x",
+}
+entry = C.new_entry(frozen_campaign, "av2", 3)
+check(entry["seeds"], "0-34", "the entry still freezes the campaign range")
+check(entry["phase_seeds"], ["0-34", "0-12", ""],
+      "and freezes each phase's own range beside it")
+
+check(C.entry_phase_seeds(entry, 1), "0-12",
+      "a tick reads the phase's frozen range")
+check(C.entry_phase_seeds(entry, 2), "",
+      "and an empty one means the phase is skipped on this host")
+# An entry written before phases could narrow the split has no phase_seeds and
+# must keep running on the campaign range its finished phases were keyed on.
+check(C.entry_phase_seeds({"seeds": "0-9"}, 3), "0-9",
+      "an entry from before this feature falls back to the campaign range")
 
 
 # ── describe: deriving a closed campaign's declaration ────────────────────────

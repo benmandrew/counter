@@ -437,22 +437,44 @@ branch = "feat/arbiter-probe"   # the branch every host runs from
 profile = "arbiter-probe"       # default profile for phases that omit one
 build = "cmake --build build-release"   # optional; this is the default
 hosts = { av2 = "0-99", av3 = "100-199" }
-phases = [ { profile = "arbiter-probe", jobs = 4 } ]
+
+[[phases]]
+profile = "arbiter-probe"
+jobs = 4
+
+[[phases]]
+profile = "tlsf"
+jobs = 1
+hosts = { av2 = "0-24", av3 = "100-124" }   # this phase alone
 ```
 
-A phase takes `profile`, `jobs`, and optionally `name`, `sweeps` and `specs`;
-`[[phases]]` headers mean the same as the inline array. Seed ranges are
+A phase takes `profile`, `jobs`, and optionally `name`, `sweeps`, `specs` and
+`hosts`; `[[phases]]` headers mean the same as the inline array. Seed ranges are
 inclusive and may be comma-separated (`"0-9,20-29"`). Phases run in order and
 stop at the first failure.
+
+A phase's own `hosts` table overrides the campaign-level split for that phase
+alone, and may only narrow it — every host it names must already be declared at
+the top level, since `stage` staged no other one. A host the table omits runs
+nothing for that phase, contributing no command to that host's `&&` chain under
+`start` and being skipped by a tick. `enqueue` freezes the per-phase ranges into
+the queue entry as `phase_seeds`, for the reason it already freezes the campaign
+range, and an entry written before that field existed falls back to the campaign
+split. The case for it is a campaign whose paths have different sample sizes,
+which cannot share one range because `run_experiments.py --seeds` replaces a
+profile's own seed list rather than intersecting with it. Forcing 70 FRETISH
+seeds over 4 specs onto TLSF phases sized at 25 over 20 families would run 4,200
+TLSF rows where the plan says 1,500.
 
 The file names a profile that `run_experiments.py` defines and never redefines
 one, so the load is validated against the current checkout's `PROFILES` and
 fails on a name it does not find. It also fails on a `name` that disagrees with
 its directory, an unknown key, a malformed range, and two hosts whose ranges
-overlap. That last one is the reason the file exists: an overlap has both hosts
-run the shared seeds, and the merge keeps one row per key, so the campaign costs
-more machine time and returns fewer rows than the plan says without anything
-looking wrong.
+overlap. A phase's table is checked the same way, and fails in addition on a
+host the campaign level does not declare. The overlap is the reason the file
+exists: it has both hosts run the shared seeds, and the merge keeps one row per
+key, so the campaign costs more machine time and returns fewer rows than the
+plan says without anything looking wrong.
 
 `campaign.py` reads this TOML with a parser of its own rather than `tomllib`,
 because `tick` runs on av2 and av3, whose python3 is 3.10.12 with neither

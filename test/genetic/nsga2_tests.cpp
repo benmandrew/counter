@@ -1,3 +1,4 @@
+#include <algorithm>
 #include <cmath>
 #include <cstddef>
 #include <utility>
@@ -112,6 +113,39 @@ void test_crowding_zero_range_objective_contributes_nothing() {
            "crowding: a zero-range objective adds nothing and yields no NaN");
 }
 
+void test_crowding_constant_objective_pins_nobody() {
+    // Every objective is constant across the front, so nothing distinguishes
+    // any member and none should be preferred. The infinities used to be
+    // assigned before the zero-range guard, which pinned two members picked by
+    // an unstable sort over the tied ones -- selection noise with no basis in
+    // the objectives.
+    const std::vector<std::vector<double>> objectives = {
+        {0.5, 0.5}, {0.5, 0.5}, {0.5, 0.5}, {0.5, 0.5}};
+    const std::vector<std::size_t> ranks = {0, 0, 0, 0};
+    const std::vector<double> distances = crowding_distances(objectives, ranks);
+    expect(std::all_of(distances.begin(), distances.end(),
+                       [](double dist) { return dist == 0.0; }),
+           "crowding: a front constant in every objective should leave every "
+           "distance at zero, pinning nobody");
+}
+
+void test_crowding_zero_range_objective_adds_no_infinities() {
+    // obj0 varies and legitimately anchors its two extremes; obj1 is constant
+    // and must anchor nothing. A property assertion rather than a regression
+    // guard: this case also passed before the guard moved, because the unstable
+    // sort happened to leave obj0's extremes at the ends of obj1's all-tied
+    // ordering. test_crowding_constant_objective_pins_nobody above is the case
+    // that actually fails without the fix.
+    const std::vector<std::vector<double>> objectives = {
+        {0.0, 0.5}, {0.3, 0.5}, {0.6, 0.5}, {1.0, 0.5}};
+    const std::vector<std::size_t> ranks = {0, 0, 0, 0};
+    const std::vector<double> distances = crowding_distances(objectives, ranks);
+    expect(std::isinf(distances[0]) && std::isinf(distances[3]),
+           "crowding: the varying objective's extremes stay anchored");
+    expect(std::isfinite(distances[1]) && std::isfinite(distances[2]),
+           "crowding: a constant objective must not anchor interior members");
+}
+
 // --- nsga2_sort ---
 
 Scored<int> make_scored(int value, std::vector<double> objectives) {
@@ -170,6 +204,8 @@ void run_nsga2_tests() {
     test_crowding_boundaries_are_infinite();
     test_crowding_denser_neighbour_has_smaller_distance();
     test_crowding_zero_range_objective_contributes_nothing();
+    test_crowding_constant_objective_pins_nobody();
+    test_crowding_zero_range_objective_adds_no_infinities();
     test_nsga2_sort_orders_by_rank_then_crowding();
     test_nsga2_sort_is_deterministic();
 }

@@ -415,11 +415,104 @@ Host av3 av3.cs.man.ac.uk
 
 ## 6. Campaign status and collection
 
-`campaign.py` covers the two things done to a campaign that is already
-launched, polling it and bringing its results home. Both verbs reach the lab
-machines by their ssh-config alias (`av2`) rather than by the fully qualified
-domain name (FQDN) in `merge_experiments.REMOTES` — that form falls through to
-password auth under `BatchMode=yes`, and a status poll cannot answer a prompt.
+`campaign.py` covers a campaign's whole life on the lab machines: declaring it,
+staging the hosts, launching it, polling it and bringing its results home.
+Every verb reaches the machines by their ssh-config alias (`av2`) rather than by
+the fully qualified domain name (FQDN) in `merge_experiments.REMOTES` — that
+form falls through to password auth under `BatchMode=yes`, and a status poll
+cannot answer a prompt.
+
+`scripts/CLAUDE.md` is the operating manual for the same tool: which verb to
+reach for, what each state means, and how a campaign is closed. This section is
+the command surface.
+
+### Declaring a campaign
+
+`experiments/<name>/campaign.toml`, tracked in git through a `.gitignore`
+negation because the hosts get it by checking out the campaign's branch:
+
+```toml
+name = "arbiter-probe"          # must equal the directory name
+branch = "feat/arbiter-probe"   # the branch every host runs from
+profile = "arbiter-probe"       # default profile for phases that omit one
+build = "cmake --build build-release"   # optional; this is the default
+hosts = { av2 = "0-99", av3 = "100-199" }
+phases = [ { profile = "arbiter-probe", jobs = 4 } ]
+```
+
+A phase takes `profile`, `jobs`, and optionally `name`, `sweeps` and `specs`;
+`[[phases]]` headers mean the same as the inline array. Seed ranges are
+inclusive and may be comma-separated (`"0-9,20-29"`). Phases run in order and
+stop at the first failure.
+
+The file names a profile that `run_experiments.py` defines and never redefines
+one, so the load is validated against the current checkout's `PROFILES` and
+fails on a name it does not find. It also fails on a `name` that disagrees with
+its directory, an unknown key, a malformed range, and two hosts whose ranges
+overlap. That last one is the reason the file exists: an overlap has both hosts
+run the shared seeds, and the merge keeps one row per key, so the campaign costs
+more machine time and returns fewer rows than the plan says without anything
+looking wrong.
+
+`campaign.py` reads this TOML with a parser of its own rather than `tomllib`,
+because `tick` runs on av2 and av3, whose python3 is 3.10.12 with neither
+`tomllib` (3.11) nor `tomli` present. `test_campaign.py` checks that parser
+against `tomllib` on every fixture.
+
+### Staging the hosts
+
+```sh
+python scripts/campaign.py stage arbiter-probe --dry-run   # probe only
+python scripts/campaign.py stage arbiter-probe
+python scripts/campaign.py stage arbiter-probe --force     # asks before it does
+```
+
+Pushes the branch, then per host fetches it, checks it out at the pushed commit,
+runs the build command and reads `build-release/counter --version` back to
+confirm the binary carries that commit with `dirty=0`.
+
+It refuses by default on three readings, all three reported at once: a dirty
+checkout, a live `counter` or `run_experiments.py` process, and a checkout on
+another branch. `--force` prints the modified files by name and the branch and
+head it would leave, then requires the host name typed back at a terminal;
+without a terminal it refuses, so no script can stage past a refusal. `git
+clean` is never run — a host's untracked files are its results — and an unforced
+stage also refuses a checkout ahead of the pushed commit.
+
+### Launching
+
+```sh
+python scripts/campaign.py start arbiter-probe --dry-run   # print the commands
+python scripts/campaign.py start arbiter-probe
+```
+
+`start` re-probes each host, refuses one that is unstaged, already running a
+campaign, or holding a queue entry for this campaign in any state a tick could
+still run, and launches that host's phases as one detached `nohup` chain joined
+with `&&`. `--ignore-queue` overrides the last of those and names the entry it
+is racing. Each launch is appended to `experiments/<name>/launches.jsonl`.
+Neither `start` nor `enqueue` accepts a seed range: both read the split from
+`campaign.toml`, which is the only place it is written down.
+
+### The queue
+
+```sh
+python scripts/campaign.py enqueue arbiter-probe        # one entry per host
+python scripts/campaign.py queue                        # every host, read-only
+python scripts/campaign.py cron --host av2 --print      # the crontab line
+python scripts/campaign.py requeue --host av2 001-arbiter-probe.toml
+```
+
+An entry is `experiments/queue/NNN-<name>.toml` on the host that runs it,
+untracked because a tick rewrites its state and a tracked file doing that would
+leave the checkout dirty. A tick takes `~/.counter-queue.lock`, recovers any
+entry a killed tick left `running`, and runs the next phase of the
+lowest-numbered queued entry in the foreground, so the lock is held for the
+phase's whole duration and every tick landing during it exits at once. States
+are `queued`, `running`, `done` and `failed`; a failed phase costs an attempt
+and the entry stops at the cap (`--max-attempts`, three by default) with the
+reason in `last_error`, rather than being retried for ever. `cron --print`
+prints the line and installs nothing.
 
 ### Polling a running campaign
 
@@ -568,7 +661,10 @@ python scripts/test_campaign.py
 
 A plain script that exits non-zero on the first failure, the same convention
 as `test_experiment_paths.py`. It runs against temporary fixture checkouts and
-never touches a lab machine.
+never touches a lab machine: the remote protocol is exercised against captured
+marker output, `collect` against two throwaway checkouts, and the stage and
+queue paths against temporary git repositories with `COUNTER_RUNNER_CMD`
+pointed at a stub that records its arguments instead of running a campaign.
 
 The verification is the half worth having. A merge that quietly drops one
 machine's share of a campaign reads the same as a merge that worked, and the

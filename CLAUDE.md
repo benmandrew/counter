@@ -77,6 +77,18 @@ Retiring a key's *value* lands in the same place. The selection schemes were ren
 
 Archived *results* are the separate half, and the one that needed work. `gen_configs.py` turns the scheme name into a config directory name, `scheme_of()` in `run_experiments.py` reads it back into the `selection` column of every results CSV, and that column joins `KEY_FIELDS` in `merge_experiments.py` — so renaming what the harness emits would have made all 224,861 archived rows reading `nsga2` miss their resume key and re-run finished campaigns. `canonical_scheme()` in both scripts maps the retired spellings onto the new ones wherever a `selection` value is read back, which is what keeps resume and merge joining those rows. The scheme itself never changed, only its name, so the mapping is an identity on behaviour. Renaming any other factor directory means adding to that mapping in the same way; leaving it out is silent, and shows up as a finished campaign re-running from zero.
 
+## Campaigns
+
+A campaign is declared once, in `experiments/<name>/campaign.toml`: the branch it runs on, the seed range each lab host takes, and the phases to run. Everything that acts on a campaign goes through `scripts/campaign.py` and reads that file, so the seed split exists in exactly one place. Never hand-roll an `ssh … nohup … run_experiments.py` line and never choose a seed range at the prompt; two hosts sharing a seed run it twice and the merge keeps one row per key, which costs machine time and yields nothing. `campaign.toml` is tracked (a `.gitignore` negation), because the hosts get it by checking out the campaign's branch.
+
+The verbs are `stage` (put a host on the branch and rebuild it), `start` (launch the phases detached), `enqueue` plus the cron-driven `tick` (the unattended path), `status`, `queue` and `collect`. Staging refuses a host that is dirty, is running something, or is on another branch; `--force` prints what it would discard and requires the host name typed back, so it cannot be answered from a script.
+
+`campaign.py status` is the source of truth for what a campaign is doing, it is read-only, and it costs about a second. Never carry campaign state in conversation context — re-run the poll instead, and re-run it again later rather than predicting what it will say. Never poll in a loop, and never spawn an agent to watch a run: `enqueue` the campaign and let the five-minute tick drive it.
+
+`KEY_FIELDS` in `merge_experiments.py` and the resume key in `run_experiments.py` are off limits to any of this, and `commit`/`dirty` may never join either (see "Commit provenance"): 224,861 archived rows resume against those keys, and a campaign whose key moved re-runs from zero in silence.
+
+`scripts/CLAUDE.md` is the operating manual — the state each `status` value means, when `--allow-stale-binary` is legitimate, the queue's transitions, and how a campaign is closed.
+
 ## Docs
 
 Every header file in `include/` must have a corresponding `.rst` page under `docs/api/` and be listed in `docs/index.rst`. When adding a new header, add the page and toctree entry before committing. The site covers `include/` alone: implementation detail under `src/` is deliberately not published.

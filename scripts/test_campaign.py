@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Tests for campaign.py's parsing, process detection and collect verification.
+"""Tests for campaign.py: parsing, process detection, collect, stage and queue.
 
 No pytest dependency, matching test_experiment_paths.py: run it directly
 (``python scripts/test_campaign.py``) and it exits non-zero on the first
@@ -12,17 +12,29 @@ The failure modes worth guarding are the silent ones. Process detection keyed
 on the whole command line would match this tool's own ssh command and report a
 finished campaign as running; a plan line read positionally would start
 reporting the aliasing count as the row total; and a collect that loses rows or
-duplicates keys looks exactly like a collect that worked.
+duplicates keys looks exactly like a collect that worked. Two hosts declaring
+overlapping seed ranges is the same shape of failure one level up: both run the
+overlap, the merge keeps one row per key, and the campaign costs more and
+yields less than it says while every table reads normal.
+
+The stage and queue tests run against throwaway git checkouts under a temporary
+directory, with COUNTER_RUNNER_CMD pointed at a stub that records its arguments
+instead of running a campaign. No lab machine is touched and no run is launched.
 """
 
 import argparse
 import contextlib
 import csv
+import importlib
 import io
+import os
 import shutil
+import signal
 import subprocess
 import sys
 import tempfile
+import time
+from dataclasses import replace
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
@@ -30,17 +42,34 @@ sys.path.insert(0, str(Path(__file__).parent))
 import campaign as C  # noqa: E402
 import merge_experiments as merge  # noqa: E402
 
+# The script under test, as a path rather than through the module's __file__,
+# which is typed as optional and is not a path the moment a module is built
+# some other way.
+CAMPAIGN_PY = Path(__file__).resolve().parent / "campaign.py"
+
+
+FAILURES: list = []
+
+
+def fail(msg):
+    """Record a failure and carry on to the rest of the suite.
+
+    Exiting on the first one hid whatever came after it, which is how an
+    ambient-state dependency in the stage fixtures went unnoticed on a busy
+    machine: 79 of the 227 assertions here sat behind the one that failed.
+    """
+    print(f"FAIL: {msg}")
+    FAILURES.append(msg)
+
 
 def check(got, want, msg):
     if got != want:
-        print(f"FAIL: {msg}\n  got:  {got!r}\n  want: {want!r}")
-        sys.exit(1)
+        fail(f"{msg}\n  got:  {got!r}\n  want: {want!r}")
 
 
 def check_true(cond, msg):
     if not cond:
-        print(f"FAIL: {msg}")
-        sys.exit(1)
+        fail(msg)
 
 
 # ── The runner's Plan line ────────────────────────────────────────────────────
@@ -517,4 +546,778 @@ finally:
     merge.REPO_ROOT = real_merge_root
     shutil.rmtree(tmp, ignore_errors=True)
 
+# ── TOML, in the subset the campaign files use ────────────────────────────────
+
+# campaign.py parses TOML itself because tick runs on av2 and av3, whose
+# python3 is 3.10 with no tomllib and no tomli. The risk that buys is a parser
+# that quietly disagrees with every other reader of the same file, so each
+# fixture below is checked against tomllib wherever tomllib exists.
+importlib.reload(C)
+
+DECLARATION = """
+# The campaign this file declares.
+name = "arbiter-probe"
+branch = "feat/arbiter-probe"
+profile = "arbiter-probe"
+hosts = { av2 = "0-99", av3 = "100-199" }
+phases = [ { profile = "arbiter-probe", jobs = 4 } ]
+"""
+
+HEADER_FORM = """
+name = "two-phase"
+branch = "feat/two-phase"
+hosts = { av2 = "0-9" }
+
+[[phases]]
+name = "warm"
+profile = "tlsf"
+jobs = 2
+specs = ["amba", "lily02"]
+
+[[phases]]
+profile = "muc"
+jobs = 4
+"""
+
+try:
+    import tomllib
+except ImportError:  # 3.10, which is what the lab machines run.
+    tomllib = None
+
+for label, text in (("inline form", DECLARATION), ("header form", HEADER_FORM),
+                    ("an entry", C.dump_toml(
+                        {"campaign": "x", "state": "queued", "phase": 0,
+                         "log": ['a "quoted" line', "b"], "done": True}))):
+    parsed = C.parse_toml(text)
+    if tomllib is not None:
+        check(parsed, tomllib.loads(text),
+              f"the built-in parser must agree with tomllib on {label}")
+
+check(C.parse_toml(DECLARATION)["hosts"], {"av2": "0-99", "av3": "100-199"},
+      "an inline table of host seed ranges")
+check(C.parse_toml(HEADER_FORM)["phases"][0]["specs"], ["amba", "lily02"],
+      "[[phases]] headers are the same thing as the inline array")
+
+roundtrip = {"campaign": "x", "seeds": "0-99", "phase": 2, "state": "failed",
+             "log": ['said "no"', "line\ttwo"], "flag": False}
+check(C.parse_toml(C.dump_toml(roundtrip)), roundtrip,
+      "an entry survives being written and read back")
+
+for bad, why in (
+    ('a = { b = 1,\n c = 2 }', "a newline inside an inline table"),
+    ("a = 1.5", "a float, which nothing here uses"),
+    ('a = 1\na = 2', "a duplicate key"),
+    ('a = "unterminated', "an unterminated string"),
+    ("[t]\n[t]", "a duplicate table"),
+):
+    try:
+        C.parse_toml(bad)
+        check_true(False, f"{why} must be rejected")
+    except C.TomlError:
+        pass
+
+
+# ── The campaign declaration ──────────────────────────────────────────────────
+
+def write_declaration(root: Path, name: str, text: str) -> Path:
+    path = root / "experiments" / name / "campaign.toml"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(text)
+    return path
+
+
+def declaration_error(root: Path, name: str, text: str) -> str:
+    write_declaration(root, name, text)
+    try:
+        C.load_campaign(name, root)
+    except C.CampaignError as exc:
+        return str(exc)
+    return ""
+
+
+decl_root = Path(tempfile.mkdtemp(prefix="campaign-decl-"))
+try:
+    # The same shape as DECLARATION above, on a profile this checkout defines:
+    # arbiter-probe's own profile lives on its branch, which is the normal case
+    # and is why load_campaign checks against the runner rather than a list.
+    write_declaration(decl_root, "probe", DECLARATION
+                      .replace("arbiter-probe", "probe")
+                      .replace('profile = "probe"', 'profile = "tlsf"'))
+    campaign = C.load_campaign("probe", decl_root)
+    check(campaign["branch"], "feat/probe", "branch from the file")
+    check(campaign["hosts"]["av2"], list(range(100)), "a range expands")
+    check(len(campaign["hosts"]["av3"]), 100, "and so does the other host's")
+    check(campaign["phases"][0]["profile"], "tlsf", "the phase profile")
+    check(campaign["build"], C.DEFAULT_BUILD_CMD, "the build command defaults")
+
+    # The error worth the most noise. Overlapping ranges cost twice the machine
+    # time and yield one row per key, so the campaign is smaller and slower
+    # than it says while every table reads normal.
+    overlap = declaration_error(decl_root, "overlap", """
+name = "overlap"
+branch = "feat/x"
+hosts = { av2 = "0-99", av3 = "90-199" }
+phases = [ { profile = "full", jobs = 1 } ]
+""")
+    check_true("share 10 seed(s)" in overlap and "av2" in overlap
+               and "av3" in overlap,
+               f"overlapping seed ranges must be refused by name: {overlap!r}")
+    check_true("90" in overlap, "and must name a shared seed")
+
+    for text, expect_in, why in (
+        ('hosts = { av2 = "0-" }', "not a seed", "an open-ended range"),
+        ('hosts = { av2 = "9-0" }', "backwards", "a range counting backwards"),
+        ('hosts = { av2 = "amba" }', "not a seed", "a non-numeric range"),
+        ('hosts = { av2 = "" }', "non-empty", "an empty range"),
+        ('hosts = { av2 = "0-2,1-3" }', "repeats", "a range repeating itself"),
+        ('hosts = { nowhere = "0-1" }', "unknown host", "an unknown host"),
+    ):
+        got = declaration_error(decl_root, "malformed", f"""
+name = "malformed"
+branch = "feat/x"
+{text}
+phases = [ {{ profile = "full", jobs = 1 }} ]
+""")
+        check_true(expect_in in got, f"{why} must be refused ({got!r})")
+
+    unknown = declaration_error(decl_root, "unknown-profile", """
+name = "unknown-profile"
+branch = "feat/x"
+hosts = { av2 = "0-1" }
+phases = [ { profile = "no-such-profile", jobs = 1 } ]
+""")
+    check_true("defines no profile" in unknown,
+               "a profile the runner does not define must be refused")
+    check_true("full" in unknown, "and the known ones listed")
+
+    # campaign.toml names a profile; it never redefines one. Eighteen archived
+    # campaigns vendor their own copy of run_experiments.py, so a second copy
+    # of that table here would be the nineteenth to keep in step.
+    check(C.known_profiles(), set(__import__("run_experiments").PROFILES),
+          "the profile list comes from the runner, not from a copy")
+
+    for text, expect_in, why in (
+        ('name = "wrong"\nbranch = "b"\nhosts = { av2 = "0" }\n'
+         'phases = [ { profile = "full" } ]', "directory is",
+         "a name that disagrees with its directory"),
+        ('name = "decl"\nbranch = "b"\nhosts = { av2 = "0" }\n'
+         'phases = []', "non-empty array", "no phases"),
+        ('name = "decl"\nbranch = "b"\nhosts = { }\n'
+         'phases = [ { profile = "full" } ]', "non-empty table", "no hosts"),
+        ('name = "decl"\nbranch = "b"\nseeds = "0-9"\nhosts = { av2 = "0" }\n'
+         'phases = [ { profile = "full" } ]', "unknown key",
+         "a key nobody reads"),
+        ('name = "decl"\nbranch = "b"\nhosts = { av2 = "0" }\n'
+         'phases = [ { profile = "full", jobs = 0 } ]', "positive integer",
+         "a job count of zero"),
+    ):
+        got = declaration_error(decl_root, "decl", text)
+        check_true(expect_in in got, f"{why} must be refused ({got!r})")
+
+    check_true("name = None" in declaration_error(decl_root, "absent", ""),
+               "an empty file is not a valid declaration")
+    missing = ""
+    try:
+        C.load_campaign("never-declared", decl_root)
+    except C.CampaignError as exc:
+        missing = str(exc)
+    check_true("no campaign declaration" in missing,
+               "and a campaign with no declaration at all names the path")
+finally:
+    shutil.rmtree(decl_root, ignore_errors=True)
+
+check(C.parse_seed_range("0-9,20", "x"), list(range(10)) + [20],
+      "a comma-separated range")
+check(C.format_seed_range([0, 1, 2, 5, 9, 10]), "0-2,5,9-10",
+      "and the inverse collapses runs")
+check(C.format_seed_range(C.parse_seed_range("100-199", "x")), "100-199",
+      "a range survives the round trip a queue entry puts it through")
+
+phase = {"name": "p", "profile": "tlsf", "jobs": 4, "sweeps": ["R"],
+         "specs": None}
+check(C.phase_args(phase, [0, 1, 2]),
+      ["--profile", "tlsf", "--jobs", "4", "--sweeps", "R",
+       "--seeds", "0", "1", "2"],
+      "a phase becomes runner arguments, seeds last")
+
+
+# ── stage: the refusals ───────────────────────────────────────────────────────
+
+PROBE = """##GIT
+feat/arbiter-probe
+b093374f0a0d8e83d0a9fe3412e6935bffc5b078
+##DIRTY
+ M src/main.cpp
+##PS
+zsh -zsh
+counter /home/benandrew/projects/counter/build-release/counter --input x
+##BIN
+commit=b093374f0a0d8e83d0a9fe3412e6935bffc5b078
+commit_short=b093374
+dirty=0
+##QUEUE
+##QFILE experiments/queue/001-arbiter-probe.toml
+campaign = "arbiter-probe"
+state = "queued"
+##ENDQFILE
+##END
+"""
+probe = C.parse_stage_probe(PROBE)
+check(probe.branch, "feat/arbiter-probe", "the probe reads the branch")
+check(probe.head[:7], "b093374", "and the full head")
+check(probe.dirty, ["M src/main.cpp"], "and the modified files by name")
+check([p["comm"] for p in probe.processes], ["counter"],
+      "and the live engine, keyed on comm as everywhere else")
+check(probe.binary["commit_short"], "b093374", "and the binary's commit")
+check(probe.queue[0]["campaign"], "arbiter-probe",
+      "and the host's queue, in the one round trip")
+
+check(C.parse_stage_probe("##ERR not a directory: /nope").error,
+      "not a directory: /nope", "a missing checkout reports rather than raises")
+check_true(C.parse_stage_probe("##GIT\nmain\nabc").error,
+           "a probe that never reached ##END is not a clean reading")
+
+# A shell that prints nothing and exits zero returns no error either. Every
+# field still has to read as absent rather than be missing, because the callers
+# read them after the error guard and a KeyError mid-stage is the worst place
+# for one.
+empty_probe = C.parse_stage_probe("")
+check_true(empty_probe.error, "an empty answer is an error, not a clean probe")
+check((empty_probe.branch, empty_probe.binary, empty_probe.queue),
+      ("?", {}, []), "and every field still answers")
+
+# Each refusal is a way to destroy work that cannot be recovered from this
+# side. The hosts sit on someone else's branch with a live run on one of them,
+# so every one of these fires on the machines as they are.
+def host_probe(**kwargs) -> C.HostProbe:
+    base = {"branch": "feat/x", "head": "a" * 40,
+            "binary": {"commit": "a" * 40, "commit_short": "aaaaaaa",
+                       "dirty": "0"}}
+    base.update(kwargs)
+    return C.HostProbe(**base)
+
+
+clean = host_probe()
+check(C.stage_refusals(clean, "feat/x"), [],
+      "a clean, idle host on the right branch is staged without a fight")
+check([k for k, _ in C.stage_refusals(host_probe(dirty=[" M x.cpp"]),
+                                      "feat/x")],
+      ["dirty"], "a dirty checkout is refused")
+check([k for k, _ in C.stage_refusals(
+    host_probe(processes=[{"comm": "counter", "profile": None}]), "feat/x")],
+    ["busy"], "a live run is refused")
+check([k for k, _ in C.stage_refusals(clean, "feat/other")],
+      ["branch"], "a host on another branch is refused")
+check(len(C.stage_refusals(host_probe(dirty=[" M x"], processes=[
+    {"comm": "counter", "profile": None}]), "feat/other")), 3,
+    "and all three are reported at once, not one per attempt")
+
+apply_forced = C.stage_apply_script("/r", "feat/x", "s" * 40, "make", True)
+apply_plain = C.stage_apply_script("/r", "feat/x", "s" * 40, "make", False)
+check_true("checkout -f" in apply_forced,
+           "--force discards tracked modifications")
+check_true("checkout -f" not in apply_plain,
+           "and nothing else does")
+check_true("git clean" not in apply_forced,
+           "no git clean, ever: a host's untracked files are its results")
+check_true("rev-list --count" in apply_plain,
+           "an unforced stage refuses a checkout ahead of the pushed commit")
+check_true(" -- -B " not in apply_plain,
+           "`git checkout -- -B x` would read -B as a path name")
+check_true("| tail" not in apply_forced.split("@")[0] + apply_forced,
+           "a build piped into tail reports tail's exit status, so a failed "
+           "build would read as a staged host")
+
+
+# ── stage and start, end to end against a throwaway checkout ──────────────────
+
+def git(root: Path, *args: str) -> str:
+    """git against a fixture, with the ambient config that could break it off.
+
+    Identity and signing are pinned rather than inherited: a machine whose
+    global config sets `commit.gpgsign` cannot commit here without a key, and
+    the fixture's whole purpose is to behave the same on every box.
+    """
+    proc = subprocess.run(
+        ["git", "-C", str(root), "-c", "user.email=t@t", "-c", "user.name=t",
+         "-c", "commit.gpgsign=false", "-c", "gpg.format=openpgp", *args],
+        capture_output=True, text=True)
+    if proc.returncode != 0:
+        # Fatal, unlike an assertion: the fixture is unusable from here on.
+        fail(f"git {' '.join(args)}: {proc.stderr.strip()}")
+        raise SystemExit(1)
+    return proc.stdout.strip()
+
+
+def make_repo(root: Path, name: str, declaration: str, branch: str) -> None:
+    """A checkout carrying one campaign declaration, on `branch`.
+
+    With an origin to push to, because that is the route by which the branch
+    (and the declaration on it) reaches a host: stage pushes here, the host
+    fetches from here.
+    """
+    root.mkdir(parents=True, exist_ok=True)
+    git(root, "init", "-q", ".")
+    origin = root.with_name(root.name + "-origin.git")
+    subprocess.run(["git", "init", "-q", "--bare", str(origin)], check=True)
+    git(root, "remote", "add", "origin", str(origin))
+    write_declaration(root, name, declaration)
+    git(root, "add", "-A")
+    # --no-verify: a globally configured core.hooksPath would otherwise run
+    # this repo's own pre-commit inside a fixture that is not this repo.
+    git(root, "commit", "-q", "--no-verify", "-m", "init")
+    git(root, "checkout", "-q", "-b", branch)
+    git(root, "checkout", "-q", "-")
+
+
+def local_only(host: str, script: str, timeout: int = C.SSH_TIMEOUT_S):
+    """Every host is this machine. No ssh, no lab machine, no launch."""
+    return REAL_RUN_SHELL(C.LOCAL, script, timeout)
+
+
+REAL_RUN_SHELL = C.run_shell
+REAL_PROBE_PROCESSES = C.probe_processes
+
+# The probe's `ps` is host-wide by design, and stage refuses on any live run
+# whether or not it belongs to the checkout being staged, which is the reading
+# a shared lab machine needs. A fixture pointed at a local checkout therefore
+# inherits this machine's own counter and ltlsynt processes and refuses for
+# reasons that have nothing to do with the fixture: the suite passed on an idle
+# box and failed on a busy one. The list is supplied here instead, and both
+# directions are asserted below, which makes ambient state a tested input.
+FIXTURE_PROCESSES: list = []
+
+FIXTURE_DECL = """
+name = "fixture"
+branch = "feat/fixture"
+build = "true"
+hosts = { av2 = "0-1", av3 = "2-3" }
+phases = [ { profile = "full", jobs = 2 } ]
+"""
+
+# Stands in for build-release/counter, reporting the commit the checkout is
+# standing on. Untracked, exactly as the real binary is, so it survives the
+# checkout the stage script performs.
+FAKE_BINARY = """#!/bin/sh
+echo "commit=$(git rev-parse HEAD)"
+echo "commit_short=$(git rev-parse --short HEAD)"
+echo "dirty=0"
+"""
+
+stage_root = Path(tempfile.mkdtemp(prefix="campaign-stage-"))
+try:
+    repo = stage_root / "checkout"
+    make_repo(repo, "fixture", FIXTURE_DECL, "feat/fixture")
+    C.REPO_ROOT = repo
+    C.run_shell = local_only
+    C.source_path = lambda host: str(repo)
+    C.probe_processes = lambda _lines: FIXTURE_PROCESSES
+
+    def stage_args(**kwargs) -> argparse.Namespace:
+        base = {"campaign": "fixture", "host": ["av2"], "force": False,
+                "dry_run": True, "build_timeout": 60}
+        base.update(kwargs)
+        return argparse.Namespace(**base)
+
+    # The checkout is on master/main, not on the campaign's branch, which is
+    # the position both lab machines are in right now.
+    buffer = io.StringIO()
+    with contextlib.redirect_stdout(buffer):
+        code = C.cmd_stage(stage_args())
+    check(code, 1, "a host on another branch is not staged")
+    check_true("REFUSED" in buffer.getvalue(), "and says so")
+    check_true("--force" in buffer.getvalue(), "and names the way past it")
+
+    git(repo, "checkout", "-q", "feat/fixture")
+    buffer = io.StringIO()
+    with contextlib.redirect_stdout(buffer):
+        code = C.cmd_stage(stage_args())
+    check(code, 0, "an idle host on the right branch stages")
+    check_true("would stage" in buffer.getvalue(), "dry run, so nothing ran")
+
+    # The other direction, from the same fixture: a run in flight refuses,
+    # whether or not it belongs to this checkout. Resetting a shared machine
+    # under somebody's run is what the refusal exists to prevent.
+    FIXTURE_PROCESSES = [{"comm": "counter", "profile": None}]
+    buffer = io.StringIO()
+    with contextlib.redirect_stdout(buffer):
+        code = C.cmd_stage(stage_args())
+    check(code, 1, "a host with a live counter is not staged")
+    check_true("busy" in buffer.getvalue(), "and busy is the reason given")
+    FIXTURE_PROCESSES = []
+
+    (repo / "experiments" / "fixture" / "campaign.toml").write_text(
+        FIXTURE_DECL + "\n# touched\n")
+    buffer = io.StringIO()
+    with contextlib.redirect_stdout(buffer):
+        code = C.cmd_stage(stage_args())
+    check(code, 1, "a dirty host is not staged even on the right branch")
+    check_true("campaign.toml" in buffer.getvalue(),
+               "and the file it would discard is named")
+
+    # --force without a terminal cannot confirm, so it refuses. That is what
+    # keeps a scripted or cron-driven stage from resetting a host.
+    stdin = sys.stdin
+    sys.stdin = io.StringIO("av2\n")
+    try:
+        buffer = io.StringIO()
+        with contextlib.redirect_stdout(buffer):
+            code = C.cmd_stage(stage_args(force=True, dry_run=False))
+        check(code, 1, "--force with nothing to confirm on must refuse")
+        check_true("needs a terminal" in buffer.getvalue(),
+                   "and say why, rather than proceeding")
+        check_true("modified tracked file" in buffer.getvalue(),
+                   "having first named what it would have discarded")
+    finally:
+        sys.stdin = stdin
+    check(git(repo, "rev-parse", "--abbrev-ref", "HEAD"), "feat/fixture",
+          "and the checkout is untouched")
+    git(repo, "checkout", "-q", "--", ".")
+
+    # The whole apply path, against a stub binary that reports the commit its
+    # checkout is on: push, fetch, checkout, build, and the version read back.
+    # The last step is the one that matters -- a campaign whose binary predates
+    # its branch produces rows that look valid and name the wrong commit.
+    binary = repo / C.COUNTER_BINARY
+    binary.parent.mkdir(parents=True, exist_ok=True)
+    binary.write_text(FAKE_BINARY)
+    binary.chmod(0o755)
+    buffer = io.StringIO()
+    with contextlib.redirect_stdout(buffer):
+        code = C.cmd_stage(stage_args(dry_run=False))
+    check(code, 0, f"a clean host stages for real: {buffer.getvalue()}")
+    check_true("staged" in buffer.getvalue()
+               and "MISMATCH" not in buffer.getvalue(),
+               "with the binary's commit matching the branch it was staged to")
+
+    # A binary left behind by an earlier campaign must fail the same check.
+    binary.write_text("#!/bin/sh\necho commit=deadbee\necho commit_short="
+                      "deadbee\necho dirty=0\n")
+    binary.chmod(0o755)
+    buffer = io.StringIO()
+    with contextlib.redirect_stdout(buffer):
+        code = C.cmd_stage(stage_args(dry_run=False))
+    check(code, 1, "a stale binary fails the stage")
+    check_true("BINARY MISMATCH" in buffer.getvalue(), "and says which check")
+    binary.write_text(FAKE_BINARY)
+    binary.chmod(0o755)
+
+    # start: the seed split comes from the declaration and from nowhere else.
+    head = git(repo, "rev-parse", "HEAD")
+
+    def start_args(**kwargs) -> argparse.Namespace:
+        base = {"campaign": "fixture", "host": None, "dry_run": True,
+                "ignore_queue": False}
+        base.update(kwargs)
+        return argparse.Namespace(**base)
+
+    started = io.StringIO()
+    with contextlib.redirect_stdout(started):
+        code = C.cmd_start(start_args())
+    printed = started.getvalue()
+    check_true("--seeds 0 1" in printed and "--seeds 2 3" in printed,
+               "each host is launched on its own declared seeds")
+    check_true("--profile full" in printed, "with the declared profile")
+    check(code, 0, "a staged host is ready to be launched on")
+
+    # The runner's own freshness gate, asked one step early: a launch that
+    # dies on the far side of a nohup leaves its message in a log nobody is
+    # reading yet.
+    binary.unlink()
+    blocked = io.StringIO()
+    with contextlib.redirect_stdout(blocked):
+        code = C.cmd_start(start_args())
+    check(code, 1, "a host with no binary is not launched on")
+    check_true("no build-release/counter" in blocked.getvalue(),
+               "and the missing binary is what it names")
+    binary.write_text(FAKE_BINARY)
+    binary.chmod(0o755)
+
+    fixture = {"branch": "feat/fixture", "name": "fixture"}
+    stale = C.start_refusals(
+        C.HostProbe(branch="feat/fixture", head=head,
+                    binary={"commit": "b" * 40, "commit_short": "bbbbbbb",
+                            "dirty": "0"}), fixture, head)
+    check(len(stale), 1, "a binary from another commit is the only complaint")
+    check_true("bbbbbbb" in stale[0], "and it names the commit it was built at")
+    ready = C.HostProbe(branch="feat/fixture", head=head,
+                        binary={"commit": head, "commit_short": head[:7],
+                                "dirty": "0"})
+    busy = C.start_refusals(
+        replace(ready, processes=[{"comm": "python3", "profile": "tlsf"}]),
+        fixture, head)
+    check_true(any("already live" in r for r in busy),
+               "a host already running a campaign is not launched on again")
+
+    # A pending queue entry is a launch waiting to happen: starting beside it
+    # is two runners resuming off one CSV as soon as the tick fires. Same
+    # reasoning as enqueue's refusal of a second entry, so the same default.
+    queued = replace(ready, queue=[{"file": "003-fixture.toml",
+                                    "campaign": "fixture", "state": "queued"}])
+    racing = C.start_refusals(queued, fixture, head)
+    check(len(racing), 1, "a queued entry for this campaign refuses the start")
+    check_true("003-fixture.toml" in racing[0] and "queued" in racing[0],
+               f"naming the entry and its state: {racing}")
+    check_true("--ignore-queue" in racing[0], "and the way past it")
+    check(C.start_refusals(queued, fixture, head, ignore_queue=True), [],
+          "which the override clears")
+    running_entry = C.start_refusals(
+        replace(ready, queue=[{"file": "003-fixture.toml",
+                               "campaign": "fixture", "state": "running"}]),
+        fixture, head)
+    check_true(len(running_entry) == 1 and "running" in running_entry[0],
+               "a running entry refuses on the same ground, named as running")
+    for spent in ("done", "failed"):
+        check(C.start_refusals(
+            replace(ready, queue=[{"file": "003-fixture.toml",
+                                   "campaign": "fixture", "state": spent}]),
+            fixture, head), [],
+            f"a {spent} entry is not pending, so it does not block a start")
+    check(C.start_refusals(
+        replace(ready, queue=[{"file": "003-other.toml", "campaign": "other",
+                               "state": "queued"}]), fixture, head), [],
+        "and another campaign's entry is not this campaign's race")
+
+    # End to end, so the refusal and the override are exercised through the
+    # probe rather than only against a constructed one.
+    (repo / C.QUEUE_DIR).mkdir(parents=True, exist_ok=True)
+    (repo / C.QUEUE_DIR / "007-fixture.toml").write_text(
+        C.dump_toml({"campaign": "fixture", "host": "av2", "state": "queued"}))
+    buffer = io.StringIO()
+    with contextlib.redirect_stdout(buffer):
+        code = C.cmd_start(start_args())
+    check(code, 1, "a start beside a pending entry is refused")
+    check_true("007-fixture.toml" in buffer.getvalue(), "and names the entry")
+    buffer = io.StringIO()
+    with contextlib.redirect_stdout(buffer):
+        code = C.cmd_start(start_args(ignore_queue=True))
+    check(code, 0, "--ignore-queue launches anyway")
+    check_true("racing queue entry 007-fixture.toml" in buffer.getvalue(),
+               "and still names what it is racing")
+    shutil.rmtree(repo / C.QUEUE_DIR)
+
+    chain = " && ".join(C.phase_command(p, [0, 1]) for p in
+                        C.load_campaign("fixture", repo)["phases"])
+    script = C.launch_script("/r", chain, "experiments/fixture/x.log")
+    check_true("nohup" in script and "< /dev/null" in script,
+               "the launch survives the ssh session that started it")
+finally:
+    C.run_shell = REAL_RUN_SHELL
+    C.probe_processes = REAL_PROBE_PROCESSES
+    shutil.rmtree(stage_root, ignore_errors=True)
+
+
+# ── The queue ─────────────────────────────────────────────────────────────────
+
+STUB_RUNNER = '''#!/usr/bin/env python3
+"""Stands in for run_experiments.py: records its arguments, never runs one."""
+import os, sys, time
+here = os.path.dirname(os.path.abspath(__file__))
+
+
+def control(name):
+    path = os.path.join(here, name)
+    return open(path).read().strip() if os.path.exists(path) else None
+
+
+with open(os.path.join(here, "calls.txt"), "a") as handle:
+    handle.write(" ".join(sys.argv[1:]) + "\\n")
+if control("sleep"):
+    time.sleep(float(control("sleep")))
+sys.exit(int(control("exit-code") or 0))
+'''
+
+TWO_PHASE_DECL = """
+name = "queued"
+branch = "feat/queued"
+hosts = { local = "0-3" }
+phases = [ { profile = "full", jobs = 1 }, { profile = "tlsf", jobs = 2 } ]
+"""
+
+queue_root = Path(tempfile.mkdtemp(prefix="campaign-queue-"))
+try:
+    repo = queue_root / "checkout"
+    make_repo(repo, "queued", TWO_PHASE_DECL, "feat/queued")
+    default_branch = git(repo, "rev-parse", "--abbrev-ref", "HEAD")
+    git(repo, "checkout", "-q", "feat/queued")
+    control_dir = queue_root / "stub"
+    control_dir.mkdir()
+    stub = control_dir / "stub_runner.py"
+    stub.write_text(STUB_RUNNER)
+    calls = control_dir / "calls.txt"
+    lock = queue_root / "queue.lock"
+
+    C.REPO_ROOT = repo
+    C.RUNNER_CMD = f"{sys.executable} {stub}"
+    C.run_shell = local_only
+    C.source_path = lambda host: str(repo)
+    campaign = C.load_campaign("queued", repo)
+
+    def tick_args(**kwargs) -> argparse.Namespace:
+        base = {"host": "local", "root": str(repo), "lock": str(lock),
+                "dry_run": False}
+        base.update(kwargs)
+        return argparse.Namespace(**base)
+
+    def tick(**kwargs) -> tuple:
+        buffer = io.StringIO()
+        with contextlib.redirect_stdout(buffer):
+            code = C.cmd_tick(tick_args(**kwargs))
+        return code, buffer.getvalue()
+
+    def only_entry() -> dict:
+        entries = C.queue_entries(repo)
+        check(len(entries), 1, "exactly one queue entry")
+        return entries[0]
+
+    buffer = io.StringIO()
+    with contextlib.redirect_stdout(buffer):
+        code = C.cmd_enqueue(argparse.Namespace(
+            campaign="queued", host=["local"], max_attempts=2, again=False,
+            dry_run=False))
+    check(code, 0, "enqueue writes an entry")
+    entry = only_entry()
+    check(entry["file"], "001-queued.toml", "numbered from one")
+    check(entry["state"], "queued", "and starts queued")
+    check(entry["seeds"], "0-3", "carrying the host's declared seeds")
+    check(entry["phases"], 2, "and the phase count it was declared with")
+
+    # A campaign already queued is not queued twice by accident: two entries
+    # for one campaign is two runners on one results CSV.
+    with contextlib.redirect_stdout(io.StringIO()):
+        code = C.cmd_enqueue(argparse.Namespace(
+            campaign="queued", host=["local"], max_attempts=2, again=False,
+            dry_run=False))
+    check(code, 1, "a second enqueue is refused")
+    check(len(C.queue_entries(repo)), 1, "and writes nothing")
+
+    # Lock contention. The crontab's flock -n is the outer guard; this is the
+    # inner one, which is what stops a tick typed by hand racing the cron tick
+    # into a second runner over the same CSV.
+    held = C.acquire_lock(lock)
+    check_true(held is not None, "the lock is free to start with")
+    check_true(C.acquire_lock(lock) is None, "and exclusive once taken")
+    code, printed = tick()
+    check(code, 0, "a tick that cannot take the lock exits quietly")
+    check_true("is held" in printed, "saying that another tick has it")
+    check(only_entry()["state"], "queued", "and changes nothing")
+    check_true(not calls.exists(), "and runs nothing")
+    assert held is not None  # checked above; narrows for the type checker
+    held.close()
+
+    code, printed = tick()
+    check(code, 0, "the first real tick runs phase 0")
+    entry = only_entry()
+    check(entry["state"], "queued", "and requeues for the second phase")
+    check(entry["phase"], 1, "having advanced the phase index")
+    check(calls.read_text().count("\n"), 1, "one runner invocation")
+    check_true("--profile full --jobs 1 --seeds 0 1 2 3"
+               in calls.read_text(), "on the declared profile and seeds")
+
+    code, printed = tick()
+    check(code, 0, "the second tick runs the last phase")
+    entry = only_entry()
+    check(entry["state"], "done", "which finishes the entry")
+    check_true("--profile tlsf --jobs 2" in calls.read_text(),
+               "having run the second phase, not the first again")
+
+    code, printed = tick()
+    check_true("nothing queued" in printed, "a done entry is not run again")
+    check(calls.read_text().count("\n"), 2, "and no third invocation")
+
+    # A tick killed mid-phase must cost nothing. The entry is left `running`,
+    # and the next tick puts it back in the queue and runs the same phase over
+    # the same seeds -- run_experiments.py resumes off the results CSV, so the
+    # work already done is not repeated.
+    calls.unlink()
+    (control_dir / "sleep").write_text("30")
+    entry = only_entry()
+    entry.update({"state": "queued", "phase": 0, "attempts": 0})
+    C.write_entry(entry["path"], entry)
+
+    env = dict(os.environ, COUNTER_RUNNER_CMD=f"{sys.executable} {stub}")
+    child = subprocess.Popen(
+        [sys.executable, str(CAMPAIGN_PY), "tick",
+         "--root", str(repo), "--lock", str(lock), "--host", "local"],
+        env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+    deadline = time.time() + 60
+    while time.time() < deadline and only_entry()["state"] != "running":
+        time.sleep(0.1)
+    check(only_entry()["state"], "running", "the tick marks the entry running")
+    child.send_signal(signal.SIGKILL)
+    child.wait(timeout=30)
+    check(only_entry()["state"], "running",
+          "and a killed tick leaves it that way")
+
+    (control_dir / "sleep").unlink()
+    code, printed = tick()
+    check_true("was left running" in printed,
+               "the next tick recovers the interrupted entry")
+    entry = only_entry()
+    check(entry["phase"], 1, "and the recovered phase ran to completion")
+    check(entry["state"], "queued", "leaving the second phase to run")
+    invocations = [ln for ln in calls.read_text().splitlines() if ln]
+    check(len(invocations), 2, "the interrupted phase was attempted twice")
+    check(invocations[0], invocations[1],
+          "over exactly the same selection, so the runner resumes it")
+
+    # A failing phase is visible rather than retried for ever.
+    calls.unlink()
+    (control_dir / "exit-code").write_text("3")
+    entry = only_entry()
+    entry.update({"state": "queued", "phase": 0, "attempts": 0,
+                  "max_attempts": 2})
+    C.write_entry(entry["path"], entry)
+    code, printed = tick()
+    check(code, 1, "a failed phase fails the tick")
+    entry = only_entry()
+    check(entry["state"], "queued", "the first failure is retried")
+    check(entry["attempts"], 1, "with the attempt counted")
+    code, printed = tick()
+    entry = only_entry()
+    check(entry["state"], "failed", "the cap stops it")
+    check_true("exited 3" in entry["last_error"], "and records why")
+    code, printed = tick()
+    check_true("nothing queued" in printed, "a failed entry stops moving")
+    check(len(calls.read_text().splitlines()), 2,
+          "so the machine is not spent re-running it")
+
+    with contextlib.redirect_stdout(io.StringIO()):
+        check(C.cmd_requeue(argparse.Namespace(host=C.LOCAL,
+                                               entry="001-queued.toml")), 0,
+              "requeue clears a failed entry by hand")
+    entry = only_entry()
+    check((entry["state"], entry["attempts"]), ("queued", 0),
+          "which is the only way out of failed")
+
+    # An entry whose branch the checkout has left must not run: its rows would
+    # come from code the campaign never declared.
+    (control_dir / "exit-code").unlink()
+    calls.unlink()
+    git(repo, "checkout", "-q", default_branch)
+    code, printed = tick()
+    check(code, 1, "a checkout on the wrong branch does not run a phase")
+    check_true("stage it first" in only_entry()["last_error"],
+               "and the entry says what to do about it")
+    check_true(not calls.exists(), "and nothing was run")
+    git(repo, "checkout", "-q", "feat/queued")
+
+    rows = C.queue_rows([{"host": "local", "queue": [C.entry_body(only_entry())]}])
+    check(rows[0][3], "queued", "the queue table reports the state")
+    check(rows[0][4], "0/2", "the next phase against the total")
+
+    line = C.cron_line("av2", "/home/benandrew/projects/counter")
+    check_true("flock -n" in line and "tick --host av2" in line,
+               "the crontab line locks and names its host")
+    check_true("*/5 * * * *" in line, "every five minutes")
+    check_true("python3" in line,
+               "with python3: av2's shell has no `python` at all")
+finally:
+    C.run_shell = REAL_RUN_SHELL
+    shutil.rmtree(queue_root, ignore_errors=True)
+
+
+if FAILURES:
+    print(f"\n{len(FAILURES)} campaign.py test(s) failed.")
+    sys.exit(1)
 print("All campaign.py tests passed.")

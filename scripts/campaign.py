@@ -1,12 +1,22 @@
 #!/usr/bin/env python3
-"""Inspect and collect experiment campaigns running on the lab machines.
-
-Two verbs so far:
+"""Drive experiment campaigns on the lab machines.
 
     python scripts/campaign.py status            # one table of live state
     python scripts/campaign.py status --json     # the same, machine-readable
     python scripts/campaign.py collect --profile tlsf --dry-run
     python scripts/campaign.py collect --profile tlsf
+    python scripts/campaign.py stage arbiter-probe --dry-run
+    python scripts/campaign.py start arbiter-probe
+    python scripts/campaign.py enqueue arbiter-probe
+    python scripts/campaign.py queue
+    python scripts/campaign.py tick --host av2
+    python scripts/campaign.py cron --print --host av2
+
+A campaign is declared once, in ``experiments/<name>/campaign.toml``: the
+branch it runs on, the seed range each host takes, and the phases to run. That
+file is the only place a seed split is written down, so the split cannot differ
+between the launch, a resume and the merge. ``stage``, ``start`` and ``enqueue``
+all read it and none of them accepts a seed range as an argument.
 
 ``status`` is read-only. It asks each host for its launch manifests
 (``experiments/<stem>-manifest-<host>.json``, written by run_experiments.py),
@@ -22,18 +32,32 @@ rsync, the natural key and the merge all come from that module -- and adds the
 verification the manual step never had: row counts per host against the merged
 total, and a duplicate-key scan.
 
+``stage`` prepares a host and refuses by default: a dirty checkout, a live
+run, or a branch other than the campaign's each block it, because the recovery
+from a wrong ``git checkout -f`` there is somebody's unpushed work.
+
+``enqueue`` and ``tick`` are the unattended path. A queue entry lives on the
+host that will run it, under ``experiments/queue/NNN-<name>.toml``, and a cron
+tick takes the lowest-numbered queued entry and runs its next phase under a
+lock. Nothing polls: the tick is the only thing that watches a run.
+
 Hosts are reached by their ssh-config alias (``av2``), not by the FQDN in
 merge_experiments.REMOTES: the FQDN form falls through to password auth under
 BatchMode, which a status poll cannot answer.
 """
 
 import argparse
+import errno
+import fcntl
 import json
+import os
 import shlex
+import string
 import subprocess
 import sys
 import time
 from concurrent.futures import ThreadPoolExecutor
+from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
 
@@ -73,6 +97,30 @@ REMOTE_PYTHON = "python3"
 # need quoting through ssh and would hide its own parse errors as empty output.
 MARK = "##"
 
+# The runner, as a command line rather than an import: tick shells it in the
+# checkout it is standing in, and COUNTER_RUNNER_CMD points it at a stub so the
+# launch paths can be tested without launching a campaign. REMOTE_PYTHON for
+# the same reason it is used everywhere else -- av2's ssh shell has no `python`.
+RUNNER_CMD = os.environ.get("COUNTER_RUNNER_CMD",
+                            f"{REMOTE_PYTHON} scripts/run_experiments.py")
+
+# Rebuilt by stage. The lab machines have no Nix, so this is the incremental
+# build against an already-configured preset directory, not a configure step;
+# a campaign whose build differs overrides it with `build` in campaign.toml.
+DEFAULT_BUILD_CMD = "cmake --build build-release"
+COUNTER_BINARY = "build-release/counter"
+
+# Queue entries live under the checkout that runs them, not in git: a tick
+# rewrites the entry's state on every transition, and a tracked file doing that
+# would leave the checkout dirty, which is exactly what stage refuses to touch.
+# experiments/ is ignored by content, so the directory needs no .gitignore work.
+QUEUE_DIR = "experiments/queue"
+QUEUE_LOCK = "~/.counter-queue.lock"
+QUEUE_STATES = ("queued", "running", "done", "failed")
+DEFAULT_MAX_ATTEMPTS = 3
+# Kept in the entry so a state history survives the ticks that wrote it.
+QUEUE_LOG_LINES = 20
+
 
 def source_root(host: str) -> str:
     """rsync/ssh root of a host's counter checkout.
@@ -109,6 +157,13 @@ while IFS= read -r m; do
   cat "$m"
   echo "@M@ENDFILE"
 done
+echo "@M@QUEUE"
+find @QUEUE@ -maxdepth 1 -type f -name '*.toml' 2>/dev/null | sort |
+while IFS= read -r q; do
+  echo "@M@QFILE $q"
+  cat "$q"
+  echo "@M@ENDQFILE"
+done
 echo "@M@END"
 """
 # The manifest sweep goes through `find`, not a glob, because the lab login
@@ -119,7 +174,10 @@ echo "@M@END"
 
 
 def inventory_script(root: str) -> str:
-    return INVENTORY_SCRIPT.replace("@ROOT@", shlex.quote(root)).replace("@M@", MARK)
+    return (INVENTORY_SCRIPT
+            .replace("@ROOT@", shlex.quote(root))
+            .replace("@QUEUE@", shlex.quote(QUEUE_DIR))
+            .replace("@M@", MARK))
 
 
 def plan_args(campaign: dict) -> str:
@@ -209,10 +267,12 @@ def run_shell(host: str, script: str, timeout: int = SSH_TIMEOUT_S):
 
 def parse_inventory(text: str) -> dict:
     """Split the inventory script's marker-delimited output into fields."""
-    out: dict = {"ps": [], "manifests": [], "hostname": "?", "epoch": None,
-                 "branch": "?", "head": "?", "dirty": None, "error": None}
+    out: dict = {"ps": [], "manifests": [], "queue": [], "hostname": "?",
+                 "epoch": None, "branch": "?", "head": "?", "dirty": None,
+                 "error": None}
     section = None
     manifest_lines: list[str] = []
+    queue_name = ""
     buf: list[str] = []
 
     def flush() -> None:
@@ -238,13 +298,30 @@ def parse_inventory(text: str) -> dict:
                 pass
             section = "manifests"
             continue
+        if line.startswith(MARK + "QFILE "):
+            section = "qfile"
+            queue_name = line[len(MARK) + 6:].strip()
+            manifest_lines = []
+            continue
+        if line.startswith(MARK + "ENDQFILE"):
+            # A half-written entry is skipped with its name kept: a tick
+            # interrupted between the temp file and the rename cannot leave one,
+            # but a hand-edited entry can, and silence there hides the queue.
+            try:
+                entry = parse_toml("\n".join(manifest_lines))
+                entry["file"] = Path(queue_name).name
+            except TomlError as exc:
+                entry = {"file": Path(queue_name).name, "error": str(exc)}
+            out["queue"].append(entry)
+            section = "queue"
+            continue
         if line.startswith(MARK):
             flush()
             section, buf = line[len(MARK):].strip().lower(), []
             continue
         if section == "ps":
             out["ps"].append(line)
-        elif section == "file":
+        elif section in ("file", "qfile"):
             manifest_lines.append(line)
         else:
             buf.append(line)
@@ -404,7 +481,7 @@ def gather_host(host: str, root: str, only: str | None, want_plan: bool,
     """
     report: dict = {"host": host, "root": root, "reachable": False,
                     "error": None, "campaigns": [], "hidden": 0,
-                    "processes": []}
+                    "processes": [], "queue": []}
     text, err = run_shell(host, inventory_script(root))
     inv = parse_inventory(text or "")
     if inv["error"]:
@@ -426,6 +503,7 @@ def gather_host(host: str, root: str, only: str | None, want_plan: bool,
         "head": inv["head"],
         "dirty": inv["dirty"],
         "processes": live_processes(inv["ps"]),
+        "queue": inv["queue"],
     })
     campaigns = campaigns_from_manifests(inv["manifests"])
     if only:
@@ -670,6 +748,13 @@ def print_status(reports: list[dict]) -> None:
     print(render_table(checkout_rows(reports), CHECKOUT_HEADERS))
     print()
     print(render_table(status_rows(reports), HEADERS))
+    # The queue table is printed only where there is a queue: it comes free
+    # with the inventory the poll already ran, and an empty one is a row of
+    # dashes saying nothing.
+    queue = queue_rows(reports)
+    if queue:
+        print()
+        print(render_table(queue, QUEUE_HEADERS))
     notes = status_notes(reports)
     if notes:
         print()
@@ -983,6 +1068,1406 @@ def cmd_collect(args: argparse.Namespace) -> int:
     return 0 if verify_merge(results_csv, before, per_host, missing) else 1
 
 
+# -- TOML, in the subset these files use --------------------------------------
+
+# Written by hand rather than through tomllib because tick runs on the lab
+# machines, whose python3 is 3.10.12 -- tomllib arrived in 3.11, and neither
+# tomli nor toml is installed there. A campaign that could only be enqueued
+# from this workstation would defeat the point of the queue. The subset is
+# strings, integers, booleans, arrays, inline tables and [table] /
+# [[array-of-tables]] headers, which is everything campaign.toml and a queue
+# entry use; test_campaign.py checks it against tomllib on every fixture, so
+# the two cannot drift apart in what they accept.
+
+
+class TomlError(ValueError):
+    """A campaign or queue file that does not parse."""
+
+
+BARE_KEY_CHARS = frozenset(string.ascii_letters + string.digits + "_-")
+STRING_ESCAPES = {'"': '"', "\\": "\\", "n": "\n", "t": "\t", "r": "\r"}
+
+
+class TomlReader:
+    def __init__(self, text: str):
+        self.text = text
+        self.pos = 0
+
+    # -- primitives
+    def fail(self, message: str):
+        line = self.text.count("\n", 0, min(self.pos, len(self.text))) + 1
+        raise TomlError(f"line {line}: {message}")
+
+    def peek(self) -> str:
+        return self.text[self.pos] if self.pos < len(self.text) else ""
+
+    def skip(self, newlines: bool) -> None:
+        while self.pos < len(self.text):
+            ch = self.text[self.pos]
+            if ch in " \t" or (newlines and ch in "\r\n"):
+                self.pos += 1
+            elif ch == "#":
+                end = self.text.find("\n", self.pos)
+                self.pos = len(self.text) if end < 0 else end
+            else:
+                return
+
+    def expect(self, ch: str) -> None:
+        if self.peek() != ch:
+            self.fail(f"expected {ch!r}, found {self.peek()!r}")
+        self.pos += 1
+
+    # -- values
+    def read_key(self) -> str:
+        if self.peek() in "\"'":
+            return self.read_string()
+        start = self.pos
+        while self.peek() in BARE_KEY_CHARS and self.peek():
+            self.pos += 1
+        if self.pos == start:
+            self.fail(f"expected a key, found {self.peek()!r}")
+        return self.text[start:self.pos]
+
+    def read_dotted_key(self) -> list:
+        parts = [self.read_key()]
+        while True:
+            self.skip(False)
+            if self.peek() != ".":
+                return parts
+            self.pos += 1
+            self.skip(False)
+            parts.append(self.read_key())
+
+    def read_string(self) -> str:
+        quote = self.peek()
+        self.pos += 1
+        out = []
+        while True:
+            if self.pos >= len(self.text):
+                self.fail("unterminated string")
+            ch = self.text[self.pos]
+            if ch == "\n":
+                self.fail("unterminated string")
+            self.pos += 1
+            if ch == quote:
+                return "".join(out)
+            if ch == "\\" and quote == '"':
+                esc = self.text[self.pos:self.pos + 1]
+                if esc not in STRING_ESCAPES:
+                    self.fail(f"unsupported escape \\{esc}")
+                out.append(STRING_ESCAPES[esc])
+                self.pos += 1
+            else:
+                out.append(ch)
+
+    def read_value(self):
+        ch = self.peek()
+        if ch in "\"'":
+            return self.read_string()
+        if ch == "[":
+            return self.read_array()
+        if ch == "{":
+            return self.read_inline_table()
+        start = self.pos
+        while self.peek() and self.peek() not in ",]}\r\n#":
+            self.pos += 1
+        word = self.text[start:self.pos].strip()
+        if word == "true":
+            return True
+        if word == "false":
+            return False
+        digits = word.replace("_", "")
+        if digits and (digits.lstrip("+-").isdigit() and digits.lstrip("+-")):
+            return int(digits)
+        self.pos = start
+        self.fail(f"unsupported value {word!r}: campaign files hold strings, "
+                  f"integers, booleans, arrays and inline tables only")
+
+    def read_array(self) -> list:
+        self.expect("[")
+        out = []
+        while True:
+            self.skip(True)
+            if self.peek() == "]":
+                self.pos += 1
+                return out
+            if not self.peek():
+                self.fail("unterminated array")
+            out.append(self.read_value())
+            self.skip(True)
+            if self.peek() == ",":
+                self.pos += 1
+            elif self.peek() != "]":
+                self.fail(f"expected ',' or ']', found {self.peek()!r}")
+
+    def read_inline_table(self) -> dict:
+        # Newlines are rejected inside braces, as TOML itself rejects them:
+        # accepting more than tomllib does would let a file parse here and fail
+        # for the editor and for any later reader.
+        self.expect("{")
+        out: dict = {}
+        while True:
+            self.skip(False)
+            if self.peek() == "}":
+                self.pos += 1
+                return out
+            if self.peek() in "\r\n" or not self.peek():
+                self.fail("unterminated inline table (no newlines inside {})")
+            key = self.read_key()
+            self.skip(False)
+            self.expect("=")
+            self.skip(False)
+            if key in out:
+                self.fail(f"duplicate key {key!r}")
+            out[key] = self.read_value()
+            self.skip(False)
+            if self.peek() == ",":
+                self.pos += 1
+            elif self.peek() != "}":
+                self.fail(f"expected ',' or '}}', found {self.peek()!r}")
+
+    # -- document
+    def document(self) -> dict:
+        root: dict = {}
+        table = root
+        while True:
+            self.skip(True)
+            if not self.peek():
+                return root
+            if self.peek() == "[":
+                table = self.read_header(root)
+                continue
+            key = self.read_key()
+            self.skip(False)
+            self.expect("=")
+            self.skip(False)
+            if key in table:
+                self.fail(f"duplicate key {key!r}")
+            table[key] = self.read_value()
+            self.skip(False)
+            if self.peek() and self.peek() not in "\r\n#":
+                self.fail(f"trailing text after a value: {self.peek()!r}")
+
+    def read_header(self, root: dict) -> dict:
+        self.expect("[")
+        array = self.peek() == "["
+        if array:
+            self.pos += 1
+        self.skip(False)
+        parts = self.read_dotted_key()
+        self.skip(False)
+        self.expect("]")
+        if array:
+            self.expect("]")
+        table = root
+        for part in parts[:-1]:
+            table = table.setdefault(part, {})
+            if not isinstance(table, dict):
+                self.fail(f"{part!r} is not a table")
+        last = parts[-1]
+        if array:
+            table.setdefault(last, [])
+            if not isinstance(table[last], list):
+                self.fail(f"{last!r} is not an array of tables")
+            table[last].append({})
+            return table[last][-1]
+        if last in table:
+            self.fail(f"duplicate table [{'.'.join(parts)}]")
+        table[last] = {}
+        return table[last]
+
+
+def parse_toml(text: str) -> dict:
+    return TomlReader(text).document()
+
+
+def toml_value(value) -> str:
+    if isinstance(value, bool):
+        return "true" if value else "false"
+    if isinstance(value, int):
+        return str(value)
+    if isinstance(value, str):
+        body = value.replace("\\", "\\\\").replace('"', '\\"')
+        return '"' + body.replace("\n", "\\n").replace("\t", "\\t") + '"'
+    if isinstance(value, (list, tuple)):
+        return "[" + ", ".join(toml_value(v) for v in value) + "]"
+    if isinstance(value, dict):
+        return "{" + ", ".join(f"{k} = {toml_value(v)}"
+                               for k, v in value.items()) + "}"
+    raise TomlError(f"cannot write {type(value).__name__} to TOML")
+
+
+def dump_toml(table: dict) -> str:
+    """Emit a flat table. Key order is the caller's, so entries stay diffable."""
+    return "".join(f"{key} = {toml_value(value)}\n"
+                   for key, value in table.items())
+
+
+# -- The campaign declaration -------------------------------------------------
+
+class CampaignError(Exception):
+    """A campaign.toml that cannot be acted on. Always fatal: acting on half a
+    declaration is what a bad seed split looks like from the inside."""
+
+
+CAMPAIGN_KEYS = {"name", "branch", "profile", "hosts", "phases", "build",
+                 "description"}
+PHASE_KEYS = {"name", "profile", "jobs", "sweeps", "specs"}
+
+
+def parse_seed_range(text: str, where: str) -> list:
+    """``"0-99"``, ``"7"`` or ``"0-9,20-29"`` to an explicit, sorted seed list.
+
+    Explicit because run_experiments.py's ``--seeds`` takes a list of integers
+    and nothing else, and because an overlap between two hosts is only visible
+    once both ranges are sets.
+    """
+    if not isinstance(text, str) or not text.strip():
+        raise CampaignError(f"{where}: seed range must be a non-empty string")
+    seeds: list = []
+    for part in text.split(","):
+        part = part.strip()
+        if not part:
+            raise CampaignError(f"{where}: empty component in {text!r}")
+        lo_text, dash, hi_text = part.partition("-")
+        lo_text, hi_text = lo_text.strip(), hi_text.strip()
+        if not lo_text.isdigit() or (dash and not hi_text.isdigit()):
+            raise CampaignError(
+                f"{where}: {part!r} is not a seed or a LOW-HIGH range")
+        lo = int(lo_text)
+        hi = int(hi_text) if dash else lo
+        if hi < lo:
+            raise CampaignError(f"{where}: {part!r} counts backwards")
+        seeds.extend(range(lo, hi + 1))
+    if len(set(seeds)) != len(seeds):
+        raise CampaignError(f"{where}: {text!r} repeats a seed")
+    return sorted(seeds)
+
+
+def format_seed_range(seeds: list) -> str:
+    """The inverse, collapsing runs, so a queue entry reads like what was asked
+    for rather than as a hundred integers."""
+    parts, run = [], []
+    for seed in sorted(seeds):
+        if run and seed == run[-1] + 1:
+            run.append(seed)
+            continue
+        if run:
+            parts.append(f"{run[0]}-{run[-1]}" if len(run) > 1 else str(run[0]))
+        run = [seed]
+    if run:
+        parts.append(f"{run[0]}-{run[-1]}" if len(run) > 1 else str(run[0]))
+    return ",".join(parts)
+
+
+def known_profiles() -> set:
+    """Profiles the runner in *this* checkout defines.
+
+    Imported lazily and never mirrored here: run_experiments.PROFILES is the
+    definition, campaign.toml only names one of them. Eighteen archived
+    campaigns vendor their own copy of that file, so a second copy of the table
+    would be the nineteenth thing to keep in sync.
+    """
+    import run_experiments  # noqa: PLC0415
+    return set(run_experiments.PROFILES)
+
+
+def campaign_path(name: str, root: Path | None = None) -> Path:
+    return (root or REPO_ROOT) / "experiments" / name / "campaign.toml"
+
+
+def load_campaign(name: str, root: Path | None = None) -> dict:
+    """Read and validate ``experiments/<name>/campaign.toml``.
+
+    Every failure here is louder than the thing it prevents. An overlapping
+    seed range is the one worth the most noise: both hosts run the overlap,
+    which doubles the work, and the merge keys those rows together and keeps
+    one, so the campaign silently costs more and yields less than it says.
+    """
+    path = campaign_path(name, root)
+    try:
+        raw = parse_toml(path.read_text())
+    except FileNotFoundError:
+        raise CampaignError(f"no campaign declaration at {path}") from None
+    except TomlError as exc:
+        raise CampaignError(f"{path}: {exc}") from None
+
+    unknown = sorted(set(raw) - CAMPAIGN_KEYS)
+    if unknown:
+        raise CampaignError(f"{path}: unknown key(s) {', '.join(unknown)}; "
+                            f"known: {', '.join(sorted(CAMPAIGN_KEYS))}")
+    declared = raw.get("name")
+    if declared != name:
+        raise CampaignError(
+            f"{path}: name = {declared!r} but the directory is {name!r} — "
+            f"the archive and the declaration must agree")
+    branch = raw.get("branch")
+    if not isinstance(branch, str) or not branch:
+        raise CampaignError(f"{path}: branch must be a non-empty string")
+
+    hosts = raw.get("hosts")
+    if not isinstance(hosts, dict) or not hosts:
+        raise CampaignError(f"{path}: hosts must be a non-empty table, "
+                            f"e.g. hosts = {{ av2 = \"0-99\" }}")
+    seeds_by_host: dict = {}
+    for host, text in hosts.items():
+        if host not in HOSTS and host != LOCAL:
+            raise CampaignError(f"{path}: unknown host {host!r}; "
+                                f"known: {', '.join([*HOSTS, LOCAL])}")
+        seeds_by_host[host] = parse_seed_range(text, f"{path}: hosts.{host}")
+    pairs = list(seeds_by_host.items())
+    for i, (h1, s1) in enumerate(pairs):
+        for h2, s2 in pairs[i + 1:]:
+            shared = sorted(set(s1) & set(s2))
+            if shared:
+                raise CampaignError(
+                    f"{path}: hosts {h1} and {h2} share {len(shared)} seed(s) "
+                    f"(e.g. {', '.join(str(s) for s in shared[:5])}). Both "
+                    f"hosts would run them and the merge would keep one row "
+                    f"per key, so the overlap costs time and yields nothing.")
+
+    phases = raw.get("phases")
+    if not isinstance(phases, list) or not phases:
+        raise CampaignError(f"{path}: phases must be a non-empty array of "
+                            f"tables, e.g. phases = [ {{ profile = \"x\", "
+                            f"jobs = 4 }} ]")
+    profiles = known_profiles()
+    normalised = []
+    for index, phase in enumerate(phases):
+        where = f"{path}: phases[{index}]"
+        if not isinstance(phase, dict):
+            raise CampaignError(f"{where} is not a table")
+        unknown = sorted(set(phase) - PHASE_KEYS)
+        if unknown:
+            raise CampaignError(f"{where}: unknown key(s) {', '.join(unknown)}")
+        profile = phase.get("profile", raw.get("profile"))
+        if not isinstance(profile, str) or not profile:
+            raise CampaignError(f"{where}: no profile, and no top-level "
+                                f"profile to fall back on")
+        if profile not in profiles:
+            raise CampaignError(
+                f"{where}: run_experiments.py in this checkout defines no "
+                f"profile {profile!r}. A campaign names a profile the runner "
+                f"defines; it does not declare one. Known: "
+                f"{', '.join(sorted(profiles))}")
+        jobs = phase.get("jobs")
+        if jobs is not None and (isinstance(jobs, bool) or not isinstance(jobs, int)
+                                 or jobs < 1):
+            raise CampaignError(f"{where}: jobs must be a positive integer")
+        for key in ("sweeps", "specs"):
+            value = phase.get(key)
+            if value is not None and not (
+                    isinstance(value, list)
+                    and all(isinstance(v, str) for v in value)):
+                raise CampaignError(f"{where}: {key} must be an array of "
+                                    f"strings")
+        normalised.append({"name": phase.get("name", profile),
+                           "profile": profile, "jobs": jobs,
+                           "sweeps": phase.get("sweeps"),
+                           "specs": phase.get("specs")})
+
+    build = raw.get("build", DEFAULT_BUILD_CMD)
+    if not isinstance(build, str) or not build:
+        raise CampaignError(f"{path}: build must be a non-empty string")
+    return {"name": name, "branch": branch, "build": build, "path": path,
+            "hosts": seeds_by_host, "phases": normalised,
+            "description": raw.get("description", "")}
+
+
+def campaign_hosts(campaign: dict, only: list | None) -> list:
+    """The hosts to act on: every declared one, or the named subset."""
+    declared = list(campaign["hosts"])
+    if not only:
+        return declared
+    unknown = [h for h in only if h not in campaign["hosts"]]
+    if unknown:
+        raise CampaignError(
+            f"{campaign['name']} declares no host(s) {', '.join(unknown)}; "
+            f"declared: {', '.join(declared)}")
+    return [h for h in declared if h in only]
+
+
+def phase_args(phase: dict, seeds: list) -> list:
+    """The runner arguments for one phase over one host's seeds.
+
+    The seeds come from the declaration by way of the caller and never from an
+    argument typed at launch time: a hand-typed range is how two hosts end up
+    running the same seeds.
+    """
+    args = ["--profile", phase["profile"]]
+    if phase.get("jobs"):
+        args += ["--jobs", str(phase["jobs"])]
+    if phase.get("sweeps"):
+        args += ["--sweeps", *phase["sweeps"]]
+    if phase.get("specs"):
+        args += ["--specs", *phase["specs"]]
+    return args + ["--seeds", *[str(s) for s in seeds]]
+
+
+def phase_command(phase: dict, seeds: list) -> str:
+    return " ".join([RUNNER_CMD] + [shlex.quote(a)
+                                    for a in phase_args(phase, seeds)])
+
+
+# -- stage --------------------------------------------------------------------
+
+STAGE_PROBE_SCRIPT = r"""
+cd @ROOT@ 2>/dev/null || { echo "@M@ERR not a directory: @ROOT@"; exit 3; }
+echo "@M@GIT"
+git rev-parse --abbrev-ref HEAD 2>/dev/null || echo "?"
+git rev-parse HEAD 2>/dev/null || echo "?"
+echo "@M@DIRTY"
+git status --porcelain --untracked-files=no 2>/dev/null
+echo "@M@PS"
+ps -o comm=,args= -u "$(id -un)" 2>/dev/null
+echo "@M@BIN"
+if [ -x @BIN@ ]; then @BIN@ --version 2>/dev/null; fi
+echo "@M@QUEUE"
+find @QUEUE@ -maxdepth 1 -type f -name '*.toml' 2>/dev/null | sort |
+while IFS= read -r q; do
+  echo "@M@QFILE $q"
+  cat "$q"
+  echo "@M@ENDQFILE"
+done
+echo "@M@END"
+"""
+# The queue block goes last, so an entry's own text cannot be read as one of
+# the sections above it. It is here rather than in a second round trip because
+# start has to know whether a tick is about to run the same campaign.
+
+
+def stage_probe_script(root: str) -> str:
+    return (STAGE_PROBE_SCRIPT
+            .replace("@ROOT@", shlex.quote(root))
+            .replace("@BIN@", shlex.quote("./" + COUNTER_BINARY))
+            .replace("@QUEUE@", shlex.quote(QUEUE_DIR))
+            .replace("@M@", MARK))
+
+
+def parse_sections(text: str) -> dict:
+    """Marker sections to lists of their lines, for the single-value scripts."""
+    out: dict = {}
+    section = None
+    for line in text.splitlines():
+        if line.startswith(MARK):
+            section = line[len(MARK):].strip().split(" ")[0].lower()
+            out.setdefault(section, [])
+            rest = line[len(MARK) + len(section):].strip()
+            if rest:
+                out[section].append(rest)
+            continue
+        if section is not None:
+            out[section].append(line)
+    return out
+
+
+def parse_version_lines(lines: list) -> dict:
+    """``counter --version`` output as a dict, ignoring anything unkeyed."""
+    out: dict = {}
+    for line in lines:
+        key, sep, value = line.strip().partition("=")
+        if sep:
+            out[key.strip()] = value.strip()
+    return out
+
+
+def parse_toml_blocks(text: str, tag: str) -> list:
+    """The TOML documents a marker script emitted between @TAG@/END@TAG@ pairs.
+
+    Separate from parse_sections, which flattens a marker into a single key and
+    so cannot keep one file's lines apart from the next one's.
+    """
+    out: list = []
+    name, body, inside = "", [], False
+    for line in text.splitlines():
+        if line.startswith(f"{MARK}{tag} "):
+            name, body, inside = line[len(MARK) + len(tag) + 1:].strip(), [], True
+        elif line.startswith(f"{MARK}END{tag}"):
+            try:
+                entry = parse_toml("\n".join(body))
+            except TomlError as exc:
+                entry = {"error": str(exc)}
+            # The base name, as `requeue` and the queue table both name an
+            # entry: `find` hands back a path, and one of the three spellings
+            # has to win before a message quotes something nobody can retype.
+            entry["file"] = Path(name).name
+            out.append(entry)
+            inside = False
+        elif inside:
+            body.append(line)
+    return out
+
+
+@dataclass
+class HostProbe:
+    """What one host answered. Every field is present on every path.
+
+    A dataclass rather than a dict because the two callers read it after an
+    ``error`` guard, and a probe that returned early used to leave the rest of
+    the keys absent -- an empty answer with no error at all (a shell that
+    printed nothing and exited zero) got past that guard and raised a KeyError
+    in the middle of staging, which is the worst place for a crash.
+    """
+    error: str | None = None
+    branch: str = "?"
+    head: str = "?"
+    dirty: list = field(default_factory=list)
+    processes: list = field(default_factory=list)
+    binary: dict = field(default_factory=dict)
+    queue: list = field(default_factory=list)
+
+
+def probe_processes(ps_lines: list) -> list:
+    """The probe's live-process list. A seam, and the only one here.
+
+    `stage` refuses on any live `counter` or `run_experiments.py` on the
+    machine, whether or not it belongs to the checkout being staged, which is
+    the right reading on a shared host and stays. The consequence is that the
+    verdict depends on the whole machine, so a test pointing the probe at a
+    local fixture inherits this machine's real processes and refuses for
+    reasons that have nothing to do with the fixture. Tests replace this, the
+    same way they replace run_shell, and then assert both directions.
+    """
+    return live_processes(ps_lines)
+
+
+def parse_stage_probe(text: str, error: str | None = None) -> HostProbe:
+    sections = parse_sections(text)
+    if "err" in sections:
+        return HostProbe(error=" ".join(sections["err"]).strip())
+    if "end" not in sections:
+        # Covers the empty answer as well as the truncated one: no ##END means
+        # nothing below can be trusted, whether or not run_shell reported why.
+        return HostProbe(error=error or "probe did not complete")
+    git = [ln.strip() for ln in sections.get("git", []) if ln.strip()]
+    return HostProbe(
+        branch=git[0] if git else "?",
+        head=git[1] if len(git) > 1 else "?",
+        dirty=[ln.strip() for ln in sections.get("dirty", []) if ln.strip()],
+        processes=probe_processes(sections.get("ps", [])),
+        binary=parse_version_lines(sections.get("bin", [])),
+        queue=parse_toml_blocks(text, "QFILE"),
+    )
+
+
+def stage_refusals(probe: HostProbe, branch: str) -> list:
+    """Why this host must not be touched. Empty means it may be.
+
+    Each of the three is a way to destroy work that is not recoverable from
+    this side: uncommitted edits, a run in flight, and somebody else's branch.
+    The default is to refuse, because the cost of a wrong refusal is a retyped
+    command and the cost of a wrong reset is a day of someone's work.
+    """
+    out = []
+    if probe.dirty:
+        names = ", ".join(ln.split(None, 1)[-1] for ln in probe.dirty[:5])
+        out.append(("dirty", f"{len(probe.dirty)} modified tracked file(s): "
+                             f"{names}"))
+    if probe.processes:
+        comms = ", ".join(dict.fromkeys(p["comm"] for p in probe.processes))
+        out.append(("busy", f"live process(es): {comms}"))
+    if probe.branch != branch:
+        out.append(("branch", f"on {probe.branch}, campaign wants {branch}"))
+    return out
+
+
+STAGE_APPLY_SCRIPT = r"""
+cd @ROOT@ 2>/dev/null || { echo "@M@ERR not a directory: @ROOT@"; exit 3; }
+git fetch origin @BRANCH@ 2>&1 || { echo "@M@ERR fetch failed"; exit 4; }
+if [ "@FORCE@" = "0" ]; then
+  ahead=$(git rev-list --count @SHA@..HEAD 2>/dev/null || echo 0)
+  if [ "$ahead" != "0" ]; then
+    echo "@M@ERR checkout is $ahead commit(s) ahead of @SHA@ — not discarding"
+    exit 5
+  fi
+fi
+git checkout @CHECKOUT_FLAGS@ -B @BRANCH@ @SHA@ 2>&1 ||
+  { echo "@M@ERR checkout failed"; exit 6; }
+echo "@M@BUILD"
+buildlog=$(mktemp) || { echo "@M@ERR mktemp failed"; exit 7; }
+if ! @BUILD@ > "$buildlog" 2>&1; then
+  tail -20 "$buildlog"; rm -f "$buildlog"
+  echo "@M@ERR build failed"; exit 7
+fi
+tail -5 "$buildlog"; rm -f "$buildlog"
+echo "@M@BIN"
+./@BIN@ --version 2>/dev/null || { echo "@M@ERR binary will not report a version"; exit 8; }
+echo "@M@END"
+"""
+# No `git clean`: a host's untracked files are its results, and a campaign
+# staged over them would delete the previous campaign's output. `checkout -f`
+# discards tracked modifications only, which is the whole of what --force was
+# asked to discard. The build goes through a temporary file rather than a pipe
+# into `tail`, whose exit status is the one a pipeline reports: piped, a failed
+# build reads as a successful stage and the mismatch only surfaces at the
+# version check two lines later.
+
+
+def stage_apply_script(root: str, branch: str, sha: str, build: str,
+                       force: bool) -> str:
+    return (STAGE_APPLY_SCRIPT
+            .replace("@ROOT@", shlex.quote(root))
+            .replace("@BRANCH@", shlex.quote(branch))
+            .replace("@SHA@", shlex.quote(sha))
+            .replace("@BUILD@", build)
+            .replace("@BIN@", COUNTER_BINARY)
+            # Never `--` here: `git checkout -- -B x` reads -B as a path.
+            .replace("@CHECKOUT_FLAGS@", "-f" if force else "")
+            .replace("@FORCE@", "1" if force else "0")
+            .replace("@M@", MARK))
+
+
+def probe_host(host: str) -> HostProbe:
+    """One round trip for everything stage and start decide on."""
+    text, err = run_shell(host, stage_probe_script(source_path(host)))
+    return parse_stage_probe(text or "", err)
+
+
+def git_output(args: list) -> tuple:
+    proc = subprocess.run(["git", "-C", str(REPO_ROOT), *args],
+                          capture_output=True, text=True)
+    if proc.returncode != 0:
+        tail = [ln.strip() for ln in proc.stderr.splitlines() if ln.strip()]
+        return None, (tail[-1] if tail else f"git {args[0]} exit "
+                                            f"{proc.returncode}")
+    return proc.stdout.strip(), None
+
+
+def confirm_discard(host: str, probe: HostProbe, refusals: list) -> bool:
+    """Name what --force will destroy, then require the host name typed back.
+
+    A y/n prompt is too cheap for this: the answer has to name the machine, so
+    a reflex keystroke cannot approve a reset of the wrong one. Refused
+    outright when nothing can be typed, which is what makes --force unusable
+    from cron or from a script.
+    """
+    print(f"\n  --force on {host} will discard:")
+    for kind, why in refusals:
+        print(f"    {kind}: {why}")
+    print(f"    checkout: {probe.branch} at {probe.head[:7]}")
+    print("  Untracked files, including results, are left alone.")
+    if not sys.stdin.isatty():
+        print(f"  REFUSED: --force needs a terminal to confirm on; "
+              f"{host} untouched.")
+        return False
+    reply = input(f"  Type {host} to stage anyway: ").strip()
+    if reply != host:
+        print(f"  Not confirmed; {host} untouched.")
+        return False
+    return True
+
+
+def cmd_stage(args: argparse.Namespace) -> int:
+    try:
+        campaign = load_campaign(args.campaign)
+        hosts = campaign_hosts(campaign, args.host)
+    except CampaignError as exc:
+        print(f"error: {exc}")
+        return 2
+    branch = campaign["branch"]
+    sha, err = git_output(["rev-parse", branch])
+    if err:
+        print(f"error: no local branch {branch!r} to stage ({err})")
+        return 2
+    print(f"Staging {campaign['name']} ({branch} at {sha[:7]}) on "
+          f"{', '.join(hosts)}")
+
+    if args.dry_run:
+        print("Dry run: probing only, pushing nothing and building nothing.\n")
+    else:
+        _, err = git_output(["push", "origin", f"{branch}:{branch}"])
+        if err:
+            print(f"error: pushing {branch} to origin failed: {err}")
+            return 1
+        print(f"  pushed {branch} to origin")
+
+    rows, ok = [], True
+    for host in hosts:
+        probe = probe_host(host)
+        if probe.error:
+            ok = False
+            rows.append([host, "-", "-", "-", f"unreachable: {probe.error}"])
+            continue
+        commit = probe.binary.get("commit_short", "-")
+        refusals = stage_refusals(probe, branch)
+        if refusals and not args.force:
+            ok = False
+            print(f"\n  {host}: REFUSED")
+            for kind, why in refusals:
+                print(f"    {kind}: {why}")
+            print("    pass --force to discard the above (it will name it "
+                  "again and ask)")
+            rows.append([host, probe.branch, probe.head[:7], commit, "refused"])
+            continue
+        if refusals and not (args.dry_run or confirm_discard(host, probe,
+                                                             refusals)):
+            ok = False
+            rows.append([host, probe.branch, probe.head[:7], commit,
+                         "not confirmed"])
+            continue
+        if args.dry_run:
+            rows.append([host, probe.branch, probe.head[:7], commit,
+                         "would stage" + (" (--force)" if refusals else "")])
+            continue
+        text, err = run_shell(
+            host, stage_apply_script(source_path(host), branch, sha,
+                                     campaign["build"], bool(refusals)),
+            timeout=args.build_timeout)
+        result = parse_sections(text or "")
+        if err or "err" in result or "end" not in result:
+            ok = False
+            why = " ".join(result.get("err", [])) or err or "did not complete"
+            print(f"\n  {host}: {why}")
+            rows.append([host, "?", "?", "?", "stage failed"])
+            continue
+        version = parse_version_lines(result.get("bin", []))
+        fresh = version.get("commit") == sha and version.get("dirty") == "0"
+        if not fresh:
+            ok = False
+        rows.append([host, branch, sha[:7],
+                     version.get("commit_short", "?"),
+                     "staged" if fresh else "BINARY MISMATCH"])
+    print()
+    print(render_table(rows, ["HOST", "BRANCH", "HEAD", "BINARY", "RESULT"]))
+    if not ok:
+        print("\nOne or more hosts were not staged. Nothing was launched.")
+    return 0 if ok else 1
+
+
+# -- start --------------------------------------------------------------------
+
+LAUNCH_SCRIPT = r"""
+cd @ROOT@ 2>/dev/null || { echo "@M@ERR not a directory: @ROOT@"; exit 3; }
+mkdir -p @LOGDIR@ || { echo "@M@ERR cannot write @LOGDIR@"; exit 4; }
+nohup sh -c @CHAIN@ < /dev/null >> @LOG@ 2>&1 &
+echo "@M@PID $!"
+echo "@M@END"
+"""
+# nohup and a detached sh, so the run outlives the ssh connection that started
+# it. `&&` between phases: a phase that fails stops the chain rather than
+# letting the next one run against a half-finished CSV.
+
+
+def launch_script(root: str, chain: str, log: str) -> str:
+    return (LAUNCH_SCRIPT
+            .replace("@ROOT@", shlex.quote(root))
+            .replace("@LOGDIR@", shlex.quote(str(Path(log).parent)))
+            .replace("@CHAIN@", shlex.quote(chain))
+            .replace("@LOG@", shlex.quote(log))
+            .replace("@M@", MARK))
+
+
+def pending_queue_entries(probe: HostProbe, name: str) -> list:
+    """This campaign's queue entries on that host that a tick could still run.
+
+    A `done` entry is spent and a `failed` one needs `requeue` before any tick
+    touches it; anything else is a launch waiting to happen.
+    """
+    return [entry for entry in probe.queue
+            if entry.get("campaign") == name
+            and entry.get("state") not in ("done", "failed")]
+
+
+def start_refusals(probe: HostProbe, campaign: dict, sha: str,
+                   ignore_queue: bool = False) -> list:
+    """Why a host is not ready to be launched on.
+
+    The binary check is the runner's own gate asked one step earlier: it
+    refuses a mismatched or dirty binary anyway, and finding that out here
+    costs one ssh round trip rather than a launch that dies on the far side of
+    a nohup with its message in a log nobody is reading yet.
+
+    The queue check is the same reasoning as `enqueue`'s refusal of a second
+    entry: a start beside a queued entry is two runners resuming off one CSV
+    as soon as the tick fires, and where a launch path can produce that, the
+    default has to be refusal.
+    """
+    out = []
+    if probe.branch != campaign["branch"]:
+        out.append(f"on {probe.branch}, campaign wants {campaign['branch']} — "
+                   f"run stage first")
+    if probe.head != sha:
+        out.append(f"head is {probe.head[:7]}, campaign is at {sha[:7]} — "
+                   f"run stage first")
+    if not probe.binary:
+        out.append(f"no {COUNTER_BINARY} that answers --version")
+    elif probe.binary.get("commit") != sha:
+        out.append(f"binary was built from "
+                   f"{probe.binary.get('commit_short', '?')}, not {sha[:7]}")
+    elif probe.binary.get("dirty") != "0":
+        out.append("binary was built from a dirty tree")
+    for proc in probe.processes:
+        if proc.get("profile"):
+            out.append(f"a runner is already live on --profile "
+                       f"{proc['profile']}")
+    if not ignore_queue:
+        for entry in pending_queue_entries(probe, campaign["name"]):
+            out.append(
+                f"queue entry {entry.get('file', '?')} is "
+                f"{entry.get('state', '?')} for this campaign — the tick will "
+                f"run it, and both would resume off one CSV. Pass "
+                f"--ignore-queue to launch anyway, or drop the entry.")
+    return out
+
+
+def record_launch(campaign: dict, record: dict) -> Path:
+    """Append one launch to ``experiments/<name>/launches.jsonl``.
+
+    Untracked and append-only. The manifest run_experiments.py writes on the
+    host is the authority on what a run did; this is the record of what was
+    asked for, from the side that asked, which is the half that disappears
+    when an ssh session closes.
+    """
+    path = REPO_ROOT / "experiments" / campaign["name"] / "launches.jsonl"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with open(path, "a") as handle:
+        handle.write(json.dumps(record) + "\n")
+    return path
+
+
+def cmd_start(args: argparse.Namespace) -> int:
+    try:
+        campaign = load_campaign(args.campaign)
+        hosts = campaign_hosts(campaign, args.host)
+    except CampaignError as exc:
+        print(f"error: {exc}")
+        return 2
+    sha, err = git_output(["rev-parse", campaign["branch"]])
+    if err:
+        print(f"error: no local branch {campaign['branch']!r} ({err})")
+        return 2
+    phases = campaign["phases"]
+    print(f"Starting {campaign['name']} on {', '.join(hosts)}: "
+          f"{len(phases)} phase(s) per host")
+
+    rows, ok = [], True
+    for host in hosts:
+        seeds = campaign["hosts"][host]
+        chain = " && ".join(phase_command(p, seeds) for p in phases)
+        probe = probe_host(host)
+        if probe.error:
+            ok = False
+            rows.append([host, format_seed_range(seeds), "-",
+                         f"unreachable: {probe.error}"])
+            continue
+        refusals = start_refusals(probe, campaign, sha, args.ignore_queue)
+        # The override still names what it is racing, so the launch record and
+        # the terminal both say a tick may follow this run onto the same CSV.
+        for entry in (pending_queue_entries(probe, campaign["name"])
+                      if args.ignore_queue else []):
+            print(f"\n  {host}: --ignore-queue, racing queue entry "
+                  f"{entry.get('file', '?')} ({entry.get('state', '?')})")
+        stamp = time.strftime("%Y%m%dT%H%M%S")
+        log = f"experiments/{campaign['name']}/launch-{host}-{stamp}.log"
+        if args.dry_run:
+            # Printed whether or not the host is ready: a dry run is asked in
+            # order to read the command, and a host that is merely unstaged
+            # would otherwise hide the one thing being checked.
+            print(f"\n  {host}: would run\n    {chain}\n    log: {log}")
+            for why in refusals:
+                print(f"    blocked: {why}")
+            ok = ok and not refusals
+            rows.append([host, format_seed_range(seeds), "-",
+                         "blocked" if refusals else "dry run"])
+            continue
+        if refusals:
+            ok = False
+            print(f"\n  {host}: REFUSED")
+            for why in refusals:
+                print(f"    {why}")
+            rows.append([host, format_seed_range(seeds), "-", "refused"])
+            continue
+        text, err = run_shell(host, launch_script(source_path(host), chain, log))
+        sections = parse_sections(text or "")
+        if err or "err" in sections or "pid" not in sections:
+            ok = False
+            why = " ".join(sections.get("err", [])) or err or "no pid returned"
+            rows.append([host, format_seed_range(seeds), "-", f"failed: {why}"])
+            continue
+        pid = (sections["pid"] or ["?"])[0]
+        record_launch(campaign, {
+            "campaign": campaign["name"], "host": host, "pid": pid,
+            "branch": campaign["branch"], "commit": sha,
+            "seeds": format_seed_range(seeds), "log": log, "command": chain,
+            "phases": [p["name"] for p in phases],
+            "started": time.strftime("%Y-%m-%dT%H:%M:%S%z"),
+        })
+        rows.append([host, format_seed_range(seeds), pid, "launched"])
+    print()
+    print(render_table(rows, ["HOST", "SEEDS", "PID", "RESULT"]))
+    if not args.dry_run:
+        print("\nDetached. Poll with `campaign.py status`; do not watch it.")
+    return 0 if ok else 1
+
+
+# -- The queue ----------------------------------------------------------------
+
+# States, and every transition between them:
+#
+#   (new)    -> queued           enqueue
+#   queued   -> running          tick picks the lowest-numbered entry
+#   running  -> queued           phase finished, another phase remains
+#   running  -> done             last phase finished
+#   running  -> queued           phase failed or was interrupted, attempts left
+#   running  -> failed           phase failed or was interrupted, cap reached
+#   failed   -> queued           `campaign requeue`, by hand
+#
+# `running` with no tick holding the lock is an interrupted phase, not a live
+# one: a tick runs its phase in the foreground, so the state outliving the
+# process means the process died. It costs an attempt, which is what stops a
+# phase that kills its tick every time from cycling for ever.
+
+
+def queue_dir(root: Path | None = None) -> Path:
+    return (root or REPO_ROOT) / QUEUE_DIR
+
+
+def queue_entries(root: Path | None = None) -> list:
+    """Every entry in this checkout's queue, lowest number first."""
+    directory = queue_dir(root)
+    if not directory.is_dir():
+        return []
+    out = []
+    for path in sorted(directory.glob("*.toml")):
+        entry: dict
+        try:
+            entry = parse_toml(path.read_text())
+        except (TomlError, OSError) as exc:
+            entry = {"error": str(exc)}
+        entry["file"] = path.name
+        entry["path"] = path
+        entry["index"] = entry_index(path.name)
+        out.append(entry)
+    return sorted(out, key=lambda e: (e["index"], e["file"]))
+
+
+def entry_index(name: str) -> int:
+    head = name.split("-", 1)[0]
+    return int(head) if head.isdigit() else 10 ** 6
+
+
+def entry_body(entry: dict) -> dict:
+    """The entry without the fields derived from where it was read."""
+    return {k: v for k, v in entry.items()
+            if k not in ("file", "path", "index", "error")}
+
+
+def write_entry(path: Path, entry: dict) -> None:
+    """Rewrite an entry atomically, so a tick killed mid-write leaves the old
+    state rather than half of the new one."""
+    tmp = path.with_name(path.name + ".tmp")
+    tmp.write_text(dump_toml(entry_body(entry)))
+    os.replace(tmp, path)
+
+
+def log_line(entry: dict, message: str) -> None:
+    stamp = time.strftime("%Y-%m-%dT%H:%M:%S")
+    entry["log"] = (list(entry.get("log", [])) + [f"{stamp} {message}"]
+                    )[-QUEUE_LOG_LINES:]
+    entry["updated"] = stamp
+
+
+def new_entry(campaign: dict, host: str, max_attempts: int) -> dict:
+    stamp = time.strftime("%Y-%m-%dT%H:%M:%S")
+    entry = {
+        "campaign": campaign["name"],
+        "host": host,
+        "branch": campaign["branch"],
+        # Frozen at enqueue: an edit to campaign.toml between enqueue and tick
+        # must not silently move a host's share of the seeds under a run that
+        # has already produced rows against the old split.
+        "seeds": format_seed_range(campaign["hosts"][host]),
+        "phase": 0,
+        "phases": len(campaign["phases"]),
+        "state": "queued",
+        "attempts": 0,
+        "max_attempts": max_attempts,
+        "created": stamp,
+        "updated": stamp,
+        "last_error": "",
+        "log": [],
+    }
+    log_line(entry, f"queued: {len(campaign['phases'])} phase(s), seeds "
+                    f"{entry['seeds']}")
+    return entry
+
+
+ENQUEUE_SCRIPT = r"""
+cd @ROOT@ 2>/dev/null || { echo "@M@ERR not a directory: @ROOT@"; exit 3; }
+mkdir -p @QUEUE@ || { echo "@M@ERR cannot create @QUEUE@"; exit 4; }
+echo "@M@NAMES"
+find @QUEUE@ -maxdepth 1 -type f -name '*.toml' -printf '%f\n' 2>/dev/null | sort
+echo "@M@END"
+"""
+
+WRITE_ENTRY_SCRIPT = r"""
+cd @ROOT@ 2>/dev/null || { echo "@M@ERR not a directory: @ROOT@"; exit 3; }
+mkdir -p @QUEUE@ || { echo "@M@ERR cannot create @QUEUE@"; exit 4; }
+if [ -f @PATH@ ]; then echo "@M@ERR @PATH@ already exists"; exit 5; fi
+printf %s @B64@ | base64 -d > @PATH@.tmp || { echo "@M@ERR write failed"; exit 6; }
+mv @PATH@.tmp @PATH@ || { echo "@M@ERR rename failed"; exit 7; }
+echo "@M@WROTE @PATH@"
+echo "@M@END"
+"""
+# base64 rather than a heredoc: the body is TOML with quotes and brackets in
+# it, and it crosses ssh into a zsh login shell. One encoding step removes
+# every quoting question at once, and `base64 -d` is in coreutils on both hosts.
+
+
+def cmd_enqueue(args: argparse.Namespace) -> int:
+    import base64  # noqa: PLC0415
+    try:
+        campaign = load_campaign(args.campaign)
+        hosts = campaign_hosts(campaign, args.host)
+    except CampaignError as exc:
+        print(f"error: {exc}")
+        return 2
+    rows, ok = [], True
+    for host in hosts:
+        root = source_path(host) if host != LOCAL else str(REPO_ROOT)
+        text, err = run_shell(host, ENQUEUE_SCRIPT
+                              .replace("@ROOT@", shlex.quote(root))
+                              .replace("@QUEUE@", shlex.quote(QUEUE_DIR))
+                              .replace("@M@", MARK))
+        sections = parse_sections(text or "")
+        if err or "err" in sections or "end" not in sections:
+            ok = False
+            why = " ".join(sections.get("err", [])) or err or "no answer"
+            rows.append([host, "-", f"failed: {why}"])
+            continue
+        names = [n.strip() for n in sections.get("names", []) if n.strip()]
+        pending = [n for n in names
+                   if n.split("-", 1)[-1] == f"{campaign['name']}.toml"]
+        if pending and not args.again:
+            ok = False
+            rows.append([host, ", ".join(pending),
+                         "already queued (pass --again to add another)"])
+            continue
+        index = max([entry_index(n) for n in names] + [0]) + 1
+        name = f"{index:03d}-{campaign['name']}.toml"
+        entry = new_entry(campaign, host, args.max_attempts)
+        body = dump_toml(entry_body(entry))
+        if args.dry_run:
+            rows.append([host, name, "dry run"])
+            continue
+        path = f"{QUEUE_DIR}/{name}"
+        encoded = base64.b64encode(body.encode()).decode()
+        text, err = run_shell(host, WRITE_ENTRY_SCRIPT
+                              .replace("@ROOT@", shlex.quote(root))
+                              .replace("@QUEUE@", shlex.quote(QUEUE_DIR))
+                              .replace("@PATH@", shlex.quote(path))
+                              .replace("@B64@", shlex.quote(encoded))
+                              .replace("@M@", MARK))
+        sections = parse_sections(text or "")
+        if err or "err" in sections or "end" not in sections:
+            ok = False
+            why = " ".join(sections.get("err", [])) or err or "no answer"
+            rows.append([host, name, f"failed: {why}"])
+            continue
+        rows.append([host, name, f"queued, {entry['seeds']}"])
+    print(render_table(rows, ["HOST", "ENTRY", "RESULT"]))
+    if ok and not args.dry_run:
+        print("\nThe cron tick will pick these up. Do not wait on them: "
+              "`campaign.py queue` says where they are.")
+    return 0 if ok else 1
+
+
+# -- tick ---------------------------------------------------------------------
+
+def acquire_lock(path: Path):
+    """Non-blocking exclusive lock, or None when another tick holds it.
+
+    Taken here as well as in the crontab's `flock -n` because a tick typed by
+    hand while cron is mid-phase would otherwise run a second runner against
+    the same results CSV, and the two resume off the same file.
+    """
+    path.parent.mkdir(parents=True, exist_ok=True)
+    handle = open(path, "a+")
+    try:
+        fcntl.flock(handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except OSError as exc:
+        handle.close()
+        if exc.errno in (errno.EACCES, errno.EAGAIN):
+            return None
+        raise
+    return handle
+
+
+def run_phase(root: Path, phase: dict, seeds: list, log_path: Path) -> int:
+    """Run one phase to completion, in the foreground, appending to a log.
+
+    No deadline: a phase is hours of work and the lock is what keeps a second
+    tick off it. A tick killed here costs nothing — run_experiments.py resumes
+    off the results CSV, so the next one continues rather than repeats.
+    """
+    command = shlex.split(RUNNER_CMD) + phase_args(phase, seeds)
+    log_path.parent.mkdir(parents=True, exist_ok=True)
+    with open(log_path, "a") as log:
+        log.write(f"\n=== {time.strftime('%Y-%m-%dT%H:%M:%S')} "
+                  f"{' '.join(command)}\n")
+        log.flush()
+        proc = subprocess.run(command, cwd=str(root), stdout=log,
+                              stderr=subprocess.STDOUT)
+    return proc.returncode
+
+
+def fail_or_requeue(entry: dict, why: str) -> None:
+    """One attempt spent. Past the cap the entry stops moving and says why.
+
+    A failed phase that requeued for ever would look exactly like a slow one,
+    and the queue would keep a machine busy re-running something that cannot
+    work. The cap is what makes the difference visible in one column.
+    """
+    entry["attempts"] = int(entry.get("attempts", 0)) + 1
+    entry["last_error"] = why
+    cap = int(entry.get("max_attempts", DEFAULT_MAX_ATTEMPTS))
+    if entry["attempts"] >= cap:
+        entry["state"] = "failed"
+        log_line(entry, f"failed after {entry['attempts']} attempt(s): {why}")
+    else:
+        entry["state"] = "queued"
+        log_line(entry, f"attempt {entry['attempts']}/{cap} failed: {why}")
+
+
+def recover_interrupted(entries: list) -> list:
+    """Entries left `running` by a tick that died, put back in the queue.
+
+    Safe because this runs holding the lock: no other tick can be running a
+    phase, so a `running` entry has no process behind it.
+    """
+    touched = []
+    for entry in entries:
+        if entry.get("state") != "running":
+            continue
+        fail_or_requeue(entry, "tick was interrupted mid-phase")
+        write_entry(entry["path"], entry)
+        touched.append(entry)
+    return touched
+
+
+def cmd_tick(args: argparse.Namespace) -> int:
+    root = Path(args.root).resolve() if args.root else REPO_ROOT
+    lock_path = Path(args.lock).expanduser() if args.lock else Path(
+        os.path.expanduser(QUEUE_LOCK))
+    lock = acquire_lock(lock_path)
+    if lock is None:
+        print(f"tick: {lock_path} is held; another tick is mid-phase.")
+        return 0
+    try:
+        entries = queue_entries(root)
+        for entry in recover_interrupted(entries):
+            print(f"tick: {entry['file']} was left running; "
+                  f"{entry['state']} ({entry['last_error']})")
+        for entry in entries:
+            if entry.get("error"):
+                print(f"tick: {entry['file']} does not parse: {entry['error']}")
+        ready = [e for e in entries
+                 if e.get("state") == "queued"
+                 and (not args.host or e.get("host") in (args.host, None))]
+        if not ready:
+            print("tick: nothing queued.")
+            return 0
+        entry = ready[0]
+        try:
+            campaign = load_campaign(entry["campaign"], root)
+        except CampaignError as exc:
+            fail_or_requeue(entry, f"declaration unusable: {exc}")
+            write_entry(entry["path"], entry)
+            print(f"tick: {entry['file']} {entry['state']}: {exc}")
+            return 1
+        return tick_entry(entry, campaign, root, args)
+    finally:
+        lock.close()
+
+
+def tick_entry(entry: dict, campaign: dict, root: Path,
+               args: argparse.Namespace) -> int:
+    branch, err = checkout_branch(root)
+    if err:
+        fail_or_requeue(entry, f"cannot read the checkout's branch: {err}")
+        write_entry(entry["path"], entry)
+        return 1
+    if branch != entry.get("branch"):
+        fail_or_requeue(entry, f"checkout is on {branch}, entry wants "
+                               f"{entry.get('branch')} — stage it first")
+        write_entry(entry["path"], entry)
+        print(f"tick: {entry['file']} {entry['state']}: {entry['last_error']}")
+        return 1
+
+    index = int(entry.get("phase", 0))
+    if index >= len(campaign["phases"]):
+        entry["state"] = "done"
+        log_line(entry, "no phases left")
+        write_entry(entry["path"], entry)
+        return 0
+    phase = campaign["phases"][index]
+    seeds = parse_seed_range(entry["seeds"], f"{entry['file']}: seeds")
+    log_path = queue_dir(root) / (Path(entry["file"]).stem + ".log")
+
+    entry["state"] = "running"
+    entry["pid"] = os.getpid()
+    log_line(entry, f"phase {index} ({phase['name']}) started")
+    write_entry(entry["path"], entry)
+    print(f"tick: {entry['file']} phase {index} ({phase['name']}) "
+          f"on seeds {entry['seeds']}")
+    if args.dry_run:
+        entry["state"] = "queued"
+        log_line(entry, "dry run, phase not executed")
+        write_entry(entry["path"], entry)
+        print(f"  would run: {phase_command(phase, seeds)}")
+        return 0
+
+    code = run_phase(root, phase, seeds, log_path)
+    if code != 0:
+        fail_or_requeue(entry, f"phase {index} ({phase['name']}) exited {code}")
+    else:
+        entry["phase"] = index + 1
+        entry["attempts"] = 0
+        entry["last_error"] = ""
+        if entry["phase"] >= len(campaign["phases"]):
+            entry["state"] = "done"
+            log_line(entry, f"phase {index} ({phase['name']}) finished; done")
+        else:
+            entry["state"] = "queued"
+            log_line(entry, f"phase {index} ({phase['name']}) finished")
+    write_entry(entry["path"], entry)
+    print(f"tick: {entry['file']} now {entry['state']}"
+          + (f" ({entry['last_error']})" if entry["last_error"] else ""))
+    return 0 if code == 0 else 1
+
+
+def checkout_branch(root: Path) -> tuple:
+    proc = subprocess.run(["git", "-C", str(root), "rev-parse",
+                           "--abbrev-ref", "HEAD"], capture_output=True,
+                          text=True)
+    if proc.returncode != 0:
+        return None, (proc.stderr.strip().splitlines() or ["git failed"])[-1]
+    return proc.stdout.strip(), None
+
+
+# -- queue listing and cron ---------------------------------------------------
+
+QUEUE_HEADERS = ["HOST", "ENTRY", "CAMPAIGN", "STATE", "PHASE", "TRIES",
+                 "SEEDS", "UPDATED", "NOTE"]
+
+
+def queue_rows(reports: list) -> list:
+    rows = []
+    for report in reports:
+        for entry in report.get("queue", []):
+            name = Path(entry.get("file", "?")).name
+            if entry.get("error"):
+                rows.append([report["host"], name, "-", "unparseable", "-",
+                             "-", "-", "-", entry["error"]])
+                continue
+            rows.append([
+                report["host"], name, str(entry.get("campaign", "?")),
+                str(entry.get("state", "?")),
+                f"{entry.get('phase', '?')}/{entry.get('phases', '?')}",
+                f"{entry.get('attempts', 0)}/"
+                f"{entry.get('max_attempts', DEFAULT_MAX_ATTEMPTS)}",
+                str(entry.get("seeds", "-")),
+                str(entry.get("updated", "-")),
+                str(entry.get("last_error", "") or ""),
+            ])
+    return rows
+
+
+def cmd_queue(args: argparse.Namespace) -> int:
+    hosts = [args.host] if args.host else list(HOSTS)
+    targets = [(h, source_path(h)) for h in hosts if h != LOCAL]
+    if not args.host or args.host == LOCAL:
+        targets.append((LOCAL, str(REPO_ROOT)))
+    with ThreadPoolExecutor(max_workers=max(1, len(targets))) as pool:
+        reports = list(pool.map(
+            lambda t: gather_host(t[0], t[1], None, False, False), targets))
+    rows = queue_rows(reports)
+    if args.json:
+        print(json.dumps({"hosts": [{"host": r["host"],
+                                     "queue": r.get("queue", []),
+                                     "error": r["error"]} for r in reports]},
+                         indent=2))
+        return 0 if all(r["reachable"] for r in reports) else 1
+    for report in reports:
+        if not report["reachable"]:
+            print(f"note: {report['host']} unreachable: {report['error']}")
+    print(render_table(rows, QUEUE_HEADERS) if rows
+          else "No queue entries on any host.")
+    if rows:
+        print("\nPHASE is the next phase against the total; TRIES is attempts "
+              "against the cap.\nA failed entry stops moving until "
+              "`campaign.py requeue` clears it.")
+    return 0 if all(r["reachable"] for r in reports) else 1
+
+
+REQUEUE_SCRIPT = r"""
+cd @ROOT@ 2>/dev/null || { echo "@M@ERR not a directory: @ROOT@"; exit 3; }
+if [ ! -f @PATH@ ]; then echo "@M@ERR no entry @PATH@"; exit 4; fi
+printf %s @B64@ | base64 -d > @PATH@.tmp || { echo "@M@ERR write failed"; exit 5; }
+mv @PATH@.tmp @PATH@ || { echo "@M@ERR rename failed"; exit 6; }
+echo "@M@END"
+"""
+
+
+def cmd_requeue(args: argparse.Namespace) -> int:
+    """Clear a failed entry's attempt count so the next tick tries it again.
+
+    Deliberately a separate verb rather than a tick that resets itself: a
+    failed phase has a cause, and the cap exists so that somebody reads the log
+    before the machine spends another night on it.
+    """
+    import base64  # noqa: PLC0415
+    host, root = args.host, (source_path(args.host) if args.host != LOCAL
+                             else str(REPO_ROOT))
+    report = gather_host(host, root, None, False, False)
+    if not report["reachable"]:
+        print(f"error: {host} unreachable: {report['error']}")
+        return 1
+    matches = [e for e in report["queue"]
+               if Path(e.get("file", "")).name == args.entry]
+    if not matches:
+        print(f"error: {host} has no queue entry {args.entry!r}")
+        return 2
+    entry = entry_body(matches[0])
+    entry["state"] = "queued"
+    entry["attempts"] = 0
+    entry["last_error"] = ""
+    log_line(entry, "requeued by hand")
+    encoded = base64.b64encode(dump_toml(entry).encode()).decode()
+    text, err = run_shell(host, REQUEUE_SCRIPT
+                          .replace("@ROOT@", shlex.quote(root))
+                          .replace("@PATH@", shlex.quote(
+                              f"{QUEUE_DIR}/{args.entry}"))
+                          .replace("@B64@", shlex.quote(encoded))
+                          .replace("@M@", MARK))
+    sections = parse_sections(text or "")
+    if err or "err" in sections or "end" not in sections:
+        print(f"error: {' '.join(sections.get('err', [])) or err}")
+        return 1
+    print(f"{host}: {args.entry} requeued.")
+    return 0
+
+
+def cron_line(host: str, root: str) -> str:
+    return (f"*/5 * * * * cd {root} && flock -n $HOME/.counter-queue.lock "
+            f"{REMOTE_PYTHON} scripts/campaign.py tick --host {host} "
+            f">> $HOME/.counter-queue.log 2>&1")
+
+
+def cmd_cron(args: argparse.Namespace) -> int:
+    """Print the crontab line. Printing is all it does, deliberately: a verb
+    that installs a cron entry on a lab machine would be editing somebody
+    else's crontab from a script, with no record of what it replaced."""
+    root = source_path(args.host) if args.host != LOCAL else str(REPO_ROOT)
+    print(cron_line(args.host, root))
+    print(f"\n# Not installed. Add it on {args.host} with `crontab -e`.")
+    print("# flock -n makes an overlapping tick exit at once, so a phase that "
+          "runs\n# for hours simply holds the slot; campaign.py takes the same "
+          "lock itself,\n# which is what stops a tick typed by hand from "
+          "racing the cron one.")
+    return 0
+
+
 # -- Entry point --------------------------------------------------------------
 
 def build_parser() -> argparse.ArgumentParser:
@@ -1024,6 +2509,78 @@ def build_parser() -> argparse.ArgumentParser:
     collect.add_argument("--results-dir", metavar="NAME",
                          help="Per-run directory name, alongside --csv.")
     collect.set_defaults(func=cmd_collect)
+
+    stage = sub.add_parser(
+        "stage", help="Put each host on the campaign's branch and rebuild.")
+    stage.add_argument("campaign", help="Campaign name, i.e. the directory "
+                                        "under experiments/.")
+    stage.add_argument("--host", action="append", choices=[*HOSTS, LOCAL],
+                       help="Only this host; repeatable (default: every host "
+                            "the campaign declares).")
+    stage.add_argument("--force", action="store_true",
+                       help="Stage a host that is dirty, busy or on another "
+                            "branch. Names what it will discard and asks; "
+                            "refuses outright without a terminal.")
+    stage.add_argument("--dry-run", action="store_true",
+                       help="Probe and report; push nothing, build nothing.")
+    stage.add_argument("--build-timeout", type=int, default=3600,
+                       metavar="S", help="Seconds allowed for the remote "
+                                         "build (default: 3600).")
+    stage.set_defaults(func=cmd_stage)
+
+    start = sub.add_parser(
+        "start", help="Launch the campaign's phases on each host, detached.")
+    start.add_argument("campaign")
+    start.add_argument("--host", action="append", choices=[*HOSTS, LOCAL])
+    start.add_argument("--dry-run", action="store_true",
+                       help="Print the command each host would run.")
+    start.add_argument("--ignore-queue", action="store_true",
+                       help="Launch even where a queue entry for this "
+                            "campaign is still pending on that host. Names "
+                            "the entry it is racing.")
+    start.set_defaults(func=cmd_start)
+
+    enqueue = sub.add_parser(
+        "enqueue", help="Add the campaign to each host's queue for the tick.")
+    enqueue.add_argument("campaign")
+    enqueue.add_argument("--host", action="append", choices=[*HOSTS, LOCAL])
+    enqueue.add_argument("--max-attempts", type=int,
+                         default=DEFAULT_MAX_ATTEMPTS, metavar="N",
+                         help=f"Failed phases before the entry stops "
+                              f"(default: {DEFAULT_MAX_ATTEMPTS}).")
+    enqueue.add_argument("--again", action="store_true",
+                         help="Queue a second entry for a campaign already "
+                              "queued on that host.")
+    enqueue.add_argument("--dry-run", action="store_true")
+    enqueue.set_defaults(func=cmd_enqueue)
+
+    queue = sub.add_parser("queue", help="Every host's queue, read-only.")
+    queue.add_argument("--host", choices=[*HOSTS, LOCAL])
+    queue.add_argument("--json", action="store_true")
+    queue.set_defaults(func=cmd_queue)
+
+    requeue = sub.add_parser(
+        "requeue", help="Clear a failed entry's attempts so it runs again.")
+    requeue.add_argument("--host", choices=[*HOSTS, LOCAL], required=True)
+    requeue.add_argument("entry", help="Entry file name, e.g. 001-tlsf.toml.")
+    requeue.set_defaults(func=cmd_requeue)
+
+    tick = sub.add_parser(
+        "tick", help="Run the next phase of the lowest-numbered queued entry. "
+                     "Runs on the host, from cron.")
+    tick.add_argument("--host", help="Only entries naming this host.")
+    tick.add_argument("--root", help="Checkout to work in (default: this one).")
+    tick.add_argument("--lock", help=f"Lock file (default: {QUEUE_LOCK}).")
+    tick.add_argument("--dry-run", action="store_true",
+                      help="Pick an entry and print its phase; run nothing.")
+    tick.set_defaults(func=cmd_tick)
+
+    cron = sub.add_parser("cron", help="Print the crontab line for a host.")
+    cron.add_argument("--host", choices=[*HOSTS, LOCAL], required=True)
+    cron.add_argument("--print", dest="print_only", action="store_true",
+                      help="Print the line. Printing is all this verb does; "
+                           "nothing is installed anywhere.")
+    cron.set_defaults(func=cmd_cron)
     return parser
 
 

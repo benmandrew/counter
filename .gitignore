@@ -67,6 +67,14 @@ semantics.txt
 # result it was meant to bind; the root PLAN.md is ignored for the opposite
 # reason, being a working file with no such claim on it.
 !/experiments/*/PLAN.md
+# A campaign's declaration: the branch, the per-host seed split and the phases
+# scripts/campaign.py drives it from. Tracked because it has to reach the lab
+# machines, which get it by checking out the campaign's branch, and because the
+# seed split is the one number a rerun has to reproduce exactly. Queue entries
+# under experiments/queue/ stay ignored for the opposite reason — a tick
+# rewrites their state, and a tracked file doing that leaves the checkout dirty,
+# which is what campaign.py stage refuses to touch.
+!/experiments/*/campaign.toml
 # Retrofitted copies of the drivers each campaign ran, recovered from history.
 # Same problem one level down: re-open descent into scripts/ before negating,
 # then re-exclude its contents so only the .py files come back.

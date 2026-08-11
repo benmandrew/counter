@@ -22,8 +22,6 @@
 
 namespace {
 
-constexpr const char* k_manifest_filename = "run.json";
-
 // Bumped when a key changes meaning or leaves, so a reader can tell which
 // shape it is holding rather than guessing from which keys are present.
 // 2 added fitness_cache, n_constant_folded and n_tautology_substitutions, when
@@ -222,7 +220,7 @@ void write_run_manifest(const std::string& output_dir,
         {"n_tautology_substitutions", Ltl2tgbaStats::n_tautology_substitutions},
         {"fitness_cache", fitness_cache_json()}};
 
-    const std::filesystem::path path = dir / k_manifest_filename;
+    const std::filesystem::path path = dir / k_run_manifest_name;
     std::ofstream out(path);
     if (!out) {
         std::cerr << "warning: could not write " << path.string()

@@ -37,9 +37,10 @@ AggregateWeightedFitnessFunction get_fitness_function(
             {halstead, cfg.fitness_weight_halstead, "halstead"});
     }
     if (cfg.fitness_weight_status > 0.0) {
-        auto status = [](const Specification& spec) -> double {
+        auto status = [grading = cfg.status_grading](
+                          const Specification& spec) -> double {
             return specification_status(spec, global_sat_checker(),
-                                        global_real_checker());
+                                        global_real_checker(), grading);
         };
         fitness_functions.push_back(
             {status, cfg.fitness_weight_status, "status"});

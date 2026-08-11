@@ -80,6 +80,7 @@ bool run_tlsf_suite(std::string_view suite_name) {
     }
     if (suite_name == "tlsf_mucs") {
         run_tlsf_mucs_tests();
+        run_tlsf_guarantee_parts_tests();
         return true;
     }
     if (suite_name == "tlsf_genetic") {
@@ -267,6 +268,7 @@ int main(int argc, const char* const argv[]) {
             run_tlsf_filter_tests();
             run_tlsf_fitness_tests();
             run_tlsf_mucs_tests();
+            run_tlsf_guarantee_parts_tests();
             run_tlsf_genetic_tests();
             run_tlsf_pipeline_tests();
             // run_thread_pool_tests() is deliberately absent. It sizes the

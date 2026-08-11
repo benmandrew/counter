@@ -37,7 +37,7 @@ constexpr const char* k_manifest_filename = "run.json";
 // abandoned rather than answered, so a run that reports repairs with a
 // non-zero count screened less than a run reporting the same repairs with
 // zero -- which is not visible from any other field.
-constexpr int k_schema_version = 4;
+constexpr int k_schema_version = 5;
 
 // The inverse of the spellings config_io.cpp parses. It has no table to
 // borrow -- it only ever goes string to enum -- so these must be kept in step
@@ -61,6 +61,16 @@ const char* metric_name(SimilarityMetric metric) {
             return "direct";
         case SimilarityMetric::Logarithmic:
             return "logarithmic";
+    }
+    return "unknown";
+}
+
+const char* status_grading_name(StatusGrading grading) {
+    switch (grading) {
+        case StatusGrading::Tiered:
+            return "tiered";
+        case StatusGrading::Mrs:
+            return "mrs";
     }
     return "unknown";
 }
@@ -126,7 +136,8 @@ nlohmann::json config_json(const Config& cfg) {
          {{"weight_syntactic", cfg.fitness_weight_syntactic},
           {"weight_semantic", cfg.fitness_weight_semantic},
           {"weight_halstead", cfg.fitness_weight_halstead},
-          {"weight_status", cfg.fitness_weight_status}}},
+          {"weight_status", cfg.fitness_weight_status},
+          {"status_grading", status_grading_name(cfg.status_grading)}}},
         {"mutation",
          {{"p_trigger", cfg.p_trigger},
           {"p_response", cfg.p_response},

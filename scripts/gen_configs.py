@@ -550,14 +550,29 @@ TLSF_MAX_REALIZABILITY = 0
 
 # Default per-call ltlsynt timeout (ms) for the TLSF campaign. ltlsynt has no
 # internal timeout, and these specs occasionally produce synthesis queries that
-# run for minutes; without a bound one such query stalls a whole run. The
-# measured call-duration distribution is sharply bimodal: 95% of calls finish
-# under 50ms and only ~2% pass 100ms, with an almost-empty 0.5-1s band, so 500ms
-# and the earlier 10s abandon nearly the same set (they differ by ~0.1% of
-# calls) while 500ms caps the pathological tail far tighter. A timed-out check
-# is undecided: it admits no repair, and drops the candidate at the
-# well-separation filter.
-TLSF_LTLSYNT_TIMEOUT_MS = 500
+# run for minutes; without a bound one such query stalls a whole run. A
+# timed-out check is undecided: it admits no repair, and drops the candidate at
+# the well-separation filter.
+#
+# This was 500ms, on the measured call-duration distribution: sharply bimodal,
+# 95% of calls under 50ms, only ~2% past 100ms, an almost-empty 0.5-1s band, so
+# 500ms and 10s abandon nearly the same set (~0.1% of calls apart) while 500ms
+# caps the pathological tail far tighter. Every one of those figures counts
+# calls pooled across the corpus, and pooling is what made 500ms look free. It
+# hides the per-spec case: where a spec's *own* realizability query exceeds the
+# budget, it does not shed 0.1% of its calls, it sheds all of them. amba is that
+# spec — 1.66s for the unrealizable original, 6.1s to prove its known-good
+# repair realizable — so every amba run in every campaign generated at 500ms
+# scored a constant status objective and had its repairs rejected at the final
+# gate. Re-run at a budget that decides it, amba yields; its 96/96 zero-yield
+# across the archive measures this, not the search.
+#
+# 10s matches the C++ default (Config::ltlsynt_timeout) and clears the corpus
+# worst case by a wide margin while still cutting the minutes-long tail. One
+# query may now run 20x longer than it could before, so the per-spec
+# `timeout_caps` in run_experiments.py — calibrated while 500ms bounded every
+# query — need re-checking before a launch, amba's above all.
+TLSF_LTLSYNT_TIMEOUT_MS = 10000
 
 # Default per-call ltl2tgba (model-counting) timeout (ms) for the TLSF campaign.
 # The counting path has no internal timeout and its -D determinization blows up

@@ -145,15 +145,32 @@ struct Config {
     /// repair is admitted on it, and the well-separation filter drops the
     /// candidate. 0 disables the timeout.
     ///
-    /// 500 ms by default because that is what every archived TLSF campaign set
-    /// and because the call durations are sharply bimodal: 95% of that
-    /// campaign's calls finished under 50 ms, the 0.5-1 s band was almost
-    /// empty, and a 500 ms cap abandoned within 0.1% of the calls a 10 s cap
-    /// did. A formula that blows this budget is in the minutes-long tail, not
-    /// near the boundary. Losing one candidate out of a population is the same
-    /// noise max_scoring_failure_rate already tolerates; an unbounded call
-    /// costs the whole run.
-    std::chrono::milliseconds ltlsynt_timeout{500};
+    /// 10 s by default. It was 500 ms, on the measurement that the call
+    /// durations are sharply bimodal: 95% of an archived TLSF campaign's calls
+    /// finished under 50 ms, the 0.5-1 s band was almost empty, and a 500 ms
+    /// cap abandoned within 0.1% of the calls a 10 s cap did. That statistic is
+    /// true and was the wrong one to tune on, because it counts calls across
+    /// the corpus rather than per specification. A specification whose *own*
+    /// realizability query exceeds the budget does not lose 0.1% of its calls,
+    /// it loses all of them: every candidate comes back undecided, the status
+    /// objective becomes a constant costing a full budget per distinct
+    /// candidate, and the final gate rejects even a correct repair. `amba` is
+    /// exactly that case -- 1.5 s for the unrealizable original and 6.1 s to
+    /// prove its known-good repair realizable, against a 500 ms budget.
+    ///
+    /// 10 s clears the corpus worst case by well over a factor of one and is
+    /// the value the four archived configs that overrode 500 ms chose. It
+    /// still cuts the minutes-long tail the timeout exists for. Losing one
+    /// candidate out of a population to that tail is the same noise
+    /// max_scoring_failure_rate already tolerates; an unbounded call costs the
+    /// whole run. Raising this does not rescue a run already under way: an
+    /// undecided verdict is memoised like any other (see RealizabilityChecker),
+    /// so a formula abandoned once stays undecided for the rest of the run.
+    ///
+    /// scripts/gen_configs.py carries its own TLSF_LTLSYNT_TIMEOUT_MS, which a
+    /// generated TLSF campaign emits explicitly and which therefore overrides
+    /// this default rather than following it.
+    std::chrono::milliseconds ltlsynt_timeout{10'000};
     /// Per-call wall-clock budget for the ltl2tgba model-counting exec. Like
     /// ltlsynt, ltl2tgba has no internal timeout, and the deterministic (-D)
     /// construction blows up super-exponentially on the deeply nested formulae

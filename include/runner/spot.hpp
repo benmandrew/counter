@@ -5,6 +5,8 @@
 ///        ltlsynt (realizability checking), with memoising checker classes.
 
 #include <chrono>
+#include <cstdint>
+#include <functional>
 #include <mutex>
 #include <optional>
 #include <string>
@@ -134,3 +136,45 @@ class RealizabilityChecker {
 /// that do not need test isolation should use this instead of constructing
 /// their own, so they share the memoisation cache.
 RealizabilityChecker& global_real_checker();
+
+/// What the startup budget screen found, for the run manifest to record.
+/// Process-global for the same reason InputScreen is: the manifest is written
+/// by a driver that no longer holds the specification. Set once, before the
+/// search starts.
+struct BudgetScreen {
+    /// Wall time of the input specification's own realizability query, in
+    /// milliseconds. Negative when no screen ran, which is the case when the
+    /// budget is unlimited.
+    inline static std::int64_t observed_ms = -1;
+    /// Whether that query came back decided. False means every realizability
+    /// query the run makes is likely to be abandoned too.
+    inline static bool decided = true;
+};
+
+/// Times one realizability query on the run's own input and reports whether the
+/// configured budget can decide it. Returns the warning to print, or an empty
+/// string when there is nothing to say.
+///
+/// A specification whose own query exceeds @p budget does not lose the 0.1% of
+/// calls the budget was tuned to shed (see Config::ltlsynt_timeout): it loses
+/// all of them. Every candidate scores undecided, so the status objective is a
+/// constant that still costs a full budget per distinct candidate, and the
+/// final gate rejects even a correct repair. The failure is invisible from
+/// outside -- the run completes, reports no repairs, and reads as a search that
+/// found nothing.
+///
+/// A warning rather than a rejection, following the input screen: the budget
+/// may be deliberate, and the other three objectives still work under it. The
+/// verdict lands in the manifest so a campaign can partition on it rather than
+/// grep a log.
+///
+/// The query is memoised like any other, so the screen costs nothing beyond the
+/// call the run was about to make anyway. It is skipped when @p budget is zero,
+/// since an unlimited budget cannot fail to decide.
+///
+/// @param query  Realizability of the run's input specification, as the calling
+///               front end phrases it
+/// @param budget The configured per-call ltlsynt budget
+std::string ltlsynt_budget_screen(
+    const std::function<std::optional<bool>()>& query,
+    std::chrono::milliseconds budget);

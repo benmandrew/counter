@@ -73,7 +73,7 @@ run_well_separation = false
 # legitimately hard one rather than a blowup. The rest are bounded because an
 # unbounded call can stall a whole run.
 black_timeout_ms    = 1000
-ltlsynt_timeout_ms  = 500
+ltlsynt_timeout_ms  = 10000
 ltl2tgba_timeout_ms = 60000
 ltlfilt_timeout_ms  = 10000
 ganak_timeout_ms    = 0

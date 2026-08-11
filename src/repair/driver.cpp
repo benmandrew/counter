@@ -129,6 +129,14 @@ int run_fretish_repair(const Config& cfg, const std::string& input_path,
         InputScreen::failed_check = *failed;
         std::cerr << input_screen_warning(*failed);
     }
+    // After the input screen and before anything is scored: the query is
+    // memoised, so this is the call the original population was about to make
+    // anyway, timed.
+    std::cerr << ltlsynt_budget_screen(
+        [&original_spec] {
+            return global_real_checker().check_realizability(original_spec);
+        },
+        cfg.ltlsynt_timeout);
     AggregateWeightedFitnessFunction fitness_function =
         get_fitness_function(original_spec, cfg);
     const std::vector<FilterFunction> filter_functions =

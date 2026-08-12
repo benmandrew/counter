@@ -140,10 +140,13 @@ DEFAULTS: dict = {
     "allow_output_assumptions": True,
     "black_timeout_ms": 1000,
     "repair_mode": "monolithic",
-    # Mirrors include/config.hpp. Emitted into [fitness] only when a
-    # sweep overrides it (see make_toml), so every existing grid stays
-    # byte-identical; sweep G varies it.
-    "status_grading": "tiered",
+    # Mirrors include/config.hpp, which moved to "mrs" on the 2026-08-11
+    # campaign. Emitted into [fitness] only when a sweep overrides it (see
+    # make_toml), so every existing grid stays byte-identical; sweep G varies
+    # it. That silence is what makes the move a config-vintage change for every
+    # campaign archived before it -- see "Config vintage" in
+    # experiments/README.md.
+    "status_grading": "mrs",
     # TLSF-only [tlsf.mutation] split (see config.hpp). Emitted only when a sweep
     # overrides one of them (see make_toml), so the FRETISH and A/B TLSF grids
     # stay byte-identical to the pre-factor output; the mutation-split sweep sets

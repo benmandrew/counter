@@ -44,16 +44,16 @@ enum class SimilarityMetric : std::uint8_t { Direct, Logarithmic };
 /// mode is TLSF-only; the FRETISH path ignores it.
 enum class RepairMode : std::uint8_t { Monolithic, Muc };
 
-/// How the status objective grades the region below realizability. Tiered (the
-/// default) is the three-point scale in fitness/status.hpp. Mrs replaces its
+/// How the status objective grades the region below realizability. Tiered is
+/// the three-point scale in fitness/status.hpp. Mrs (the default) replaces its
 /// middle tier with the greedy maximal-realizable-subset fraction: the
 /// guarantee side is split into parts, and the score is what fraction of them
 /// can be kept while the accumulated subset stays realizable against the full,
 /// unchanged environment side.
 ///
-/// The two are crossed as an experiment factor rather than one replacing the
-/// other, and Tiered stays the default until a campaign decides it. Grading is
-/// the whole point: over the 21 specifications in `examples/`, Tiered scores
+/// The two stay crossed as an experiment factor, so a campaign can still ask
+/// for Tiered by name. Grading is the whole point: over the 21 specifications
+/// in `examples/`, Tiered scores
 /// every one of them 0.5, where Mrs spreads them over 14 distinct values with a
 /// median of 6 grade levels per specification.
 enum class StatusGrading : std::uint8_t { Tiered, Mrs };
@@ -70,7 +70,14 @@ struct Config {
     /// one whole-specification check across `examples/`, falling to 2.2x over a
     /// population, since the greedy prefixes recur across near-identical
     /// candidates and RealizabilityChecker memoises by formula string.
-    StatusGrading status_grading = StatusGrading::Tiered;
+    ///
+    /// Mrs is the default on the 2026-08-11 status-grading campaign, which
+    /// paired the two over 20 TLSF specifications x 24 seeds: yield 410/480
+    /// against 367/480 (50 Mrs-only pairs to 7, sign test \f$p < 10^{-4}\f$),
+    /// repair quality unchanged where both arms yield, at a median paired wall
+    /// cost of 1.15x. The gain concentrates where Tiered cannot grade at all --
+    /// `arbiter` moves 0/24 to 22/24 and `rg1` 7/24 to 24/24.
+    StatusGrading status_grading = StatusGrading::Mrs;
     std::size_t default_model_counting_bound = 20;
     SimilarityMetric similarity_metric = SimilarityMetric::Logarithmic;
     /// Keep only repairs the original logically implies -- genuine weakenings.

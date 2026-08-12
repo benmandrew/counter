@@ -119,7 +119,7 @@ Whether the mechanism is diversity; whether `1 / (1 + rank)` is the right weight
 
 Both hosts idle before launch — `wall_time_s` is a response and arm C is defined by it, so nothing may co-schedule.
 
-Configs must pin every key that has crossed a default line, or the archive will not reproduce: `allow_output_assumptions` and `run_well_separation` have each moved twice, and `b101ada` additionally changed what the status scale means in a way no config key restores. Record the binary commit; the campaign is not reproducible from the configs alone.
+Configs must pin every key that has crossed a default line, or the archive will not reproduce: `allow_output_assumptions` and `run_well_separation` have each moved twice, `status_grading` went `tiered` to `mrs` on 2026-08-12 (`208212f`), and `b101ada` additionally changed what the status scale means in a way no config key restores. Generate with `--pin-vintage`, which writes all three explicitly at their current defaults; `gen_configs.VINTAGE_KEYS` is the list, and a key whose default moves later belongs in it. Record the binary commit; the campaign is not reproducible from the configs alone.
 
 Execution order seed-major, then spec, then arm, so a kill at any deadline yields a balanced design at fewer seeds rather than a complete arm A and an empty arm C. Disjoint seed ranges per host. Launch detached, guard on `ps comm` rather than `pgrep -f`, and run the `ltl2tgba` orphan janitor for the duration.
 

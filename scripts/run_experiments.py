@@ -125,6 +125,38 @@ TLSF_ABLATION_SPECS: list[str] = [
     "prioritized-arbiter", "round-robin-arbiter", "simple-arbiter",
 ]
 
+# Per-spec wall caps for the 20-family TLSF corpus at gen10/pop200, sized by the
+# 2026-08-11-status-grading pilot to at least 4x its worst observed wall time per
+# spec. They are per-spec rather than flat because the ltlsynt budget moved from
+# 500 ms to 10 s (74beaea): a single query may now run 20x longer than any flat
+# cap calibrated under the old budget assumed, and the corpus spreads over an
+# order of magnitude. amba is the case that forces it, measuring 1078 s
+# standalone in the campaign's expensive arm — a flat 600 s or 900 s cap censors
+# exactly the arm under test and returns the censoring as the result, which is
+# the same failure the raised budget was fixing.
+TLSF_WALL_CAPS_GEN10: dict[str, int] = {
+    "amba": 4320, "humanoid-531": 1560, "lift": 840,
+    "simple-arbiter": 720, "round-robin-arbiter": 660,
+    "humanoid-458": 540, "full-arbiter": 420, "gyro-var1": 420,
+    "gyro-var2": 420, "detector": 360, "arbiter": 300,
+    "arbiter-handshake": 300, "codesample-un1": 300,
+    "codesample-un2": 300, "lily02": 300, "load-balancer": 300,
+    "minepump": 300, "prioritized-arbiter": 300, "rg1": 300,
+    "rg2": 300,
+}
+
+
+def scaled_wall_caps(factor: float) -> dict[str, int]:
+    """`TLSF_WALL_CAPS_GEN10` scaled for an arm running more generations.
+
+    Cost scales with generations*population, so a compute-matched arm needs its
+    caps scaled by the same factor its generation count was, or the cap censors
+    the longer arm by construction and the comparison measures the cap.
+    """
+    return {spec: round(cap * factor)
+            for spec, cap in TLSF_WALL_CAPS_GEN10.items()}
+
+
 # The 12-family AuRUS head-to-head corpus: the 11 ablation families with an
 # AuRUS case-studies match, plus arbiter-aurus (imported from the AuRUS tree
 # so both tools solve the same spec — counter's own arbiter is a hand-written
@@ -1151,7 +1183,9 @@ PROFILES: dict[str, dict] = {
         # 20 families x 25 seeds = 500 pairs, above the 420 PLAN §7 requires at
         # the 0.418 paired SD measured on the arbiter probe's 400 TLSF pairs.
         "seeds": list(range(25)),
-        "timeout_caps": {spec: 900 for spec in TLSF_ABLATION_SPECS},
+        # The R half runs at gen10/pop200, the operating point the caps were
+        # calibrated at, so it takes them unscaled.
+        "timeout_caps": dict(TLSF_WALL_CAPS_GEN10),
         "compare_timeout": 1800,
         "baseline_aliases": {},
         "configs_dir": EXPERIMENTS_DIR / "configs-seldefault-tlsf",
@@ -1169,8 +1203,13 @@ PROFILES: dict[str, dict] = {
         "levels": {"S": ["cm-elit0.1"]},
         "specs": list(TLSF_ABLATION_SPECS),
         "seeds": list(range(25)),
-        # Raised over the R half for the same reason as seldefault-fret-cm.
-        "timeout_caps": {spec: 1800 for spec in TLSF_ABLATION_SPECS},
+        # Raised over the R half for the same reason as seldefault-fret-cm, but
+        # by the compute-match factor rather than a flat doubling: this arm is
+        # the R half at gen_configs.DEFAULT_COMPUTE_MATCH_FACTOR (1.5) times the
+        # generations, so its caps are the R half's at the same factor. Passing
+        # --compute-match-factor anything other than 1.5 to gen_configs means
+        # re-scaling here to match, or the cap stops tracking the arm it bounds.
+        "timeout_caps": scaled_wall_caps(1.5),
         "compare_timeout": 1800,
         "baseline_aliases": {},
         "configs_dir": EXPERIMENTS_DIR / "configs-seldefault-tlsf",

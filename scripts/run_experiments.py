@@ -125,6 +125,38 @@ TLSF_ABLATION_SPECS: list[str] = [
     "prioritized-arbiter", "round-robin-arbiter", "simple-arbiter",
 ]
 
+# Per-spec wall caps for the 20-family TLSF corpus at gen10/pop200, sized by the
+# 2026-08-11-status-grading pilot to at least 4x its worst observed wall time per
+# spec. They are per-spec rather than flat because the ltlsynt budget moved from
+# 500 ms to 10 s (74beaea): a single query may now run 20x longer than any flat
+# cap calibrated under the old budget assumed, and the corpus spreads over an
+# order of magnitude. amba is the case that forces it, measuring 1078 s
+# standalone in the campaign's expensive arm — a flat 600 s or 900 s cap censors
+# exactly the arm under test and returns the censoring as the result, which is
+# the same failure the raised budget was fixing.
+TLSF_WALL_CAPS_GEN10: dict[str, int] = {
+    "amba": 4320, "humanoid-531": 1560, "lift": 840,
+    "simple-arbiter": 720, "round-robin-arbiter": 660,
+    "humanoid-458": 540, "full-arbiter": 420, "gyro-var1": 420,
+    "gyro-var2": 420, "detector": 360, "arbiter": 300,
+    "arbiter-handshake": 300, "codesample-un1": 300,
+    "codesample-un2": 300, "lily02": 300, "load-balancer": 300,
+    "minepump": 300, "prioritized-arbiter": 300, "rg1": 300,
+    "rg2": 300,
+}
+
+
+def scaled_wall_caps(factor: float) -> dict[str, int]:
+    """`TLSF_WALL_CAPS_GEN10` scaled for an arm running more generations.
+
+    Cost scales with generations*population, so a compute-matched arm needs its
+    caps scaled by the same factor its generation count was, or the cap censors
+    the longer arm by construction and the comparison measures the cap.
+    """
+    return {spec: round(cap * factor)
+            for spec, cap in TLSF_WALL_CAPS_GEN10.items()}
+
+
 # The 12-family AuRUS head-to-head corpus: the 11 ablation families with an
 # AuRUS case-studies match, plus arbiter-aurus (imported from the AuRUS tree
 # so both tools solve the same spec — counter's own arbiter is a hand-written
@@ -1059,6 +1091,130 @@ PROFILES: dict[str, dict] = {
         "results_dir": EXPERIMENTS_DIR / "results-arbiter-probe",
         "results_csv": EXPERIMENTS_DIR / "results-arbiter-probe.csv",
         # jobs=1 for the same RAM reason as every other TLSF profile.
+        "default_jobs": 1,
+    },
+    # ── 2026-08-11-selection-default ────────────────────────────────────────
+    # Whether nsga2-apportion should replace nsga2-truncate as the shipped
+    # default. See experiments/2026-08-11-selection-default/PLAN.md for the
+    # pre-registered decision rule, its five criteria and the 0.05
+    # non-inferiority margin with the power calculation behind it.
+    #
+    # Three arms, and they are split across two profiles per path rather than
+    # crossed inside one. A single profile listing both schemes and both sweeps
+    # emits the full product, which would add a fourth cell -- apportion at
+    # matched generations -- that no criterion reads and that costs a third of
+    # the campaign's wall time. The -cm profiles therefore carry the compute
+    # control alone, and share the CSV and run directory of their R half so the
+    # three arms merge and analyse as one dataset. KEY_FIELDS includes `sweep`
+    # and `level_name`, so R/elit0.1 and S/cm-elit0.1 are distinct keys and the
+    # sharing cannot collide.
+    #
+    # The corpus is deliberately not enriched: every FRETISH spec and the whole
+    # 20-family TLSF corpus, with `arbiter` one family of twenty. 2026-08-10
+    # measured its effect on a corpus picked because that effect was there,
+    # which is why it could not speak to a default.
+    #
+    # Generate the R halves with
+    #   python scripts/gen_configs.py [--tlsf] \
+    #       --schemes nsga2-truncate nsga2-apportion --sweeps R --levels elit0.1 \
+    #       --out-dir experiments/configs-seldefault[-tlsf]
+    # and the compute control with the ratio measured in calibration (PLAN §5):
+    #   python scripts/gen_configs.py [--tlsf] --schemes nsga2-truncate \
+    #       --sweeps S --levels cm-elit0.1 --compute-match-factor <measured> \
+    #       --out-dir experiments/configs-seldefault[-tlsf]
+    "seldefault-fret": {
+        "schemes": ["nsga2-truncate", "nsga2-apportion"],
+        "weakenings": None,
+        "metrics": None,
+        "repair_modes": None,
+        "sweeps": ["R"],
+        "levels": {"R": ["elit0.1"]},
+        "specs": list(FRETISH_SPECS),
+        # 4 specs x 70 seeds = 280 pairs per contrast, which is what PLAN §7's
+        # power table requires for the 0.05 margin to clear at a true adverse
+        # effect of -0.01, given the 0.341 paired SD measured on the elitism
+        # campaign's 600 FRETISH pairs.
+        "seeds": list(range(70)),
+        "timeout_caps": {"takeoff": 900, "fsm": 900, "fsm-timing": 900,
+                         "fsm-combined": 1800},
+        # As arbiter-probe: apportion returns more repairs, and compare's cost
+        # scales with them.
+        "compare_timeout": 1800,
+        "baseline_aliases": {},
+        "configs_dir": EXPERIMENTS_DIR / "configs-seldefault",
+        "results_dir": EXPERIMENTS_DIR / "results-seldefault",
+        "results_csv": EXPERIMENTS_DIR / "results-seldefault.csv",
+        # 4 as on every FRETISH profile; ltlsynt is not in play here, so the
+        # per-call RAM ceiling that pins the TLSF profiles to 1 does not bind.
+        # Both halves must agree: wall_time_s is a response variable and arm C
+        # is defined by it, so a contention difference between the arms would
+        # land straight in the ratio that sets arm C's own generation count.
+        "default_jobs": 4,
+    },
+    "seldefault-fret-cm": {
+        "schemes": ["nsga2-truncate"],
+        "weakenings": None,
+        "metrics": None,
+        "repair_modes": None,
+        "sweeps": ["S"],
+        "levels": {"S": ["cm-elit0.1"]},
+        "specs": list(FRETISH_SPECS),
+        "seeds": list(range(70)),
+        # Arm C runs more generations than arm A by construction, so it must not
+        # inherit a cap sized for A: censoring the control alone is how replicate
+        # lost its comparison.
+        "timeout_caps": {"takeoff": 1800, "fsm": 1800, "fsm-timing": 1800,
+                         "fsm-combined": 3600},
+        "compare_timeout": 1800,
+        "baseline_aliases": {},
+        "configs_dir": EXPERIMENTS_DIR / "configs-seldefault",
+        "results_dir": EXPERIMENTS_DIR / "results-seldefault",
+        "results_csv": EXPERIMENTS_DIR / "results-seldefault.csv",
+        "default_jobs": 4,
+    },
+    "seldefault-tlsf": {
+        "schemes": ["nsga2-truncate", "nsga2-apportion"],
+        "weakenings": None,
+        "metrics": None,
+        "repair_modes": None,
+        "sweeps": ["R"],
+        "levels": {"R": ["elit0.1"]},
+        "specs": list(TLSF_ABLATION_SPECS),
+        # 20 families x 25 seeds = 500 pairs, above the 420 PLAN §7 requires at
+        # the 0.418 paired SD measured on the arbiter probe's 400 TLSF pairs.
+        "seeds": list(range(25)),
+        # The R half runs at gen10/pop200, the operating point the caps were
+        # calibrated at, so it takes them unscaled.
+        "timeout_caps": dict(TLSF_WALL_CAPS_GEN10),
+        "compare_timeout": 1800,
+        "baseline_aliases": {},
+        "configs_dir": EXPERIMENTS_DIR / "configs-seldefault-tlsf",
+        "results_dir": EXPERIMENTS_DIR / "results-seldefault-tlsf",
+        "results_csv": EXPERIMENTS_DIR / "results-seldefault-tlsf.csv",
+        # jobs=1 for the same RAM reason as every other TLSF profile.
+        "default_jobs": 1,
+    },
+    "seldefault-tlsf-cm": {
+        "schemes": ["nsga2-truncate"],
+        "weakenings": None,
+        "metrics": None,
+        "repair_modes": None,
+        "sweeps": ["S"],
+        "levels": {"S": ["cm-elit0.1"]},
+        "specs": list(TLSF_ABLATION_SPECS),
+        "seeds": list(range(25)),
+        # Raised over the R half for the same reason as seldefault-fret-cm, but
+        # by the compute-match factor rather than a flat doubling: this arm is
+        # the R half at gen_configs.DEFAULT_COMPUTE_MATCH_FACTOR (1.5) times the
+        # generations, so its caps are the R half's at the same factor. Passing
+        # --compute-match-factor anything other than 1.5 to gen_configs means
+        # re-scaling here to match, or the cap stops tracking the arm it bounds.
+        "timeout_caps": scaled_wall_caps(1.5),
+        "compare_timeout": 1800,
+        "baseline_aliases": {},
+        "configs_dir": EXPERIMENTS_DIR / "configs-seldefault-tlsf",
+        "results_dir": EXPERIMENTS_DIR / "results-seldefault-tlsf",
+        "results_csv": EXPERIMENTS_DIR / "results-seldefault-tlsf.csv",
         "default_jobs": 1,
     },
 }

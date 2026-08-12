@@ -401,6 +401,22 @@ SWEEP_R: list[tuple[str, dict]] = [
 # fixed keeps the arms comparable in the dimension under test.
 DEFAULT_COMPUTE_MATCH_FACTOR = 1.5
 
+# Keys whose built-in default has changed at least once since campaigns began
+# being archived. A generated config states a key only where a sweep overrides
+# it, so everything else is inherited from the binary at run time — which means
+# changing a C++ default silently changes what every archived config *means*.
+# These three have crossed that line: allow_output_assumptions and
+# run_well_separation each moved twice, and status_grading went tiered -> mrs on
+# 2026-08-12, swapping the status objective outright rather than shifting a
+# threshold. --pin-vintage writes them explicitly so a campaign archived today
+# still describes the run it was, whatever the defaults do afterwards. Add a key
+# here when its default moves; the cost of a spurious entry is one redundant
+# line per config, and the cost of a missing one is an archive that cannot be
+# reproduced.
+VINTAGE_KEYS: tuple[str, ...] = (
+    "status_grading", "allow_output_assumptions", "run_well_separation",
+)
+
 
 def make_sweep_s(generations: int, factor: float) -> list[tuple[str, dict]]:
     matched = max(1, round(generations * factor))
@@ -565,6 +581,13 @@ TLSF_SWEEPS: list[tuple[str, list]] = [
     ("Q", TLSF_SWEEP_Q),
     ("R", TLSF_SWEEP_R),
     ("G", TLSF_SWEEP_G),
+    # The compute-matched control, on the same terms as the FRETISH grid's S:
+    # TLSF_SWEEP_R is SWEEP_R, so make_sweep_s already emits the right levels
+    # and main() rebuilds this entry from --compute-match-factor whichever table
+    # was selected. Registered here because 2026-08-11-selection-default asks
+    # its question on both paths, and a compute control on one of them would
+    # leave the other unable to separate a better search from a longer one.
+    ("S", make_sweep_s(DEFAULTS["generations"], DEFAULT_COMPUTE_MATCH_FACTOR)),
 ]
 
 TLSF_CONFIGS_DIR = Path(__file__).parent.parent / "experiments" / "configs-tlsf"
@@ -696,6 +719,14 @@ def parse_args() -> argparse.Namespace:
                              "nsga2-truncate only, into configs-tlsf. Unless "
                              "overridden, sets --schemes nsga2-truncate and "
                              "--out-dir configs-tlsf")
+    parser.add_argument("--pin-vintage", action="store_true",
+                        help="Write every key whose built-in default has moved "
+                             f"({', '.join(VINTAGE_KEYS)}) into each config "
+                             "explicitly, at its current default, so the "
+                             "archive states them instead of inheriting them "
+                             "from a future binary. A sweep that varies one of "
+                             "these still wins. Recommended for any campaign "
+                             "meant to be reproducible")
     parser.add_argument("--max-realizability", type=int, default=None,
                         metavar="N",
                         help="Cap concurrent ltlsynt processes "
@@ -813,6 +844,12 @@ def main() -> None:
         if args.repair else [(None, {})]
     )
 
+    # Keys whose C++ default has moved at least once, written out explicitly so
+    # the archive states them rather than inheriting whatever the binary means
+    # by them next year. Merged first, so a sweep varying one of these on
+    # purpose still wins — sweeps G, W and Q each do.
+    pinned = {k: defaults[k] for k in VINTAGE_KEYS} if args.pin_vintage else {}
+
     count = 0
     for scheme in schemes:
         for wk_dir, wk_override in weakenings:
@@ -827,7 +864,8 @@ def main() -> None:
                         for level_name, overrides in levels:
                             path = out / f"sweep_{sweep_name}_{level_name}.toml"
                             path.write_text(make_toml(
-                                {**overrides, "selection_scheme": scheme,
+                                {**pinned, **overrides,
+                                 "selection_scheme": scheme,
                                  **wk_override, **mx_override, **rp_override},
                                 defaults))
                             count += 1

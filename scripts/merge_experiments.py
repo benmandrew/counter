@@ -77,6 +77,10 @@ PROFILE_CSVS: dict[str, str] = {
     # the campaign, corpus and commit differ, so sharing would interleave two
     # datasets under one set of keys.
     "arbiter-probe": "results-arbiter-probe.csv",
+    # Its own CSV, never ablate-tlsf's: same corpus and sweep letter, but sweep
+    # G's arms are the status grading scale rather than ablate-tlsf's C, and the
+    # level names do not overlap.
+    "status-grading": "results-status-grading.csv",
 }
 
 # Per-run output directory each profile writes under experiments/. Most profiles
@@ -101,6 +105,7 @@ PROFILE_RESULT_DIRS: dict[str, str] = {
     "replicate-recap": "results-replicate",
     "replicate-tlsf": "results-replicate-tlsf",
     "arbiter-probe": "results-arbiter-probe",
+    "status-grading": "results-status-grading",
 }
 
 # Natural key of a results row: one run per (sweep, level_name, selection,

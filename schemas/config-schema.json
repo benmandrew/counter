@@ -24,7 +24,8 @@
         "weight_syntactic": { "type": "number", "minimum": 0, "description": "Syntactic similarity component weight." },
         "weight_semantic":  { "type": "number", "minimum": 0, "description": "Semantic similarity (model counting) component weight." },
         "weight_halstead":  { "type": "number", "minimum": 0, "description": "Halstead complexity penalty weight." },
-        "weight_status":    { "type": "number", "minimum": 0, "description": "Realizability status weight." }
+        "weight_status":    { "type": "number", "minimum": 0, "description": "Realizability status weight." },
+        "status_grading": { "type": "string", "enum": ["tiered", "mrs"], "default": "mrs", "description": "How the status objective grades below realizability: 'tiered' is the three-point scale (some component unsatisfiable, unrealizable, realizable and well-separated); 'mrs' (default) replaces the middle tier with the greedy maximal-realizable-subset fraction, admitting guarantee-side parts in spec order and scoring the fraction kept. Mrs costs more realizability queries per candidate -- a median 1.15x paired wall time -- and grades a region 'tiered' collapses to a single value; the 2026-08-11 campaign measured it at 410/480 repairs against tiered's 367/480." }
       }
     },
     "mutation": {
@@ -80,7 +81,7 @@
       "additionalProperties": false,
       "properties": {
         "black_timeout_ms":  { "type": "integer", "minimum": 0, "description": "Timeout per black SAT query in milliseconds." },
-        "ltlsynt_timeout_ms": { "type": "integer", "minimum": 0, "default": 500, "description": "Per-call ltlsynt realizability timeout in milliseconds. Default 500; 0 is no timeout. A call exceeding it is killed and reported as undecided, which does not admit a repair and drops the candidate at the well-separation filter. Call durations are bimodal -- 95% finish under 50 ms and a 500 ms cap abandons within 0.1% of what a 10 s cap does -- so a call that blows this budget is in the minutes-long tail." },
+        "ltlsynt_timeout_ms": { "type": "integer", "minimum": 0, "default": 10000, "description": "Per-call ltlsynt realizability timeout in milliseconds. Default 10000; 0 is no timeout. A call exceeding it is killed and reported as undecided, which does not admit a repair and drops the candidate at the well-separation filter. It was 500, on the measurement that call durations are bimodal (95% finish under 50 ms, and a 500 ms cap abandons within 0.1% of what a 10 s cap does) -- a per-corpus statistic that hides the per-specification failure: where a specification's own realizability query exceeds the budget it loses not 0.1% of its calls but all of them, and even a correct repair is rejected at the final gate. The startup budget screen warns when the input specification is in that position." },
         "ltl2tgba_timeout_ms": { "type": "integer", "minimum": 0, "default": 60000, "description": "Per-call ltl2tgba automaton-construction timeout in milliseconds. Default 60000; 0 is no timeout. Looser than the ltlsynt budget because a legitimate determinisation can take tens of seconds. A call exceeding it drops the individual against max_scoring_failure_rate." },
         "ltlfilt_timeout_ms": { "type": "integer", "minimum": 0, "description": "Per-call ltlfilt simplification timeout in milliseconds. Default 10000; 0 is no timeout. An abandoned call returns the formula unsimplified rather than failing." },
         "ganak_timeout_ms": { "type": "integer", "minimum": 0, "description": "Per-call ganak model-counting timeout in milliseconds. 0 (default) is no timeout; a call exceeding it drops the individual against max_scoring_failure_rate." },

@@ -44,6 +44,20 @@ enum class SimilarityMetric : std::uint8_t { Direct, Logarithmic };
 /// mode is TLSF-only; the FRETISH path ignores it.
 enum class RepairMode : std::uint8_t { Monolithic, Muc };
 
+/// How the status objective grades the region below realizability. Tiered is
+/// the three-point scale in fitness/status.hpp. Mrs (the default) replaces its
+/// middle tier with the greedy maximal-realizable-subset fraction: the
+/// guarantee side is split into parts, and the score is what fraction of them
+/// can be kept while the accumulated subset stays realizable against the full,
+/// unchanged environment side.
+///
+/// The two stay crossed as an experiment factor, so a campaign can still ask
+/// for Tiered by name. Grading is the whole point: over the 21 specifications
+/// in `examples/`, Tiered scores
+/// every one of them 0.5, where Mrs spreads them over 14 distinct values with a
+/// median of 6 grade levels per specification.
+enum class StatusGrading : std::uint8_t { Tiered, Mrs };
+
 struct Config {
     std::size_t generations = 10;
     std::size_t population_size = 200;
@@ -51,6 +65,19 @@ struct Config {
     double fitness_weight_semantic = 0.5;
     double fitness_weight_halstead = 0.1;
     double fitness_weight_status = 0.5;
+    /// How the status objective grades below realizability (see StatusGrading).
+    /// Mrs costs more realizability queries per candidate -- a median of 4.6x
+    /// one whole-specification check across `examples/`, falling to 2.2x over a
+    /// population, since the greedy prefixes recur across near-identical
+    /// candidates and RealizabilityChecker memoises by formula string.
+    ///
+    /// Mrs is the default on the 2026-08-11 status-grading campaign, which
+    /// paired the two over 20 TLSF specifications x 24 seeds: yield 410/480
+    /// against 367/480 (50 Mrs-only pairs to 7, sign test \f$p < 10^{-4}\f$),
+    /// repair quality unchanged where both arms yield, at a median paired wall
+    /// cost of 1.15x. The gain concentrates where Tiered cannot grade at all --
+    /// `arbiter` moves 0/24 to 22/24 and `rg1` 7/24 to 24/24.
+    StatusGrading status_grading = StatusGrading::Mrs;
     std::size_t default_model_counting_bound = 20;
     SimilarityMetric similarity_metric = SimilarityMetric::Logarithmic;
     /// Keep only repairs the original logically implies -- genuine weakenings.
@@ -125,15 +152,32 @@ struct Config {
     /// repair is admitted on it, and the well-separation filter drops the
     /// candidate. 0 disables the timeout.
     ///
-    /// 500 ms by default because that is what every archived TLSF campaign set
-    /// and because the call durations are sharply bimodal: 95% of that
-    /// campaign's calls finished under 50 ms, the 0.5-1 s band was almost
-    /// empty, and a 500 ms cap abandoned within 0.1% of the calls a 10 s cap
-    /// did. A formula that blows this budget is in the minutes-long tail, not
-    /// near the boundary. Losing one candidate out of a population is the same
-    /// noise max_scoring_failure_rate already tolerates; an unbounded call
-    /// costs the whole run.
-    std::chrono::milliseconds ltlsynt_timeout{500};
+    /// 10 s by default. It was 500 ms, on the measurement that the call
+    /// durations are sharply bimodal: 95% of an archived TLSF campaign's calls
+    /// finished under 50 ms, the 0.5-1 s band was almost empty, and a 500 ms
+    /// cap abandoned within 0.1% of the calls a 10 s cap did. That statistic is
+    /// true and was the wrong one to tune on, because it counts calls across
+    /// the corpus rather than per specification. A specification whose *own*
+    /// realizability query exceeds the budget does not lose 0.1% of its calls,
+    /// it loses all of them: every candidate comes back undecided, the status
+    /// objective becomes a constant costing a full budget per distinct
+    /// candidate, and the final gate rejects even a correct repair. `amba` is
+    /// exactly that case -- 1.5 s for the unrealizable original and 6.1 s to
+    /// prove its known-good repair realizable, against a 500 ms budget.
+    ///
+    /// 10 s clears the corpus worst case by well over a factor of one and is
+    /// the value the four archived configs that overrode 500 ms chose. It
+    /// still cuts the minutes-long tail the timeout exists for. Losing one
+    /// candidate out of a population to that tail is the same noise
+    /// max_scoring_failure_rate already tolerates; an unbounded call costs the
+    /// whole run. Raising this does not rescue a run already under way: an
+    /// undecided verdict is memoised like any other (see RealizabilityChecker),
+    /// so a formula abandoned once stays undecided for the rest of the run.
+    ///
+    /// scripts/gen_configs.py carries its own TLSF_LTLSYNT_TIMEOUT_MS, which a
+    /// generated TLSF campaign emits explicitly and which therefore overrides
+    /// this default rather than following it.
+    std::chrono::milliseconds ltlsynt_timeout{10'000};
     /// Per-call wall-clock budget for the ltl2tgba model-counting exec. Like
     /// ltlsynt, ltl2tgba has no internal timeout, and the deterministic (-D)
     /// construction blows up super-exponentially on the deeply nested formulae

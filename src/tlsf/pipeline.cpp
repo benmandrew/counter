@@ -71,6 +71,15 @@ int run_repair(const std::string& input_path, const std::string& output_dir,
         InputScreen::failed_check = *failed;
         std::cerr << input_screen_warning(*failed);
     }
+    // After the input screen and before anything is scored: the query is
+    // memoised, so this is the call the first scoring pass was about to make
+    // anyway, timed.
+    std::cerr << ltlsynt_budget_screen(
+        [&original] {
+            return global_real_checker().check_realizability_ltl(
+                original.to_ltl(), original.m_inputs, original.m_outputs);
+        },
+        cfg.ltlsynt_timeout);
 
     const std::optional<std::size_t> maybe_seed = random_source.seed();
     if (maybe_seed.has_value()) {

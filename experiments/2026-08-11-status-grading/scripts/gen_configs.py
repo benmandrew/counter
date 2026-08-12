@@ -140,13 +140,10 @@ DEFAULTS: dict = {
     "allow_output_assumptions": True,
     "black_timeout_ms": 1000,
     "repair_mode": "monolithic",
-    # Mirrors include/config.hpp, which moved to "mrs" on the 2026-08-11
-    # campaign. Emitted into [fitness] only when a sweep overrides it (see
-    # make_toml), so every existing grid stays byte-identical; sweep G varies
-    # it. That silence is what makes the move a config-vintage change for every
-    # campaign archived before it -- see "Config vintage" in
-    # experiments/README.md.
-    "status_grading": "mrs",
+    # Mirrors include/config.hpp. Emitted into [fitness] only when a
+    # sweep overrides it (see make_toml), so every existing grid stays
+    # byte-identical; sweep G varies it.
+    "status_grading": "tiered",
     # TLSF-only [tlsf.mutation] split (see config.hpp). Emitted only when a sweep
     # overrides one of them (see make_toml), so the FRETISH and A/B TLSF grids
     # stay byte-identical to the pre-factor output; the mutation-split sweep sets
@@ -591,7 +588,7 @@ TLSF_MAX_REALIZABILITY = 0
 # calls pooled across the corpus, and pooling is what made 500ms look free. It
 # hides the per-spec case: where a spec's *own* realizability query exceeds the
 # budget, it does not shed 0.1% of its calls, it sheds all of them. amba is that
-# spec — 1.5s for the unrealizable original, 6.1s to prove its known-good
+# spec — 1.66s for the unrealizable original, 6.1s to prove its known-good
 # repair realizable — so every amba run in every campaign generated at 500ms
 # scored a constant status objective and had its repairs rejected at the final
 # gate. Re-run at a budget that decides it, amba yields; its 96/96 zero-yield

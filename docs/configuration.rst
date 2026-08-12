@@ -45,6 +45,13 @@ Four components are combined into each candidate's score. Semantic similarity an
    * - ``fitness.weight_halstead``
      - 0.1
      - Penalty for candidates larger than the original
+   * - ``fitness.status_grading``
+     - ``"tiered"``
+     - Scale the status component grades on: ``"tiered"`` or ``"mrs"``
+
+``fitness.status_grading`` decides how finely the status component grades the region below realizability. ``"tiered"`` is the three-point scale above. ``"mrs"`` replaces its middle tier with the greedy maximal-realizable-subset fraction: the guarantee side is split into parts, and the score is the fraction of them that can be kept while the accumulated subset stays realizable against the full, unchanged environment side. Both keep 1.0 meaning realizable and well-separated.
+
+Three levels leave a genetic algorithm little to climb. Over the 21 specifications under ``examples/`` the tiered scale scores every one of them 0.5, where the MRS scale spreads them over 14 distinct values, with a median of 6 grade levels per specification and a maximum of 17. It costs more ``ltlsynt`` queries per candidate — a median of 4.6x one whole-specification check measured alone, falling to about 2.2x over a population, since the greedy walk's prefixes recur across near-identical candidates and hit the memoised checker. The two are crossed as an experiment factor, and ``"tiered"`` stays the default until a campaign decides between them.
 
 Semantic similarity is the expensive one: it counts the satisfying traces of a candidate up to ``model_counting.default_bound`` (default 20) using Ganak over the transition matrices of SPOT-generated automata. Raising the bound sharpens the measure and costs time.
 

@@ -1,6 +1,10 @@
+#include <algorithm>
+#include <cstddef>
+#include <functional>
 #include <string>
 #include <vector>
 
+#include "config.hpp"
 #include "fitness/status.hpp"
 #include "requirement.hpp"
 #include "runner/black.hpp"
@@ -155,6 +159,184 @@ void test_status_no_guarantees_skips_the_solver() {
            "status: no guarantees should score realizable");
 }
 
+// --- status_score_mrs, against a stub oracle ---
+
+// Records every subset the walk asked about, so the tests can pin the query
+// sequence rather than only the resulting score.
+struct RecordingOracle {
+    std::vector<std::vector<std::size_t>> queries;
+    std::function<bool(const std::vector<std::size_t>&)> admissible;
+
+    bool operator()(const std::vector<std::size_t>& indices) {
+        queries.push_back(indices);
+        return admissible(indices);
+    }
+};
+
+void test_mrs_keeps_everything_when_all_parts_are_admissible() {
+    SatisfiabilityChecker sat;
+    RecordingOracle oracle{
+        {}, [](const std::vector<std::size_t>&) { return true; }};
+    const double score = status_score_mrs(
+        {"p"}, 4, sat,
+        [&oracle](const std::vector<std::size_t>& idx) { return oracle(idx); });
+    expect(score == k_status_realizable,
+           "mrs: a fully realizable guarantee side should score exactly 1.0");
+    expect(oracle.queries.size() == 4,
+           "mrs: the walk should ask once per part");
+}
+
+void test_mrs_scores_the_kept_fraction() {
+    // Part 2 conflicts with part 0, so the walk keeps 0, 1 and 3.
+    SatisfiabilityChecker sat;
+    const double score = status_score_mrs(
+        {"p"}, 4, sat, [](const std::vector<std::size_t>& indices) {
+            const bool has_zero =
+                std::find(indices.begin(), indices.end(), 0) != indices.end();
+            const bool has_two =
+                std::find(indices.begin(), indices.end(), 2) != indices.end();
+            return !(has_zero && has_two);
+        });
+    expect(score == 0.75, "mrs: three parts of four kept should score 0.75");
+}
+
+void test_mrs_walk_carries_only_the_accepted_prefix() {
+    // A rejected part is dropped rather than carried, so every later query is
+    // about a subset the walk has actually accepted. That is what makes the
+    // queries recur across near-identical candidates and hit the cache.
+    SatisfiabilityChecker sat;
+    RecordingOracle oracle{{}, [](const std::vector<std::size_t>& indices) {
+                               return std::find(indices.begin(), indices.end(),
+                                                1) == indices.end();
+                           }};
+    const double score = status_score_mrs(
+        {"p"}, 3, sat,
+        [&oracle](const std::vector<std::size_t>& idx) { return oracle(idx); });
+    expect(score == 2.0 / 3.0, "mrs: rejecting one part of three scores 2/3");
+    const std::vector<std::vector<std::size_t>> expected = {
+        {0}, {0, 1}, {0, 2}};
+    expect(oracle.queries == expected,
+           "mrs: a rejected part should not appear in any later query");
+}
+
+void test_mrs_walk_is_deterministic() {
+    // Parts 0 and 1 conflict, and whichever comes first is kept: greedy returns
+    // a maximal subset, not a maximum one. Pinned so the property is not taken
+    // for a bug later, and so the score stays a deterministic function of the
+    // candidate, which seed reproducibility requires.
+    SatisfiabilityChecker sat;
+    const auto conflicting = [](const std::vector<std::size_t>& indices) {
+        return indices.size() < 2;
+    };
+    const double first = status_score_mrs({"p"}, 2, sat, conflicting);
+    const double second = status_score_mrs({"p"}, 2, sat, conflicting);
+    expect(first == 0.5 && first == second,
+           "mrs: the greedy walk should be deterministic across calls");
+}
+
+void test_mrs_short_circuits_on_an_unsatisfiable_component() {
+    // The component tier still runs first, and costs satisfiability queries
+    // rather than the n realizability queries the walk would otherwise pay to
+    // learn nothing.
+    SatisfiabilityChecker sat;
+    RecordingOracle oracle{
+        {}, [](const std::vector<std::size_t>&) { return true; }};
+    const double score = status_score_mrs(
+        {"p & !p"}, 3, sat,
+        [&oracle](const std::vector<std::size_t>& idx) { return oracle(idx); });
+    expect(score == k_status_component_unsatisfiable,
+           "mrs: an unsatisfiable component should score the component tier");
+    expect(oracle.queries.empty(),
+           "mrs: the component tier should short-circuit the walk entirely");
+}
+
+void test_mrs_empty_guarantee_side_scores_realizable() {
+    SatisfiabilityChecker sat;
+    const double score =
+        status_score_mrs({"p"}, 0, sat, [](const std::vector<std::size_t>&) {
+            fail("mrs: an empty guarantee side should not query the oracle");
+            return false;
+        });
+    expect(score == k_status_realizable,
+           "mrs: no guarantee-side parts should score realizable");
+}
+
+// --- specification_status under StatusGrading::Mrs ---
+
+void test_mrs_grades_an_unrealizable_spec_between_the_tiers() {
+    // Three guarantees, of which the first two are jointly realizable and the
+    // third breaks them:
+    //   G(i -> o)  -- mirror the input
+    //   G F o      -- o must hold infinitely often
+    //   G(o -> i)  -- o only where i already holds
+    // The environment plays i false forever, so the third forbids o and the
+    // second demands it. Greedy keeps the first two, scoring 2/3 -- a value the
+    // tiered scale cannot express, on a spec it scores 0.5.
+    SatisfiabilityChecker sat;
+    RealizabilityChecker real;
+    const Specification spec(
+        {},
+        {Requirement(Formula("i"), Formula("o"), timing::immediately()),
+         Requirement(Formula("true"), Formula("o"), timing::eventually()),
+         Requirement(Formula("o"), Formula("i"), timing::immediately())},
+        {"i"}, {"o"});
+    expect(specification_status(spec, sat, real) == k_status_unrealizable,
+           "mrs: the tiered scale should score this spec 0.5");
+    expect(
+        specification_status(spec, sat, real, StatusGrading::Mrs) == 2.0 / 3.0,
+        "mrs: two of three guarantees kept should score 2/3");
+}
+
+void test_mrs_realizable_spec_still_scores_one() {
+    SatisfiabilityChecker sat;
+    RealizabilityChecker real;
+    const auto spec = make_spec("i", "o", {"i"}, {"o"});
+    expect(specification_status(spec, sat, real, StatusGrading::Mrs) ==
+               k_status_realizable,
+           "mrs: a realizable spec should still score exactly 1.0");
+}
+
+void test_mrs_ill_separated_spec_does_not_score_one() {
+    // Well-separation is folded into the subset oracle, so a guarantee only
+    // reachable by defeating the specification's own assumption is rejected
+    // rather than kept. 1.0 keeps meaning what it means on the tiered scale:
+    // realizable for a real reason.
+    SatisfiabilityChecker sat;
+    RealizabilityChecker real;
+    const Specification spec(
+        {Requirement(Formula("true"), Formula("o"), timing::always())},
+        {Requirement(Formula("i"), Formula("o"), timing::immediately())}, {"i"},
+        {"o"});
+    expect(specification_status(spec, sat, real, StatusGrading::Mrs) <
+               k_status_realizable,
+           "mrs: a spec realizable only by defeating its own assumptions must "
+           "not score 1.0");
+}
+
+void test_mrs_input_only_assumption_still_scores_one() {
+    // The counterpart, so the test above is not passing for the wrong reason.
+    SatisfiabilityChecker sat;
+    RealizabilityChecker real;
+    const Specification spec(
+        {Requirement(Formula("true"), Formula("i"), timing::always())},
+        {Requirement(Formula("i"), Formula("o"), timing::immediately())}, {"i"},
+        {"o"});
+    expect(specification_status(spec, sat, real, StatusGrading::Mrs) ==
+               k_status_realizable,
+           "mrs: an assumption over inputs alone should still score 1.0");
+}
+
+void test_mrs_defaults_to_the_tiered_scale() {
+    // The default argument matters: every existing caller that passes no
+    // grading must keep the behaviour it had.
+    SatisfiabilityChecker sat;
+    RealizabilityChecker real;
+    const auto spec = make_spec("i", "o", {"i"}, {"o"});
+    expect(specification_status(spec, sat, real) ==
+               specification_status(spec, sat, real, StatusGrading::Tiered),
+           "mrs: the default grading should be the tiered scale");
+}
+
 }  // namespace
 
 void run_status_tests() {
@@ -167,4 +349,15 @@ void run_status_tests() {
     test_status_ill_separated_scores_level_with_unrealizable();
     test_status_input_only_assumption_still_scores_one();
     test_status_no_guarantees_skips_the_solver();
+    test_mrs_keeps_everything_when_all_parts_are_admissible();
+    test_mrs_scores_the_kept_fraction();
+    test_mrs_walk_carries_only_the_accepted_prefix();
+    test_mrs_walk_is_deterministic();
+    test_mrs_short_circuits_on_an_unsatisfiable_component();
+    test_mrs_empty_guarantee_side_scores_realizable();
+    test_mrs_grades_an_unrealizable_spec_between_the_tiers();
+    test_mrs_realizable_spec_still_scores_one();
+    test_mrs_ill_separated_spec_does_not_score_one();
+    test_mrs_input_only_assumption_still_scores_one();
+    test_mrs_defaults_to_the_tiered_scale();
 }

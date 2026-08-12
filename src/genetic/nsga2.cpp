@@ -101,14 +101,24 @@ std::vector<double> crowding_distances(
                       });
             const double lowest = objectives[front.front()][obj];
             const double highest = objectives[front.back()][obj];
-            // The extremes of this objective anchor the front and are always
-            // retained; a zero-range objective distinguishes no members.
-            distances[front.front()] = k_infinity;
-            distances[front.back()] = k_infinity;
             const double range = highest - lowest;
+            // A zero-range objective distinguishes no members, so it anchors
+            // nothing. Guarding before the assignment rather than after it is
+            // load-bearing: the sort above is not stable, so on a constant
+            // objective front.front() and front.back() are an arbitrary
+            // permutation of the tied members, and pinning two of them at
+            // infinity ranks them above every finitely-scored member of the
+            // front for no reason the objectives support. A coarse objective
+            // feels this worst -- a continuous one has unique extremes,
+            // whereas the three-point status scale can leave hundreds of
+            // members tied at 0.5.
             if (range <= 0.0) {
                 continue;
             }
+            // The extremes of this objective anchor the front and are always
+            // retained.
+            distances[front.front()] = k_infinity;
+            distances[front.back()] = k_infinity;
             for (std::size_t i = 1; i + 1 < front.size(); ++i) {
                 const double gap = objectives[front[i + 1]][obj] -
                                    objectives[front[i - 1]][obj];

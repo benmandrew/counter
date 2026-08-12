@@ -35,7 +35,11 @@ namespace {
 // abandoned rather than answered, so a run that reports repairs with a
 // non-zero count screened less than a run reporting the same repairs with
 // zero -- which is not visible from any other field.
-constexpr int k_schema_version = 4;
+// 5 added budget_screen, so a zero-yield run can be told apart from one whose
+// ltlsynt budget could not decide its own input specification.
+// 6 added fitness.status_grading, since the status objective now has two
+// scales and a manifest that does not name the one in use cannot be read.
+constexpr int k_schema_version = 6;
 
 // The inverse of the spellings config_io.cpp parses. It has no table to
 // borrow -- it only ever goes string to enum -- so these must be kept in step
@@ -59,6 +63,16 @@ const char* metric_name(SimilarityMetric metric) {
             return "direct";
         case SimilarityMetric::Logarithmic:
             return "logarithmic";
+    }
+    return "unknown";
+}
+
+const char* status_grading_name(StatusGrading grading) {
+    switch (grading) {
+        case StatusGrading::Tiered:
+            return "tiered";
+        case StatusGrading::Mrs:
+            return "mrs";
     }
     return "unknown";
 }
@@ -124,7 +138,8 @@ nlohmann::json config_json(const Config& cfg) {
          {{"weight_syntactic", cfg.fitness_weight_syntactic},
           {"weight_semantic", cfg.fitness_weight_semantic},
           {"weight_halstead", cfg.fitness_weight_halstead},
-          {"weight_status", cfg.fitness_weight_status}}},
+          {"weight_status", cfg.fitness_weight_status},
+          {"status_grading", status_grading_name(cfg.status_grading)}}},
         {"mutation",
          {{"p_trigger", cfg.p_trigger},
           {"p_response", cfg.p_response},
@@ -212,6 +227,17 @@ void write_run_manifest(const std::string& output_dir,
         {"input_screen", InputScreen::failed_check.empty()
                              ? nlohmann::json(nullptr)
                              : nlohmann::json(InputScreen::failed_check)},
+        // Null when no screen ran, which is the case under an unlimited
+        // budget. `decided` false means the budget could not settle the input
+        // specification's own realizability, so a campaign can partition its
+        // zero-yield rows on the budget rather than read them as search
+        // failures. `observed_ms` is a lower bound when undecided: the child
+        // was killed at the budget.
+        {"budget_screen",
+         BudgetScreen::observed_ms < 0
+             ? nlohmann::json(nullptr)
+             : nlohmann::json({{"ltlsynt_ms", BudgetScreen::observed_ms},
+                               {"decided", BudgetScreen::decided}})},
         {"config", config_json(cfg)},
         {"tool_calls", tool_calls_json()},
         {"n_constant_folded", SatisfiabilityChecker::n_constant_folded.load()},

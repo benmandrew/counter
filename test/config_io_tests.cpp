@@ -186,6 +186,40 @@ void test_config_io_selection_scheme_defaults_to_nsga2_truncate() {
            "config_io: selection_scheme should default to Nsga2Truncate");
 }
 
+// Pinned because the default is what every archived config inherits: the key
+// did not exist before 2026-08-11, so no archived config can state it, and
+// moving this back to Tiered silently re-reads every one of them under a
+// different status objective. See "Config vintage" in experiments/README.md.
+void test_config_io_status_grading_defaults_to_mrs() {
+    const Config cfg = config_from_toml_string("");
+    expect(cfg.status_grading == StatusGrading::Mrs,
+           "config_io: status_grading should default to Mrs");
+}
+
+void test_config_io_status_grading_tiered_parsed() {
+    const Config cfg =
+        config_from_toml_string("[fitness]\nstatus_grading = \"tiered\"\n");
+    expect(cfg.status_grading == StatusGrading::Tiered,
+           "config_io: status_grading = \"tiered\" should parse as Tiered");
+}
+
+void test_config_io_status_grading_mrs_parsed() {
+    const Config cfg =
+        config_from_toml_string("[fitness]\nstatus_grading = \"mrs\"\n");
+    expect(cfg.status_grading == StatusGrading::Mrs,
+           "config_io: status_grading = \"mrs\" should parse as Mrs");
+}
+
+void test_config_io_status_grading_rejects_unknown() {
+    bool threw = false;
+    try {
+        config_from_toml_string("[fitness]\nstatus_grading = \"greedy\"\n");
+    } catch (const std::exception&) {
+        threw = true;
+    }
+    expect(threw, "config_io: an unknown status_grading should be rejected");
+}
+
 void test_config_io_selection_scheme_weighted_parsed() {
     const Config cfg =
         config_from_toml_string("[genetic]\nselection_scheme = \"weighted\"\n");
@@ -480,6 +514,10 @@ void run_config_io_tests() {
     test_config_io_elitism_rate_parsed();
     test_config_io_elitism_not_less_than_selection_throws();
     test_config_io_selection_scheme_defaults_to_nsga2_truncate();
+    test_config_io_status_grading_defaults_to_mrs();
+    test_config_io_status_grading_tiered_parsed();
+    test_config_io_status_grading_mrs_parsed();
+    test_config_io_status_grading_rejects_unknown();
     test_config_io_selection_scheme_weighted_parsed();
     test_config_io_selection_scheme_nsga2_truncate_parsed();
     test_config_io_selection_scheme_nsga2_apportion_parsed();

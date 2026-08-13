@@ -1,6 +1,6 @@
 INFO {
   TITLE:       "Humanoid"
-  DESCRIPTION: "Weakening derived from AuRUS genuine HumanoidLTL_533, keeping its assumption strengthening and dropping its guarantee strengthening, which made the original incomparable."
+  DESCRIPTION: "Weakening derived from AuRUS genuine HumanoidLTL_533, keeping its assumption strengthening and dropping its guarantee strengthening, which made the original incomparable. AuRUS strengthens the obstacle liveness over movemode, which are outputs, leaving the repair realisable only because the system can force its own assumption to fail; the input-only F G !obstacle restores realisability without that."
   SEMANTICS:   Mealy
   TARGET:   Mealy
 }
@@ -22,8 +22,8 @@ MAIN {
 
      //assumptions
      G ( F (!obstacle));
+     F ( G (!obstacle));
      ( G ((obstacle || movemode_1 || !movemode_0 ||  X (!obstacle))) && G ((!movemode_1 || !movemode_0 ||  X ((movemode_1 || movemode_0)) ||  X ( X (!obstacle)))));
-     G ( F ((movemode_1 && movemode_0 &&  X (!obstacle))));
   }
 
   GUARANTEES {

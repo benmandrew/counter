@@ -144,6 +144,7 @@ void test_mutation_side_probability_selects_side() {
     auto changed_counts = [&spec](double p_assumption) {
         Config cfg;
         cfg.p_add_assumption = 0.0;  // isolate the rewrite path
+        cfg.p_remove_guarantee = 0.0;
         cfg.tlsf_p_assumption = p_assumption;
         std::pair<std::size_t, std::size_t> counts{0, 0};
         for (std::size_t seed = 0; seed < k_seeds; ++seed) {
@@ -182,6 +183,7 @@ void test_temporal_mutation_changes_skeleton() {
     Config cfg;
     cfg.tlsf_p_temporal = 1.0;
     cfg.p_add_assumption = 0.0;  // isolate the rewrite path
+    cfg.p_remove_guarantee = 0.0;
     const tlsf::Specification original = parse(
         "INPUTS { req; } OUTPUTS { grant; } GUARANTEE { G(req -> F "
         "grant); }");
@@ -213,6 +215,7 @@ void test_temporal_mutation_atoms_from_inputs_only() {
     Config cfg;
     cfg.tlsf_p_temporal = 1.0;
     cfg.p_add_assumption = 0.0;
+    cfg.p_remove_guarantee = 0.0;
     cfg.allow_output_assumptions = false;
     tlsf::Specification spec;
     spec.m_inputs = {"a", "c"};
@@ -319,6 +322,7 @@ void test_assumption_rewrite_can_reference_output_when_allowed() {
     // hold-until form over successive generations.
     Config cfg;
     cfg.p_add_assumption = 0.0;  // isolate the rewrite path
+    cfg.p_remove_guarantee = 0.0;
     cfg.allow_output_assumptions = true;
     tlsf::Specification spec;
     spec.m_inputs = {"a", "c"};
@@ -348,7 +352,8 @@ void test_weak_until_over_output_is_reachable() {
     // tlsf_add_assumption creates (G(r -> F g)), a temporal rewrite can yield
     // an assumption with a `... W ...` node referencing the output g.
     Config cfg;
-    cfg.p_add_assumption = 0.0;   // isolate the rewrite path
+    cfg.p_add_assumption = 0.0;  // isolate the rewrite path
+    cfg.p_remove_guarantee = 0.0;
     cfg.tlsf_p_assumption = 1.0;  // always mutate the assumption side
     cfg.tlsf_p_temporal = 1.0;    // always the temporal (skeleton) rewrite
     cfg.allow_output_assumptions = true;

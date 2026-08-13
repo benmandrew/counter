@@ -550,8 +550,8 @@ Specification mutate_specification(const Specification& specification,
     // The mirror action: delete a guarantee. Never the last live one, since a
     // specification with nothing left to guarantee is realizable by doing
     // nothing and is no repair at all. The probability is read before the draw
-    // so that a run with the operator off draws exactly what it drew before it
-    // existed, which is what keeps archived seeds reproducing.
+    // so that a zero costs no draw at all, which is what lets a config set it
+    // to 0 and reproduce a run from before the operator existed.
     if (cfg.p_remove_guarantee > 0.0) {
         const std::vector<std::size_t> removable =
             removable_guarantee_indices(specification);

@@ -123,10 +123,10 @@ DEFAULTS: dict = {
     # [mutation] only when a sweep overrides it (see make_toml), so the standard
     # grids stay byte-identical; the p_add_assumption sweep varies it.
     "p_add_assumption": 0.05,
-    # The mirror action: delete one guarantee. Off by default in config.hpp, so
-    # a grid that does not sweep it is byte-identical to one generated before
-    # the key existed. The p_remove_guarantee sweep varies it.
-    "p_remove_guarantee": 0.0,
+    # The mirror action: delete one guarantee. Emitted into [mutation] only when
+    # a sweep overrides it (see make_toml), like p_add_assumption; TLSF sweep D
+    # varies it, and its prem0 arm is the pre-operator control.
+    "p_remove_guarantee": 0.05,
     "default_bound": 20,
     "metric": "direct",
     "run_weakening": True,
@@ -508,15 +508,15 @@ TLSF_SWEEP_P: list[tuple[str, dict]] = [
 ]
 
 # TLSF sweep D: vary p_remove_guarantee, the guarantee-deletion operator (D for
-# delete; R is taken by the shared generations sweep). prem0 is the config.hpp
-# default and reproduces a run from before the operator existed, so it is the
-# control arm. The eight drop-* ideals are unreachable at prem0 and reachable
-# above it, which is what this sweep is for; the open question is the cost,
-# since deleting a guarantee only ever helps realizability and the similarity
-# objectives are the only thing paying for it.
+# delete; R is taken by the shared generations sweep). prem0 turns the operator
+# off and so reproduces a run from before it existed, which makes it the control
+# arm; prem0.05 is the config.hpp default. The eight drop-* ideals are
+# unreachable at prem0 and reachable above it, which is what this sweep is for;
+# the open question is the cost, since deleting a guarantee only ever helps
+# realizability and the similarity objectives are the only thing paying for it.
 TLSF_SWEEP_D: list[tuple[str, dict]] = [
-    ("prem0",    {"p_remove_guarantee": 0.0}),   # control
-    ("prem0.05", {"p_remove_guarantee": 0.05}),  # mirrors p_add_assumption
+    ("prem0",    {"p_remove_guarantee": 0.0}),   # pre-operator control
+    ("prem0.05", {"p_remove_guarantee": 0.05}),  # baseline, mirrors p_add_assumption
     ("prem0.15", {"p_remove_guarantee": 0.15}),
     ("prem0.3",  {"p_remove_guarantee": 0.3}),
 ]

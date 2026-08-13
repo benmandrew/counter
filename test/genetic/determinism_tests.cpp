@@ -114,6 +114,11 @@ Config golden_config() {
     cfg.p_response = 0.5;
     cfg.p_timing = 0.15;
     cfg.p_add_assumption = 0.05;
+    // Pinned explicitly rather than left to the struct default, like every
+    // other field here: the goldens below record the draw stream this operator
+    // takes part in, so a later change to the default must fail this suite
+    // rather than silently re-record it.
+    cfg.p_remove_guarantee = 0.05;
     cfg.p_conditional_assumption = 0.25;
     // Pinned to the production default. It is also the value the goldens below
     // were recorded under: with it off, an assumption-side rewrite draws from
@@ -243,8 +248,8 @@ void test_trace_hash_distinguishes_order_and_bounds() {
 }
 
 void test_generation_draw_sequence_is_pinned() {
-    constexpr std::size_t k_expected_draws = 115;
-    constexpr std::uint64_t k_expected_hash = 6232658817892213008ULL;
+    constexpr std::size_t k_expected_draws = 96;
+    constexpr std::uint64_t k_expected_hash = 15872846249304230137ULL;
 
     const GoldenRun run = run_golden_evolution();
     const std::uint64_t hash = fnv1a(render_trace(*run.trace));
@@ -263,7 +268,7 @@ void test_generation_draw_sequence_is_pinned() {
 }
 
 void test_evolved_population_is_pinned() {
-    constexpr std::uint64_t k_expected_hash = 5011158093940620277ULL;
+    constexpr std::uint64_t k_expected_hash = 10478019703122919573ULL;
 
     const GoldenRun run = run_golden_evolution();
     const std::uint64_t hash = fnv1a(render_population(run.population));

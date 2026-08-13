@@ -324,6 +324,7 @@ void test_mutation_all_locked_is_noop() {
         {"a"}, {"b"});
     Config cfg;
     cfg.p_add_assumption = 0.0;  // isolate the requirement-rewrite path
+    cfg.p_remove_guarantee = 0.0;
     const Specification result =
         mutate_specification(spec, make_source({}, 0), cfg);
     expect(result == spec,
@@ -342,6 +343,7 @@ void test_mutation_skips_non_weakenable_requirement() {
     const Specification spec({}, {locked, weak}, {"a", "c"}, {"b", "d"});
     Config cfg;
     cfg.p_add_assumption = 0.0;  // isolate the requirement-rewrite path
+    cfg.p_remove_guarantee = 0.0;
     cfg.p_response = 0.0;
     cfg.p_trigger = 0.0;
     cfg.p_timing = 1.0;
@@ -373,6 +375,7 @@ void test_assumption_and_guarantee_timings_move_opposite_ways() {
     cfg.p_trigger = 0.0;
     cfg.p_timing = 1.0;
     cfg.p_add_assumption = 0.0;
+    cfg.p_remove_guarantee = 0.0;
     std::size_t n_assumption_moves = 0;
     std::size_t n_guarantee_moves = 0;
     for (std::size_t seed = 0; seed < 200; ++seed) {
@@ -429,6 +432,7 @@ void test_strengthen_assumptions_flag_restores_weakening() {
     cfg.p_trigger = 0.0;
     cfg.p_timing = 1.0;
     cfg.p_add_assumption = 0.0;
+    cfg.p_remove_guarantee = 0.0;
     cfg.strengthen_assumptions = false;
     bool saw_weakening = false;
     for (std::size_t seed = 0; seed < 200 && !saw_weakening; ++seed) {
@@ -463,6 +467,7 @@ void test_eventually_assumption_escapes_using_a_guarantee_tick_count() {
     cfg.p_trigger = 0.0;
     cfg.p_timing = 1.0;
     cfg.p_add_assumption = 0.0;
+    cfg.p_remove_guarantee = 0.0;
     bool escaped = false;
     for (std::size_t seed = 0; seed < 200 && !escaped; ++seed) {
         const Timing mutated =
@@ -496,6 +501,7 @@ void test_eventually_assumption_stays_put_without_a_donor() {
     cfg.p_trigger = 0.0;
     cfg.p_timing = 1.0;
     cfg.p_add_assumption = 0.0;
+    cfg.p_remove_guarantee = 0.0;
     for (std::size_t seed = 0; seed < 100; ++seed) {
         const Timing mutated =
             mutate_specification(spec, make_random_source_from_seed(seed), cfg)
@@ -669,6 +675,7 @@ void test_assumption_rewrite_never_references_output_when_disallowed() {
     Config cfg;
     cfg.allow_output_assumptions = false;
     cfg.p_add_assumption = 0.0;
+    cfg.p_remove_guarantee = 0.0;
     cfg.p_response = 1.0;
     cfg.p_trigger = 1.0;
     cfg.p_timing = 0.0;
@@ -696,6 +703,7 @@ void test_assumption_rewrite_can_reference_output_when_allowed() {
     Config cfg;
     cfg.allow_output_assumptions = true;
     cfg.p_add_assumption = 0.0;
+    cfg.p_remove_guarantee = 0.0;
     cfg.p_response = 1.0;
     cfg.p_trigger = 1.0;
     cfg.p_timing = 0.0;
@@ -724,6 +732,7 @@ void test_guarantee_rewrite_keeps_outputs_when_assumptions_restricted() {
     Config cfg;
     cfg.allow_output_assumptions = false;
     cfg.p_add_assumption = 0.0;
+    cfg.p_remove_guarantee = 0.0;
     cfg.p_response = 1.0;
     cfg.p_trigger = 0.0;
     cfg.p_timing = 0.0;
@@ -754,6 +763,7 @@ void test_assumption_rewrite_without_inputs_is_noop_when_disallowed() {
     Config cfg;
     cfg.allow_output_assumptions = false;
     cfg.p_add_assumption = 0.0;
+    cfg.p_remove_guarantee = 0.0;
     cfg.p_response = 1.0;
     cfg.p_trigger = 1.0;
     cfg.p_timing = 1.0;
@@ -772,6 +782,7 @@ void test_add_assumption_disabled_by_zero_probability() {
         {"a"}, {"b"});
     Config cfg;
     cfg.p_add_assumption = 0.0;
+    cfg.p_remove_guarantee = 0.0;
     const Specification result =
         mutate_specification(spec, make_source({}, 0), cfg);
     expect(result.m_assumptions.empty(),

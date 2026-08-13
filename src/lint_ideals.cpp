@@ -109,10 +109,10 @@ bool failed(std::optional<bool> value) { return value.has_value() && !*value; }
 // counts fall outside those bounds cannot be produced by any sequence of
 // mutations and crossovers.
 //
-// Deletion arrived with p_remove_guarantee, which is off by default. The bound
-// is on what the operators can express rather than on what one configuration
-// turns on, so this reports an ideal as reachable whether or not the run that
-// scores it enables the operator.
+// Deletion arrived with p_remove_guarantee. The bound is on what the operators
+// can express rather than on what one configuration turns on, so this reports
+// an ideal as reachable whichever probability the run that scores it uses,
+// including zero.
 void check_tlsf_reachable(const tlsf::Specification& spec,
                           const tlsf::Specification& ideal, Verdict& verdict) {
     const std::size_t spec_guarantees =

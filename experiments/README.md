@@ -81,6 +81,8 @@ unaffected and reproduce as they stand. The FRETISH campaigns state none of
 them, and so now run under bounded tools where they ran unbounded; write the
 three in as `0`, `0` and `0.05` to reproduce one.
 
+`mutation.p_remove_guarantee` crossed the line on 2026-08-13, and like `status_grading` it does so from a standing start: the key did not exist before that date, so no archived config can state it, and it arrives defaulting to `0.05` rather than to the `0` that describes every campaign here. It adds a mutation operator rather than shifting a threshold — the search can now delete a guarantee outright, which is a move none of these campaigns could make — so reproducing any of them means writing `p_remove_guarantee = 0.0` into the config by hand. That value is exact rather than approximate: the operator's probability is tested before the RNG is drawn, so at zero it costs no draw and the whole breeding stream is byte-identical to what it was before the operator existed. At any other value it is not, and no archived seed reproduces.
+
 A third change is sharper than a shifted default, because it stops an archived
 config from running at all. On 2026-08-06 the two NSGA-II selection schemes were
 renamed: `nsga2` became `nsga2-truncate` and `nsga2-replicate` became

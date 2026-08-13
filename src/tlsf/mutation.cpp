@@ -364,8 +364,8 @@ tlsf::Specification tlsf_mutate(const tlsf::Specification& spec,
     // The mirror action: delete a guarantee-side conjunct. Never the last live
     // one, since a specification with nothing left to guarantee is realizable
     // by doing nothing and is no repair. The probability is read before the
-    // draw so a run with the operator off draws exactly what it drew before it
-    // existed, which is what keeps archived seeds reproducing.
+    // draw so that a zero costs no draw at all, which is what lets a config set
+    // it to 0 and reproduce a run from before the operator existed.
     if (cfg.p_remove_guarantee > 0.0 && tlsf::count_live_guarantees(spec) > 1 &&
         random_source.next_real() < cfg.p_remove_guarantee) {
         return tlsf_remove_guarantee(spec, random_source);

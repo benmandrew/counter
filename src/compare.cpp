@@ -1,5 +1,6 @@
 #include <algorithm>
 #include <array>
+#include <chrono>
 #include <cstddef>
 #include <cstdint>
 #include <cstdlib>
@@ -449,6 +450,24 @@ int main(int argc, const char* const argv[]) {
     cfg.black_timeout = std::chrono::milliseconds{20'000};
     cfg.ltlsynt_timeout = std::chrono::milliseconds{60'000};
     cfg.ltl2tgba_timeout = std::chrono::milliseconds{60'000};
+    // ltlfilt's default is 10 s, and config.hpp justifies it by "an abandoned
+    // call costs only a missed simplification, never an individual". That
+    // premise holds inside a run and fails here. check_satisfiability answers
+    // from a simplification of "0" or "1" before black is spawned, so on this
+    // path the fold IS the verdict: losing it hands the query to a solver
+    // black.cpp:155 records as unsound on W under negation, and this driver
+    // prints whatever comes back as the relation. That is not hypothetical --
+    // at 10 s, compare reported examples/amba as incomparable with itself
+    // minus three GUARANTEES, with 0 timeouts.
+    //
+    // Sized off amba, the only subject big enough to cross the old default at
+    // 44 requirements and 16 atomic propositions. Its four spec-against-ideal
+    // queries need 80 s, 83 s, 90 s and 145 s; the two that fold to "0" decide
+    // there, and black clears the two satisfiable ones in 0.02 s once the fold
+    // has ruled out the cheap answer. 300 s leaves headroom over the 145 s
+    // worst case. A pair can now cost minutes, which is affordable for an
+    // offline comparison and would not be inside a run.
+    cfg.ltlfilt_timeout = std::chrono::milliseconds{300'000};
     apply_tool_timeouts(cfg);
     SatisfiabilityChecker& checker = global_sat_checker();
 

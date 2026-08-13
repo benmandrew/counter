@@ -168,6 +168,9 @@ target_link_libraries(signal_tracer PRIVATE cpptrace::cpptrace)
 add_executable(compare src/compare.cpp)
 target_link_libraries(compare PRIVATE counter_fitness)
 
+add_executable(lint-ideals src/lint_ideals.cpp)
+target_link_libraries(lint-ideals PRIVATE counter_fitness)
+
 add_executable(realize src/realize.cpp)
 target_link_libraries(realize PRIVATE counter_fitness)
 

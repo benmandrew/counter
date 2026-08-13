@@ -6,6 +6,14 @@ useStlAlgorithm
 # that file so the check still fires anywhere else.
 noExplicitConstructor:*/genetic/generation.hpp
 
+# tlsf::SectionEntry is implicitly constructible from a Formula on purpose, so
+# that the parser and the test fixtures keep building sections out of formulae
+# unchanged; the conversion the tombstone needs to police is the one back to
+# Formula, which does not exist. Inline suppression cannot be used here: it must
+# sit on the line above the constructor, which is where the clang-tidy
+# NOLINTNEXTLINE for the same deliberate choice already sits.
+noExplicitConstructor:*/tlsf/specification.hpp
+
 # next_bool() is non-pure — each call returns a different value, so the
 # "identical condition" check is a false positive here.
 identicalConditionAfterEarlyExit

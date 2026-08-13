@@ -11,7 +11,7 @@
 
 namespace {
 
-using Section = std::vector<Formula>;
+using tlsf::Section;
 
 // The four unary operators Brizzio's mutation may introduce, o1 ∈ {¬, X, F, G}.
 Formula::Kind pick_unary_kind(const RandomSource& random_source) {
@@ -203,17 +203,28 @@ Formula mutate_temporal(const Formula& formula,
 std::vector<Section*> side_sections(tlsf::Specification& spec,
                                     bool assumption_side) {
     if (assumption_side) {
-        return {&spec.m_initially, &spec.m_require, &spec.m_assume};
+        const auto sections = tlsf::mutable_assumption_sections_of(spec);
+        return {sections[0], sections[1], sections[2]};
     }
-    return {&spec.m_preset, &spec.m_assert, &spec.m_guarantee};
+    const auto sections = tlsf::mutable_guarantee_sections_of(spec);
+    return {sections[0], sections[1], sections[2]};
 }
 
-std::size_t side_formula_count(const std::vector<Section*>& sections) {
-    std::size_t total = 0;
-    for (const Section* section : sections) {
-        total += section->size();
+// A conjunct a mutation may rewrite: its section and its slot in it. Deleted
+// conjuncts are left out, so a mutation is never spent rewriting content
+// nothing reads.
+using Slot = std::pair<Section*, std::size_t>;
+
+std::vector<Slot> side_live_slots(const std::vector<Section*>& sections) {
+    std::vector<Slot> slots;
+    for (Section* section : sections) {
+        for (std::size_t i = 0; i < section->size(); ++i) {
+            if (!(*section)[i].m_removed) {
+                slots.emplace_back(section, i);
+            }
+        }
     }
-    return total;
+    return slots;
 }
 
 // Mutates only the maximal propositional subtrees of @p formula, treating every
@@ -288,7 +299,7 @@ tlsf::Specification tlsf_add_assumption(const tlsf::Specification& spec,
         if (random_source.next_bool()) {
             atom = Formula::make_unary(Formula::Kind::Not, atom);
         }
-        mutated.m_assume.push_back(Formula::make_unary(
+        mutated.m_assume.emplace_back(Formula::make_unary(
             Formula::Kind::Globally,
             Formula::make_unary(Formula::Kind::Eventually, atom)));
         return mutated;
@@ -307,8 +318,30 @@ tlsf::Specification tlsf_add_assumption(const tlsf::Specification& spec,
     if (random_source.next_real() < cfg.p_conditional_assumption) {
         body = Formula::make_binary(Formula::Kind::Implies, draw(), body);
     }
-    mutated.m_assume.push_back(
+    mutated.m_assume.emplace_back(
         Formula::make_unary(Formula::Kind::Globally, body));
+    return mutated;
+}
+
+// Deletes one guarantee-side conjunct (PRESET, ASSERT or GUARANTEE) by
+// tombstoning it in place. The slot stays so that crossover still sees a
+// matching shape and the similarity objectives keep pairing the same conjuncts;
+// erasing it would shift the rest and start comparing unrelated formulae
+// against the original.
+//
+// The mirror of tlsf_add_assumption: that one strengthens the environment, this
+// one drops a system obligation. Some repairs are reachable no other way —
+// every `drop-*` ideal in examples/ deletes an ASSERT conjunct, and for five
+// TLSF subjects that is the only ideal there is.
+tlsf::Specification tlsf_remove_guarantee(const tlsf::Specification& spec,
+                                          const RandomSource& random_source) {
+    tlsf::Specification mutated = spec;
+    const auto sections = tlsf::mutable_guarantee_sections_of(mutated);
+    const std::vector<Slot> slots =
+        side_live_slots({sections[0], sections[1], sections[2]});
+    assert(!slots.empty());
+    const Slot& slot = slots[random_source.next_index(slots.size())];
+    (*slot.first)[slot.second].m_removed = true;
     return mutated;
 }
 
@@ -328,6 +361,15 @@ tlsf::Specification tlsf_mutate(const tlsf::Specification& spec,
         random_source.next_real() < cfg.p_add_assumption) {
         return tlsf_add_assumption(spec, random_source, cfg);
     }
+    // The mirror action: delete a guarantee-side conjunct. Never the last live
+    // one, since a specification with nothing left to guarantee is realizable
+    // by doing nothing and is no repair. The probability is read before the
+    // draw so a run with the operator off draws exactly what it drew before it
+    // existed, which is what keeps archived seeds reproducing.
+    if (cfg.p_remove_guarantee > 0.0 && tlsf::count_live_guarantees(spec) > 1 &&
+        random_source.next_real() < cfg.p_remove_guarantee) {
+        return tlsf_remove_guarantee(spec, random_source);
+    }
     tlsf::Specification mutated = spec;
 
     // The draw is unconditional and sequenced into its own local so the number
@@ -336,13 +378,16 @@ tlsf::Specification tlsf_mutate(const tlsf::Specification& spec,
     const double side_draw = random_source.next_real();
     bool assumption_side = side_draw < cfg.tlsf_p_assumption;
     std::vector<Section*> sections = side_sections(mutated, assumption_side);
-    if (side_formula_count(sections) == 0) {
-        // Fall back to the other side when the chosen one is empty.
+    std::vector<Slot> slots = side_live_slots(sections);
+    if (slots.empty()) {
+        // Fall back to the other side when the chosen one has nothing left to
+        // rewrite, whether because it is absent or because every conjunct on it
+        // has been deleted.
         assumption_side = !assumption_side;
         sections = side_sections(mutated, assumption_side);
+        slots = side_live_slots(sections);
     }
-    const std::size_t total = side_formula_count(sections);
-    if (total == 0) {
+    if (slots.empty()) {
         return spec;
     }
 
@@ -362,19 +407,12 @@ tlsf::Specification tlsf_mutate(const tlsf::Specification& spec,
         return spec;
     }
 
-    std::size_t choice = random_source.next_index(total);
-    for (Section* section : sections) {
-        if (choice < section->size()) {
-            const bool temporal =
-                random_source.next_real() < cfg.tlsf_p_temporal;
-            (*section)[choice] =
-                temporal
-                    ? mutate_temporal((*section)[choice], pool, random_source)
-                    : mutate_propositional_parts((*section)[choice], pool,
-                                                 random_source);
-            return mutated;
-        }
-        choice -= section->size();
-    }
-    return spec;
+    const Slot& slot = slots[random_source.next_index(slots.size())];
+    tlsf::SectionEntry& entry = (*slot.first)[slot.second];
+    const bool temporal = random_source.next_real() < cfg.tlsf_p_temporal;
+    entry.m_formula =
+        temporal
+            ? mutate_temporal(entry.m_formula, pool, random_source)
+            : mutate_propositional_parts(entry.m_formula, pool, random_source);
+    return mutated;
 }

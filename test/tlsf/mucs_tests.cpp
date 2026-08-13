@@ -16,10 +16,10 @@ namespace {
 // Whether any guarantee-side section of `spec` contains the named atom. The
 // fake oracles below phrase their (un)realizability verdict over these.
 bool has_atom(const tlsf::Specification& spec, const std::string& atom) {
-    auto contains = [&atom](const std::vector<Formula>& section) {
+    auto contains = [&atom](const tlsf::Section& section) {
         return std::any_of(section.begin(), section.end(),
-                           [&atom](const Formula& formula) {
-                               return formula.to_string() == atom;
+                           [&atom](const tlsf::SectionEntry& entry) {
+                               return entry.m_formula.to_string() == atom;
                            });
     };
     return contains(spec.m_preset) || contains(spec.m_assert) ||
@@ -159,9 +159,9 @@ bool is_realizable(const tlsf::Specification& spec) {
 tlsf::Specification without(const tlsf::Specification& base,
                             const tlsf::CoreFormula& entry) {
     tlsf::Specification reduced = base;
-    auto erase_one = [&entry](std::vector<Formula>& section) {
+    auto erase_one = [&entry](tlsf::Section& section) {
         for (auto it = section.begin(); it != section.end(); ++it) {
-            if (it->to_string() == entry.formula.to_string()) {
+            if (it->m_formula.to_string() == entry.formula.to_string()) {
                 section.erase(it);
                 return;
             }
@@ -230,11 +230,12 @@ void test_reintegrate() {
         {1, Formula::make_atom("p")}, {5, Formula::make_atom("b")}};
 
     const tlsf::Specification whole = tlsf::reintegrate(repaired, non_core);
-    expect(whole.m_preset.size() == 1 && whole.m_preset[0].to_string() == "p",
+    expect(whole.m_preset.size() == 1 &&
+               whole.m_preset[0].m_formula.to_string() == "p",
            "reintegrate restores the preset formula");
     expect(whole.m_guarantee.size() == 2, "reintegrate keeps repaired + b");
-    expect(whole.m_guarantee[0].to_string() == "a_repaired" &&
-               whole.m_guarantee[1].to_string() == "b",
+    expect(whole.m_guarantee[0].m_formula.to_string() == "a_repaired" &&
+               whole.m_guarantee[1].m_formula.to_string() == "b",
            "reintegrate appends non-core after the repaired core");
 }
 

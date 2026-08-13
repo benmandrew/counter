@@ -7,21 +7,15 @@
 #include "tlsf/crossover.hpp"
 #include "tlsf/mutation.hpp"
 
-namespace {
-
-using Section = std::vector<Formula>;
-
-std::vector<Section*> mutable_sections_of(tlsf::Specification& spec) {
-    return {&spec.m_initially, &spec.m_preset, &spec.m_require,
-            &spec.m_assume,    &spec.m_assert, &spec.m_guarantee};
-}
-
-}  // namespace
-
 tlsf::Specification tlsf_simplify(tlsf::Specification spec) {
-    for (Section* section : mutable_sections_of(spec)) {
-        for (Formula& formula : *section) {
-            formula.simplify();
+    for (tlsf::Section* section : tlsf::mutable_sections_of(spec)) {
+        for (tlsf::SectionEntry& entry : *section) {
+            // Deleted conjuncts are left as they are. Nothing reads their
+            // content again, so rewriting it buys nothing.
+            if (entry.m_removed) {
+                continue;
+            }
+            entry.m_formula.simplify();
         }
     }
     return spec;

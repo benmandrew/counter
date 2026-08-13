@@ -270,6 +270,22 @@ struct Config {
     /// a fairness assumption to an unrealizable GR(1) spec), which the
     /// rewrite-only operators cannot express.
     double p_add_assumption = 0.05;
+    /// The mirror of p_add_assumption, shared by both modes: delete one
+    /// guarantee rather than rewriting it. Some repairs drop a guarantee
+    /// outright and are unreachable without this — every `drop-*` ideal in
+    /// `examples/` is one, and five TLSF subjects have no other scoreable
+    /// ideal. A deleted guarantee is tombstoned in place rather than erased, so
+    /// that comparisons against the original stay aligned; see
+    /// Requirement::m_removed.
+    ///
+    /// Defaults to 0 (off). Removal is monotonically good for realizability, so
+    /// the status objective pays for it while the similarity objectives do not,
+    /// and under NSGA-II a heavily gutted candidate is non-dominated. Whether
+    /// that costs repair quality is a question for a campaign, so the default
+    /// leaves search behaviour exactly as it was. The probability is also read
+    /// before the RNG is drawn, so a run with it off draws what it drew before
+    /// the operator existed and archived seeds still reproduce.
+    double p_remove_guarantee = 0.0;
     /// Of the assumptions p_add_assumption appends, the fraction guarded by a
     /// random input atom rather than by `true`. `G F <input>` is strictly
     /// stronger than `G(c -> F <input>)` and so the more powerful repair, which

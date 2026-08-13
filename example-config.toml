@@ -46,6 +46,9 @@ p_timing   = 0.15
 # than by `true`.
 p_add_assumption         = 0.05
 p_conditional_assumption = 0.25
+# The mirror action: delete a guarantee outright, never the last live one.
+# Off by default; some repairs are unreachable without it.
+p_remove_guarantee       = 0.0
 strengthen_assumptions   = true
 allow_output_assumptions = true  # guarded by the status score, not by a filter
 

@@ -55,9 +55,18 @@ std::optional<bool> all_implied_by_some(
     const std::vector<Requirement>& to_reqs, SatisfiabilityChecker& checker) {
     bool any_uncertain = false;
     for (const Requirement& dest : to_reqs) {
+        // A removed requirement imposes no obligation, so there is nothing for
+        // a witness to imply.
+        if (dest.m_removed) {
+            continue;
+        }
         bool dest_implied = false;
         bool dest_uncertain = false;
         for (const Requirement& from : from_reqs) {
+            // ... and it entails nothing, so it cannot serve as one.
+            if (from.m_removed) {
+                continue;
+            }
             const auto result = requirement_implies(from, dest, checker);
             if (result.value_or(false)) {
                 dest_implied = true;

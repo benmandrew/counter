@@ -778,6 +778,104 @@ void test_add_assumption_disabled_by_zero_probability() {
            "add-assumption: none added when p_add_assumption is zero");
 }
 
+// A two-guarantee specification with p_remove_guarantee forced to 1: the first
+// action tombstones a guarantee. The slot must survive, because everything
+// comparing this candidate against the original pairs requirements by position.
+void test_remove_guarantee_tombstones_in_place() {
+    const Specification spec(
+        {},
+        {Requirement(Formula("a"), Formula("b"), timing::immediately()),
+         Requirement(Formula("c"), Formula("d"), timing::immediately())},
+        {"a", "c"}, {"b", "d"});
+    Config cfg;
+    cfg.p_add_assumption = 0.0;
+    cfg.p_remove_guarantee = 1.0;
+    const Specification result =
+        mutate_specification(spec, make_source({}, 0), cfg);
+    expect(result.m_guarantees.size() == spec.m_guarantees.size(),
+           "remove-guarantee: the slot is kept, so the list does not shrink");
+    expect(count_live(result.m_guarantees) == 1,
+           "remove-guarantee: exactly one guarantee is deleted");
+    expect(
+        result.m_guarantees[0].m_removed && !result.m_guarantees[1].m_removed,
+        "remove-guarantee: a zero-yielding source deletes the first slot");
+    expect(
+        result.m_guarantees[0].m_condition == spec.m_guarantees[0].m_condition,
+        "remove-guarantee: the deleted requirement keeps its content");
+    expect(result.m_guarantees[1] == spec.m_guarantees[1],
+           "remove-guarantee: later guarantees do not shift");
+}
+
+void test_remove_guarantee_keeps_the_last_live_one() {
+    const Specification spec(
+        {}, {Requirement(Formula("a"), Formula("b"), timing::immediately())},
+        {"a"}, {"b"});
+    Config cfg;
+    cfg.p_add_assumption = 0.0;
+    cfg.p_remove_guarantee = 1.0;
+    const Specification result =
+        mutate_specification(spec, make_source({}, 0), cfg);
+    expect(count_live(result.m_guarantees) == 1,
+           "remove-guarantee: the only guarantee is never deleted");
+}
+
+// The floor counts live guarantees rather than removable ones, so the sole
+// weakenable guarantee may go while a locked one still holds the specification
+// up.
+void test_remove_guarantee_may_take_the_only_weakenable_one() {
+    const Specification spec(
+        {},
+        {Requirement(Formula("a"), Formula("b"), timing::immediately(),
+                     ConditionType::Continual, /*weakenable=*/false),
+         Requirement(Formula("c"), Formula("d"), timing::immediately())},
+        {"a", "c"}, {"b", "d"});
+    Config cfg;
+    cfg.p_add_assumption = 0.0;
+    cfg.p_remove_guarantee = 1.0;
+    const Specification result =
+        mutate_specification(spec, make_source({}, 0), cfg);
+    expect(
+        !result.m_guarantees[0].m_removed && result.m_guarantees[1].m_removed,
+        "remove-guarantee: a locked guarantee is never the one deleted");
+}
+
+void test_remove_guarantee_never_deletes_a_locked_guarantee() {
+    const Specification spec(
+        {},
+        {Requirement(Formula("a"), Formula("b"), timing::immediately(),
+                     ConditionType::Continual, /*weakenable=*/false),
+         Requirement(Formula("c"), Formula("d"), timing::immediately(),
+                     ConditionType::Continual, /*weakenable=*/false)},
+        {"a", "c"}, {"b", "d"});
+    Config cfg;
+    cfg.p_add_assumption = 0.0;
+    cfg.p_remove_guarantee = 1.0;
+    const Specification result =
+        mutate_specification(spec, make_source({}, 0), cfg);
+    expect(count_live(result.m_guarantees) == 2,
+           "remove-guarantee: nothing is deleted when every guarantee is "
+           "locked");
+}
+
+// A zero-yielding source makes every probability test pass, so this pins that
+// the guard is on the configured probability rather than on the draw. The
+// operator drawing nothing at all when off is what keeps the determinism
+// goldens valid, and those cover it.
+void test_remove_guarantee_disabled_by_zero_probability() {
+    const Specification spec(
+        {},
+        {Requirement(Formula("a"), Formula("b"), timing::immediately()),
+         Requirement(Formula("c"), Formula("d"), timing::immediately())},
+        {"a", "c"}, {"b", "d"});
+    Config cfg;
+    cfg.p_add_assumption = 0.0;
+    cfg.p_remove_guarantee = 0.0;
+    const Specification result =
+        mutate_specification(spec, make_source({}, 0), cfg);
+    expect(count_live(result.m_guarantees) == 2,
+           "remove-guarantee: none deleted when p_remove_guarantee is zero");
+}
+
 }  // namespace
 
 void run_mutation_tests() {
@@ -801,6 +899,11 @@ void run_mutation_tests() {
     test_timing_strengthen_within_ticks_branches();
     test_timing_strengthen_after_ticks_is_unchanged();
     test_timing_mutation_directions_are_monotone();
+    test_remove_guarantee_tombstones_in_place();
+    test_remove_guarantee_keeps_the_last_live_one();
+    test_remove_guarantee_may_take_the_only_weakenable_one();
+    test_remove_guarantee_never_deletes_a_locked_guarantee();
+    test_remove_guarantee_disabled_by_zero_probability();
     test_mutation_all_locked_is_noop();
     test_mutation_skips_non_weakenable_requirement();
     test_assumption_and_guarantee_timings_move_opposite_ways();

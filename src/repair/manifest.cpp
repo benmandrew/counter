@@ -42,7 +42,10 @@ namespace {
 // 7 dropped fitness.weight_halstead along with the objective it weighted, so
 // the objective vector is one shorter and a reader keying on its position
 // against an older manifest reads the wrong component.
-constexpr int k_schema_version = 7;
+// 8 added mutation.p_remove_guarantee. The operator can delete a guarantee, so
+// a repair may hold fewer requirements than the specification it came from, and
+// a reader comparing counts needs to know whether the run could do that.
+constexpr int k_schema_version = 8;
 
 // The inverse of the spellings config_io.cpp parses. It has no table to
 // borrow -- it only ever goes string to enum -- so these must be kept in step
@@ -147,6 +150,7 @@ nlohmann::json config_json(const Config& cfg) {
           {"p_response", cfg.p_response},
           {"p_timing", cfg.p_timing},
           {"p_add_assumption", cfg.p_add_assumption},
+          {"p_remove_guarantee", cfg.p_remove_guarantee},
           {"p_conditional_assumption", cfg.p_conditional_assumption},
           {"strengthen_assumptions", cfg.strengthen_assumptions},
           {"allow_output_assumptions", cfg.allow_output_assumptions}}},

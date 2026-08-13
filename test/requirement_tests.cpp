@@ -301,6 +301,23 @@ void test_strip_atom_prefix_is_inverse() {
            "strip_atom_prefix: should invert add_atom_prefix exactly");
 }
 
+// Both functions rebuild the requirement field by field, so a field they forget
+// silently reverts to its default. For the removal tombstone that means a
+// deleted guarantee coming back to life on a round trip through the atom
+// prefix, which every specification takes at load and at output.
+void test_atom_prefix_preserves_locked_and_removed_flags() {
+    Requirement req(Formula("a"), Formula("b"), timing::immediately(),
+                    ConditionType::Continual, /*weakenable=*/false);
+    req.m_removed = true;
+    const Requirement prefixed = add_atom_prefix(req);
+    expect(prefixed.m_removed,
+           "add_atom_prefix: a deleted requirement stays deleted");
+    expect(!prefixed.m_weakenable,
+           "add_atom_prefix: a locked requirement stays locked");
+    expect(strip_atom_prefix(prefixed) == req,
+           "strip_atom_prefix: the round trip preserves both flags");
+}
+
 void test_strip_atom_prefix_defensive_on_untagged() {
     const Requirement req(Formula("a"), Formula("b"), timing::immediately());
     const Requirement stripped = strip_atom_prefix(req);
@@ -362,6 +379,7 @@ void run_requirement_tests() {
     test_add_atom_prefix_tags_atoms();
     test_add_atom_prefix_preserves_constants();
     test_strip_atom_prefix_is_inverse();
+    test_atom_prefix_preserves_locked_and_removed_flags();
     test_strip_atom_prefix_defensive_on_untagged();
     test_add_atom_prefix_ltl_regression_gf();
 }

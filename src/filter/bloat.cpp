@@ -6,23 +6,29 @@
 
 namespace {
 
+// Removed requirements are excluded throughout: the cap is on the size of the
+// specification, and a removed requirement is not in it. Counting one would
+// keep charging a candidate for a formula it has already deleted.
 std::size_t max_formula_size(const Specification& spec) {
     std::size_t max = 0;
-    for (const Requirement& req : spec.m_assumptions) {
-        max = std::max(max, req.m_condition.n_subformulae());
-        max = std::max(max, req.m_response.n_subformulae());
-    }
-    for (const Requirement& req : spec.m_guarantees) {
-        max = std::max(max, req.m_condition.n_subformulae());
-        max = std::max(max, req.m_response.n_subformulae());
-    }
+    const auto scan = [&max](const std::vector<Requirement>& reqs) {
+        for (const Requirement& req : reqs) {
+            if (req.m_removed) {
+                continue;
+            }
+            max = std::max(max, req.m_condition.n_subformulae());
+            max = std::max(max, req.m_response.n_subformulae());
+        }
+    };
+    scan(spec.m_assumptions);
+    scan(spec.m_guarantees);
     return max;
 }
 
 bool any_formula_exceeds(const Specification& spec, std::size_t cap) {
     auto req_exceeds = [cap](const Requirement& req) {
-        return req.m_condition.n_subformulae() > cap ||
-               req.m_response.n_subformulae() > cap;
+        return !req.m_removed && (req.m_condition.n_subformulae() > cap ||
+                                  req.m_response.n_subformulae() > cap);
     };
     return std::any_of(spec.m_assumptions.begin(), spec.m_assumptions.end(),
                        req_exceeds) ||

@@ -52,22 +52,22 @@ FilterFunction make_predicate_filter(
 
 Specification simplify_offspring(Specification offspring) {
     Specification pre_simplify = offspring;
-    for (auto& req : offspring.m_assumptions) {
-        if (!req.m_weakenable) {
-            continue;
+    // Removed requirements are left alone alongside locked ones. Their content
+    // is never read again, so simplifying it buys nothing, and rewriting it
+    // could collapse two tombstones onto the same shape and hand the dedup
+    // below a size change that discards the whole offspring.
+    const auto simplify_all = [](std::vector<Requirement>& reqs) {
+        for (auto& req : reqs) {
+            if (!req.m_weakenable || req.m_removed) {
+                continue;
+            }
+            req.m_condition.simplify();
+            req.m_response.simplify();
+            req.m_ltl = requirement_to_ltl(req);
         }
-        req.m_condition.simplify();
-        req.m_response.simplify();
-        req.m_ltl = requirement_to_ltl(req);
-    }
-    for (auto& req : offspring.m_guarantees) {
-        if (!req.m_weakenable) {
-            continue;
-        }
-        req.m_condition.simplify();
-        req.m_response.simplify();
-        req.m_ltl = requirement_to_ltl(req);
-    }
+    };
+    simplify_all(offspring.m_assumptions);
+    simplify_all(offspring.m_guarantees);
     Specification rededuped(offspring.m_assumptions, offspring.m_guarantees,
                             offspring.m_in_atoms, offspring.m_out_atoms);
     if (rededuped.m_assumptions.size() != pre_simplify.m_assumptions.size() ||

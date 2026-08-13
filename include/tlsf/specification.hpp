@@ -4,10 +4,12 @@
 /// @brief The tlsf::Specification type: a basic-TLSF specification decomposed
 ///        into its six named sections, plus standard-semantics LTL lowering.
 
+#include <array>
 #include <cstddef>
 #include <cstdint>
 #include <functional>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "prop_formula.hpp"
@@ -25,10 +27,54 @@ enum class Semantics : std::uint8_t {
     MooreStrict,
 };
 
-/// A basic-TLSF specification. The six section vectors mirror the TLSF
-/// subsections; each is empty when the corresponding section is absent from the
-/// source. Formulae are stored as temporal `Formula` objects (built via the
-/// Formula factories, never by parsing temporal strings).
+/// One conjunct of a TLSF section, and whether the search has deleted it.
+///
+/// A deleted conjunct keeps its slot rather than being erased from the section:
+/// crossover requires two parents to have the same section shape, and the
+/// similarity objectives pair conjuncts by position, so erasing one would shift
+/// every later conjunct and start comparing unrelated formulae against the
+/// original. Nothing else in the program may read `m_formula` without first
+/// checking `m_removed` — a deleted conjunct is not part of what the
+/// specification says.
+///
+/// The constructor from `Formula` is deliberately implicit, so that parsing and
+/// the test fixtures keep building sections from formulae directly; there is
+/// deliberately no conversion back, so that every site reading a section has to
+/// decide what it does about removal rather than silently ignoring it.
+struct SectionEntry {
+    Formula m_formula;
+    bool m_removed = false;
+
+    // Implicit on purpose: it keeps every site that builds a section out of
+    // formulae — the parser and the test fixtures — working unchanged, while
+    // the absent conversion back to Formula still forces every *reading* site
+    // to decide what it does about m_removed.
+    // NOLINTNEXTLINE(google-explicit-constructor,hicpp-explicit-conversions)
+    SectionEntry(Formula formula)  // NOLINT(runtime/explicit)
+        : m_formula(std::move(formula)) {}
+    SectionEntry(Formula formula, bool removed)
+        : m_formula(std::move(formula)), m_removed(removed) {}
+};
+
+bool operator==(const SectionEntry& lhs, const SectionEntry& rhs);
+bool operator<(const SectionEntry& lhs, const SectionEntry& rhs);
+
+/// A TLSF subsection: an ordered list of conjuncts, some possibly deleted.
+using Section = std::vector<SectionEntry>;
+
+/// The formulae of @p section that have not been deleted, in order.
+std::vector<Formula> live_formulae(const Section& section);
+
+/// How many conjuncts of @p section have not been deleted.
+std::size_t count_live(const Section& section);
+
+/// Positions in @p section of the conjuncts that have not been deleted.
+std::vector<std::size_t> live_indices(const Section& section);
+
+/// A basic-TLSF specification. The six sections mirror the TLSF subsections;
+/// each is empty when the corresponding section is absent from the source.
+/// Formulae are stored as temporal `Formula` objects (built via the Formula
+/// factories, never by parsing temporal strings).
 struct Specification {
     std::string m_title;
     std::string m_description;
@@ -36,17 +82,17 @@ struct Specification {
     std::vector<std::string> m_inputs;
     std::vector<std::string> m_outputs;
     /// INITIALLY — environment initial state.
-    std::vector<Formula> m_initially;
+    Section m_initially;
     /// PRESET — system initial state.
-    std::vector<Formula> m_preset;
+    Section m_preset;
     /// REQUIRE / REQUIREMENTS — environment invariant (G-wrapped in lowering).
-    std::vector<Formula> m_require;
+    Section m_require;
     /// ASSUME / ASSUMPTIONS — environment property, taken verbatim.
-    std::vector<Formula> m_assume;
+    Section m_assume;
     /// ASSERT / INVARIANTS — system invariant (G-wrapped in the lowering).
-    std::vector<Formula> m_assert;
+    Section m_assert;
     /// GUARANTEE(S) — system property, taken verbatim.
-    std::vector<Formula> m_guarantee;
+    Section m_guarantee;
 
     /// Lowers this specification to a single LTL formula in SPOT syntax,
     /// following the TLSF v1.1 combination (paper §3.2). With θ_e=INITIALLY,
@@ -79,6 +125,24 @@ struct Specification {
     friend bool operator<(const Specification& lhs, const Specification& rhs);
 };
 
+/// The six sections in TLSF declaration order. One accessor rather than a copy
+/// per translation unit, so that a section cannot be added or its handling
+/// changed in one place and missed in four others.
+std::array<const Section*, 6> sections_of(const Specification& spec);
+std::array<Section*, 6> mutable_sections_of(Specification& spec);
+
+/// The three sections making up the guarantee side (PRESET, ASSERT, GUARANTEE)
+/// and the environment side (INITIALLY, REQUIRE, ASSUME) respectively.
+std::array<const Section*, 3> guarantee_sections_of(const Specification& spec);
+std::array<Section*, 3> mutable_guarantee_sections_of(Specification& spec);
+std::array<const Section*, 3> assumption_sections_of(const Specification& spec);
+std::array<Section*, 3> mutable_assumption_sections_of(Specification& spec);
+
+/// How many conjuncts of the guarantee side (PRESET, ASSERT, GUARANTEE) have
+/// not been deleted. The removal operator's floor is on this: a specification
+/// with nothing left to guarantee is realizable by doing nothing.
+std::size_t count_live_guarantees(const Specification& spec);
+
 inline bool operator!=(const Specification& lhs, const Specification& rhs) {
     return !(lhs == rhs);
 }
@@ -93,10 +157,15 @@ struct hash<tlsf::Specification> {
         auto combine = [](std::size_t seed, std::size_t val) noexcept {
             return seed ^ (val + 0x9e3779b9U + (seed << 6) + (seed >> 2));
         };
+        // The removed flag is hashed alongside the formula, and compared in
+        // operator==, because the fitness cache keys on the specification: a
+        // deleted conjunct must not collide with the live one it replaced and
+        // inherit its score.
         auto fold = [&combine](std::size_t seed,
-                               const std::vector<Formula>& section) noexcept {
-            for (const Formula& formula : section) {
-                seed = combine(seed, std::hash<Formula>{}(formula));
+                               const tlsf::Section& section) noexcept {
+            for (const tlsf::SectionEntry& entry : section) {
+                seed = combine(seed, std::hash<Formula>{}(entry.m_formula));
+                seed = combine(seed, std::hash<bool>{}(entry.m_removed));
             }
             return seed;
         };

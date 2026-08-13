@@ -84,8 +84,8 @@ void test_mutation_preserves_temporal_skeleton() {
         "INPUTS { req; } OUTPUTS { grant; } GUARANTEE { G(req -> F "
         "grant); }");
     const std::multiset<int> skeleton =
-        temporal_kinds(original.m_guarantee.front());
-    expect(!original.m_guarantee.front().is_propositional(),
+        temporal_kinds(original.m_guarantee.front().m_formula);
+    expect(!original.m_guarantee.front().m_formula.is_propositional(),
            "mutation: the seed formula is genuinely temporal");
 
     for (std::size_t seed = 0; seed < 40; ++seed) {
@@ -93,7 +93,7 @@ void test_mutation_preserves_temporal_skeleton() {
         const tlsf::Specification mutated = tlsf_mutate(original, rng, cfg);
         expect(mutated.m_guarantee.size() == 1,
                "mutation: guarantee section shape is preserved");
-        const Formula& formula = mutated.m_guarantee.front();
+        const Formula& formula = mutated.m_guarantee.front().m_formula;
         expect(!formula.is_propositional(),
                "mutation: the temporal structure survives mutation");
         expect(temporal_kinds(formula) == skeleton,
@@ -119,7 +119,7 @@ void test_mutation_assumption_atoms_from_inputs_only() {
         const tlsf::Specification mutated = tlsf_mutate(spec, rng, cfg);
         expect(mutated.m_assume.size() == 1,
                "mutation: assumption section shape is preserved");
-        const std::string text = mutated.m_assume.front().to_string();
+        const std::string text = mutated.m_assume.front().m_formula.to_string();
         expect(text.find("bout") == std::string::npos,
                "mutation: the output atom never leaks into an assumption");
     }
@@ -186,7 +186,7 @@ void test_temporal_mutation_changes_skeleton() {
         "INPUTS { req; } OUTPUTS { grant; } GUARANTEE { G(req -> F "
         "grant); }");
     const std::multiset<int> skeleton =
-        temporal_kinds(original.m_guarantee.front());
+        temporal_kinds(original.m_guarantee.front().m_formula);
 
     bool skeleton_changed = false;
     for (std::size_t seed = 0; seed < 40; ++seed) {
@@ -194,7 +194,7 @@ void test_temporal_mutation_changes_skeleton() {
         const tlsf::Specification mutated = tlsf_mutate(original, rng, cfg);
         expect(mutated.m_guarantee.size() == 1,
                "temporal mutation: guarantee section shape is preserved");
-        const Formula& formula = mutated.m_guarantee.front();
+        const Formula& formula = mutated.m_guarantee.front().m_formula;
         expect(!formula.to_string().empty(),
                "temporal mutation: mutated formula has a well-formed string "
                "form");
@@ -225,7 +225,7 @@ void test_temporal_mutation_atoms_from_inputs_only() {
         const tlsf::Specification mutated = tlsf_mutate(spec, rng, cfg);
         expect(mutated.m_assume.size() == 1,
                "temporal mutation: assumption section shape is preserved");
-        const std::string text = mutated.m_assume.front().to_string();
+        const std::string text = mutated.m_assume.front().m_formula.to_string();
         expect(text.find("bout") == std::string::npos,
                "temporal mutation: the output atom never leaks into an "
                "assumption");
@@ -252,11 +252,61 @@ void test_add_assumption_appends_fairness() {
                "add-assumption: exactly one assumption is appended");
         expect(mutated.m_guarantee == spec.m_guarantee,
                "add-assumption: guarantees are left untouched");
-        const std::string text = mutated.m_assume.front().to_string();
+        const std::string text = mutated.m_assume.front().m_formula.to_string();
         expect(text == "G(F(req))" || text == "G(F(!(req)))",
                "add-assumption: appended a G F <input> fairness assumption");
         expect(text.find("grant") == std::string::npos,
                "add-assumption: an output signal never enters an assumption");
+    }
+}
+
+// The mirror of add-assumption, and what makes the eight drop-* ideals
+// reachable. The deleted conjunct keeps its slot: tlsf_crossover refuses two
+// parents whose section sizes differ, and the similarity objectives pair
+// conjuncts by position, so erasing it would cost the candidate both.
+void test_remove_guarantee_tombstones_in_place() {
+    const tlsf::Specification spec = parse(
+        "INPUTS { req; } OUTPUTS { grant; } "
+        "ASSERT { !(grant); } "
+        "GUARANTEE { G (req -> F grant); }");
+    Config cfg;
+    cfg.p_add_assumption = 0.0;
+    cfg.p_remove_guarantee = 1.0;
+    bool saw_assert_deleted = false;
+    bool saw_guarantee_deleted = false;
+    for (std::size_t seed = 0; seed < 20; ++seed) {
+        const RandomSource rng = make_random_source_from_seed(seed);
+        const tlsf::Specification mutated = tlsf_mutate(spec, rng, cfg);
+        expect(mutated.m_assert.size() == spec.m_assert.size() &&
+                   mutated.m_guarantee.size() == spec.m_guarantee.size(),
+               "remove-guarantee: sections keep their size");
+        expect(tlsf::count_live_guarantees(mutated) == 1,
+               "remove-guarantee: exactly one guarantee-side conjunct goes");
+        saw_assert_deleted =
+            saw_assert_deleted || mutated.m_assert.front().m_removed;
+        saw_guarantee_deleted =
+            saw_guarantee_deleted || mutated.m_guarantee.front().m_removed;
+        expect(mutated.to_ltl().find("!(grant)") == std::string::npos ||
+                   !mutated.m_assert.front().m_removed,
+               "remove-guarantee: a deleted conjunct leaves the lowering");
+    }
+    expect(saw_assert_deleted && saw_guarantee_deleted,
+           "remove-guarantee: the draw reaches both guarantee-side sections");
+}
+
+void test_remove_guarantee_keeps_the_last_live_conjunct() {
+    const tlsf::Specification spec = parse(
+        "INPUTS { req; } OUTPUTS { grant; } "
+        "GUARANTEE { G (req -> F grant); }");
+    Config cfg;
+    cfg.p_add_assumption = 0.0;
+    cfg.p_remove_guarantee = 1.0;
+    for (std::size_t seed = 0; seed < 10; ++seed) {
+        const tlsf::Specification mutated =
+            tlsf_mutate(spec, make_random_source_from_seed(seed), cfg);
+        expect(tlsf::count_live_guarantees(mutated) == 1,
+               "remove-guarantee: the only guarantee conjunct is never "
+               "deleted");
     }
 }
 
@@ -280,7 +330,7 @@ void test_assumption_rewrite_can_reference_output_when_allowed() {
     for (std::size_t seed = 0; seed < 60; ++seed) {
         const RandomSource rng = make_random_source_from_seed(seed);
         const tlsf::Specification mutated = tlsf_mutate(spec, rng, cfg);
-        if (mutated.m_assume.front().to_string().find("bout") !=
+        if (mutated.m_assume.front().m_formula.to_string().find("bout") !=
             std::string::npos) {
             saw_output = true;
         }
@@ -314,8 +364,8 @@ void test_weak_until_over_output_is_reachable() {
         tlsf::Specification current = seed_spec;
         for (int step = 0; step < 6 && !reached; ++step) {
             current = tlsf_mutate(current, rng, cfg);
-            for (const Formula& formula : current.m_assume) {
-                const std::string text = formula.to_string();
+            for (const tlsf::SectionEntry& entry : current.m_assume) {
+                const std::string text = entry.m_formula.to_string();
                 if (text.find(") W (") != std::string::npos &&
                     text.find('g') != std::string::npos) {
                     reached = true;
@@ -348,7 +398,7 @@ void test_add_assumption_can_reference_output_when_allowed() {
         const tlsf::Specification mutated = tlsf_mutate(spec, rng, cfg);
         expect(mutated.m_assume.size() == 1,
                "add-assumption(output): exactly one assumption is appended");
-        if (mutated.m_assume.front().to_string().find("grant") !=
+        if (mutated.m_assume.front().m_formula.to_string().find("grant") !=
             std::string::npos) {
             saw_output = true;
         }
@@ -371,9 +421,9 @@ void test_crossover_positional_matching_shape() {
     expect(child.m_guarantee.size() == 2,
            "crossover: section sizes are preserved");
     for (std::size_t i = 0; i < child.m_guarantee.size(); ++i) {
-        const Formula& picked = child.m_guarantee[i];
-        expect(picked == parent_a.m_guarantee[i] ||
-                   picked == parent_b.m_guarantee[i],
+        const Formula& picked = child.m_guarantee[i].m_formula;
+        expect(picked == parent_a.m_guarantee[i].m_formula ||
+                   picked == parent_b.m_guarantee[i].m_formula,
                "crossover: each formula comes from one of the two parents");
     }
     expect(child.m_inputs == parent_a.m_inputs &&
@@ -443,6 +493,8 @@ void run_tlsf_genetic_tests() {
     test_temporal_mutation_changes_skeleton();
     test_temporal_mutation_atoms_from_inputs_only();
     test_add_assumption_appends_fairness();
+    test_remove_guarantee_tombstones_in_place();
+    test_remove_guarantee_keeps_the_last_live_conjunct();
     test_add_assumption_can_reference_output_when_allowed();
     test_assumption_rewrite_can_reference_output_when_allowed();
     test_weak_until_over_output_is_reachable();

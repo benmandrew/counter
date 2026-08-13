@@ -9,11 +9,14 @@ bool specification_is_trivially_vacuous(const Specification& specification) {
 
 bool specification_has_unsatisfiable_assumptions(
     const Specification& specification, SatisfiabilityChecker& checker) {
-    if (specification.m_assumptions.empty()) {
+    if (count_live(specification.m_assumptions) == 0) {
         return false;
     }
     std::string conjunction;
     for (const Requirement& req : specification.m_assumptions) {
+        if (req.m_removed) {
+            continue;
+        }
         if (!conjunction.empty()) {
             conjunction += " & ";
         }
@@ -28,6 +31,11 @@ bool specification_has_unsatisfiable_assumptions(
 bool specification_has_valid_guarantee(const Specification& specification,
                                        SatisfiabilityChecker& checker) {
     for (const Requirement& req : specification.m_guarantees) {
+        // A removed guarantee is not a guarantee: it must not be able to make
+        // the specification read as vacuously satisfied.
+        if (req.m_removed) {
+            continue;
+        }
         // Keyed on the negated requirement alone, so the cache hits across
         // candidates and generations: offspring share most requirements with
         // their parents, and a locked guarantee is free after its first

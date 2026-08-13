@@ -7,17 +7,7 @@
 
 namespace {
 
-using Section = std::vector<Formula>;
-
-std::vector<const Section*> sections_of(const tlsf::Specification& spec) {
-    return {&spec.m_initially, &spec.m_preset, &spec.m_require,
-            &spec.m_assume,    &spec.m_assert, &spec.m_guarantee};
-}
-
-std::vector<Section*> mutable_sections_of(tlsf::Specification& spec) {
-    return {&spec.m_initially, &spec.m_preset, &spec.m_require,
-            &spec.m_assume,    &spec.m_assert, &spec.m_guarantee};
-}
+using tlsf::sections_of;
 
 // Section-wise uniform crossover needs matching section sizes; without them
 // tlsf_crossover degrades to asexual reproduction (parent A returned
@@ -48,12 +38,23 @@ tlsf::Specification tlsf_crossover(const tlsf::Specification& parent_a,
         return parent_a;
     }
     tlsf::Specification result = parent_a;
-    const auto result_sections = mutable_sections_of(result);
+    const auto result_sections = tlsf::mutable_sections_of(result);
     const auto sections_b = sections_of(parent_b);
     for (std::size_t sec = 0; sec < result_sections.size(); ++sec) {
         for (std::size_t i = 0; i < result_sections[sec]->size(); ++i) {
+            tlsf::SectionEntry& into = (*result_sections[sec])[i];
+            const tlsf::SectionEntry& from = (*sections_b[sec])[i];
+            // Deletion is mutation's move alone. Where either parent has
+            // deleted this conjunct, parent A's slot stands unchanged, so
+            // crossover can neither resurrect a deleted conjunct nor delete a
+            // live one, and never breeds from content a parent threw away.
+            // Same-shape parents can still differ here: they may have deleted
+            // different conjuncts.
+            if (into.m_removed || from.m_removed) {
+                continue;
+            }
             if (random_source.next_bool()) {
-                (*result_sections[sec])[i] = (*sections_b[sec])[i];
+                into = from;
             }
         }
     }

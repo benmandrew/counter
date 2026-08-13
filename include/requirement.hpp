@@ -96,6 +96,14 @@ struct Requirement {
     /// When false, the genetic algorithm never mutates this requirement, uses
     /// it as a crossover source, or simplifies it. Defaults to true.
     bool m_weakenable = true;
+    /// When true this requirement has been deleted from the specification and
+    /// contributes nothing to its meaning: it is not lowered to LTL, not
+    /// scored, not filtered on, and not written out. It keeps its slot in the
+    /// requirement vector so that everything comparing two specifications
+    /// position by position stays aligned — erasing it would shift every later
+    /// requirement and silently pair unrelated requirements against the
+    /// original. Only `p_remove_guarantee` sets it, and only on a guarantee.
+    bool m_removed = false;
 
     friend bool operator<(const Requirement& lhs, const Requirement& rhs);
     friend bool operator==(const Requirement& lhs, const Requirement& rhs);
@@ -103,7 +111,7 @@ struct Requirement {
     explicit Requirement(
         Formula condition, Formula response, const Timing& timing,
         ConditionType condition_type = ConditionType::Continual,
-        bool weakenable = true);
+        bool weakenable = true, bool removed = false);
 
     /// Returns a one-line FRETish string of the form
     /// "[upon|whenever <condition>] C shall <timing> satisfy <response>",
@@ -129,11 +137,20 @@ struct Specification {
     friend bool operator<(const Specification& lhs, const Specification& rhs);
     friend bool operator==(const Specification& lhs, const Specification& rhs);
 
-    /// Returns one FRETish line per requirement (assumptions then
+    /// Returns one FRETish line per live requirement (assumptions then
     /// guarantees), each as produced by Requirement::to_string, joined by
-    /// newlines.
+    /// newlines. Removed requirements are omitted: the result is the
+    /// specification's meaning, not its storage.
     [[nodiscard]] std::string to_string() const;
 };
+
+/// Number of requirements in @p reqs that have not been removed.
+std::size_t count_live(const std::vector<Requirement>& reqs);
+
+/// Positions in @p reqs of the requirements that have not been removed, in
+/// order. Callers walking a subset of a requirement list index through this so
+/// that a walk position maps back to the slot it came from.
+std::vector<std::size_t> live_indices(const std::vector<Requirement>& reqs);
 
 /// Vestigial placeholder. Model counting used to build requirement automata
 /// here, and this described a state of one; counting now goes through SPOT and
@@ -238,6 +255,10 @@ struct hash<Requirement> {
                                                ConditionType::Trigger));
         seed = combine(seed, std::hash<std::string>{}(req.m_ltl));
         seed = combine(seed, std::hash<bool>{}(req.m_weakenable));
+        // In the hash and in operator== both, because the fitness cache keys on
+        // the specification: a removed guarantee must not collide with the live
+        // one it replaced and inherit its score.
+        seed = combine(seed, std::hash<bool>{}(req.m_removed));
         return seed;
     }
 };

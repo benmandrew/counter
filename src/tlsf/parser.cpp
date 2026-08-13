@@ -226,7 +226,7 @@ class Parser {
         if (name.m_text == "DEFINITIONS") {
             reject_construct("DEFINITIONS section");
         }
-        std::vector<Formula>* target = section_target(spec, name.m_text);
+        tlsf::Section* target = section_target(spec, name.m_text);
         if (target == nullptr) {
             throw std::invalid_argument(
                 "TLSF parse error: unknown MAIN section '" + name.m_text + "'");
@@ -234,8 +234,8 @@ class Parser {
         parse_formula_section(*target);
     }
 
-    static std::vector<Formula>* section_target(Specification& spec,
-                                                const std::string& name) {
+    static tlsf::Section* section_target(Specification& spec,
+                                         const std::string& name) {
         if (name == "INITIALLY") {
             return &spec.m_initially;
         }
@@ -273,10 +273,10 @@ class Parser {
         expect(Tok::RBrace, "'}'");
     }
 
-    void parse_formula_section(std::vector<Formula>& out) {
+    void parse_formula_section(tlsf::Section& out) {
         expect(Tok::LBrace, "'{'");
         while (!at_block_end()) {
-            out.push_back(parse_expr());
+            out.emplace_back(parse_expr());
             expect(Tok::Semicolon, "';'");
         }
         expect(Tok::RBrace, "'}'");

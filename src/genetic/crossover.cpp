@@ -231,9 +231,19 @@ std::vector<Requirement> crossover_req_lists(
     offspring.reserve(first.size());
     for (std::size_t i = 0; i < first.size(); ++i) {
         // A non-weakenable requirement is never changed and never acts as a
-        // crossover source; keep the first parent's version verbatim. Flags are
-        // position-aligned between parents, so guarding on first[i] suffices.
-        if (!first[i].m_weakenable) {
+        // crossover source; keep the first parent's version verbatim. The
+        // weakenable flag is position-aligned between parents, so guarding on
+        // first[i] suffices for it.
+        //
+        // Removedness is not position-aligned — two parents can have deleted
+        // different guarantees — so both sides are checked. The slot is
+        // inherited whole from the first parent, which keeps crossover unable
+        // to resurrect a deleted guarantee or delete a live one: removal is
+        // mutation's job alone. Crossing a live requirement with a deleted
+        // one would otherwise breed from content the second parent has thrown
+        // away.
+        if (!first[i].m_weakenable || first[i].m_removed ||
+            second[i].m_removed) {
             offspring.push_back(first[i]);
         } else {
             offspring.push_back(

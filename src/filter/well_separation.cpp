@@ -51,6 +51,9 @@ bool assumptions_reference_output(const Specification& specification) {
     const std::unordered_set<std::string> outputs(
         specification.m_out_atoms.begin(), specification.m_out_atoms.end());
     for (const Requirement& req : specification.m_assumptions) {
+        if (req.m_removed) {
+            continue;
+        }
         std::unordered_set<std::string> atoms;
         collect_atoms(req.m_condition, atoms);
         collect_atoms(req.m_response, atoms);
@@ -67,7 +70,7 @@ bool assumptions_reference_output(const Specification& specification) {
 
 bool specification_is_not_well_separated(const Specification& specification,
                                          RealizabilityChecker& checker) {
-    if (specification.m_assumptions.empty()) {
+    if (count_live(specification.m_assumptions) == 0) {
         return false;
     }
     if (!assumptions_reference_output(specification)) {
@@ -75,6 +78,9 @@ bool specification_is_not_well_separated(const Specification& specification,
     }
     std::string conjunction;
     for (const Requirement& req : specification.m_assumptions) {
+        if (req.m_removed) {
+            continue;
+        }
         if (!conjunction.empty()) {
             conjunction += " & ";
         }

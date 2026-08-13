@@ -141,7 +141,7 @@ void test_double_operators() {
         return tlsf::parse(
                    doc("OUTPUTS { a; b; c; } GUARANTEE { " + body + "; }"))
             .m_guarantee.front()
-            .to_string();
+            .m_formula.to_string();
     };
     // `&&`/`||` are the TLSF connectives; they parse identically to `&`/`|`.
     expect(first("a && b || c") == first("a & b | c"),
@@ -155,7 +155,7 @@ void test_precedence_and_associativity() {
         return tlsf::parse(
                    doc("OUTPUTS { a; b; c; } GUARANTEE { " + body + "; }"))
             .m_guarantee.front()
-            .to_string();
+            .m_formula.to_string();
     };
     expect(first("a -> b -> c") == "(a) -> ((b) -> (c))",
            "precedence: -> is right-associative");
@@ -173,7 +173,7 @@ void test_bounded_expansion() {
     auto first = [](const std::string& body) {
         return tlsf::parse(doc("OUTPUTS { p; } GUARANTEE { " + body + "; }"))
             .m_guarantee.front()
-            .to_string();
+            .m_formula.to_string();
     };
     expect(equiv(first("X[2] p"), "X X p"), "bounded: X[2] p");
     expect(equiv(first("X[0] p"), "p"), "bounded: X[0] p is p");

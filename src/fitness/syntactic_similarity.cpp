@@ -179,6 +179,9 @@ Formula conjoin_field(const Specification& spec, Formula Requirement::* field) {
     std::optional<Formula> conj;
     auto accumulate = [&](const std::vector<Requirement>& reqs) {
         for (const Requirement& req : reqs) {
+            if (req.m_removed) {
+                continue;
+            }
             if (!conj) {
                 conj = req.*field;
             } else {
@@ -189,9 +192,11 @@ Formula conjoin_field(const Specification& spec, Formula Requirement::* field) {
     };
     accumulate(spec.m_assumptions);
     accumulate(spec.m_guarantees);
+    // Every requirement removed leaves nothing to fold. That is reachable only
+    // through the removal operator, and the unit of conjunction is the honest
+    // answer for it; a specification with content always folds to something.
     if (!conj.has_value()) {
-        assert(false);
-        __builtin_unreachable();
+        return Formula("true");
     }
     return *conj;
 }
@@ -226,14 +231,22 @@ double average_timing_similarity(const Specification& spec1,
     if (total == 0) {
         return 0.0;
     }
+    // A slot removed on one side alone has no timing to compare against, and
+    // removal is the largest change that slot can undergo, so it scores zero.
+    // Removed on both sides, the slot matches.
+    const auto pair_similarity = [](const Requirement& lhs,
+                                    const Requirement& rhs) {
+        if (lhs.m_removed || rhs.m_removed) {
+            return lhs.m_removed && rhs.m_removed ? 1.0 : 0.0;
+        }
+        return timing_syntactic_similarity(lhs.m_timing, rhs.m_timing);
+    };
     double sum = 0.0;
     for (std::size_t i = 0; i < common_assumptions; ++i) {
-        sum += timing_syntactic_similarity(spec1.m_assumptions[i].m_timing,
-                                           spec2.m_assumptions[i].m_timing);
+        sum += pair_similarity(spec1.m_assumptions[i], spec2.m_assumptions[i]);
     }
     for (std::size_t i = 0; i < common_guarantees; ++i) {
-        sum += timing_syntactic_similarity(spec1.m_guarantees[i].m_timing,
-                                           spec2.m_guarantees[i].m_timing);
+        sum += pair_similarity(spec1.m_guarantees[i], spec2.m_guarantees[i]);
     }
     return sum / static_cast<double>(total);
 }

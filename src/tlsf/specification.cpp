@@ -1,13 +1,94 @@
 #include "tlsf/specification.hpp"
 
+#include <algorithm>
+#include <array>
+#include <cstddef>
 #include <optional>
 #include <string>
 #include <tuple>
+#include <utility>
 #include <vector>
 
 #include "prop_formula.hpp"
 
 namespace tlsf {
+
+bool operator==(const SectionEntry& lhs, const SectionEntry& rhs) {
+    return lhs.m_removed == rhs.m_removed && lhs.m_formula == rhs.m_formula;
+}
+
+bool operator<(const SectionEntry& lhs, const SectionEntry& rhs) {
+    if (lhs.m_formula < rhs.m_formula) {
+        return true;
+    }
+    if (rhs.m_formula < lhs.m_formula) {
+        return false;
+    }
+    return !lhs.m_removed && rhs.m_removed;
+}
+
+std::vector<Formula> live_formulae(const Section& section) {
+    std::vector<Formula> formulae;
+    formulae.reserve(section.size());
+    for (const SectionEntry& entry : section) {
+        if (!entry.m_removed) {
+            formulae.push_back(entry.m_formula);
+        }
+    }
+    return formulae;
+}
+
+std::size_t count_live(const Section& section) {
+    return static_cast<std::size_t>(std::count_if(
+        section.begin(), section.end(),
+        [](const SectionEntry& entry) { return !entry.m_removed; }));
+}
+
+std::vector<std::size_t> live_indices(const Section& section) {
+    std::vector<std::size_t> indices;
+    indices.reserve(section.size());
+    for (std::size_t i = 0; i < section.size(); ++i) {
+        if (!section[i].m_removed) {
+            indices.push_back(i);
+        }
+    }
+    return indices;
+}
+
+std::array<const Section*, 6> sections_of(const Specification& spec) {
+    return {&spec.m_initially, &spec.m_preset, &spec.m_require,
+            &spec.m_assume,    &spec.m_assert, &spec.m_guarantee};
+}
+
+std::array<Section*, 6> mutable_sections_of(Specification& spec) {
+    return {&spec.m_initially, &spec.m_preset, &spec.m_require,
+            &spec.m_assume,    &spec.m_assert, &spec.m_guarantee};
+}
+
+std::array<const Section*, 3> guarantee_sections_of(const Specification& spec) {
+    return {&spec.m_preset, &spec.m_assert, &spec.m_guarantee};
+}
+
+std::array<Section*, 3> mutable_guarantee_sections_of(Specification& spec) {
+    return {&spec.m_preset, &spec.m_assert, &spec.m_guarantee};
+}
+
+std::array<const Section*, 3> assumption_sections_of(
+    const Specification& spec) {
+    return {&spec.m_initially, &spec.m_require, &spec.m_assume};
+}
+
+std::array<Section*, 3> mutable_assumption_sections_of(Specification& spec) {
+    return {&spec.m_initially, &spec.m_require, &spec.m_assume};
+}
+
+std::size_t count_live_guarantees(const Specification& spec) {
+    std::size_t total = 0;
+    for (const Section* section : guarantee_sections_of(spec)) {
+        total += count_live(*section);
+    }
+    return total;
+}
 
 namespace {
 
@@ -79,31 +160,41 @@ std::string Specification::to_ltl() const {
     const bool strict = m_semantics == Semantics::MealyStrict ||
                         m_semantics == Semantics::MooreStrict;
 
+    // Deleted conjuncts are dropped once, here, so the lowering below reads
+    // exactly as the paper states it. A section whose every conjunct has been
+    // deleted lowers as an absent section, which is what deleting them means.
+    const std::vector<Formula> initially = live_formulae(m_initially);
+    const std::vector<Formula> preset = live_formulae(m_preset);
+    const std::vector<Formula> require = live_formulae(m_require);
+    const std::vector<Formula> assume = live_formulae(m_assume);
+    const std::vector<Formula> assert_ = live_formulae(m_assert);
+    const std::vector<Formula> guarantee = live_formulae(m_guarantee);
+
     std::vector<Formula> antecedent;  // G ψ_e ∧ φ_e
-    if (!m_require.empty()) {
-        antecedent.push_back(globally_of(m_require));
+    if (!require.empty()) {
+        antecedent.push_back(globally_of(require));
     }
-    if (!m_assume.empty()) {
-        antecedent.push_back(conj(m_assume));
+    if (!assume.empty()) {
+        antecedent.push_back(conj(assume));
     }
 
     std::vector<Formula> consequent;  // G ψ_s ∧ φ_s (ψ_s omitted when strict)
-    if (!strict && !m_assert.empty()) {
-        consequent.push_back(globally_of(m_assert));
+    if (!strict && !assert_.empty()) {
+        consequent.push_back(globally_of(assert_));
     }
-    if (!m_guarantee.empty()) {
-        consequent.push_back(conj(m_guarantee));
+    if (!guarantee.empty()) {
+        consequent.push_back(conj(guarantee));
     }
 
     std::vector<Formula>
         body;  // θ_s ∧ (ψ_s W ¬ψ_e) ∧ (antecedent → consequent)
-    if (!m_preset.empty()) {
-        body.push_back(conj(m_preset));
+    if (!preset.empty()) {
+        body.push_back(conj(preset));
     }
-    if (strict && !m_assert.empty()) {
+    if (strict && !assert_.empty()) {
         body.push_back(Formula::make_binary(
-            Formula::Kind::WeakUntil, conj(m_assert),
-            Formula::make_unary(Formula::Kind::Not, conj(m_require))));
+            Formula::Kind::WeakUntil, conj(assert_),
+            Formula::make_unary(Formula::Kind::Not, conj(require))));
     }
     if (std::optional<Formula> inner =
             side_implication(antecedent, consequent)) {
@@ -111,22 +202,26 @@ std::string Specification::to_ltl() const {
     }
 
     const Formula body_formula = conj(body);  // empty body ⇒ true
-    if (m_initially.empty()) {
+    if (initially.empty()) {
         return body_formula.to_string();
     }
-    return Formula::make_binary(Formula::Kind::Implies, conj(m_initially),
+    return Formula::make_binary(Formula::Kind::Implies, conj(initially),
                                 body_formula)
         .to_string();
 }
 
 std::string Specification::assumption_ltl() const {
     bool any_term = false;
-    return collect_side(m_initially, m_require, m_assume, any_term).to_string();
+    return collect_side(live_formulae(m_initially), live_formulae(m_require),
+                        live_formulae(m_assume), any_term)
+        .to_string();
 }
 
 std::string Specification::guarantee_ltl() const {
     bool any_term = false;
-    return collect_side(m_preset, m_assert, m_guarantee, any_term).to_string();
+    return collect_side(live_formulae(m_preset), live_formulae(m_assert),
+                        live_formulae(m_guarantee), any_term)
+        .to_string();
 }
 
 namespace {

@@ -1549,9 +1549,12 @@ try:
     check(code, 1, "a second enqueue is refused")
     check(len(C.queue_entries(repo)), 1, "and writes nothing")
 
-    # Lock contention. The crontab's flock -n is the outer guard; this is the
-    # inner one, which is what stops a tick typed by hand racing the cron tick
-    # into a second runner over the same CSV.
+    # Lock contention. acquire_lock is the only guard on the queue, and what
+    # stops a tick typed by hand racing the cron tick into a second runner over
+    # the same CSV. The second acquire below is denied inside a single process,
+    # because flock attaches to the open file description rather than the
+    # process -- which is also why the crontab must not wrap the tick in flock
+    # on this file. See the cron_line check further down.
     held = C.acquire_lock(lock)
     check_true(held is not None, "the lock is free to start with")
     check_true(C.acquire_lock(lock) is None, "and exclusive once taken")
@@ -1665,8 +1668,13 @@ try:
     check(rows[0][4], "0/2", "the next phase against the total")
 
     line = C.cron_line("av2", "/home/benandrew/projects/counter")
-    check_true("flock -n" in line and "tick --host av2" in line,
-               "the crontab line locks and names its host")
+    check_true("tick --host av2" in line, "the crontab line names its host")
+    # Regression: the line carried `flock -n` on the queue lock until
+    # 2026-08-13, which deadlocked every tick against its own wrapper -- the
+    # inherited descriptor denies acquire_lock's second open of the same path.
+    # Both exit 0, so the only symptom was a queue that never started a phase.
+    check_true("flock" not in line,
+               "and does not wrap the tick in flock on its own lock file")
     check_true("*/5 * * * *" in line, "every five minutes")
     check_true("python3" in line,
                "with python3: av2's shell has no `python` at all")

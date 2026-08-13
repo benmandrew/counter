@@ -146,12 +146,23 @@ TLSF_WALL_CAPS_GEN10: dict[str, int] = {
 }
 
 
+# Upper bound on the compute-match factor any `-cm` profile will be generated
+# at, used to scale that profile's wall caps. It is a ceiling and not a
+# measurement: the real factor comes out of calibration, hours after this
+# module is imported, so a cap cannot track it. Over-scaling a cap only wastes
+# the headroom of a run that was never going to reach it, while under-scaling
+# censors the longer arm and returns the censoring as the result, so the bound
+# is deliberately loose. Raise it before generating with a larger
+# --compute-match-factor.
+CM_CAP_HEADROOM = 1.5
+
+
 def scaled_wall_caps(factor: float) -> dict[str, int]:
     """`TLSF_WALL_CAPS_GEN10` scaled for an arm running more generations.
 
     Cost scales with generations*population, so a compute-matched arm needs its
-    caps scaled by the same factor its generation count was, or the cap censors
-    the longer arm by construction and the comparison measures the cap.
+    caps scaled by at least the factor its generation count was, or the cap
+    censors the longer arm by construction and the comparison measures the cap.
     """
     return {spec: round(cap * factor)
             for spec, cap in TLSF_WALL_CAPS_GEN10.items()}
@@ -1117,11 +1128,15 @@ PROFILES: dict[str, dict] = {
     # Generate the R halves with
     #   python scripts/gen_configs.py [--tlsf] \
     #       --schemes nsga2-truncate nsga2-apportion --sweeps R --levels elit0.1 \
-    #       --out-dir experiments/configs-seldefault[-tlsf]
+    #       --out-dir experiments/configs-seldefault[-tlsf] --pin-vintage
     # and the compute control with the ratio measured in calibration (PLAN §5):
     #   python scripts/gen_configs.py [--tlsf] --schemes nsga2-truncate \
     #       --sweeps S --levels cm-elit0.1 --compute-match-factor <measured> \
-    #       --out-dir experiments/configs-seldefault[-tlsf]
+    #       --out-dir experiments/configs-seldefault[-tlsf] --pin-vintage
+    # --pin-vintage on both, per PLAN §8: without it a config states only the
+    # keys its sweep overrode, and the three whose C++ defaults have moved are
+    # inherited from whatever binary reads them next. The factor is per path --
+    # FRETISH and TLSF calibrate separately and measured 1.372 and 1.117.
     "seldefault-fret": {
         "schemes": ["nsga2-truncate", "nsga2-apportion"],
         "weakenings": None,
@@ -1203,13 +1218,16 @@ PROFILES: dict[str, dict] = {
         "levels": {"S": ["cm-elit0.1"]},
         "specs": list(TLSF_ABLATION_SPECS),
         "seeds": list(range(25)),
-        # Raised over the R half for the same reason as seldefault-fret-cm, but
-        # by the compute-match factor rather than a flat doubling: this arm is
-        # the R half at gen_configs.DEFAULT_COMPUTE_MATCH_FACTOR (1.5) times the
-        # generations, so its caps are the R half's at the same factor. Passing
-        # --compute-match-factor anything other than 1.5 to gen_configs means
-        # re-scaling here to match, or the cap stops tracking the arm it bounds.
-        "timeout_caps": scaled_wall_caps(1.5),
+        # Raised over the R half for the same reason as seldefault-fret-cm.
+        # CM_CAP_HEADROOM is a ceiling on the compute-match factor rather than
+        # the factor itself: the factor is only known after calibration, which
+        # runs long after this dict is imported, so the cap cannot track it and
+        # the invariant is instead that it never falls below it. Calibration on
+        # 2026-08-13 measured 1.117 on this path (11 generations against 10),
+        # well inside the ceiling. A cap is only wrong when it censors, so the
+        # slack costs nothing; a --compute-match-factor above CM_CAP_HEADROOM
+        # is the case to catch, and raise this for.
+        "timeout_caps": scaled_wall_caps(CM_CAP_HEADROOM),
         "compare_timeout": 1800,
         "baseline_aliases": {},
         "configs_dir": EXPERIMENTS_DIR / "configs-seldefault-tlsf",

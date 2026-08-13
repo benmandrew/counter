@@ -133,13 +133,31 @@ bool operator==(const Timing& lhs, const Timing& rhs) {
 
 Requirement::Requirement(Formula condition, Formula response,
                          const Timing& timing, ConditionType condition_type,
-                         bool weakenable)
+                         bool weakenable, bool removed)
     : m_condition(std::move(condition)),
       m_response(std::move(response)),
       m_timing(timing),
       m_condition_type(condition_type),
       m_ltl(requirement_to_ltl(*this)),
-      m_weakenable(weakenable) {}
+      m_weakenable(weakenable),
+      m_removed(removed) {}
+
+std::size_t count_live(const std::vector<Requirement>& reqs) {
+    return static_cast<std::size_t>(
+        std::count_if(reqs.begin(), reqs.end(),
+                      [](const Requirement& req) { return !req.m_removed; }));
+}
+
+std::vector<std::size_t> live_indices(const std::vector<Requirement>& reqs) {
+    std::vector<std::size_t> indices;
+    indices.reserve(reqs.size());
+    for (std::size_t i = 0; i < reqs.size(); ++i) {
+        if (!reqs[i].m_removed) {
+            indices.push_back(i);
+        }
+    }
+    return indices;
+}
 
 bool operator<(const Requirement& lhs, const Requirement& rhs) {
     if (lhs.m_timing < rhs.m_timing || rhs.m_timing < lhs.m_timing) {
@@ -163,7 +181,10 @@ bool operator<(const Requirement& lhs, const Requirement& rhs) {
     if (lhs.m_ltl != rhs.m_ltl) {
         return lhs.m_ltl < rhs.m_ltl;
     }
-    return !lhs.m_weakenable && rhs.m_weakenable;
+    if (lhs.m_weakenable != rhs.m_weakenable) {
+        return !lhs.m_weakenable && rhs.m_weakenable;
+    }
+    return !lhs.m_removed && rhs.m_removed;
 }
 
 bool operator==(const Requirement& lhs, const Requirement& rhs) {
@@ -171,7 +192,8 @@ bool operator==(const Requirement& lhs, const Requirement& rhs) {
            lhs.m_condition == rhs.m_condition &&
            lhs.m_response == rhs.m_response &&
            lhs.m_condition_type == rhs.m_condition_type &&
-           lhs.m_ltl == rhs.m_ltl && lhs.m_weakenable == rhs.m_weakenable;
+           lhs.m_ltl == rhs.m_ltl && lhs.m_weakenable == rhs.m_weakenable &&
+           lhs.m_removed == rhs.m_removed;
 }
 
 Specification::Specification(std::vector<Requirement> assumptions,
@@ -198,13 +220,15 @@ Specification::Specification(std::vector<Requirement> assumptions,
 Requirement add_atom_prefix(const Requirement& req) {
     return Requirement(rewrite_atom_names(req.m_condition, prefix_atom_name),
                        rewrite_atom_names(req.m_response, prefix_atom_name),
-                       req.m_timing, req.m_condition_type, req.m_weakenable);
+                       req.m_timing, req.m_condition_type, req.m_weakenable,
+                       req.m_removed);
 }
 
 Requirement strip_atom_prefix(const Requirement& req) {
     return Requirement(rewrite_atom_names(req.m_condition, unprefix_atom_name),
                        rewrite_atom_names(req.m_response, unprefix_atom_name),
-                       req.m_timing, req.m_condition_type, req.m_weakenable);
+                       req.m_timing, req.m_condition_type, req.m_weakenable,
+                       req.m_removed);
 }
 
 Specification add_atom_prefix(const Specification& spec) {
@@ -307,24 +331,27 @@ std::string Requirement::to_string() const {
 
 std::string Specification::to_string() const {
     std::string result;
-    for (const Requirement& req : m_assumptions) {
-        if (!result.empty()) {
-            result += "\n";
+    const auto append = [&result](const std::vector<Requirement>& reqs) {
+        for (const Requirement& req : reqs) {
+            if (req.m_removed) {
+                continue;
+            }
+            if (!result.empty()) {
+                result += "\n";
+            }
+            result += req.to_string();
         }
-        result += req.to_string();
-    }
-    for (const Requirement& req : m_guarantees) {
-        if (!result.empty()) {
-            result += "\n";
-        }
-        result += req.to_string();
-    }
+    };
+    append(m_assumptions);
+    append(m_guarantees);
     return result;
 }
 
 bool specification_has_false_condition(const Specification& specification) {
+    // A removed requirement is exempt: its residual condition is not part of
+    // the specification, so it must not make one read as vacuous.
     auto condition_is_false = [](const Requirement& req) {
-        return req.m_condition.atom_name() == "false";
+        return !req.m_removed && req.m_condition.atom_name() == "false";
     };
     return std::any_of(specification.m_assumptions.begin(),
                        specification.m_assumptions.end(), condition_is_false) ||

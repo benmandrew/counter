@@ -65,14 +65,20 @@ namespace {
 // assumptions, inputs and outputs unchanged. The environment side is never
 // relaxed: weakening an assumption can only make synthesis harder, so it has no
 // place in a subset walk looking for what the system can still achieve.
+//
+// `indices` are positions in the walk, which runs over the live guarantees
+// alone; `slots` maps each back to the guarantee vector it came from. Walking
+// the raw vector instead would hand a removed guarantee to ltlsynt as a part
+// the system has to satisfy.
 Specification with_guarantee_subset(const Specification& specification,
+                                    const std::vector<std::size_t>& slots,
                                     const std::vector<std::size_t>& indices) {
     Specification subset = specification;
     subset.m_guarantees.clear();
     subset.m_guarantees.reserve(indices.size());
     for (const std::size_t index : indices) {
-        assert(index < specification.m_guarantees.size());
-        subset.m_guarantees.push_back(specification.m_guarantees[index]);
+        assert(index < slots.size());
+        subset.m_guarantees.push_back(specification.m_guarantees[slots[index]]);
     }
     return subset;
 }
@@ -93,6 +99,12 @@ double specification_status(const Specification& specification,
                        specification.m_guarantees.size());
     const auto add = [&components](const std::vector<Requirement>& reqs) {
         for (const Requirement& req : reqs) {
+            // A removed requirement is not a component of the specification;
+            // scoring its satisfiability would charge a candidate for content
+            // it no longer has.
+            if (req.m_removed) {
+                continue;
+            }
             components.push_back("(" + req.m_condition.to_string() + ") & (" +
                                  req.m_response.to_string() + ")");
         }
@@ -101,11 +113,14 @@ double specification_status(const Specification& specification,
     add(specification.m_guarantees);
 
     if (grading == StatusGrading::Mrs) {
+        const std::vector<std::size_t> slots =
+            live_indices(specification.m_guarantees);
         return status_score_mrs(
-            components, specification.m_guarantees.size(), sat,
-            [&specification, &real](const std::vector<std::size_t>& indices) {
+            components, slots.size(), sat,
+            [&specification, &slots,
+             &real](const std::vector<std::size_t>& indices) {
                 const Specification subset =
-                    with_guarantee_subset(specification, indices);
+                    with_guarantee_subset(specification, slots, indices);
                 // Undecided resolves as unrealizable, so the part is rejected:
                 // a timed-out query must not buy a candidate a point.
                 return real.check_realizability(subset).value_or(false) &&
@@ -118,7 +133,7 @@ double specification_status(const Specification& specification,
         // is realizable whatever the assumptions say; skip the solver rather
         // than ask it a question with a known answer.
         const bool realizable =
-            specification.m_guarantees.empty() ||
+            count_live(specification.m_guarantees) == 0 ||
             real.check_realizability(specification).value_or(false);
         // Second, and only where the first said yes: a candidate that is
         // already unrealizable cannot be realizable for the wrong reason, and

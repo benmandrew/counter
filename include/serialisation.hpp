@@ -4,8 +4,10 @@
 /// @brief JSON serialisation and deserialisation for Timing, Requirement,
 ///        Specification, and related types via nlohmann/json.
 
+#include <algorithm>
 #include <cstddef>
 #include <fstream>
+#include <iterator>
 #include <optional>
 #include <stdexcept>
 #include <string>
@@ -89,11 +91,23 @@ inline void to_json(nlohmann::json& jobj, const Requirement& req) {
 // --- Specification ---
 
 inline void to_json(nlohmann::json& jobj, const Specification& spc) {
+    // Removed requirements are dropped rather than marked. JSON is the boundary
+    // where a specification stops being search state and becomes a document,
+    // and a deleted requirement's meaning there is absence. Emitting a flagged
+    // entry would leave every reader that does not know the flag reading a
+    // requirement the repair removed.
+    const auto live = [](const std::vector<Requirement>& reqs) {
+        std::vector<Requirement> kept;
+        kept.reserve(reqs.size());
+        std::copy_if(reqs.begin(), reqs.end(), std::back_inserter(kept),
+                     [](const Requirement& req) { return !req.m_removed; });
+        return kept;
+    };
     // Requirements are stripped by to_json(Requirement) as they serialise; the
     // atom vectors have no such hook, so strip them here (once, on this node).
     const Specification stripped = strip_atom_prefix(spc);
-    jobj = {{"assumptions", spc.m_assumptions},
-            {"guarantees", spc.m_guarantees},
+    jobj = {{"assumptions", live(spc.m_assumptions)},
+            {"guarantees", live(spc.m_guarantees)},
             {"in_atoms", stripped.m_in_atoms},
             {"out_atoms", stripped.m_out_atoms}};
 }

@@ -75,8 +75,14 @@ void write_signal_list(std::string& out, const std::string& name,
     out += "  }\n";
 }
 
+// Deleted conjuncts are not written. TLSF text is the boundary where a
+// specification stops being search state and becomes a document, and a deleted
+// conjunct's meaning there is absence; `parse(write(spec))` therefore returns
+// the specification without them, which is what it says. A section left with
+// nothing live is omitted, exactly as an absent one is.
 void write_formula_section(std::string& out, const std::string& name,
-                           const std::vector<Formula>& formulae) {
+                           const Section& section) {
+    const std::vector<Formula> formulae = live_formulae(section);
     if (formulae.empty()) {
         return;
     }

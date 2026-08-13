@@ -65,12 +65,13 @@ bool assumptions_reference_output(const tlsf::Specification& spec) {
     if (outputs.empty()) {
         return false;
     }
-    const std::array<const std::vector<Formula>*, 3> assumption_sections = {
-        &spec.m_initially, &spec.m_require, &spec.m_assume};
-    for (const std::vector<Formula>* section : assumption_sections) {
-        for (const Formula& formula : *section) {
+    for (const tlsf::Section* section : tlsf::assumption_sections_of(spec)) {
+        for (const tlsf::SectionEntry& entry : *section) {
+            if (entry.m_removed) {
+                continue;
+            }
             std::unordered_set<std::string> atoms;
-            collect_atoms(formula, atoms);
+            collect_atoms(entry.m_formula, atoms);
             for (const std::string& atom : atoms) {
                 if (outputs.count(atom) != 0) {
                     return true;
@@ -81,28 +82,26 @@ bool assumptions_reference_output(const tlsf::Specification& spec) {
     return false;
 }
 
-// All six section vectors of a specification, in a stable order, so bloat and
-// other whole-spec scans can iterate every formula uniformly.
-std::array<const std::vector<Formula>*, 6> all_sections(
-    const tlsf::Specification& spec) {
-    return {&spec.m_initially, &spec.m_preset, &spec.m_require,
-            &spec.m_assume,    &spec.m_assert, &spec.m_guarantee};
-}
-
+// Deleted conjuncts are excluded from both scans: the cap is on the size of the
+// specification, and a deleted conjunct is not in it. Counting one would keep
+// charging a candidate for a formula it has already dropped.
 std::size_t max_formula_size(const tlsf::Specification& spec) {
     std::size_t max = 0;
-    for (const std::vector<Formula>* section : all_sections(spec)) {
-        for (const Formula& formula : *section) {
-            max = std::max(max, formula.n_subformulae());
+    for (const tlsf::Section* section : tlsf::sections_of(spec)) {
+        for (const tlsf::SectionEntry& entry : *section) {
+            if (entry.m_removed) {
+                continue;
+            }
+            max = std::max(max, entry.m_formula.n_subformulae());
         }
     }
     return max;
 }
 
 bool any_formula_exceeds(const tlsf::Specification& spec, std::size_t cap) {
-    for (const std::vector<Formula>* section : all_sections(spec)) {
-        for (const Formula& formula : *section) {
-            if (formula.n_subformulae() > cap) {
+    for (const tlsf::Section* section : tlsf::sections_of(spec)) {
+        for (const tlsf::SectionEntry& entry : *section) {
+            if (!entry.m_removed && entry.m_formula.n_subformulae() > cap) {
                 return true;
             }
         }
@@ -252,10 +251,13 @@ FilterFunctionT<tlsf::Specification> tlsf_make_dedup_filter() {
 }
 
 bool tlsf_is_trivially_vacuous(const tlsf::Specification& spec) {
-    auto any_atom = [](const std::vector<Formula>& section, const char* atom) {
+    // A deleted conjunct is exempt: its residual content is not part of the
+    // specification, so it must not make one read as vacuous.
+    auto any_atom = [](const tlsf::Section& section, const char* atom) {
         return std::any_of(section.begin(), section.end(),
-                           [atom](const Formula& formula) {
-                               return formula.atom_name() == atom;
+                           [atom](const tlsf::SectionEntry& entry) {
+                               return !entry.m_removed &&
+                                      entry.m_formula.atom_name() == atom;
                            });
     };
     return any_atom(spec.m_initially, "false") ||
@@ -267,8 +269,9 @@ bool tlsf_is_trivially_vacuous(const tlsf::Specification& spec) {
 
 bool tlsf_has_unsatisfiable_assumptions(const tlsf::Specification& spec,
                                         SatisfiabilityChecker& checker) {
-    const bool no_assumptions = spec.m_initially.empty() &&
-                                spec.m_require.empty() && spec.m_assume.empty();
+    const bool no_assumptions = tlsf::count_live(spec.m_initially) == 0 &&
+                                tlsf::count_live(spec.m_require) == 0 &&
+                                tlsf::count_live(spec.m_assume) == 0;
     if (no_assumptions) {
         return false;
     }
@@ -279,12 +282,18 @@ bool tlsf_has_unsatisfiable_assumptions(const tlsf::Specification& spec,
 
 bool tlsf_has_valid_guarantee(const tlsf::Specification& spec,
                               SatisfiabilityChecker& checker) {
-    auto any_valid = [&checker](const std::vector<Formula>& section) {
-        for (const Formula& formula : section) {
+    auto any_valid = [&checker](const tlsf::Section& section) {
+        for (const tlsf::SectionEntry& entry : section) {
+            // A deleted conjunct is not a guarantee: it must not be able to
+            // make the specification read as vacuously satisfied.
+            if (entry.m_removed) {
+                continue;
+            }
             // Keyed on the negated formula alone, so the cache hits across
             // candidates and generations rather than once per guarantee side.
             const std::optional<bool> falsifiable =
-                checker.check_satisfiability("!(" + formula.to_string() + ")");
+                checker.check_satisfiability("!(" +
+                                             entry.m_formula.to_string() + ")");
             // Timeout: treat as falsifiable, as the assumption check treats an
             // unknown answer as satisfiable. A non-answer never drops a
             // candidate.

@@ -123,6 +123,10 @@ DEFAULTS: dict = {
     # [mutation] only when a sweep overrides it (see make_toml), so the standard
     # grids stay byte-identical; the p_add_assumption sweep varies it.
     "p_add_assumption": 0.05,
+    # The mirror action: delete one guarantee. Emitted into [mutation] only when
+    # a sweep overrides it (see make_toml), like p_add_assumption; TLSF sweep D
+    # varies it, and its prem0 arm is the pre-operator control.
+    "p_remove_guarantee": 0.05,
     "default_bound": 20,
     "metric": "direct",
     "run_weakening": True,
@@ -218,6 +222,8 @@ def make_toml(overrides: dict, defaults: dict = DEFAULTS) -> str:
         f"p_timing   = {_fmt(d['p_timing'])}",
     ] + ([f"p_add_assumption = {_fmt(d['p_add_assumption'])}"]
          if "p_add_assumption" in overrides else []) + (
+        [f"p_remove_guarantee = {_fmt(d['p_remove_guarantee'])}"]
+        if "p_remove_guarantee" in overrides else []) + (
         [f"allow_output_assumptions = {_fmt(d['allow_output_assumptions'])}"]
         if "allow_output_assumptions" in overrides else []) + [
         "",
@@ -501,6 +507,20 @@ TLSF_SWEEP_P: list[tuple[str, dict]] = [
     ("padd0.5",  {"p_add_assumption": 0.5}),
 ]
 
+# TLSF sweep D: vary p_remove_guarantee, the guarantee-deletion operator (D for
+# delete; R is taken by the shared generations sweep). prem0 turns the operator
+# off and so reproduces a run from before it existed, which makes it the control
+# arm; prem0.05 is the config.hpp default. The eight drop-* ideals are
+# unreachable at prem0 and reachable above it, which is what this sweep is for;
+# the open question is the cost, since deleting a guarantee only ever helps
+# realizability and the similarity objectives are the only thing paying for it.
+TLSF_SWEEP_D: list[tuple[str, dict]] = [
+    ("prem0",    {"p_remove_guarantee": 0.0}),   # pre-operator control
+    ("prem0.05", {"p_remove_guarantee": 0.05}),  # baseline, mirrors p_add_assumption
+    ("prem0.15", {"p_remove_guarantee": 0.15}),
+    ("prem0.3",  {"p_remove_guarantee": 0.3}),
+]
+
 # TLSF sweep W: the well-separation / output-assumption 2x2 (PR #34). Each level
 # sets the (run_well_separation, allow_output_assumptions) pair, so the four arms
 # ride the sweep/level machinery exactly as sweep J's weakening ablation does —
@@ -580,6 +600,7 @@ TLSF_SWEEPS: list[tuple[str, list]] = [
     ("B", TLSF_SWEEP_B),
     ("M", TLSF_SWEEP_M),
     ("P", TLSF_SWEEP_P),
+    ("D", TLSF_SWEEP_D),
     ("W", TLSF_SWEEP_W),
     ("Q", TLSF_SWEEP_Q),
     ("R", TLSF_SWEEP_R),

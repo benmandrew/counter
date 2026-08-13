@@ -103,21 +103,31 @@ std::string join_comma(const std::vector<std::string>& items) {
     return result;
 }
 
+// Removed requirements are skipped: they are not part of what the
+// specification says, so they must not reach a solver.
 void build_ltl_conjunction(const std::vector<Requirement>& reqs,
                            std::string& out) {
     bool first = true;
     for (const Requirement& req : reqs) {
+        if (req.m_removed) {
+            continue;
+        }
         if (!first) {
             out += " & ";
         }
         out += "(" + req.m_ltl + ")";
         first = false;
     }
+    // An all-removed list conjoins to nothing. Emit the unit of conjunction
+    // rather than an empty string, which would produce `() -> ()`.
+    if (out.empty()) {
+        out = "true";
+    }
 }
 
 void build_specification_formula(const Specification& specification,
                                  std::string& formula) {
-    if (specification.m_assumptions.empty()) {
+    if (count_live(specification.m_assumptions) == 0) {
         build_ltl_conjunction(specification.m_guarantees, formula);
         return;
     }

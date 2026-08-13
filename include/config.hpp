@@ -270,6 +270,29 @@ struct Config {
     /// a fairness assumption to an unrealizable GR(1) spec), which the
     /// rewrite-only operators cannot express.
     double p_add_assumption = 0.05;
+    /// The mirror of p_add_assumption, shared by both modes: delete one
+    /// guarantee rather than rewriting it. Some repairs drop a guarantee
+    /// outright and are unreachable without this — every `drop-*` ideal in
+    /// `examples/` is one, and five TLSF subjects have no other scoreable
+    /// ideal. A deleted guarantee is tombstoned in place rather than erased, so
+    /// that comparisons against the original stay aligned; see
+    /// Requirement::m_removed.
+    ///
+    /// Defaults to 0.05, matching p_add_assumption: the two are the same move
+    /// in opposite directions and there is no reason for the environment to be
+    /// easier to strengthen than the system is to relax. Setting it to 0
+    /// restores the search exactly as it ran before the operator existed —
+    /// the probability is read before the RNG is drawn, so a zero never costs
+    /// a draw — which is what reproducing a campaign archived before
+    /// 2026-08-13 requires (see the config vintage note in
+    /// experiments/README.md).
+    ///
+    /// The risk to watch is that removal is monotonically good for
+    /// realizability, so the status objective pays for it while the similarity
+    /// objectives do not, and under NSGA-II a heavily gutted candidate is
+    /// non-dominated. TLSF sweep D in scripts/gen_configs.py exists to measure
+    /// whether that costs repair quality.
+    double p_remove_guarantee = 0.05;
     /// Of the assumptions p_add_assumption appends, the fraction guarded by a
     /// random input atom rather than by `true`. `G F <input>` is strictly
     /// stronger than `G(c -> F <input>)` and so the more powerful repair, which

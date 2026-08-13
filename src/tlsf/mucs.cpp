@@ -19,19 +19,22 @@ constexpr std::size_t k_guarantee = 5;
 
 // The guarantee-side formulae of `spec`, in a stable order (PRESET, then
 // ASSERT, then GUARANTEE), each tagged with its section for reconstruction.
+// Deleted conjuncts are left out: a core is a subset of what the specification
+// says, and they say nothing. A candidate spec is built fresh from the subset,
+// so the tombstones do not travel with it.
 std::vector<CoreFormula> guarantee_side_candidates(const Specification& spec) {
     std::vector<CoreFormula> candidates;
     candidates.reserve(spec.m_preset.size() + spec.m_assert.size() +
                        spec.m_guarantee.size());
-    for (const Formula& formula : spec.m_preset) {
-        candidates.push_back({k_preset, formula});
-    }
-    for (const Formula& formula : spec.m_assert) {
-        candidates.push_back({k_assert, formula});
-    }
-    for (const Formula& formula : spec.m_guarantee) {
-        candidates.push_back({k_guarantee, formula});
-    }
+    const auto collect = [&candidates](std::size_t section_id,
+                                       const Section& section) {
+        for (const Formula& formula : live_formulae(section)) {
+            candidates.push_back({section_id, formula});
+        }
+    };
+    collect(k_preset, spec.m_preset);
+    collect(k_assert, spec.m_assert);
+    collect(k_guarantee, spec.m_guarantee);
     return candidates;
 }
 
@@ -39,13 +42,13 @@ std::vector<CoreFormula> guarantee_side_candidates(const Specification& spec) {
 void append_by_section(Specification& spec, const CoreFormula& entry) {
     switch (entry.section_id) {
         case k_preset:
-            spec.m_preset.push_back(entry.formula);
+            spec.m_preset.emplace_back(entry.formula);
             break;
         case k_assert:
-            spec.m_assert.push_back(entry.formula);
+            spec.m_assert.emplace_back(entry.formula);
             break;
         default:
-            spec.m_guarantee.push_back(entry.formula);
+            spec.m_guarantee.emplace_back(entry.formula);
             break;
     }
 }
@@ -147,9 +150,10 @@ std::vector<CoreFormula> non_core_formulae(
     const Specification& spec, const std::vector<CoreFormula>& core) {
     std::vector<bool> consumed(core.size(), false);
     std::vector<CoreFormula> result;
-    auto collect = [&](std::size_t section_id,
-                       const std::vector<Formula>& section) {
-        for (const Formula& formula : section) {
+    // Live conjuncts only, matching guarantee_side_candidates: a deleted
+    // conjunct is in neither the core nor what is carried over around it.
+    auto collect = [&](std::size_t section_id, const Section& section) {
+        for (const Formula& formula : live_formulae(section)) {
             bool matched = false;
             for (std::size_t i = 0; i < core.size(); ++i) {
                 if (!consumed[i] && core[i].section_id == section_id &&

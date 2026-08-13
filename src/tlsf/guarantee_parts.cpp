@@ -48,9 +48,11 @@ void split_into(const Formula& formula, std::vector<Formula>& out) {
     out.push_back(formula);
 }
 
-void append_section(const std::vector<Formula>& section, std::size_t section_id,
+// Deleted conjuncts contribute no parts: the MRS walk grades what the
+// specification still asks the system to do, and they ask nothing.
+void append_section(const Section& section, std::size_t section_id,
                     std::vector<CoreFormula>& out) {
-    for (const Formula& formula : section) {
+    for (const Formula& formula : live_formulae(section)) {
         std::vector<Formula> parts;
         split_into(formula, parts);
         for (Formula& part : parts) {
@@ -91,13 +93,13 @@ Specification build_part_subset(const Specification& spec,
         const CoreFormula& part = parts[index];
         switch (part.section_id) {
             case k_preset:
-                subset.m_preset.push_back(part.formula);
+                subset.m_preset.emplace_back(part.formula);
                 break;
             case k_assert:
-                subset.m_assert.push_back(part.formula);
+                subset.m_assert.emplace_back(part.formula);
                 break;
             default:
-                subset.m_guarantee.push_back(part.formula);
+                subset.m_guarantee.emplace_back(part.formula);
                 break;
         }
     }

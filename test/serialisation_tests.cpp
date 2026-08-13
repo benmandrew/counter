@@ -3,6 +3,7 @@
 #include <cstdio>
 #include <fstream>
 #include <string>
+#include <vector>
 
 #include <nlohmann/json.hpp>
 
@@ -221,6 +222,49 @@ void test_requirement_weakenable_defaults_true_when_absent() {
            "true");
 }
 
+// JSON is where a specification stops being search state and becomes a
+// document, and a deleted guarantee's meaning there is absence. Marking it
+// instead would leave every reader that has never heard of the flag treating a
+// requirement the repair removed as one it kept.
+void test_specification_omits_removed_requirements() {
+    std::vector<Requirement> guarantees = {
+        Requirement(Formula("a"), Formula("b"), timing::immediately()),
+        Requirement(Formula("c"), Formula("d"), timing::immediately())};
+    guarantees[0].m_removed = true;
+    const Specification spec({}, guarantees, {"a", "c"}, {"b", "d"});
+    nlohmann::json jobj;
+    to_json(jobj, spec);
+    expect(jobj.at("guarantees").size() == 1,
+           "to_json(Specification): a deleted guarantee is not written");
+    expect(jobj.at("guarantees")[0].at("condition") == "c",
+           "to_json(Specification): the surviving guarantee is the live one");
+    for (const auto& req : jobj.at("guarantees")) {
+        expect(!req.contains("removed"),
+               "to_json(Specification): no removal flag crosses the JSON "
+               "boundary");
+    }
+    Specification parsed;
+    from_json(jobj, parsed);
+    expect(parsed.m_guarantees.size() == 1 &&
+               !parsed.m_guarantees.front().m_removed,
+           "from_json(Specification): a written specification reloads with the "
+           "deleted guarantee simply absent");
+}
+
+void test_removed_flag_is_part_of_requirement_identity() {
+    const Requirement live(Formula("a"), Formula("b"), timing::immediately());
+    Requirement deleted = live;
+    deleted.m_removed = true;
+    expect(!(live == deleted),
+           "requirement identity: a deleted requirement is not equal to the "
+           "live one it replaced");
+    expect(std::hash<Requirement>{}(live) != std::hash<Requirement>{}(deleted),
+           "requirement identity: the removal flag reaches the hash, so the "
+           "fitness cache cannot serve a live score for a deleted guarantee");
+    expect((live < deleted) != (deleted < live),
+           "requirement identity: the two are strictly ordered");
+}
+
 void test_specification_round_trip() {
     const Specification spec(
         {Requirement(Formula("a"), Formula("b"), timing::immediately(),
@@ -326,6 +370,8 @@ void run_serialisation_tests() {
     test_requirement_weakenable_omitted_when_true();
     test_requirement_non_weakenable_round_trip();
     test_requirement_weakenable_defaults_true_when_absent();
+    test_specification_omits_removed_requirements();
+    test_removed_flag_is_part_of_requirement_identity();
     test_specification_round_trip();
     test_specification_json_structure();
     test_scored_specification_without_fitness();

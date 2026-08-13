@@ -215,6 +215,7 @@ DEFAULT_FIELDS = {
     "mutation.p_response": "p_response",
     "mutation.p_timing": "p_timing",
     "mutation.p_add_assumption": "p_add_assumption",
+    "mutation.p_remove_guarantee": "p_remove_guarantee",
     "mutation.p_conditional_assumption": "p_conditional_assumption",
     "mutation.strengthen_assumptions": "strengthen_assumptions",
     "mutation.allow_output_assumptions": "allow_output_assumptions",

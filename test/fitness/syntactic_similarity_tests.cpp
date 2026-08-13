@@ -135,6 +135,43 @@ void test_spec_similarity_differing_assumption_counts() {
            "either argument order");
 }
 
+// The reason a deleted guarantee is tombstoned rather than erased. Deleting the
+// FIRST of three guarantees must leave the other two scoring against the same
+// requirements they scored against before; erasing the slot would pair
+// candidate guarantee 1 with original guarantee 2, and so on down the list, so
+// two untouched requirements would read as changed.
+void test_spec_similarity_stays_aligned_across_a_deleted_guarantee() {
+    // The timings differ per requirement, which is what makes the pairing
+    // observable at all: the trigger and response terms fold each side into one
+    // conjunction, so they cannot tell an aligned pairing from a shifted one.
+    const std::vector<Requirement> reqs = {
+        Requirement{Formula("p"), Formula("q"), timing::always()},
+        Requirement{Formula("r"), Formula("s"), timing::immediately()},
+        Requirement{Formula("t"), Formula("u"), timing::eventually()}};
+    const Specification original({}, reqs, {}, {});
+
+    std::vector<Requirement> guarantees = reqs;
+    guarantees[0].m_removed = true;
+    const Specification candidate({}, guarantees, {}, {});
+
+    // The same deletion made by erasing the slot: the two survivors are the
+    // candidate's two live requirements, but they now sit one position early.
+    const Specification shifted({}, {reqs[1], reqs[2]}, {}, {});
+
+    const double tombstoned =
+        syntactic_similarity(candidate, original, Config{});
+    const double erased = syntactic_similarity(shifted, original, Config{});
+    expect(tombstoned > erased,
+           "spec-similarity: a tombstoned deletion scores above the same "
+           "deletion made by erasing the slot, because the survivors stay "
+           "paired with the requirements they came from");
+
+    const Specification untouched({}, reqs, {}, {});
+    expect(std::fabs(syntactic_similarity(untouched, original, Config{}) -
+                     1.0) < 1e-12,
+           "spec-similarity: an untouched specification still scores 1.0");
+}
+
 // --- timing similarity ---
 
 // Identical timings always score 1.0.
@@ -238,6 +275,7 @@ void run_syntactic_similarity_tests() {
     test_spec_similarity_identical_multi_req();
     test_spec_similarity_partial_match_multi_req();
     test_spec_similarity_differing_assumption_counts();
+    test_spec_similarity_stays_aligned_across_a_deleted_guarantee();
     test_timing_identical_immediately();
     test_timing_identical_within_ticks();
     test_timing_comparable_for_ticks();

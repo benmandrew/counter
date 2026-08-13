@@ -18,24 +18,8 @@
 
 namespace {
 
-using Section = std::vector<Formula>;
-
-const Section* all_sections(const tlsf::Specification& spec, std::size_t idx) {
-    switch (idx) {
-        case 0:
-            return &spec.m_initially;
-        case 1:
-            return &spec.m_preset;
-        case 2:
-            return &spec.m_require;
-        case 3:
-            return &spec.m_assume;
-        case 4:
-            return &spec.m_assert;
-        default:
-            return &spec.m_guarantee;
-    }
-}
+using tlsf::Section;
+using tlsf::SectionEntry;
 
 constexpr std::size_t k_n_sections = 6;
 
@@ -117,12 +101,21 @@ double tlsf_syntactic_similarity(const tlsf::Specification& spec,
                                  [[maybe_unused]] const Config& cfg) {
     double total = 0.0;
     std::size_t n_pairs = 0;
+    const auto spec_sections = tlsf::sections_of(spec);
+    const auto original_sections = tlsf::sections_of(original);
     for (std::size_t section = 0; section < k_n_sections; ++section) {
-        const Section& lhs = *all_sections(spec, section);
-        const Section& rhs = *all_sections(original, section);
+        const Section& lhs = *spec_sections[section];
+        const Section& rhs = *original_sections[section];
         const std::size_t paired = std::min(lhs.size(), rhs.size());
         for (std::size_t i = 0; i < paired; ++i) {
-            total += lhs[i].syntactic_similarity(rhs[i]);
+            // A conjunct deleted on one side alone has nothing to compare
+            // against, and deletion is the largest change a slot admits, so it
+            // scores zero. Deleted on both, the slot matches.
+            if (lhs[i].m_removed || rhs[i].m_removed) {
+                total += lhs[i].m_removed && rhs[i].m_removed ? 1.0 : 0.0;
+                continue;
+            }
+            total += lhs[i].m_formula.syntactic_similarity(rhs[i].m_formula);
         }
         // Missing pairs (the size difference) contribute similarity 0.
         n_pairs += std::max(lhs.size(), rhs.size());
@@ -139,15 +132,26 @@ double tlsf_semantic_similarity(const tlsf::Specification& spec,
     const std::size_t bound = cfg.default_model_counting_bound;
     double total = 0.0;
     std::size_t changed = 0;
+    const auto spec_sections = tlsf::sections_of(spec);
+    const auto original_sections = tlsf::sections_of(original);
     for (std::size_t section = 0; section < k_n_sections; ++section) {
-        const Section& lhs = *all_sections(spec, section);
-        const Section& rhs = *all_sections(original, section);
+        const Section& lhs = *spec_sections[section];
+        const Section& rhs = *original_sections[section];
         const std::size_t paired = std::min(lhs.size(), rhs.size());
         for (std::size_t i = 0; i < paired; ++i) {
             if (lhs[i] == rhs[i]) {
                 continue;
             }
-            total += formula_pair_semantic_similarity(lhs[i], rhs[i], bound,
+            // Deleted on one side only: a real change, and the largest the slot
+            // admits, so it scores zero. There is no formula left to count, and
+            // counting the survivor against nothing would spend a model count
+            // on an answer already known.
+            if (lhs[i].m_removed || rhs[i].m_removed) {
+                ++changed;
+                continue;
+            }
+            total += formula_pair_semantic_similarity(lhs[i].m_formula,
+                                                      rhs[i].m_formula, bound,
                                                       cfg.similarity_metric);
             ++changed;
         }
@@ -165,9 +169,15 @@ double tlsf_status(const tlsf::Specification& spec, const Config& cfg) {
     // sections; the FRETISH path decomposes differently but scores on the same
     // scale, which is why both route through status_score.
     std::vector<std::string> components;
-    for (std::size_t section = 0; section < k_n_sections; ++section) {
-        for (const Formula& formula : *all_sections(spec, section)) {
-            components.push_back(formula.to_string());
+    for (const Section* section : tlsf::sections_of(spec)) {
+        for (const SectionEntry& entry : *section) {
+            // A deleted conjunct is not a component of the specification;
+            // scoring its satisfiability would charge a candidate for content
+            // it no longer has.
+            if (entry.m_removed) {
+                continue;
+            }
+            components.push_back(entry.m_formula.to_string());
         }
     }
     if (cfg.status_grading == StatusGrading::Mrs) {

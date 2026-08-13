@@ -9,13 +9,13 @@
 //     weakenings, so `orig -> R` holds for every repair R. If `R -> I` held
 //     then `orig -> I` would follow, so an ideal the original does not imply
 //     can never be implied by any repair. implies_ideal is 0 by construction.
-//   - It is outside the image of the genetic operators. Nothing in
-//     src/tlsf/mutation.cpp resizes a guarantee section, and evolve.cpp seeds
-//     the whole population with copies of the original, so guarantee-section
-//     conjunct counts are invariant across a run. INITIALLY and REQUIRE are
-//     likewise never appended to; only ASSUME grows, via tlsf_add_assumption.
-//     An ideal that deletes a guarantee or adds a REQUIRE is unreachable no
-//     matter how long the search runs.
+//   - It is outside the image of the genetic operators. evolve.cpp seeds the
+//     whole population with copies of the original, and src/tlsf/mutation.cpp
+//     moves guarantee-section conjunct counts one way only: tlsf_remove_
+//     guarantee deletes one (down to a floor of one), nothing adds. INITIALLY
+//     and REQUIRE are never appended to; only ASSUME grows, via
+//     tlsf_add_assumption. An ideal that adds a guarantee or a REQUIRE is
+//     unreachable no matter how long the search runs.
 //   - It is degenerate: unrealisable, ill-separated, or carrying a
 //     trivially-true guarantee. The first can never be produced; the other two
 //     are screened out of the search's own output, so an ideal failing them
@@ -102,11 +102,17 @@ const char* mark(std::optional<bool> value) {
 
 bool failed(std::optional<bool> value) { return value.has_value() && !*value; }
 
-// The genetic operators never resize a guarantee section (PRESET, ASSERT,
-// GUARANTEE) and never append to INITIALLY or REQUIRE; ASSUME is the one
-// section tlsf_add_assumption can grow. Since the seed population is copies of
-// the original, an ideal whose section counts fall outside those bounds cannot
-// be produced by any sequence of mutations and crossovers.
+// The genetic operators can shrink the guarantee side (PRESET, ASSERT,
+// GUARANTEE) by deleting a conjunct, but never grow it, and never append to
+// INITIALLY or REQUIRE; ASSUME is the one section tlsf_add_assumption can grow.
+// Since the seed population is copies of the original, an ideal whose section
+// counts fall outside those bounds cannot be produced by any sequence of
+// mutations and crossovers.
+//
+// Deletion arrived with p_remove_guarantee. The bound is on what the operators
+// can express rather than on what one configuration turns on, so this reports
+// an ideal as reachable whichever probability the run that scores it uses,
+// including zero.
 void check_tlsf_reachable(const tlsf::Specification& spec,
                           const tlsf::Specification& ideal, Verdict& verdict) {
     const std::size_t spec_guarantees =
@@ -118,13 +124,21 @@ void check_tlsf_reachable(const tlsf::Specification& spec,
         spec.m_initially.size() + spec.m_require.size();
     const std::size_t ideal_fixed =
         ideal.m_initially.size() + ideal.m_require.size();
-    if (ideal_guarantees != spec_guarantees) {
+    if (ideal_guarantees > spec_guarantees) {
         verdict.reachable = false;
         verdict.unreachable_reason = "guarantee conjuncts " +
                                      std::to_string(spec_guarantees) + " -> " +
                                      std::to_string(ideal_guarantees) +
-                                     ", but no operator resizes a "
+                                     ", but no operator adds to a "
                                      "guarantee section";
+        return;
+    }
+    // Removal stops at one: a specification with nothing left to guarantee is
+    // realizable by doing nothing, so the operator refuses the last conjunct.
+    if (ideal_guarantees == 0 && spec_guarantees > 0) {
+        verdict.reachable = false;
+        verdict.unreachable_reason =
+            "every guarantee conjunct deleted, but removal keeps the last one";
         return;
     }
     if (ideal_fixed != spec_fixed) {
@@ -144,20 +158,28 @@ void check_tlsf_reachable(const tlsf::Specification& spec,
     }
 }
 
-// The FRETISH counterpart. tlsf_mutate's requirement list is fixed the same
-// way, so a differing requirement count is the analogous obstruction. The
-// model carries only condition, response and timing (requirement.hpp:82), so
-// scope and component changes are already outside what a loaded ideal can
-// express and need no check here.
+// The FRETISH counterpart. mutate_specification's requirement list moves the
+// same way — removal can shrink the guarantee list, nothing grows it — so a
+// larger guarantee count is the analogous obstruction. The model carries only
+// condition, response and timing (requirement.hpp:82), so scope and component
+// changes are already outside what a loaded ideal can express and need no
+// check here.
 void check_fretish_reachable(const Specification& spec,
                              const Specification& ideal, Verdict& verdict) {
-    if (ideal.m_guarantees.size() != spec.m_guarantees.size()) {
+    if (ideal.m_guarantees.size() > spec.m_guarantees.size()) {
         verdict.reachable = false;
         verdict.unreachable_reason =
             "guarantee requirements " +
             std::to_string(spec.m_guarantees.size()) + " -> " +
             std::to_string(ideal.m_guarantees.size()) +
-            ", but no operator resizes the guarantee list";
+            ", but no operator adds to the guarantee list";
+        return;
+    }
+    if (ideal.m_guarantees.empty() && !spec.m_guarantees.empty()) {
+        verdict.reachable = false;
+        verdict.unreachable_reason =
+            "every guarantee requirement deleted, but removal keeps the last "
+            "one";
         return;
     }
     if (ideal.m_assumptions.size() < spec.m_assumptions.size()) {

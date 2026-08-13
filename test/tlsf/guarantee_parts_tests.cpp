@@ -25,7 +25,7 @@ tlsf::Specification spec_with_guarantee(const std::string& formula) {
     tlsf::Specification spec;
     spec.m_inputs = {"i"};
     spec.m_outputs = {"o"};
-    spec.m_guarantee.emplace_back(formula);
+    spec.m_guarantee.emplace_back(Formula(formula));
     return spec;
 }
 
@@ -48,7 +48,7 @@ void test_distributes_globally_over_conjunction() {
     // single G over a wide conjunction, and leaving it whole is what left the
     // detector specification's MRS score flat across every one of its links.
     tlsf::Specification spec;
-    spec.m_guarantee.push_back(Formula::make_unary(
+    spec.m_guarantee.emplace_back(Formula::make_unary(
         Formula::Kind::Globally,
         Formula::make_binary(Formula::Kind::And, Formula("a"), Formula("b"))));
     const auto parts = tlsf::split_guarantee_parts(spec);
@@ -75,14 +75,14 @@ void test_covers_the_guarantee_side_sections_in_order() {
     // PRESET, then ASSERT, then GUARANTEE -- the order the MUC extractor
     // enumerates in, so the two agree on what the guarantee side is made of.
     tlsf::Specification spec;
-    spec.m_preset.emplace_back("p");
-    spec.m_assert.emplace_back("s");
-    spec.m_guarantee.emplace_back("g");
+    spec.m_preset.emplace_back(Formula("p"));
+    spec.m_assert.emplace_back(Formula("s"));
+    spec.m_guarantee.emplace_back(Formula("g"));
     // Environment-side sections must not contribute parts: relaxing an
     // assumption can only make synthesis harder.
-    spec.m_assume.emplace_back("e");
-    spec.m_require.emplace_back("r");
-    spec.m_initially.emplace_back("n");
+    spec.m_assume.emplace_back(Formula("e"));
+    spec.m_require.emplace_back(Formula("r"));
+    spec.m_initially.emplace_back(Formula("n"));
     expect(part_strings(tlsf::split_guarantee_parts(spec)) ==
                std::vector<std::string>{"p", "s", "g"},
            "guarantee parts: the guarantee side alone, in section order");
@@ -92,10 +92,10 @@ void test_subset_keeps_the_environment_side_whole() {
     tlsf::Specification spec;
     spec.m_inputs = {"i"};
     spec.m_outputs = {"o"};
-    spec.m_assume.emplace_back("e");
-    spec.m_require.emplace_back("r");
-    spec.m_initially.emplace_back("n");
-    spec.m_guarantee.emplace_back("a & b");
+    spec.m_assume.emplace_back(Formula("e"));
+    spec.m_require.emplace_back(Formula("r"));
+    spec.m_initially.emplace_back(Formula("n"));
+    spec.m_guarantee.emplace_back(Formula("a & b"));
     const auto parts = tlsf::split_guarantee_parts(spec);
     const tlsf::Specification subset =
         tlsf::build_part_subset(spec, parts, {1});
@@ -106,15 +106,15 @@ void test_subset_keeps_the_environment_side_whole() {
         subset.m_inputs == spec.m_inputs && subset.m_outputs == spec.m_outputs,
         "guarantee parts: a subset should keep the atom partition");
     expect(subset.m_guarantee.size() == 1 &&
-               subset.m_guarantee[0].to_string() == "b",
+               subset.m_guarantee[0].m_formula.to_string() == "b",
            "guarantee parts: a subset should hold exactly the named parts");
 }
 
 void test_subset_restores_each_part_to_its_own_section() {
     tlsf::Specification spec;
-    spec.m_preset.emplace_back("p");
-    spec.m_assert.emplace_back("s");
-    spec.m_guarantee.emplace_back("g");
+    spec.m_preset.emplace_back(Formula("p"));
+    spec.m_assert.emplace_back(Formula("s"));
+    spec.m_guarantee.emplace_back(Formula("g"));
     const auto parts = tlsf::split_guarantee_parts(spec);
     const tlsf::Specification subset =
         tlsf::build_part_subset(spec, parts, {0, 1, 2});

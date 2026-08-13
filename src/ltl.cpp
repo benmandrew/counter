@@ -36,8 +36,11 @@ void print_tlsf_ltl(const std::string& path, bool show_path) {
     if (show_path) {
         std::cout << path << ":\n";
     }
+    // Deleted conjuncts are not printed, so what this shows is what `to_ltl`
+    // below lowers.
     const auto print_section = [](const char* name,
-                                  const std::vector<Formula>& formulae) {
+                                  const tlsf::Section& section) {
+        const std::vector<Formula> formulae = tlsf::live_formulae(section);
         if (formulae.empty()) {
             return;
         }

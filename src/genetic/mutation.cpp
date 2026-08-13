@@ -332,12 +332,19 @@ std::vector<Timing> collect_timing_pool(const Specification& specification) {
     std::vector<Timing> pool;
     pool.reserve(specification.m_assumptions.size() +
                  specification.m_guarantees.size());
-    for (const Requirement& req : specification.m_assumptions) {
-        pool.push_back(req.m_timing);
-    }
-    for (const Requirement& req : specification.m_guarantees) {
-        pool.push_back(req.m_timing);
-    }
+    // Removed requirements contribute no timings: strengthening draws from the
+    // shapes the specification actually uses, and a deleted requirement's is
+    // not one of them.
+    const auto add = [&pool](const std::vector<Requirement>& reqs) {
+        for (const Requirement& req : reqs) {
+            if (req.m_removed) {
+                continue;
+            }
+            pool.push_back(req.m_timing);
+        }
+    };
+    add(specification.m_assumptions);
+    add(specification.m_guarantees);
     sort_unique_timings(pool);
     return pool;
 }
@@ -381,18 +388,21 @@ Requirement mutate_requirement(const Requirement& requirement,
 namespace {
 
 // Global indices (assumptions first, then guarantees) of requirements that may
-// be mutated. Non-weakenable requirements are excluded.
+// be mutated. Non-weakenable and removed requirements are excluded: rewriting a
+// removed requirement spends the mutation on content nothing reads.
 std::vector<std::size_t> collect_weakenable_indices(
     const Specification& specification) {
     const std::size_t n_assumptions = specification.m_assumptions.size();
     std::vector<std::size_t> indices;
     for (std::size_t i = 0; i < n_assumptions; ++i) {
-        if (specification.m_assumptions[i].m_weakenable) {
+        const Requirement& req = specification.m_assumptions[i];
+        if (req.m_weakenable && !req.m_removed) {
             indices.push_back(i);
         }
     }
     for (std::size_t i = 0; i < specification.m_guarantees.size(); ++i) {
-        if (specification.m_guarantees[i].m_weakenable) {
+        const Requirement& req = specification.m_guarantees[i];
+        if (req.m_weakenable && !req.m_removed) {
             indices.push_back(n_assumptions + i);
         }
     }
@@ -486,6 +496,37 @@ Specification add_assumption(const Specification& specification,
                          specification.m_in_atoms, specification.m_out_atoms);
 }
 
+// Guarantee slots that removal may take: weakenable, and not already removed.
+std::vector<std::size_t> removable_guarantee_indices(
+    const Specification& specification) {
+    std::vector<std::size_t> indices;
+    for (std::size_t i = 0; i < specification.m_guarantees.size(); ++i) {
+        const Requirement& req = specification.m_guarantees[i];
+        if (req.m_weakenable && !req.m_removed) {
+            indices.push_back(i);
+        }
+    }
+    return indices;
+}
+
+// Deletes one guarantee by tombstoning it in place. The slot stays so that
+// every comparison against the original keeps pairing the same requirements;
+// erasing it would shift the rest and score unrelated pairs against each other.
+// The mirror of add_assumption: that one strengthens the environment, this one
+// weakens the system's obligations, and some repairs are only reachable by
+// dropping a guarantee outright.
+Specification remove_guarantee(const Specification& specification,
+                               const std::vector<std::size_t>& removable,
+                               const RandomSource& random_source) {
+    assert(!removable.empty());
+    std::vector<Requirement> guarantees = specification.m_guarantees;
+    const std::size_t choice =
+        removable[random_source.next_index(removable.size())];
+    guarantees[choice].m_removed = true;
+    return Specification(specification.m_assumptions, std::move(guarantees),
+                         specification.m_in_atoms, specification.m_out_atoms);
+}
+
 }  // namespace
 
 Specification mutate_specification(const Specification& specification,
@@ -505,6 +546,21 @@ Specification mutate_specification(const Specification& specification,
     if (have_assumption_pool &&
         random_source.next_real() < cfg.p_add_assumption) {
         return add_assumption(specification, random_source, cfg);
+    }
+    // The mirror action: delete a guarantee. Never the last live one, since a
+    // specification with nothing left to guarantee is realizable by doing
+    // nothing and is no repair at all. The probability is read before the draw
+    // so that a zero costs no draw at all, which is what lets a config set it
+    // to 0 and reproduce a run from before the operator existed.
+    if (cfg.p_remove_guarantee > 0.0) {
+        const std::vector<std::size_t> removable =
+            removable_guarantee_indices(specification);
+        // The floor is on live guarantees, not removable ones: removing the
+        // only weakenable guarantee is fine while locked ones remain.
+        if (!removable.empty() && count_live(specification.m_guarantees) > 1 &&
+            random_source.next_real() < cfg.p_remove_guarantee) {
+            return remove_guarantee(specification, removable, random_source);
+        }
     }
     std::vector<std::string> atoms;
     atoms.insert(atoms.end(), specification.m_in_atoms.begin(),

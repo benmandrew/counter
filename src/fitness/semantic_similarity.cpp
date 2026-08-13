@@ -221,6 +221,14 @@ double semantic_similarity(const Specification& specification,
             if (reqs1[i] == reqs2[i]) {
                 continue;
             }
+            // Removed on one side only: a real change, and the largest one the
+            // slot admits, so it scores zero. There is no formula left to
+            // count, and counting the survivor against nothing would charge a
+            // model count for an answer already known.
+            if (reqs1[i].m_removed || reqs2[i].m_removed) {
+                ++changed_count;
+                continue;
+            }
             total +=
                 semantic_similarity(reqs1[i], reqs2[i], step_count, metric);
             ++changed_count;

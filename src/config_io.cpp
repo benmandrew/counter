@@ -105,27 +105,28 @@ KeySpec section(std::set<std::string> keys,
 
 const KeySpec& config_key_spec() {
     static const KeySpec spec = section(
-        {}, {{"genetic",
-              section({"generations", "population_size", "selection_rate",
-                       "elitism_rate", "crossover_rate", "mutation_rate",
-                       "selection_scheme"})},
-             {"fitness", section({"weight_syntactic", "weight_semantic",
-                                  "weight_status", "status_grading"})},
-             {"mutation",
-              section({"p_trigger", "p_response", "p_timing",
-                       "p_add_assumption", "p_conditional_assumption",
-                       "strengthen_assumptions", "allow_output_assumptions"})},
-             {"tlsf",
-              section({"repair_mode", "muc_max_iterations"},
-                      {{"mutation", section({"p_assumption", "p_temporal"})}})},
-             {"model_counting", section({"default_bound", "metric"})},
-             {"filters", section({"run_weakening", "run_implication",
-                                  "run_vacuity", "run_well_separation"})},
-             {"runtime", section({"black_timeout_ms", "ltlsynt_timeout_ms",
-                                  "ltl2tgba_timeout_ms", "ltlfilt_timeout_ms",
-                                  "ganak_timeout_ms", "parallel",
-                                  "max_concurrent_realizability",
-                                  "max_scoring_failure_rate", "dashboard"})}});
+        {},
+        {{"genetic",
+          section({"generations", "population_size", "selection_rate",
+                   "elitism_rate", "crossover_rate", "mutation_rate",
+                   "selection_scheme"})},
+         {"fitness", section({"weight_syntactic", "weight_semantic",
+                              "weight_status", "status_grading"})},
+         {"mutation",
+          section({"p_trigger", "p_response", "p_timing", "p_add_assumption",
+                   "p_remove_guarantee", "p_conditional_assumption",
+                   "strengthen_assumptions", "allow_output_assumptions"})},
+         {"tlsf",
+          section({"repair_mode", "muc_max_iterations"},
+                  {{"mutation", section({"p_assumption", "p_temporal"})}})},
+         {"model_counting", section({"default_bound", "metric"})},
+         {"filters", section({"run_weakening", "run_implication", "run_vacuity",
+                              "run_well_separation"})},
+         {"runtime", section({"black_timeout_ms", "ltlsynt_timeout_ms",
+                              "ltl2tgba_timeout_ms", "ltlfilt_timeout_ms",
+                              "ganak_timeout_ms", "parallel",
+                              "max_concurrent_realizability",
+                              "max_scoring_failure_rate", "dashboard"})}});
     return spec;
 }
 
@@ -252,6 +253,10 @@ void apply_mutation(const toml::table& tbl, Config& cfg) {
     if (auto val = tbl["p_add_assumption"].value<double>()) {
         require_probability(*val, "mutation.p_add_assumption");
         cfg.p_add_assumption = *val;
+    }
+    if (auto val = tbl["p_remove_guarantee"].value<double>()) {
+        require_probability(*val, "mutation.p_remove_guarantee");
+        cfg.p_remove_guarantee = *val;
     }
     if (auto val = tbl["p_conditional_assumption"].value<double>()) {
         require_probability(*val, "mutation.p_conditional_assumption");

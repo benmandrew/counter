@@ -46,7 +46,7 @@ Run any command with `--help` for full option descriptions.
 Counter evolves a population of candidate specifications over several generations, keeping those that are realisable and close to the original.
 
 1. **Seed** a population of specifications, each mutated slightly from the input.
-2. **Score** each candidate on four weighted components: semantic similarity (bounded model counting of satisfying traces), realisability status, syntactic similarity, and a Halstead size penalty.
+2. **Score** each candidate on three weighted components: semantic similarity (bounded model counting of satisfying traces), realisability status, and syntactic similarity.
 3. **Evolve** through rounds of selection, crossover, mutation, and filtering.
 4. **Collect** the realisable survivors, keep the genuine weakenings of the original and, of those, only the maximal ones under implication, then write each to the output directory.
 

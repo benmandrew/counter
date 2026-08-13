@@ -7,7 +7,6 @@
 #include <utility>
 #include <vector>
 
-#include "fitness/halstead.hpp"
 #include "fitness/semantic_similarity.hpp"
 #include "fitness/status.hpp"
 #include "guarantee_parts.hpp"
@@ -111,21 +110,6 @@ double formula_pair_semantic_similarity(const Formula& first,
     return semantic_similarity_from_counts(counts, metric);
 }
 
-// Aggregates through HalsteadTokens rather than adding HalsteadCounts: eta1
-// and eta2 are cardinalities of *distinct* token sets, so summing them per
-// formula would count every shared operator (G, ->, &) once per section
-// formula and make the vocabulary grow with spec size. That is the same union
-// rule halstead_counts(const Specification&) applies on the FRETISH side.
-HalsteadCounts spec_halstead_counts(const tlsf::Specification& spec) {
-    HalsteadTokens total;
-    for (std::size_t section = 0; section < k_n_sections; ++section) {
-        for (const Formula& formula : *all_sections(spec, section)) {
-            total.merge(halstead_tokens(formula));
-        }
-    }
-    return total.to_counts();
-}
-
 }  // namespace
 
 double tlsf_syntactic_similarity(const tlsf::Specification& spec,
@@ -172,21 +156,6 @@ double tlsf_semantic_similarity(const tlsf::Specification& spec,
         return 1.0;
     }
     return total / static_cast<double>(changed);
-}
-
-double tlsf_halstead_fitness(const tlsf::Specification& spec,
-                             const tlsf::Specification& original,
-                             [[maybe_unused]] const Config& cfg) {
-    const double volume = halstead_volume(spec_halstead_counts(spec));
-    const double original_volume =
-        halstead_volume(spec_halstead_counts(original));
-    if (volume <= 0.0) {
-        return 1.0;
-    }
-    if (original_volume <= 0.0) {
-        return 0.0;
-    }
-    return std::min(1.0, original_volume / volume);
 }
 
 double tlsf_status(const tlsf::Specification& spec, const Config& cfg) {
@@ -247,13 +216,6 @@ tlsf_get_fitness_function(const tlsf::Specification& original,
                                                                  cfg);
                              },
                              cfg.fitness_weight_semantic, "semantic"});
-    }
-    if (cfg.fitness_weight_halstead > 0.0) {
-        functions.push_back({[original, cfg](const tlsf::Specification& spec) {
-                                 return tlsf_halstead_fitness(spec, original,
-                                                              cfg);
-                             },
-                             cfg.fitness_weight_halstead, "halstead"});
     }
     if (cfg.fitness_weight_status > 0.0) {
         functions.push_back({[cfg](const tlsf::Specification& spec) {

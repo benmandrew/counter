@@ -64,7 +64,7 @@ Sweeps generated, each holding every other parameter at its default:
 |---|---|---|
 | A | Generations | 5, 10, 15, 20, 30, 40, 60, 80 — `population_size=200` |
 | B | Population size | 50, 75, 100, 150, 200, 300, 500, 750, 1000, 1500 — `generations=10` |
-| C | Fitness weight presets | default, syntactic-heavy, semantic-heavy, status-only, no-halstead |
+| C | Fitness weight presets | default, syntactic-heavy, semantic-heavy, status-only |
 | D | `p_trigger` | 0.0, 0.1, 0.25, 0.5, 0.75, 0.9, 1.0 |
 | E | `p_response` | 0.0, 0.1, 0.25, 0.5, 0.75, 0.9, 1.0 |
 | F | `p_timing` | 0.0, 0.05, 0.15, 0.3, 0.5, 0.75, 1.0 |
@@ -73,7 +73,7 @@ Sweeps generated, each holding every other parameter at its default:
 | I | `mutation_rate` | 0.1, 0.25, 0.5, 0.75, 1.0 |
 | J | `run_weakening` | on, off |
 
-63 levels per scheme, 126 configs. Because each sweep holds the others at their
+62 levels per scheme, 124 configs. Because each sweep holds the others at their
 defaults, exactly one level of each is byte-identical to the `A/gen10` baseline
 — the aliasing below collapses those nine onto one run per scheme.
 

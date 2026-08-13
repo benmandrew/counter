@@ -157,15 +157,15 @@ for name in ("padd", "wellsep"):
           [s for s in R.TLSF_CORE_SPECS if s != "humanoid-531"],
           f"{name} profile corpus")
 
-# The two ablation arms are the same 8-cell factorial: 2 schemes x 2 metrics x
-# 2 sweep-C levels (default = Halstead 0.1, no-halstead = 0.0).
+# The two ablation arms are the same 4-cell factorial: 2 schemes x 2 metrics, at
+# the single sweep-C default level. The third factor was the Halstead weight,
+# retired on 2026-08-13 with the objective itself.
 check(len(R.TLSF_ABLATION_SPECS), 20, "ablation TLSF corpus size")
 for name in ("ablate-fret", "ablate-tlsf"):
     check(sorted(P[name]["schemes"]), ["nsga2-truncate", "weighted"],
           f"{name} schemes")
     check(P[name]["metrics"], ["direct", "log"], f"{name} metrics")
-    check(P[name]["levels"], {"C": ["default", "no-halstead"]},
-          f"{name} sweep-C levels")
+    check(P[name]["levels"], {"C": ["default"]}, f"{name} sweep-C levels")
     check(P[name]["baseline_aliases"], {}, f"{name} has no aliases")
 check(P["ablate-tlsf"]["specs"], R.TLSF_ABLATION_SPECS, "ablate-tlsf corpus")
 

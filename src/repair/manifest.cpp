@@ -39,7 +39,10 @@ namespace {
 // ltlsynt budget could not decide its own input specification.
 // 6 added fitness.status_grading, since the status objective now has two
 // scales and a manifest that does not name the one in use cannot be read.
-constexpr int k_schema_version = 6;
+// 7 dropped fitness.weight_halstead along with the objective it weighted, so
+// the objective vector is one shorter and a reader keying on its position
+// against an older manifest reads the wrong component.
+constexpr int k_schema_version = 7;
 
 // The inverse of the spellings config_io.cpp parses. It has no table to
 // borrow -- it only ever goes string to enum -- so these must be kept in step
@@ -137,7 +140,6 @@ nlohmann::json config_json(const Config& cfg) {
         {"fitness",
          {{"weight_syntactic", cfg.fitness_weight_syntactic},
           {"weight_semantic", cfg.fitness_weight_semantic},
-          {"weight_halstead", cfg.fitness_weight_halstead},
           {"weight_status", cfg.fitness_weight_status},
           {"status_grading", status_grading_name(cfg.status_grading)}}},
         {"mutation",

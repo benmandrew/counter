@@ -10,7 +10,7 @@ Algorithm flow
 
 1. **Load** a specification from ``--input``. On the FRETISH path this is a :class:`Specification`: lists of assumption and guarantee :class:`Requirement` objects, each carrying a condition formula, a response formula, a :type:`Timing` modifier, and a derived *linear temporal logic* (LTL) string. On the TLSF path it is a ``tlsf::Specification`` holding the six specification sections.
 
-2. **Build fitness** — an :class:`AggregateWeightedFitnessFunction` combining four weighted components: semantic similarity, realisability status, syntactic similarity, and a *Halstead* size penalty. The per-generation :class:`FilterFunction` list is constructed from the original spec at the same time. See :doc:`configuration` for the weights.
+2. **Build fitness** — an :class:`AggregateWeightedFitnessFunction` combining three weighted components: semantic similarity, realisability status, and syntactic similarity. The per-generation :class:`FilterFunction` list is constructed from the original spec at the same time. See :doc:`configuration` for the weights.
 
 3. **Seed** a *random number generator* (RNG) from ``--seed`` or ``std::random_device``, and register crash metadata so a signal handler can record the seed in the crash log.
 
@@ -115,7 +115,7 @@ Module layout
      version.hpp         — the commit a binary was built from
      crash/              — crash_handler: SIGSEGV/SIGABRT/SIGFPE reporter
      filter/             — bloat cap, implication, implication check, vacuity, well-separation
-     fitness/            — syntactic/semantic similarity, Halstead, status, model counter
+     fitness/            — syntactic/semantic similarity, status, model counter
      genetic/            — crossover, mutation, generation, pipeline, NSGA-II, scored, random source
      runner/             — wrappers for black, ganak, ltl2tgba/ltlsynt, ltlfilt, the FRET formaliser
      tlsf/               — parser, writer, specification, and the TLSF operator set

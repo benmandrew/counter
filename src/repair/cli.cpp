@@ -14,7 +14,7 @@ void print_help(const char* prog) {
         << "algorithm. The input is either FRETISH requirements as JSON or a\n"
         << "TLSF specification; the algorithm evolves a population of\n"
         << "candidate repairs, scoring each by syntactic similarity, semantic\n"
-        << "similarity, Halstead complexity, and LTL realisability.\n"
+        << "similarity, and LTL realisability.\n"
         << "\n"
         << "Options:\n"
         << "  --input <spec>       Path to the input specification "

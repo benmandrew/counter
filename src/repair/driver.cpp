@@ -46,7 +46,6 @@ std::string format_crash_metadata(std::size_t seed,
     out << "  p_timing:       " << cfg.p_timing << "\n";
     out << "  Weight syn:     " << cfg.fitness_weight_syntactic << "\n";
     out << "  Weight sem:     " << cfg.fitness_weight_semantic << "\n";
-    out << "  Weight halstead:" << cfg.fitness_weight_halstead << "\n";
     out << "  Weight status:  " << cfg.fitness_weight_status;
     return out.str();
 }

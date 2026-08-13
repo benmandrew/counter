@@ -24,7 +24,7 @@ Every section and key is optional; absent keys keep their built-in defaults. Sec
 Fitness weights
 ---------------
 
-Four components are combined into each candidate's score. Semantic similarity and realisability status dominate; syntactic similarity breaks ties between semantically comparable candidates, and the Halstead penalty holds back bloat.
+Three components are combined into each candidate's score. Semantic similarity and realisability status dominate, and syntactic similarity breaks ties between semantically comparable candidates.
 
 .. list-table::
    :header-rows: 1
@@ -42,9 +42,6 @@ Four components are combined into each candidate's score. Semantic similarity an
    * - ``fitness.weight_syntactic``
      - 0.2
      - Shared sub-formula count, normalised to [0, 1]
-   * - ``fitness.weight_halstead``
-     - 0.1
-     - Penalty for candidates larger than the original
    * - ``fitness.status_grading``
      - ``"tiered"``
      - Scale the status component grades on: ``"tiered"`` or ``"mrs"``

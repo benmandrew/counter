@@ -733,26 +733,29 @@ PROFILES: dict[str, dict] = {
         # ltlsynt count by jobs and risk the OOM the cap exists to prevent.
         "default_jobs": 1,
     },
-    # FRETISH arm of the ablation campaign (PLAN §1): a full 2x2x2 factorial of
-    # selection scheme (nsga2/weighted) x similarity metric (log/direct) x
-    # Halstead weight (C/default's 0.1 vs C/no-halstead's 0.0) — 8 cells, so
-    # interactions (does Halstead only matter under weighted?) are measurable,
-    # not just main effects. Operating point generations=40/population_size=1000,
-    # the metric-campaign scale where repairs are strong enough for the factors
-    # to move outcomes. Control cell: nsga2 / log / C-default. Generate with
-    #   python scripts/gen_configs.py --sweeps C --levels default,no-halstead \
+    # FRETISH arm of the ablation campaign (PLAN §1): a 2x2 factorial of
+    # selection scheme (nsga2/weighted) x similarity metric (log/direct), at the
+    # C/default weight preset — 4 cells, so the interaction is measurable, not
+    # just main effects. It ran as a 2x2x2, the third factor being the Halstead
+    # weight (C/default's 0.1 against C/no-halstead's 0.0); the Halstead
+    # objective was removed on 2026-08-13 and its level went with it, so the
+    # third factor is retired and the archived rows are the only record of it.
+    # Operating point generations=40/population_size=1000, the metric-campaign
+    # scale where repairs are strong enough for the factors to move outcomes.
+    # Control cell: nsga2 / log. Generate with
+    #   python scripts/gen_configs.py --sweeps C --levels default \
     #       --schemes nsga2-truncate weighted --metric both \
     #       --generations 40 --population-size 1000 \
     #       --out-dir experiments/configs-ablate-fret
-    # (--levels keeps sweep C's other three levels out of the grid — they would
-    # silently inflate the 8 cells to 20.)
+    # (--levels keeps sweep C's other levels out of the grid — they would
+    # silently inflate the 4 cells to 16.)
     "ablate-fret": {
         "schemes": ["nsga2-truncate", "weighted"],
         "weakenings": None,
         "metrics": ["direct", "log"],
         "repair_modes": None,
         "sweeps": ["C"],
-        "levels": {"C": ["default", "no-halstead"]},
+        "levels": {"C": ["default"]},
         "specs": list(FRETISH_SPECS),
         "seeds": list(range(30)),
         # The cj-large/metric caps for the same operating point: measured worst
@@ -767,17 +770,17 @@ PROFILES: dict[str, dict] = {
         "results_csv": EXPERIMENTS_DIR / "results-ablate-fret.csv",
         "default_jobs": 4,
     },
-    # TLSF arm of the same 8-cell factorial, over the 13 fixes-backed TLSF
+    # TLSF arm of the same 4-cell factorial, over the 13 fixes-backed TLSF
     # families at the TLSF operating point (gen10/pop200, the config defaults).
     # A flat 600 s per-run cap (the arbiter-hp precedent) bounds the heavy tail
     # — humanoid means 768 s uncapped with a 1739 s p90, and the corpus mean of
-    # ~150 s/run is what makes 8 x 13 x 15 fit the campaign window; the
+    # ~150 s/run is what makes 4 x 13 x 15 fit the campaign window; the
     # censoring it introduces is deliberate and applied identically to every
     # cell. The configs also need the tlsf-profile runtime settings (500 ms
     # ltlsynt timeout, 60 s ltl2tgba timeout, 0.15 scoring-failure tolerance),
     # passed explicitly because --tlsf swaps in the TLSF sweep table, which has
     # no sweep C. Generate with
-    #   python scripts/gen_configs.py --sweeps C --levels default,no-halstead \
+    #   python scripts/gen_configs.py --sweeps C --levels default \
     #       --schemes nsga2-truncate weighted --metric both \
     #       --ltlsynt-timeout 500 --ltl2tgba-timeout 60000 \
     #       --max-scoring-failure-rate 0.15 \
@@ -836,7 +839,7 @@ PROFILES: dict[str, dict] = {
         "metrics": ["direct", "log"],
         "repair_modes": None,
         "sweeps": ["C"],
-        "levels": {"C": ["default", "no-halstead"]},
+        "levels": {"C": ["default"]},
         "specs": list(TLSF_ABLATION_SPECS),
         "seeds": list(range(15)),
         # A flat 600s over the whole set, sized while ltlsynt_timeout_ms was

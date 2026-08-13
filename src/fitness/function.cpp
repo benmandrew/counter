@@ -3,7 +3,6 @@
 #include <utility>
 #include <vector>
 
-#include "fitness/halstead.hpp"
 #include "fitness/semantic_similarity.hpp"
 #include "fitness/status.hpp"
 #include "fitness/syntactic_similarity.hpp"
@@ -28,13 +27,6 @@ AggregateWeightedFitnessFunction get_fitness_function(
         };
         fitness_functions.push_back(
             {semsim, cfg.fitness_weight_semantic, "semantic"});
-    }
-    if (cfg.fitness_weight_halstead > 0.0) {
-        auto halstead = [original_spec](const Specification& spec) -> double {
-            return halstead_fitness(spec, original_spec);
-        };
-        fitness_functions.push_back(
-            {halstead, cfg.fitness_weight_halstead, "halstead"});
     }
     if (cfg.fitness_weight_status > 0.0) {
         auto status = [grading = cfg.status_grading](

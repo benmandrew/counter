@@ -63,7 +63,6 @@ struct Config {
     std::size_t population_size = 200;
     double fitness_weight_syntactic = 0.2;
     double fitness_weight_semantic = 0.5;
-    double fitness_weight_halstead = 0.1;
     double fitness_weight_status = 0.5;
     /// How the status objective grades below realizability (see StatusGrading).
     /// Mrs costs more realizability queries per candidate -- a median of 4.6x

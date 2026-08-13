@@ -23,7 +23,6 @@
       "properties": {
         "weight_syntactic": { "type": "number", "minimum": 0, "description": "Syntactic similarity component weight." },
         "weight_semantic":  { "type": "number", "minimum": 0, "description": "Semantic similarity (model counting) component weight." },
-        "weight_halstead":  { "type": "number", "minimum": 0, "description": "Halstead complexity penalty weight." },
         "weight_status":    { "type": "number", "minimum": 0, "description": "Realizability status weight." },
         "status_grading": { "type": "string", "enum": ["tiered", "mrs"], "default": "mrs", "description": "How the status objective grades below realizability: 'tiered' is the three-point scale (some component unsatisfiable, unrealizable, realizable and well-separated); 'mrs' (default) replaces the middle tier with the greedy maximal-realizable-subset fraction, admitting guarantee-side parts in spec order and scoring the fraction kept. Mrs costs more realizability queries per candidate -- a median 1.15x paired wall time -- and grades a region 'tiered' collapses to a single value; the 2026-08-11 campaign measured it at 410/480 repairs against tiered's 367/480." }
       }

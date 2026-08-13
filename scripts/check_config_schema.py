@@ -210,7 +210,6 @@ DEFAULT_FIELDS = {
     "genetic.mutation_rate": "mutation_rate",
     "fitness.weight_syntactic": "fitness_weight_syntactic",
     "fitness.weight_semantic": "fitness_weight_semantic",
-    "fitness.weight_halstead": "fitness_weight_halstead",
     "fitness.weight_status": "fitness_weight_status",
     "mutation.p_trigger": "p_trigger",
     "mutation.p_response": "p_response",

@@ -2,7 +2,7 @@
 
 /// @file fitness.hpp
 /// @brief TLSF analogues of the FRETISH fitness components (syntactic,
-///        semantic, Halstead, status) and the factory assembling them into a
+///        semantic, status) and the factory assembling them into a
 ///        weighted aggregate over tlsf::Specification.
 
 #include "config.hpp"
@@ -28,14 +28,6 @@ double tlsf_semantic_similarity(const tlsf::Specification& spec,
                                 const tlsf::Specification& original,
                                 const Config& cfg);
 
-/// Halstead size penalty of @p spec relative to @p original, in [0, 1]. Token
-/// counts are summed over every section formula of each specification; the
-/// score is `min(1, volume(original) / volume(spec))`, so a candidate no larger
-/// than the original scores 1.0 and larger candidates score lower.
-double tlsf_halstead_fitness(const tlsf::Specification& spec,
-                             const tlsf::Specification& original,
-                             const Config& cfg);
-
 /// Realizability status of @p spec on the shared scale of `fitness/status.hpp`:
 ///   0.0 — some section formula is individually unsatisfiable
 ///   0.5 — every section formula is satisfiable but the lowering is
@@ -47,7 +39,7 @@ double tlsf_halstead_fitness(const tlsf::Specification& spec,
 /// front ends cannot drift onto different scales again.
 double tlsf_status(const tlsf::Specification& spec, const Config& cfg);
 
-/// Builds the weighted aggregate of the four TLSF fitness components, gated on
+/// Builds the weighted aggregate of the three TLSF fitness components, gated on
 /// the same `cfg.fitness_weight_*` fields the FRETISH factory uses. Components
 /// with a non-positive weight are omitted.
 AggregateWeightedFitnessFunctionT<tlsf::Specification>

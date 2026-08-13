@@ -97,7 +97,7 @@
       "additionalProperties": false,
       "properties": {
         "name": {
-          "description": "Identifier of the fitness component (e.g. syntactic, semantic, halstead, status).",
+          "description": "Identifier of the fitness component (e.g. syntactic, semantic, status).",
           "type": "string"
         },
         "score": {

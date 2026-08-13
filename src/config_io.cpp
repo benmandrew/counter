@@ -109,9 +109,8 @@ const KeySpec& config_key_spec() {
               section({"generations", "population_size", "selection_rate",
                        "elitism_rate", "crossover_rate", "mutation_rate",
                        "selection_scheme"})},
-             {"fitness",
-              section({"weight_syntactic", "weight_semantic", "weight_halstead",
-                       "weight_status", "status_grading"})},
+             {"fitness", section({"weight_syntactic", "weight_semantic",
+                                  "weight_status", "status_grading"})},
              {"mutation",
               section({"p_trigger", "p_response", "p_timing",
                        "p_add_assumption", "p_conditional_assumption",
@@ -130,6 +129,18 @@ const KeySpec& config_key_spec() {
     return spec;
 }
 
+/// Says why a key a config still sets is no longer known, for the keys removed
+/// rather than never recognised. An archived campaign config is a partial
+/// record whose omitted keys take the binary's current default, so a removed
+/// key is the one case where the config cannot be reinterpreted at all; the
+/// bare "unknown key" reads as a typo instead.
+std::string retired_key_hint(const std::string& path) {
+    if (path == "fitness.weight_halstead") {
+        return " (removed: the Halstead objective no longer exists)";
+    }
+    return "";
+}
+
 void warn_unknown_keys(const toml::table& tbl, const KeySpec& spec,
                        const std::string& prefix) {
     for (const auto& [key, node] : tbl) {
@@ -144,7 +155,8 @@ void warn_unknown_keys(const toml::table& tbl, const KeySpec& spec,
                 warn_unknown_keys(*node.as_table(), sub->second, path + ".");
             }
         } else if (spec.keys.find(name) == spec.keys.end()) {
-            std::cerr << "config: unknown key " << path << ", ignoring\n";
+            std::cerr << "config: unknown key " << path
+                      << retired_key_hint(path) << ", ignoring\n";
         }
     }
 }
@@ -207,10 +219,6 @@ void apply_fitness(const toml::table& tbl, Config& cfg) {
     if (auto val = tbl["weight_semantic"].value<double>()) {
         require_nonnegative(*val, "fitness.weight_semantic");
         cfg.fitness_weight_semantic = *val;
-    }
-    if (auto val = tbl["weight_halstead"].value<double>()) {
-        require_nonnegative(*val, "fitness.weight_halstead");
-        cfg.fitness_weight_halstead = *val;
     }
     if (auto val = tbl["weight_status"].value<double>()) {
         require_nonnegative(*val, "fitness.weight_status");

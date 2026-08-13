@@ -44,7 +44,6 @@ mutation_rate   = 0.8
 [fitness]
 weight_syntactic = 0.3
 weight_semantic  = 0.4
-weight_halstead  = 0.05
 weight_status    = 0.6
 
 [mutation]
@@ -78,8 +77,6 @@ dashboard        = true
            "config_io: fitness weight_syntactic should be parsed from TOML");
     expect(cfg.fitness_weight_semantic == 0.4,
            "config_io: fitness weight_semantic should be parsed from TOML");
-    expect(cfg.fitness_weight_halstead == 0.05,
-           "config_io: fitness weight_halstead should be parsed from TOML");
     expect(cfg.fitness_weight_status == 0.6,
            "config_io: fitness weight_status should be parsed from TOML");
     expect(cfg.p_trigger == 0.3,
@@ -398,7 +395,6 @@ selection_scheme = "nsga2-truncate"
 [fitness]
 weight_syntactic = 0.3
 weight_semantic  = 0.4
-weight_halstead  = 0.05
 weight_status    = 0.6
 
 [mutation]

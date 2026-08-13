@@ -40,7 +40,6 @@ The overview pages describe the algorithm, the tuning knobs, and the TLSF path. 
    :caption: Fitness
 
    api/fitness/function
-   api/fitness/halstead
    api/fitness/model_counter
    api/fitness/semantic_similarity
    api/fitness/status

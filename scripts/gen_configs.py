@@ -13,7 +13,7 @@ Usage:
     python scripts/gen_configs.py                       # the standard grid
     python scripts/gen_configs.py --schemes nsga2-truncate   # one scheme only
     python scripts/gen_configs.py --sweeps C D E        # specific sweeps
-    python scripts/gen_configs.py --sweeps C --levels default,no-halstead
+    python scripts/gen_configs.py --sweeps C --levels default,status-only
                                                         # specific levels only
     python scripts/gen_configs.py --generations 40 --population-size 1000 \\
         --out-dir experiments/configs-cj-large          # a larger operating point
@@ -114,7 +114,6 @@ DEFAULTS: dict = {
     "elitism_rate": 0.1,
     "weight_syntactic": 0.33,
     "weight_semantic": 0.33,
-    "weight_halstead": 0.1,
     "weight_status": 0.33,
     "p_trigger": 0.5,
     "p_response": 0.5,
@@ -208,7 +207,6 @@ def make_toml(overrides: dict, defaults: dict = DEFAULTS) -> str:
         "[fitness]",
         f"weight_syntactic = {_fmt(d['weight_syntactic'])}",
         f"weight_semantic  = {_fmt(d['weight_semantic'])}",
-        f"weight_halstead  = {_fmt(d['weight_halstead'])}",
         f"weight_status    = {_fmt(d['weight_status'])}",
     ] + ([
         f'status_grading   = "{d["status_grading"]}"',
@@ -293,14 +291,19 @@ SWEEP_B: list[tuple[str, dict]] = [
 ]
 
 # Sweep C: vary fitness weight presets (generations=10, population_size=200)
+#
+# The "no-halstead" level was retired on 2026-08-13 with the Halstead objective
+# itself. It set weight_halstead to 0 against a default of 0.1, so with the key
+# gone the level says nothing the "default" level does not; the ablation it
+# carried is retired with it. Archived rows recording it stay readable, and the
+# campaigns that ran it reproduce from their vendored per-campaign scripts/ at
+# the commit their PROVENANCE.json names.
 SWEEP_C: list[tuple[str, dict]] = [
     ("default",         {}),
     ("syntactic-heavy", {"weight_syntactic": 0.8, "weight_semantic": 0.2}),
     ("semantic-heavy",  {"weight_syntactic": 0.2, "weight_semantic": 0.8}),
     ("status-only",     {"weight_syntactic": 0.0, "weight_semantic": 0.0,
-                         "weight_halstead": 0.0, "weight_status": 1.0}),
-    ("no-halstead",     {"weight_syntactic": 0.33, "weight_semantic": 0.5,
-                         "weight_halstead": 0.0,  "weight_status": 0.5}),
+                         "weight_status": 1.0}),
 ]
 
 # Sweep D: vary the trigger mutation probability
@@ -560,13 +563,13 @@ TLSF_SWEEP_R: list[tuple[str, dict]] = list(SWEEP_R)
 # means every one of the ~225k archived rows, none of which carries the column,
 # would need a legacy default to keep matching. A sweep needs none of that: the
 # arm rides in `level_name`, a field the key already carries, exactly as sweep C
-# carries the halstead ablation. Cross it as a factor only when a campaign needs
-# it crossed with something else.
+# carries its weight presets. Cross it as a factor only when a campaign needs it
+# crossed with something else.
 #
 # "tiered" is the config.hpp default and the baseline arm; "mrs" is the greedy
 # maximal-realizable-subset scale. level_value_of() reads a trailing number off
 # the level name and finds none in either, as with sweep C's default and
-# no-halstead, so both record a null level value.
+# status-only, so both record a null level value.
 TLSF_SWEEP_G: list[tuple[str, dict]] = [
     ("tiered", {"status_grading": "tiered"}),
     ("mrs",    {"status_grading": "mrs"}),
@@ -676,8 +679,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--levels", default=None, metavar="NAMES",
                         help="Comma-separated level names; each selected sweep "
                              "emits only its matching levels (e.g. --levels "
-                             "default,no-halstead restricts sweep C to the "
-                             "ablation pair). A name matching no level of the "
+                             "default,status-only restricts sweep C to that "
+                             "pair). A name matching no level of the "
                              "selected sweeps is an error — a typo would "
                              "otherwise silently shrink the grid. Omit to emit "
                              "every level")

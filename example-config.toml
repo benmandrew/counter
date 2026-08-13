@@ -31,7 +31,6 @@ selection_scheme = "nsga2-truncate"
 [fitness]
 weight_syntactic = 0.2
 weight_semantic  = 0.5
-weight_halstead  = 0.1
 weight_status    = 0.5
 # "mrs" grades the unrealizable region by the fraction of guarantee-side parts a
 # greedy sweep keeps realizable; "tiered" collapses that whole region to 0.5.

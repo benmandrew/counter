@@ -30,14 +30,16 @@ std::optional<bool> requirement_implies(const Requirement& from,
         const std::string prop_check = "(" + from.m_response.to_string() +
                                        ") & !(" + dest.m_response.to_string() +
                                        ")";
-        const auto prop_sat = checker.check_satisfiability(prop_check);
+        const auto prop_sat = checker.check_satisfiability(
+            prop_check, QueryPolarity::ExpectUnsat);
         if (prop_sat.has_value()) {
             return !prop_sat.value();
         }
         // Timeout (rare for propositional): fall through to LTL.
     }
     const std::optional<bool> sat = checker.check_satisfiability(
-        "(" + from.m_ltl + ") & !(" + dest.m_ltl + ")");
+        "(" + from.m_ltl + ") & !(" + dest.m_ltl + ")",
+        QueryPolarity::ExpectUnsat);
     if (!sat.has_value()) {
         ImplicationFilterStats::n_timeouts.fetch_add(1,
                                                      std::memory_order_relaxed);

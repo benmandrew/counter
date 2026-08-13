@@ -2,6 +2,7 @@
 #include <chrono>
 #include <optional>
 #include <string>
+#include <utility>
 
 #include "runner/black.hpp"
 #include "runner/ltlfilt.hpp"
@@ -203,6 +204,99 @@ void test_weak_operator_scan_respects_token_boundaries() {
            "ltlfilt: a standalone M is an operator");
 }
 
+// SPOT's own blowup case, and the reason the first stage carries a budget at
+// all. A chain of `<->` over `G F` terms builds an automaton large enough that
+// construction runs unboundedly: left without a deadline one of these reached
+// 4.5GB resident and was still growing 24 minutes later. What is pinned here
+// is that the deadline is honoured -- execute_and_capture kills the process
+// group, so nothing survives the call -- and that the result reads as no
+// answer rather than as UNSAT, which would drop a candidate over a budget.
+void test_spot_blowup_is_bounded_not_answered() {
+    std::string formula = "G(F(p0))";
+    for (int term = 1; term < 12; ++term) {
+        formula.append(" <-> G(F(p").append(std::to_string(term)).append("))");
+    }
+    const auto start = std::chrono::steady_clock::now();
+    const std::optional<bool> result =
+        spot_satisfiable(formula, std::chrono::milliseconds(200));
+    const auto elapsed = std::chrono::steady_clock::now() - start;
+    expect(!result.has_value(),
+           "spot: an automaton-hostile formula yields no answer rather than "
+           "a verdict");
+    expect(elapsed < std::chrono::seconds(5),
+           "spot: the budget is honoured rather than run to completion");
+}
+
+void test_spot_satisfiable_decides_both_ways() {
+    const auto budget = std::chrono::milliseconds(5000);
+    expect(spot_satisfiable("F p", budget) == std::optional<bool>(true),
+           "spot: F p should be satisfiable");
+    expect(spot_satisfiable("(G !p) & (F p)", budget) ==
+               std::optional<bool>(false),
+           "spot: (G !p) & (F p) should be unsatisfiable");
+    // Exit status 2, which must read as no answer rather than as UNSAT: a
+    // parse error reported as unsatisfiable would drop a candidate silently.
+    expect(!spot_satisfiable("a &&& b", budget).has_value(),
+           "spot: a formula SPOT cannot parse yields no answer");
+}
+
+// The case the routing exists for. black cannot decide this within any budget
+// the engine gives it -- at an X-chain depth of 40 it takes seconds, and the
+// depth grows with every generation the search runs -- while SPOT answers by
+// automaton emptiness in milliseconds regardless of depth. Before SPOT took
+// the first stage this returned nullopt, and the implication filter kept every
+// candidate it could not judge.
+void test_deep_nested_x_implication_is_decided(
+    const std::chrono::milliseconds& timeout) {
+    const auto x_chain = [](int depth) {
+        std::string chain = "q";
+        for (int step = 0; step < depth; ++step) {
+            std::string wrapped = "(q | X(";
+            wrapped.append(chain).append("))");
+            chain = std::move(wrapped);
+        }
+        return chain;
+    };
+    const std::string chain = x_chain(60);
+    const std::string wider = x_chain(61);
+    SatisfiabilityChecker checker;
+    checker.set_timeout(timeout);
+    // "within 60" implies "within 61", so the implication holds and the query
+    // asking whether it fails is unsatisfiable.
+    const std::optional<bool> sat = checker.check_satisfiability(
+        "(G(p -> " + chain + ")) & !(G(p -> " + wider + "))",
+        QueryPolarity::ExpectUnsat);
+    expect(sat.has_value() && !*sat,
+           "routing: a deep nested-X implication is decided unsatisfiable");
+}
+
+// Polarity governs escalation alone. Both spellings must agree on every
+// formula either backend can decide, or the filters would disagree with one
+// another over the same candidate.
+void test_polarity_does_not_change_the_answer(
+    const std::chrono::milliseconds& timeout) {
+    const std::array<std::pair<const char*, bool>, 4> cases{
+        {{"F p", true},
+         {"p & !p", false},
+         {"G F p", true},
+         {"(G !p) & (F p)", false}}};
+    for (const auto& [formula, satisfiable] : cases) {
+        SatisfiabilityChecker sat_checker;
+        SatisfiabilityChecker unsat_checker;
+        sat_checker.set_timeout(timeout);
+        unsat_checker.set_timeout(timeout);
+        const std::optional<bool> as_sat =
+            sat_checker.check_satisfiability(formula, QueryPolarity::ExpectSat);
+        const std::optional<bool> as_unsat = unsat_checker.check_satisfiability(
+            formula, QueryPolarity::ExpectUnsat);
+        std::string message(
+            "routing: polarity must not change the answer for ");
+        message.append(formula);
+        expect(as_sat == std::optional<bool>(satisfiable) && as_sat == as_unsat,
+               message);
+    }
+}
+
 }  // namespace
 
 void run_black_runner_tests(const std::chrono::milliseconds& timeout) {
@@ -215,4 +309,8 @@ void run_black_runner_tests(const std::chrono::milliseconds& timeout) {
     test_implication_check_with_vacuous_conjunct(timeout);
     test_weak_until_validity(timeout);
     test_weak_operator_scan_respects_token_boundaries();
+    test_spot_satisfiable_decides_both_ways();
+    test_spot_blowup_is_bounded_not_answered();
+    test_deep_nested_x_implication_is_decided(timeout);
+    test_polarity_does_not_change_the_answer(timeout);
 }

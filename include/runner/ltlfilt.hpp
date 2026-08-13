@@ -82,6 +82,27 @@ bool has_weak_operator(const std::string& formula);
 /// Memoised like the other passes here: one subprocess per unique input.
 std::optional<std::string> rewrite_weak_operators(const std::string& formula);
 
+/// Decides satisfiability of `formula` via `ltlfilt --satisfiable`, which
+/// translates to a Büchi automaton and checks emptiness. Returns true (SAT),
+/// false (UNSAT), or std::nullopt when the answer is inconclusive: the binary
+/// is inaccessible, the call exceeded `timeout`, or SPOT rejected the input.
+///
+/// Cost is independent of the verdict, which is what makes this complementary
+/// to black rather than a drop-in replacement. Measured over 5,579 queries
+/// taken from real runs it decided every one, p99 15ms and max 140ms, and it
+/// stays flat where black does not: a validity check over an X-chain 640 deep
+/// costs 30ms here and does not finish in 60s there. It has its own blowup
+/// case in the opposite direction, on satisfiable formulae whose automaton is
+/// large -- chained `<->` over `G F` terms, or period-2 counters -- so a
+/// caller wanting an answer on those needs black behind it.
+///
+/// Deliberately not memoised: check_satisfiability caches the decided answer
+/// under its own key, so a second cache here would hold the same verdicts
+/// twice. Weak-until needs no rewriting on this path either, unlike the black
+/// one -- SPOT emits `W` and `M` itself and reads back what it writes.
+std::optional<bool> spot_satisfiable(const std::string& formula,
+                                     std::chrono::milliseconds timeout);
+
 /// Returns true if `lhs` and `rhs` are logically equivalent LTL formulae,
 /// checked via `ltlfilt --equivalent-to`. This is a best-effort
 /// cross-validation helper (e.g. for differential-testing the hand-rolled

@@ -390,7 +390,8 @@ std::optional<bool> tlsf_spec_implies(const tlsf::Specification& from,
         return true;
     }
     const std::optional<bool> sat = checker.check_satisfiability(
-        "(" + from.to_ltl() + ") & !(" + dest.to_ltl() + ")");
+        "(" + from.to_ltl() + ") & !(" + dest.to_ltl() + ")",
+        QueryPolarity::ExpectUnsat);
     if (!sat.has_value()) {
         return std::nullopt;
     }

@@ -45,7 +45,11 @@ namespace {
 // 8 added mutation.p_remove_guarantee. The operator can delete a guarantee, so
 // a repair may hold fewer requirements than the specification it came from, and
 // a reader comparing counts needs to know whether the run could do that.
-constexpr int k_schema_version = 8;
+// 9 added n_spot_decided and n_escalations_declined, and redefined
+// tool_calls.black.calls as black's own exec count rather than the
+// satisfiability cache-miss count, which SPOT taking the first stage split in
+// two. Comparing black.calls across the boundary compares different things.
+constexpr int k_schema_version = 9;
 
 // The inverse of the spellings config_io.cpp parses. It has no table to
 // borrow -- it only ever goes string to enum -- so these must be kept in step
@@ -198,7 +202,11 @@ nlohmann::json tool_calls_json() {
                             RealizabilityChecker::n_cache_hits,
                             RealizabilityChecker::n_timeouts,
                             RealizabilityChecker::total_time_s)},
-            {"black", row(SatisfiabilityChecker::n_cache_misses,
+            // "calls" is black's own exec count, which parted company with the
+            // cache-miss count when SPOT took the first stage: a miss now
+            // reaches black only if SPOT left it undecided and its polarity
+            // says black could still answer.
+            {"black", row(SatisfiabilityChecker::n_black_calls,
                           SatisfiabilityChecker::n_cache_hits,
                           SatisfiabilityChecker::n_timeouts,
                           SatisfiabilityChecker::total_time_s)},
@@ -247,6 +255,9 @@ void write_run_manifest(const std::string& output_dir,
         {"config", config_json(cfg)},
         {"tool_calls", tool_calls_json()},
         {"n_constant_folded", SatisfiabilityChecker::n_constant_folded.load()},
+        {"n_spot_decided", SatisfiabilityChecker::n_spot_decided.load()},
+        {"n_escalations_declined",
+         SatisfiabilityChecker::n_escalations_declined.load()},
         {"n_weak_operator_unresolved",
          SatisfiabilityChecker::n_weak_operator_unresolved.load()},
         {"n_tautology_substitutions", Ltl2tgbaStats::n_tautology_substitutions},

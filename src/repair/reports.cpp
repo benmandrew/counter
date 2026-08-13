@@ -81,7 +81,7 @@ void print_diagnostics_report() {
               RealizabilityChecker::total_time_s,
               RealizabilityChecker::n_cache_hits,
               RealizabilityChecker::n_timeouts);
-    print_row("black", SatisfiabilityChecker::n_cache_misses,
+    print_row("black", SatisfiabilityChecker::n_black_calls,
               SatisfiabilityChecker::total_time_s,
               SatisfiabilityChecker::n_cache_hits,
               SatisfiabilityChecker::n_timeouts);
@@ -94,6 +94,13 @@ void print_diagnostics_report() {
     }
     std::cout << "\nConstant-folded (decided by ltlfilt, no black call): "
               << SatisfiabilityChecker::n_constant_folded << "\n";
+    std::cout << "Decided by SPOT (ltlfilt --satisfiable, no black call): "
+              << SatisfiabilityChecker::n_spot_decided << "\n";
+    std::cout << "Left to black (SPOT undecided, polarity allows escalation): "
+              << SatisfiabilityChecker::n_black_calls << "\n";
+    std::cout << "Not escalated (SPOT undecided, black would exhaust its "
+                 "bound): "
+              << SatisfiabilityChecker::n_escalations_declined << "\n";
     std::cout << "Weak-operator queries left unresolved (ltlfilt could not "
                  "rewrite W/M, black is unsound on them): "
               << SatisfiabilityChecker::n_weak_operator_unresolved << "\n";

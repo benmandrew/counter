@@ -204,6 +204,45 @@ std::optional<std::string> rewrite_weak_operators(const std::string& formula) {
     return remember(rewritten);
 }
 
+std::optional<bool> spot_satisfiable(const std::string& formula,
+                                     std::chrono::milliseconds timeout) {
+    COUNTER_PROFILE_SCOPE("ltlfilt/spot_satisfiable");
+    const std::string binary = ltlfilt_path();
+    if (access(binary.c_str(), F_OK) != 0) {
+        return std::nullopt;
+    }
+    const auto start = std::chrono::steady_clock::now();
+    const ProcessResult result =
+        execute_and_capture({binary, "--satisfiable", "-f", formula}, timeout);
+    const double elapsed =
+        std::chrono::duration<double>(std::chrono::steady_clock::now() - start)
+            .count();
+    {
+        std::scoped_lock lock(g_ltlfilt_mutex);
+        LtlfiltStats::total_time_s += elapsed;
+        LtlfiltStats::total_cpu_s += result.m_cpu_s;
+        if (result.m_timed_out) {
+            LtlfiltStats::n_timeouts++;
+        }
+    }
+    // Tested before the exit code: the SIGKILL that ends a timed-out call
+    // leaves a status this would otherwise read as a verdict.
+    if (result.m_timed_out) {
+        return std::nullopt;
+    }
+    // ltlfilt's filter convention, as in ltl_equivalent: 0 means the formula
+    // matched the --satisfiable filter, 1 means it did not. Every other status
+    // is a parse error or a crash, and reporting either as UNSAT would drop a
+    // candidate over a spelling.
+    if (result.m_exit_code == 0) {
+        return true;
+    }
+    if (result.m_exit_code == 1) {
+        return false;
+    }
+    return std::nullopt;
+}
+
 bool ltl_equivalent(const std::string& lhs, const std::string& rhs) {
     const std::string binary = ltlfilt_path();
     if (access(binary.c_str(), F_OK) != 0) {

@@ -203,6 +203,42 @@ void test_weak_operator_scan_respects_token_boundaries() {
            "ltlfilt: a standalone M is an operator");
 }
 
+// SPOT's own blowup case, and the reason the first stage carries a budget at
+// all. A chain of `<->` over `G F` terms builds an automaton large enough that
+// construction runs unboundedly: left without a deadline one of these reached
+// 4.5GB resident and was still growing 24 minutes later. What is pinned here
+// is that the deadline is honoured -- execute_and_capture kills the process
+// group, so nothing survives the call -- and that the result reads as no
+// answer rather than as UNSAT, which would drop a candidate over a budget.
+void test_spot_blowup_is_bounded_not_answered() {
+    std::string formula = "G(F(p0))";
+    for (int term = 1; term < 12; ++term) {
+        formula.append(" <-> G(F(p").append(std::to_string(term)).append("))");
+    }
+    const auto start = std::chrono::steady_clock::now();
+    const std::optional<bool> result =
+        spot_satisfiable(formula, std::chrono::milliseconds(200));
+    const auto elapsed = std::chrono::steady_clock::now() - start;
+    expect(!result.has_value(),
+           "spot: an automaton-hostile formula yields no answer rather than "
+           "a verdict");
+    expect(elapsed < std::chrono::seconds(5),
+           "spot: the budget is honoured rather than run to completion");
+}
+
+void test_spot_satisfiable_decides_both_ways() {
+    const auto budget = std::chrono::milliseconds(5000);
+    expect(spot_satisfiable("F p", budget) == std::optional<bool>(true),
+           "spot: F p should be satisfiable");
+    expect(spot_satisfiable("(G !p) & (F p)", budget) ==
+               std::optional<bool>(false),
+           "spot: (G !p) & (F p) should be unsatisfiable");
+    // Exit status 2, which must read as no answer rather than as UNSAT: a
+    // parse error reported as unsatisfiable would drop a candidate silently.
+    expect(!spot_satisfiable("a &&& b", budget).has_value(),
+           "spot: a formula SPOT cannot parse yields no answer");
+}
+
 }  // namespace
 
 void run_black_runner_tests(const std::chrono::milliseconds& timeout) {
@@ -215,4 +251,6 @@ void run_black_runner_tests(const std::chrono::milliseconds& timeout) {
     test_implication_check_with_vacuous_conjunct(timeout);
     test_weak_until_validity(timeout);
     test_weak_operator_scan_respects_token_boundaries();
+    test_spot_satisfiable_decides_both_ways();
+    test_spot_blowup_is_bounded_not_answered();
 }

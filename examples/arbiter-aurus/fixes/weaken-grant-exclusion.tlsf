@@ -1,0 +1,26 @@
+INFO {
+  TITLE:       "TLSF - Test Specification"
+  DESCRIPTION: "Weakening derived from AuRUS genuine arbiter_fixed2, which tightened the grant guarantee under a while loosening it under !a. Keeps the a guard and weakens the consequent to mutual exclusion."
+  SEMANTICS:   Mealy
+  TARGET:   Mealy
+}
+
+MAIN {
+  INPUTS {
+	  a;r1;r2;
+  }
+
+  OUTPUTS {
+	  g1;g2;
+  }
+
+  ASSUMPTIONS {
+  	true;
+  }
+
+  GUARANTEES {
+    G ((!r1 ||  F (g1)));
+    G ((!r2 ||  F (g2)));
+    G ((a || !g1 || !g2));
+  }
+}

@@ -70,12 +70,14 @@ Two marks qualify a row. A `~` before the ROWS count means the number is the who
 Entries live at `experiments/queue/NNN-<name>.toml` on the host that runs them, numbered per host from 001. They are deliberately untracked: a tick rewrites the state on every transition, and a tracked file doing that would leave the checkout permanently dirty, which is the first thing `stage` refuses to touch.
 
 ```
-*/5 * * * * cd /home/benandrew/projects/counter && flock -n $HOME/.counter-queue.lock python3 scripts/campaign.py tick --host av2 >> $HOME/.counter-queue.log 2>&1
+*/5 * * * * cd /home/benandrew/projects/counter && python3 scripts/campaign.py tick --host av2 >> $HOME/.counter-queue.log 2>&1
 ```
 
 `campaign.py cron --host av2 --print` emits that line. Printing is all it does: installing a cron entry on a lab machine would be editing somebody else's crontab from a script.
 
-A tick takes the lock, recovers any entry left `running`, then runs the next phase of the lowest-numbered queued entry in the foreground. The phase holds the lock for its whole duration, so every tick that lands during it exits at once — `flock -n` in the crontab is the outer guard and `campaign.py` takes the same lock itself, which is what stops a tick typed by hand racing the cron one into a second runner over one CSV.
+A tick takes the lock, recovers any entry left `running`, then runs the next phase of the lowest-numbered queued entry in the foreground. The phase holds the lock for its whole duration, so every tick that lands during it exits at once, which is what stops a tick typed by hand racing the cron one into a second runner over one CSV.
+
+The crontab line must not wrap the tick in `flock` on that same lock file. It did until 2026-08-13, and no tick could ever run a phase: flock locks attach to the open file description, the wrapper's descriptor survives the exec, and `acquire_lock` opening the path again is denied by the lock its own parent holds. The wrapper and the tick both exit 0, so 299 consecutive failures on each host logged one repeated line and nothing read as an error. `acquire_lock` is the only guard and covers the hand-typed case the wrapper never did.
 
 | From | To | On |
 | --- | --- | --- |

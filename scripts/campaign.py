@@ -2639,9 +2639,14 @@ def cmd_enqueue(args: argparse.Namespace) -> int:
 def acquire_lock(path: Path):
     """Non-blocking exclusive lock, or None when another tick holds it.
 
-    Taken here as well as in the crontab's `flock -n` because a tick typed by
-    hand while cron is mid-phase would otherwise run a second runner against
-    the same results CSV, and the two resume off the same file.
+    The only lock on the queue. A tick typed by hand while cron is mid-phase
+    would otherwise run a second runner against the same results CSV, and the
+    two resume off the same file.
+
+    Note that flock is per open file description rather than per process, so
+    two `open()`s of this path in one process contend with each other. That is
+    why the crontab line must not wrap the tick in `flock` on the same file --
+    see cron_line().
     """
     path.parent.mkdir(parents=True, exist_ok=True)
     handle = open(path, "a+")
@@ -2921,7 +2926,16 @@ def cmd_requeue(args: argparse.Namespace) -> int:
 
 
 def cron_line(host: str, root: str) -> str:
-    return (f"*/5 * * * * cd {root} && flock -n $HOME/.counter-queue.lock "
+    # No `flock -n` wrapper. It used to be here as an outer guard, but flock
+    # locks attach to the open file description, and the wrapper's fd is
+    # inherited across the exec: acquire_lock() then opens the same path a
+    # second time, gets a distinct description, and is denied by the lock its
+    # own parent holds. Every tick died that way -- silently, since both the
+    # wrapper and the tick exit 0 -- and a queue could never start a phase.
+    # acquire_lock() alone is the guard, and it covers strictly more: the
+    # wrapper only ever bound cron ticks, while the inner lock also blocks a
+    # tick typed by hand against a cron phase already running.
+    return (f"*/5 * * * * cd {root} && "
             f"{REMOTE_PYTHON} scripts/campaign.py tick --host {host} "
             f">> $HOME/.counter-queue.log 2>&1")
 
@@ -2933,10 +2947,11 @@ def cmd_cron(args: argparse.Namespace) -> int:
     root = source_path(args.host) if args.host != LOCAL else str(REPO_ROOT)
     print(cron_line(args.host, root))
     print(f"\n# Not installed. Add it on {args.host} with `crontab -e`.")
-    print("# flock -n makes an overlapping tick exit at once, so a phase that "
-          "runs\n# for hours simply holds the slot; campaign.py takes the same "
-          "lock itself,\n# which is what stops a tick typed by hand from "
-          "racing the cron one.")
+    print("# campaign.py takes the queue lock itself, so a phase that runs for "
+          "hours\n# simply holds the slot and every tick landing during it "
+          "exits at once.\n# Do not wrap this in `flock` on the same lock "
+          "file: the wrapper's fd is\n# inherited across the exec and the "
+          "tick is then denied by its own parent.")
     return 0
 
 

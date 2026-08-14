@@ -110,8 +110,9 @@ const KeySpec& config_key_spec() {
           section({"generations", "population_size", "selection_rate",
                    "elitism_rate", "crossover_rate", "mutation_rate",
                    "selection_scheme"})},
-         {"fitness", section({"weight_syntactic", "weight_semantic",
-                              "weight_status", "status_grading"})},
+         {"fitness",
+          section({"weight_syntactic", "weight_semantic", "weight_status",
+                   "status_grading", "mrs_admission_order"})},
          {"mutation",
           section({"p_trigger", "p_response", "p_timing", "p_add_assumption",
                    "p_remove_guarantee", "p_conditional_assumption",
@@ -233,6 +234,17 @@ void apply_fitness(const toml::table& tbl, Config& cfg) {
         } else {
             throw std::runtime_error(
                 R"(config: fitness.status_grading must be "tiered" or "mrs")");
+        }
+    }
+    if (auto val = tbl["mrs_admission_order"].value<std::string>()) {
+        if (*val == "spec") {
+            cfg.mrs_admission_order = MrsAdmissionOrder::Spec;
+        } else if (*val == "degree") {
+            cfg.mrs_admission_order = MrsAdmissionOrder::Degree;
+        } else {
+            throw std::runtime_error(
+                R"(config: fitness.mrs_admission_order must be "spec" or )"
+                R"("degree")");
         }
     }
 }

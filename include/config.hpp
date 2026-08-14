@@ -58,6 +58,17 @@ enum class RepairMode : std::uint8_t { Monolithic, Muc };
 /// median of 6 grade levels per specification.
 enum class StatusGrading : std::uint8_t { Tiered, Mrs };
 
+/// Which order the MRS walk admits guarantee-side parts in (see
+/// @ref status_score_mrs). Spec is the index order the walk shipped with;
+/// Degree is @ref conflict_degree_order, computed once on the input
+/// specification and replayed on every candidate.
+///
+/// Both are constant across a run, which is what the walk needs: the cache and
+/// the seed reproducibility both turn on every candidate walking the *same*
+/// order, not on which one. Only Degree pays to choose it, at n(n-1)/2 + n
+/// subset queries once.
+enum class MrsAdmissionOrder : std::uint8_t { Spec, Degree };
+
 struct Config {
     std::size_t generations = 10;
     std::size_t population_size = 200;
@@ -77,6 +88,17 @@ struct Config {
     /// cost of 1.15x. The gain concentrates where Tiered cannot grade at all --
     /// `arbiter` moves 0/24 to 22/24 and `rg1` 7/24 to 24/24.
     StatusGrading status_grading = StatusGrading::Mrs;
+    /// Which order the MRS walk admits parts in (see MrsAdmissionOrder). Read
+    /// only under StatusGrading::Mrs.
+    ///
+    /// Spec is the default pending a campaign, not on evidence that it wins.
+    /// What is measured is a population of `tlsf_mutate` mutants scored in
+    /// isolation over six TLSF specifications: Degree scores 0.587 against
+    /// Spec's 0.529 at 1.02x the ltlsynt execs, and scored no lower than Spec
+    /// on any of the six. Nothing there says what the finer gradient does to
+    /// yield or implies_ideal, which is a question for the same kind of paired
+    /// campaign that settled status_grading above.
+    MrsAdmissionOrder mrs_admission_order = MrsAdmissionOrder::Spec;
     std::size_t default_model_counting_bound = 20;
     SimilarityMetric similarity_metric = SimilarityMetric::Logarithmic;
     /// Keep only repairs the original logically implies -- genuine weakenings.

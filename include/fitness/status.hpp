@@ -99,12 +99,27 @@ using SubsetRealizability =
 /// `examples/` the tiered score reads 0.5 for every one, where this spreads
 /// them over 14 distinct values.
 ///
-/// The walk admits parts in index order, taking each one whose addition leaves
-/// the accumulated subset realizable. Order matters, since greedy returns a
-/// maximal subset rather than a maximum one, so the score is a lower bound on
-/// the true MRS. Spec order is chosen over any cleverer rule because it makes
-/// the score a deterministic function of the candidate, which the seed
-/// reproducibility the `determinism` suite pins requires.
+/// The walk admits parts in @p admission_order, taking each one whose addition
+/// leaves the accumulated subset realizable. Order matters, since greedy
+/// returns a maximal subset rather than a maximum one, so the score is a lower
+/// bound on the true MRS. An empty order means index order, which is what the
+/// walk shipped with; Config::mrs_admission_order selects what the front ends
+/// pass instead.
+///
+/// Any order works here so long as it is the *same* order for every candidate
+/// in a run, which is what keeps the score a deterministic function of the
+/// candidate -- the seed reproducibility the `determinism` suite pins requires
+/// that, and nothing about index order in particular. It is also what keeps
+/// RealizabilityChecker's cache: two candidates differing only at part m ask
+/// identical queries at every step before m's position, whatever permutation
+/// puts it there. Measured over populations of mutants, every fixed order costs
+/// 1.02x to 1.07x index order's ltlsynt execs, against 1.48x for a fresh order
+/// per candidate.
+///
+/// The accumulated indices are kept sorted, so a set of parts reaches the
+/// oracle in one order whatever sequence the walk admitted them in. Both front
+/// ends build their subset in the order they are handed, so without this the
+/// cache would key on the admission sequence rather than on the set.
 ///
 /// Well-separation belongs *inside* @p subset_realizable rather than as a
 /// post-hoc cap on a full-marks score. Folding it in costs an ill-separated
@@ -128,11 +143,59 @@ using SubsetRealizability =
 /// @param n_parts           Number of guarantee-side parts the oracle addresses
 /// @param sat               Satisfiability checker (black)
 /// @param subset_realizable Realizability of a subset of those parts
+/// @param admission_order   Order to admit parts in, projected onto @p n_parts
+///                          by @ref project_admission_order; empty means index
+///                          order
 /// @return                  k_status_component_unsatisfiable, or |kept|/n_parts
 ///                          in [0, 1]; 1.0 exactly when every part is kept
 double status_score_mrs(const std::vector<std::string>& components,
                         std::size_t n_parts, SatisfiabilityChecker& sat,
-                        const SubsetRealizability& subset_realizable);
+                        const SubsetRealizability& subset_realizable,
+                        const std::vector<std::size_t>& admission_order = {});
+
+/// @p reference restricted to a walk over @p n_parts parts: entries addressing
+/// a part that no longer exists are dropped, and parts the reference does not
+/// cover are appended in index order.
+///
+/// An order is computed once on the input specification and replayed on every
+/// candidate, and mutation moves the part count either way -- a rewritten
+/// formula splits into a different number of conjuncts on the TLSF path, and a
+/// removed guarantee shortens the walk on the FRETISH one. Projection makes the
+/// order total for any @p n_parts rather than leaving the walk to guess, and an
+/// empty @p reference projects to index order.
+std::vector<std::size_t> project_admission_order(
+    const std::vector<std::size_t>& reference, std::size_t n_parts);
+
+/// Parts ordered by ascending pairwise-conflict degree: how many other parts a
+/// part cannot be held together with, counted over every pair. Ties keep index
+/// order, and a part that is unrealizable on its own sorts last, since no walk
+/// can ever keep it.
+///
+/// This is the min-degree heuristic from constraint satisfaction, and it exists
+/// because index order is measurably biased by one structure. Where a single
+/// early part conflicts with the rest of the guarantee side, index order admits
+/// it first and rejects everything it blocks: on `detector` that keeps 1 part
+/// of 7 where deferring it keeps 6. Over populations of mutants across six TLSF
+/// specifications this order scores 0.587 against index order's 0.529, at 1.02x
+/// the ltlsynt execs, and it scored no lower than index order on any of them.
+///
+/// Costs n(n-1)/2 + n subset queries, dispatched over the global thread pool:
+/// 28 on a 7-part specification, 136 on a 16-part one. That is paid once, by
+/// the front end building its fitness function, against a run that scores tens
+/// of thousands of candidates.
+///
+/// Call it from outside the pool. It submits to global_thread_pool() and blocks
+/// until those tasks finish, so calling it from a pool worker would wait on a
+/// slot that worker is itself holding. Both front ends call it while building
+/// their fitness function, which happens on the main thread before any scoring
+/// starts.
+///
+/// @param n_parts           Number of guarantee-side parts the oracle addresses
+/// @param subset_realizable Realizability of a subset of those parts, as for
+///                          @ref status_score_mrs
+/// @return                  A permutation of [0, n_parts)
+std::vector<std::size_t> conflict_degree_order(
+    std::size_t n_parts, const SubsetRealizability& subset_realizable);
 
 /// Status score of a FRETISH specification. Its components are the
 /// per-requirement conjunctions `condition & response`: a requirement is
@@ -150,11 +213,22 @@ double status_score_mrs(const std::vector<std::string>& components,
 /// guarantees per specification, so the scale still has 4 to 6 levels against
 /// the tiered scale's 3.
 ///
+/// @p slot_order addresses guarantees by their index in `m_guarantees` rather
+/// than by their position in the walk, which runs over the live guarantees
+/// alone. A slot is a stable identity -- a removed requirement keeps its place
+/// and is flagged -- so an order computed once on the input specification still
+/// names the same guarantees after mutation has removed or restored some of
+/// them. Empty means index order. This mapping is untested against a campaign;
+/// the measurements behind Config::mrs_admission_order are TLSF-path only.
+///
 /// @param specification A specification whose requirements all have m_ltl set
 /// @param sat           Satisfiability checker (black)
 /// @param real          Realizability checker (ltlsynt)
 /// @param grading       Which scale to score on (see StatusGrading)
+/// @param slot_order    Guarantee slots in admission order; empty means index
+///                      order. Read only under StatusGrading::Mrs
 double specification_status(const Specification& specification,
                             SatisfiabilityChecker& sat,
                             RealizabilityChecker& real,
-                            StatusGrading grading = StatusGrading::Tiered);
+                            StatusGrading grading = StatusGrading::Tiered,
+                            const std::vector<std::size_t>& slot_order = {});

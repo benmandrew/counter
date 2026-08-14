@@ -219,6 +219,96 @@ void test_mrs_walk_carries_only_the_accepted_prefix() {
            "mrs: a rejected part should not appear in any later query");
 }
 
+void test_mrs_admission_order_changes_which_maximal_set_is_reached() {
+    // Part 0 conflicts with every other part, which is the structure that
+    // biases index order: admitting 0 first rejects the three it blocks.
+    // Deferring it keeps those three instead. Greedy returns a maximal subset
+    // rather than a maximum one, and this is the whole of what the order buys.
+    SatisfiabilityChecker sat;
+    const auto blocked = [](const std::vector<std::size_t>& indices) {
+        return indices.size() < 2 ||
+               std::find(indices.begin(), indices.end(), 0) == indices.end();
+    };
+    expect(status_score_mrs({"p"}, 4, sat, blocked) == 0.25,
+           "mrs: index order should keep only the blocking part");
+    expect(status_score_mrs({"p"}, 4, sat, blocked, {1, 2, 3, 0}) == 0.75,
+           "mrs: deferring the blocking part should keep the three it blocks");
+}
+
+void test_mrs_admission_order_queries_the_sorted_set() {
+    // The oracle sees a set of parts in one order whatever sequence admitted
+    // them, since both front ends build their subset in the order they are
+    // handed and the cache keys on the resulting formula string.
+    SatisfiabilityChecker sat;
+    RecordingOracle oracle{
+        {}, [](const std::vector<std::size_t>&) { return true; }};
+    status_score_mrs(
+        {"p"}, 3, sat,
+        [&oracle](const std::vector<std::size_t>& idx) { return oracle(idx); },
+        {2, 1, 0});
+    const std::vector<std::vector<std::size_t>> expected = {
+        {2}, {1, 2}, {0, 1, 2}};
+    expect(oracle.queries == expected,
+           "mrs: a reversed walk should still query ascending index sets");
+}
+
+void test_mrs_admission_order_is_projected_onto_the_part_count() {
+    // An order is computed once on the input specification and replayed on
+    // mutants whose part count has moved either way, so it is projected rather
+    // than trusted: parts it no longer addresses are dropped, parts it does not
+    // cover are appended, and every part is still walked exactly once.
+    expect(project_admission_order({}, 3) == std::vector<std::size_t>{0, 1, 2},
+           "mrs: an empty reference should project to index order");
+    expect(
+        project_admission_order({2, 0, 1}, 2) == std::vector<std::size_t>{0, 1},
+        "mrs: a reference naming a part that is gone should drop it");
+    expect(project_admission_order({2, 0}, 4) ==
+               std::vector<std::size_t>{2, 0, 1, 3},
+           "mrs: parts the reference misses should follow in index order");
+    expect(
+        project_admission_order({1, 1, 0}, 2) == std::vector<std::size_t>{1, 0},
+        "mrs: a repeated part should be walked once");
+}
+
+void test_conflict_degree_order_defers_the_blocking_part() {
+    // detector's shape: part 0 cannot be held with any of the other three, and
+    // those three are jointly fine. Min-degree ranks 0 last.
+    const std::vector<std::size_t> order =
+        conflict_degree_order(4, [](const std::vector<std::size_t>& indices) {
+            return indices.size() < 2 ||
+                   std::find(indices.begin(), indices.end(), 0) ==
+                       indices.end();
+        });
+    expect(order == std::vector<std::size_t>{1, 2, 3, 0},
+           "degree: the part conflicting with every other should sort last");
+}
+
+void test_conflict_degree_order_ranks_a_solo_unrealizable_part_last() {
+    // A part no subset can ever keep says nothing by its conflicts, so it is
+    // ranked past every other rather than by a degree that means nothing.
+    const std::vector<std::size_t> order =
+        conflict_degree_order(3, [](const std::vector<std::size_t>& indices) {
+            return std::find(indices.begin(), indices.end(), 1) ==
+                   indices.end();
+        });
+    expect(order == std::vector<std::size_t>{0, 2, 1},
+           "degree: a part unrealizable alone should sort last");
+}
+
+void test_conflict_degree_order_keeps_index_order_on_a_tie() {
+    // Equal degree keeps index order, so the result is a function of the
+    // specification rather than of how the pairwise queries interleaved.
+    const auto no_conflicts = [](const std::vector<std::size_t>&) {
+        return true;
+    };
+    const std::vector<std::size_t> order =
+        conflict_degree_order(5, no_conflicts);
+    expect(order == std::vector<std::size_t>{0, 1, 2, 3, 4},
+           "degree: parts of equal degree should keep index order");
+    expect(conflict_degree_order(5, no_conflicts) == order,
+           "degree: the order should be deterministic across calls");
+}
+
 void test_mrs_walk_is_deterministic() {
     // Parts 0 and 1 conflict, and whichever comes first is kept: greedy returns
     // a maximal subset, not a maximum one. Pinned so the property is not taken
@@ -352,6 +442,12 @@ void run_status_tests() {
     test_mrs_keeps_everything_when_all_parts_are_admissible();
     test_mrs_scores_the_kept_fraction();
     test_mrs_walk_carries_only_the_accepted_prefix();
+    test_mrs_admission_order_changes_which_maximal_set_is_reached();
+    test_mrs_admission_order_queries_the_sorted_set();
+    test_mrs_admission_order_is_projected_onto_the_part_count();
+    test_conflict_degree_order_defers_the_blocking_part();
+    test_conflict_degree_order_ranks_a_solo_unrealizable_part_last();
+    test_conflict_degree_order_keeps_index_order_on_a_tie();
     test_mrs_walk_is_deterministic();
     test_mrs_short_circuits_on_an_unsatisfiable_component();
     test_mrs_empty_guarantee_side_scores_realizable();

@@ -162,7 +162,8 @@ double tlsf_semantic_similarity(const tlsf::Specification& spec,
     return total / static_cast<double>(changed);
 }
 
-double tlsf_status(const tlsf::Specification& spec, const Config& cfg) {
+double tlsf_status(const tlsf::Specification& spec, const Config& cfg,
+                   const std::vector<std::size_t>& admission_order) {
     SatisfiabilityChecker& sat = global_sat_checker();
     RealizabilityChecker& real = global_real_checker();
     // A TLSF specification's components are the individual formulae of its six
@@ -195,7 +196,8 @@ double tlsf_status(const tlsf::Specification& spec, const Config& cfg) {
                                                     subset.m_outputs)
                            .value_or(false) &&
                        !tlsf_is_not_well_separated(subset, real);
-            });
+            },
+            admission_order);
     }
 
     return status_score(components, sat, [&spec, &real] {
@@ -208,6 +210,39 @@ double tlsf_status(const tlsf::Specification& spec, const Config& cfg) {
         return realizable && !tlsf_is_not_well_separated(spec, real);
     });
 }
+
+namespace {
+
+// The admission order for the whole run, computed here rather than at a call
+// site because this is the one place that sees the specification being evolved
+// and is entered once, before anything is scored -- including once per core
+// under repair_mode = "muc", where the sub-specification is what gets walked.
+// Under MrsAdmissionOrder::Spec it costs nothing and returns empty, which the
+// walk reads as index order.
+std::vector<std::size_t> tlsf_mrs_admission_order(
+    const tlsf::Specification& original, const Config& cfg) {
+    if (cfg.status_grading != StatusGrading::Mrs ||
+        cfg.mrs_admission_order != MrsAdmissionOrder::Degree) {
+        return {};
+    }
+    const std::vector<tlsf::CoreFormula> parts =
+        tlsf::split_guarantee_parts(original);
+    RealizabilityChecker& real = global_real_checker();
+    return conflict_degree_order(
+        parts.size(),
+        [&original, &parts, &real](const std::vector<std::size_t>& indices) {
+            const tlsf::Specification subset =
+                tlsf::build_part_subset(original, parts, indices);
+            // The same oracle tlsf_status walks with, undecided resolving as
+            // unrealizable in the same direction.
+            return real.check_realizability_ltl(
+                           subset.to_ltl(), subset.m_inputs, subset.m_outputs)
+                       .value_or(false) &&
+                   !tlsf_is_not_well_separated(subset, real);
+        });
+}
+
+}  // namespace
 
 AggregateWeightedFitnessFunctionT<tlsf::Specification>
 tlsf_get_fitness_function(const tlsf::Specification& original,
@@ -228,10 +263,12 @@ tlsf_get_fitness_function(const tlsf::Specification& original,
                              cfg.fitness_weight_semantic, "semantic"});
     }
     if (cfg.fitness_weight_status > 0.0) {
-        functions.push_back({[cfg](const tlsf::Specification& spec) {
-                                 return tlsf_status(spec, cfg);
-                             },
-                             cfg.fitness_weight_status, "status"});
+        functions.push_back(
+            {[cfg, order = tlsf_mrs_admission_order(original, cfg)](
+                 const tlsf::Specification& spec) {
+                 return tlsf_status(spec, cfg, order);
+             },
+             cfg.fitness_weight_status, "status"});
     }
     return AggregateWeightedFitnessFunctionT<tlsf::Specification>(
         std::move(functions));

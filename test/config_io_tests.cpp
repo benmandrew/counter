@@ -213,6 +213,32 @@ void test_config_io_status_grading_mrs_parsed() {
            "config_io: status_grading = \"mrs\" should parse as Mrs");
 }
 
+void test_config_io_mrs_admission_order_defaults_to_spec() {
+    const Config cfg;
+    expect(cfg.mrs_admission_order == MrsAdmissionOrder::Spec,
+           "config_io: mrs_admission_order should default to Spec");
+}
+
+void test_config_io_mrs_admission_order_degree_parsed() {
+    const Config cfg = config_from_toml_string(
+        "[fitness]\nmrs_admission_order = \"degree\"\n");
+    expect(cfg.mrs_admission_order == MrsAdmissionOrder::Degree,
+           "config_io: mrs_admission_order = \"degree\" should parse as "
+           "Degree");
+}
+
+void test_config_io_mrs_admission_order_rejects_unknown() {
+    bool threw = false;
+    try {
+        config_from_toml_string(
+            "[fitness]\nmrs_admission_order = \"rotate\"\n");
+    } catch (const std::exception&) {
+        threw = true;
+    }
+    expect(threw,
+           "config_io: an unknown mrs_admission_order should be rejected");
+}
+
 void test_config_io_status_grading_rejects_unknown() {
     bool threw = false;
     try {
@@ -520,6 +546,9 @@ void run_config_io_tests() {
     test_config_io_status_grading_tiered_parsed();
     test_config_io_status_grading_mrs_parsed();
     test_config_io_status_grading_rejects_unknown();
+    test_config_io_mrs_admission_order_defaults_to_spec();
+    test_config_io_mrs_admission_order_degree_parsed();
+    test_config_io_mrs_admission_order_rejects_unknown();
     test_config_io_selection_scheme_weighted_parsed();
     test_config_io_selection_scheme_nsga2_truncate_parsed();
     test_config_io_selection_scheme_nsga2_apportion_parsed();

@@ -30,7 +30,8 @@ from pathlib import Path
 
 # Keys whose accepted values are a closed set, checked against the schema's
 # "enum". Names are unique across sections, so the section need not be given.
-ENUM_KEYS = ("selection_scheme", "metric", "repair_mode", "status_grading")
+ENUM_KEYS = ("selection_scheme", "metric", "repair_mode", "status_grading",
+             "mrs_admission_order")
 
 
 # --- src/config_io.cpp -------------------------------------------------------
@@ -243,6 +244,7 @@ UNPINNED_KEYS = {
     "tlsf.repair_mode",
     "model_counting.metric",
     "fitness.status_grading",
+    "fitness.mrs_admission_order",
     "runtime.parallel",
 }
 

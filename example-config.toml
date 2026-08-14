@@ -39,6 +39,10 @@ weight_status    = 0.5
 # "mrs" grades the unrealizable region by the fraction of guarantee-side parts a
 # greedy sweep keeps realizable; "tiered" collapses that whole region to 0.5.
 status_grading   = "mrs"  # or "tiered"
+# Which order that sweep admits parts in. "spec" is the specification's own
+# index order; "degree" defers the parts that conflict with most others, costing
+# one pairwise pass over the input before the search starts.
+mrs_admission_order = "spec"  # or "degree"
 
 [mutation]
 # Per-requirement probabilities of rewriting each part of a FRETISH requirement.

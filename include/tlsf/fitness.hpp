@@ -5,6 +5,9 @@
 ///        semantic, status) and the factory assembling them into a
 ///        weighted aggregate over tlsf::Specification.
 
+#include <cstddef>
+#include <vector>
+
 #include "config.hpp"
 #include "fitness/function.hpp"
 #include "tlsf/specification.hpp"
@@ -37,7 +40,13 @@ double tlsf_semantic_similarity(const tlsf::Specification& spec,
 /// The components are the individual formulae of all six sections. Scoring is
 /// delegated to `status_score`, which the FRETISH path also uses, so the two
 /// front ends cannot drift onto different scales again.
-double tlsf_status(const tlsf::Specification& spec, const Config& cfg);
+///
+/// @p admission_order indexes the parts `tlsf::split_guarantee_parts` returns
+/// and is read only under StatusGrading::Mrs; empty means index order. It is
+/// projected onto the candidate's own part count, since mutation rewrites a
+/// formula into a different number of conjuncts.
+double tlsf_status(const tlsf::Specification& spec, const Config& cfg,
+                   const std::vector<std::size_t>& admission_order = {});
 
 /// Builds the weighted aggregate of the three TLSF fitness components, gated on
 /// the same `cfg.fitness_weight_*` fields the FRETISH factory uses. Components

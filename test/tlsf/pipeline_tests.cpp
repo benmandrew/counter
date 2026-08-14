@@ -230,6 +230,14 @@ void test_weakening_screen_rejects_non_weakening() {
     cfg.default_model_counting_bound = 3;
     cfg.repair_mode = RepairMode::Muc;
     cfg.run_weakening_filter = true;
+    // Pinned rather than left at the default. The test needs the search to
+    // reach the specific non-weakening repair described above, so that the
+    // screen has something to reject; which repair seed 0 reaches depends on
+    // the survivor step. Under the nsga2-apportion default the same seed finds
+    // a genuine weakening instead, which the screen then rightly keeps, leaving
+    // the assertion below testing nothing. This test is about the screen, so it
+    // fixes the scheme rather than tracking whichever one is current.
+    cfg.selection_scheme = SelectionScheme::Nsga2Truncate;
 
     const RandomSource random_source = make_random_source_from_seed(0);
     const int status =

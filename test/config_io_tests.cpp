@@ -177,10 +177,16 @@ void test_config_io_elitism_not_less_than_selection_throws() {
            "config_io: elitism_rate not less than selection_rate should throw");
 }
 
-void test_config_io_selection_scheme_defaults_to_nsga2_truncate() {
+// Pinned because the default is what an archived config inherits wherever it
+// states no scheme. It has moved three times -- WeightedAverage, Nsga2 (renamed
+// Nsga2Truncate), and Nsga2Apportion from 2026-08-14 -- and only the 64
+// `sweep_B_pop50_takeoff_*` configs under 2026-07-13-fretish-sweeps are
+// exposed.
+// See "Config vintage" in experiments/README.md before moving it again.
+void test_config_io_selection_scheme_defaults_to_nsga2_apportion() {
     const Config cfg = config_from_toml_string("");
-    expect(cfg.selection_scheme == SelectionScheme::Nsga2Truncate,
-           "config_io: selection_scheme should default to Nsga2Truncate");
+    expect(cfg.selection_scheme == SelectionScheme::Nsga2Apportion,
+           "config_io: selection_scheme should default to Nsga2Apportion");
 }
 
 // Pinned because the default is what every archived config inherits: the key
@@ -509,7 +515,7 @@ void run_config_io_tests() {
     test_config_io_out_of_range_probability_throws();
     test_config_io_elitism_rate_parsed();
     test_config_io_elitism_not_less_than_selection_throws();
-    test_config_io_selection_scheme_defaults_to_nsga2_truncate();
+    test_config_io_selection_scheme_defaults_to_nsga2_apportion();
     test_config_io_status_grading_defaults_to_mrs();
     test_config_io_status_grading_tiered_parsed();
     test_config_io_status_grading_mrs_parsed();

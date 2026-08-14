@@ -225,7 +225,24 @@ struct Config {
     /// without anyone watching. The `--dashboard` flag turns it on for one run
     /// without editing the config.
     bool dashboard = false;
-    SelectionScheme selection_scheme = SelectionScheme::Nsga2Truncate;
+    /// Survivor step for the two NSGA-II schemes, which rank identically.
+    /// Apportion since 2026-08-14, on the `2026-08-11-selection-default`
+    /// campaign: it finds a repair more often on both paths (FRETISH 0.654 to
+    /// 0.704, TLSF 0.857 to 0.887) and returns more of them (+1.82 per TLSF
+    /// run, up on 19 of 20 specifications), for 1.35x the FRETISH wall time and
+    /// 1.15x the TLSF.
+    ///
+    /// That campaign's pre-registered rule said *no*, and this default was
+    /// changed against it. Three of its five criteria failed: FRETISH quality
+    /// against the compute-matched arm (-0.0250, interval reaching -0.0536),
+    /// and the yield gain against both comparators, whose intervals include 1
+    /// (TLSF against compute-matched: odds ratio 1.786, p = 0.078). They failed
+    /// on interval width rather than direction -- every yield point estimate
+    /// favours apportion, and per unit of extra compute it beats spending the
+    /// same budget on more generations. The measured loss is 5 FRETISH runs in
+    /// 280 that stop matching an ideal, against 14 more that find a repair at
+    /// all. docs/configuration.rst records both sides and the untested ground.
+    SelectionScheme selection_scheme = SelectionScheme::Nsga2Apportion;
     double selection_rate = 0.5;
     /// Elitism: the top elitism_rate fraction of the population carries over
     /// into the next generation verbatim, bypassing crossover, mutation, and

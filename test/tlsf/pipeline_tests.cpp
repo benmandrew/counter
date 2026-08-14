@@ -169,10 +169,11 @@ void test_muc_repair_end_to_end() {
     cfg.default_model_counting_bound = 3;
     cfg.repair_mode = RepairMode::Muc;
     // This test is about the MUC loop converging to a realizable output, and
-    // the repair it converges to at seed 0 is not a logical weakening -- see
-    // test_weakening_screen_rejects_non_weakening below, which pins exactly
-    // that. Leaving the screen on here would assert two things at once and
-    // fail on the second.
+    // whether that output is also a logical weakening is a separate question --
+    // see test_weakening_screen_rejects_non_weakening below, which pins the
+    // screen on a seed that reaches a non-weakening repair. Leaving the screen
+    // on here would assert two things at once and make this test hostage to
+    // which repair the seed happens to reach.
     cfg.run_weakening_filter = false;
 
     const RandomSource random_source = make_random_source_from_seed(0);
@@ -199,10 +200,14 @@ void test_muc_repair_end_to_end() {
     std::filesystem::remove_all(dir, err_code);
 }
 
-// Realizable is not the same as repaired. The MUC repair of the arbiter above
-// reaches realizability by deleting the mutex guarantee G !(g0 & g1) and adding
-// G(g1) -- so it forbids behaviour the original allowed, and the original does
-// not imply it. The final weakening screen must reject it.
+// Realizable is not the same as repaired. At seed 1 the MUC repair of the
+// arbiter above reaches realizability by forbidding behaviour the original
+// allowed, so the original does not imply it. The final weakening screen must
+// reject it, leaving nothing written.
+//
+// The seed is load-bearing and has to be re-chosen whenever breeding changes:
+// roughly half of the first 24 seeds reach a genuine weakening instead, which
+// the screen rightly keeps, leaving the assertion below testing nothing.
 //
 // Unlike the FRETISH assume-guarantee decomposition, tlsf_spec_implies is an
 // exact whole-formula query, so a rejection here is a fact about the two specs
@@ -230,16 +235,12 @@ void test_weakening_screen_rejects_non_weakening() {
     cfg.default_model_counting_bound = 3;
     cfg.repair_mode = RepairMode::Muc;
     cfg.run_weakening_filter = true;
-    // Pinned rather than left at the default. The test needs the search to
-    // reach the specific non-weakening repair described above, so that the
-    // screen has something to reject; which repair seed 0 reaches depends on
-    // the survivor step. Under the nsga2-apportion default the same seed finds
-    // a genuine weakening instead, which the screen then rightly keeps, leaving
-    // the assertion below testing nothing. This test is about the screen, so it
-    // fixes the scheme rather than tracking whichever one is current.
+    // Pinned rather than left at the default, for the same reason as the seed:
+    // which repair the search reaches depends on the survivor step, and this
+    // test is about the screen rather than about whichever scheme is current.
     cfg.selection_scheme = SelectionScheme::Nsga2Truncate;
 
-    const RandomSource random_source = make_random_source_from_seed(0);
+    const RandomSource random_source = make_random_source_from_seed(1);
     const int status =
         tlsf::run_repair(input_path.string(), dir.string(), cfg, random_source);
     expect(status == 0, "weakening: run_repair returns 0");

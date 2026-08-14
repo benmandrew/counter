@@ -264,9 +264,9 @@ void test_add_assumption_appends_fairness() {
 }
 
 // The mirror of add-assumption, and what makes the eight drop-* ideals
-// reachable. The deleted conjunct keeps its slot: tlsf_crossover refuses two
-// parents whose section sizes differ, and the similarity objectives pair
-// conjuncts by position, so erasing it would cost the candidate both.
+// reachable. The deleted conjunct keeps its slot: the similarity objectives
+// pair conjuncts by position, so erasing it would start comparing the
+// candidate's remaining conjuncts against unrelated ones of the original.
 void test_remove_guarantee_tombstones_in_place() {
     const tlsf::Specification spec = parse(
         "INPUTS { req; } OUTPUTS { grant; } "
@@ -413,42 +413,106 @@ void test_add_assumption_can_reference_output_when_allowed() {
            "assumption when allow_output_assumptions is set");
 }
 
-void test_crossover_positional_matching_shape() {
-    tlsf::Specification parent_a;
-    parent_a.m_inputs = {"r"};
-    parent_a.m_outputs = {"g"};
-    parent_a.m_guarantee = {Formula("r"), Formula("g")};
-    tlsf::Specification parent_b = parent_a;
-    parent_b.m_guarantee = {Formula("!r"), Formula("!g")};
-
-    const RandomSource rng = make_random_source_from_seed(7);
-    const tlsf::Specification child = tlsf_crossover(parent_a, parent_b, rng);
-    expect(child.m_guarantee.size() == 2,
-           "crossover: section sizes are preserved");
-    for (std::size_t i = 0; i < child.m_guarantee.size(); ++i) {
-        const Formula& picked = child.m_guarantee[i].m_formula;
-        expect(picked == parent_a.m_guarantee[i].m_formula ||
-                   picked == parent_b.m_guarantee[i].m_formula,
-               "crossover: each formula comes from one of the two parents");
+tlsf::Specification globally(const std::vector<std::string>& atoms) {
+    tlsf::Specification spec;
+    spec.m_inputs = {"r"};
+    spec.m_outputs = {"g"};
+    for (const std::string& atom : atoms) {
+        spec.m_guarantee.emplace_back(
+            Formula::make_unary(Formula::Kind::Globally, Formula(atom)));
     }
-    expect(child.m_inputs == parent_a.m_inputs &&
-               child.m_outputs == parent_a.m_outputs,
-           "crossover: signals are inherited from the first parent");
+    return spec;
 }
 
-void test_crossover_mismatched_shape_returns_first() {
-    tlsf::Specification parent_a;
-    parent_a.m_inputs = {"r"};
-    parent_a.m_outputs = {"g"};
-    parent_a.m_guarantee = {Formula("r")};
-    tlsf::Specification parent_b = parent_a;
-    parent_b.m_guarantee = {Formula("!r"), Formula("g")};
+// The point of the operator: the donor conjunct is drawn from anywhere on
+// parent B's side, so material can move between slots. Under the index-for-
+// index crossover this replaced, slot 0 could only ever see parent B's slot 0.
+void test_crossover_grafts_across_slots() {
+    const tlsf::Specification parent_a = globally({"r", "g"});
+    const tlsf::Specification parent_b = globally({"!(r)", "!(g)"});
+
+    bool saw_cross_slot = false;
+    for (std::size_t seed = 0; seed < 60; ++seed) {
+        const RandomSource rng = make_random_source_from_seed(seed);
+        const tlsf::Specification child =
+            tlsf_crossover(parent_a, parent_b, rng);
+        expect(child.m_guarantee.size() == 2,
+               "crossover: section sizes are preserved");
+        expect(child.m_inputs == parent_a.m_inputs &&
+                   child.m_outputs == parent_a.m_outputs,
+               "crossover: signals are inherited from the first parent");
+        std::size_t changed = 0;
+        for (std::size_t i = 0; i < child.m_guarantee.size(); ++i) {
+            if (!(child.m_guarantee[i] == parent_a.m_guarantee[i])) {
+                ++changed;
+            }
+        }
+        expect(changed <= 1, "crossover: at most one conjunct per side merges");
+        // G(!(g)) is parent B's slot 1; finding it grafted into slot 0 is only
+        // possible with a cross-slot donor.
+        if (child.m_guarantee[0].m_formula.to_string().find("!(g)") !=
+            std::string::npos) {
+            saw_cross_slot = true;
+        }
+    }
+    expect(saw_cross_slot,
+           "crossover: a donor from a different slot reaches the target slot");
+}
+
+// Section sizes no longer have to match. The offspring keeps parent A's shape
+// however long parent B's side is, so an individual that has gained an
+// assumption can still breed -- which under index-for-index crossover it could
+// not.
+void test_crossover_accepts_mismatched_shape() {
+    const tlsf::Specification parent_a = globally({"r"});
+    const tlsf::Specification parent_b = globally({"!(r)", "!(g)"});
+
+    bool saw_change = false;
+    for (std::size_t seed = 0; seed < 20; ++seed) {
+        const RandomSource rng = make_random_source_from_seed(seed);
+        const tlsf::Specification child =
+            tlsf_crossover(parent_a, parent_b, rng);
+        expect(child.m_guarantee.size() == 1,
+               "crossover: the offspring keeps the first parent's shape");
+        saw_change = saw_change || !(child == parent_a);
+    }
+    expect(saw_change,
+           "crossover: parents of different section sizes still breed");
+}
+
+void test_crossover_mismatched_signals_returns_first() {
+    const tlsf::Specification parent_a = globally({"r"});
+    tlsf::Specification parent_b = globally({"!(r)"});
+    parent_b.m_inputs = {"other"};
 
     const RandomSource rng = make_random_source_from_seed(1);
     const tlsf::Specification child = tlsf_crossover(parent_a, parent_b, rng);
     expect(child == parent_a,
-           "crossover: mismatched section shapes return the first parent "
-           "unchanged");
+           "crossover: mismatched signals return the first parent unchanged");
+}
+
+// Deletion is mutation's move alone, on both sides: a tombstoned slot of
+// parent A is never a target, and a tombstoned conjunct of parent B is never a
+// donor -- crossover would otherwise breed from content its parent threw away.
+void test_crossover_skips_deleted_conjuncts() {
+    tlsf::Specification parent_a = globally({"r", "g"});
+    parent_a.m_guarantee[0].m_removed = true;
+    tlsf::Specification parent_b = globally({"!(r)", "!(g)"});
+    parent_b.m_guarantee[1].m_removed = true;
+
+    for (std::size_t seed = 0; seed < 40; ++seed) {
+        const RandomSource rng = make_random_source_from_seed(seed);
+        const tlsf::Specification child =
+            tlsf_crossover(parent_a, parent_b, rng);
+        expect(child.m_guarantee[0] == parent_a.m_guarantee[0],
+               "crossover: a deleted slot is never the target of a merge");
+        expect(
+            child.m_guarantee[0].m_removed && !child.m_guarantee[1].m_removed,
+            "crossover: the removal flags are the first parent's");
+        expect(child.m_guarantee[1].m_formula.to_string().find("!(g)") ==
+                   std::string::npos,
+               "crossover: a deleted conjunct is never a donor");
+    }
 }
 
 void test_end_to_end_evolution() {
@@ -503,7 +567,9 @@ void run_tlsf_genetic_tests() {
     test_add_assumption_can_reference_output_when_allowed();
     test_assumption_rewrite_can_reference_output_when_allowed();
     test_weak_until_over_output_is_reachable();
-    test_crossover_positional_matching_shape();
-    test_crossover_mismatched_shape_returns_first();
+    test_crossover_grafts_across_slots();
+    test_crossover_accepts_mismatched_shape();
+    test_crossover_mismatched_signals_returns_first();
+    test_crossover_skips_deleted_conjuncts();
     test_end_to_end_evolution();
 }

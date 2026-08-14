@@ -254,12 +254,14 @@ assert A.SPEC_TLSF["pcar-v2-888"].startswith("examples/icse2019/"), \
 assert A.ONLY_INPUTS_A <= set(A.SPEC_TLSF), \
     f"unknown specs in ONLY_INPUTS_A: {A.ONLY_INPUTS_A - set(A.SPEC_TLSF)}"
 check(len(A.ONLY_INPUTS_A), 9, "specs run with -onlyInputsA")
-# -factors takes four values on the current AuRUS build; the legacy drivers'
-# three-value spellings print usage and exit without running, so a copied
-# CONFIG string would produce a campaign of zero-solution rows.
+# -factors takes three values at 3f6f01f (STATUS,SYN,SEMANTIC), and
+# Settings.setFactors halves the semantic weight into LOST_MODELS and
+# WON_MODELS. A four-value spelling belongs to this project's fork, where the
+# semantic weight was split in two, and prints usage and exits against the
+# base -- so it would produce a campaign of zero-solution rows.
 ga_factors = [f for f in A.BASE_FLAGS if f.startswith("-factors=")]
-check(ga_factors, ["-factors=0.7,0.1,0.1,0.1"],
-      "uniform four-value GA factors")
+check(ga_factors, ["-factors=0.7,0.1,0.2"],
+      "uniform GA factors at the base three-value CLI")
 # Guarantee removal appears in none of the drivers and must stay off.
 assert not any("removeG" in f for f in A.flags_for("arbiter-aurus")), \
     "AuRUS must not be run with -removeGuarantees"

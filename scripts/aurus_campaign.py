@@ -2,16 +2,24 @@
 """Run the AuRUS baseline campaign and collect metrics to a results CSV.
 
 The head-to-head arm of the ablation campaign (PLAN §3.3): for each spec x
-repeat, invoke AuRUS's scripts/unreal-repair.sh from the AuRUS repo root with
-the campaign parameters (BASE_FLAGS plus -GATO=<gato>, and -onlyInputsA for
-the nine specs run-all-together.sh drives), one output directory per repeat.
-AuRUS is not seedable (its RNG comes
-from Math.random() with no CLI override), so independent repeats stand in for
-seeds and every out.txt is archived.
+repeat, invoke AuRUS's ./unreal-repair.sh from the AuRUS repo root with the
+campaign parameters (BASE_FLAGS plus -GATO=<gato>, and -onlyInputsA for the
+nine specs run-all-together.sh drives), one output directory per repeat.
+AuRUS is not seedable (its RNG comes from Math.random() with no CLI
+override), so independent repeats stand in for seeds and every out.txt is
+archived.
 
-The tool's own unreal-repair-harness.sh is deliberately not used — it is
-broken under `set -u` — and per-run wall time is measured here, externally,
-rather than trusting the JVM's self-report (recorded too, as aurus_time_s).
+`--aurus-root` must point at AuRUS as its authors left it, commit 3f6f01f,
+which is the last upstream commit before this project's fork. The fork above
+it changes the GA core, the model-counting fitness and the solver layer, and
+would measure an optimised AuRUS rather than the published baseline. Only one
+substitution is unavoidable: 3f6f01f tracks a macOS Mach-O Strix binary at
+lib/new_strix/strix, so any Linux run needs a Linux Strix dropped in there.
+Note the entry point lives at the repo root at that commit; the fork later
+moved it under scripts/.
+
+Per-run wall time is measured here, externally, rather than trusting the
+JVM's self-report (recorded too, as aurus_time_s).
 
 Each run's out.txt is parsed (`Num. of Solutions:`, `Time:`, `Settings{...}`)
 into a row of <out-root>/aurus_results.csv. Resumable: a (spec, repeat) whose
@@ -149,28 +157,28 @@ SPEC_TLSF: dict[str, str] = {
 # shipped default (GA_GENE_NUM_OF_MUTATIONS), so it is a no-op kept for
 # fidelity to the record. See experiments/2026-07-24-ablation/REPORT.md.
 #
-# `-factors` is STATUS,SYN,MC_strengthen,MC_weaken and is a DELIBERATE
-# DEPARTURE from the drivers, which do not agree on it: run-all-together.sh
-# omits it (taking the shipped 0.7,0.1,0.1,0.1), run-spectra-icse2019.sh
-# passes the equivalent `0.7,0.1,0.2` under an older three-value CLI whose
-# single semantic weight split evenly, and run-all-sensitivity-syntcomp.sh
-# passes `1,0,0` — status alone, with no similarity pressure whatever. Running
-# the last of those would set counter, which weights syntactic and semantic
-# similarity, against an AuRUS told to ignore both on half the corpus, and
-# would flatter counter on repair quality for a reason unrelated to search.
-# All 26 therefore run at 0.7,0.1,0.1,0.1, stated explicitly rather than left
-# to the default so the archived settings string records the choice.
+# `-factors` is STATUS,SYN,SEMANTIC and is a DELIBERATE DEPARTURE from the
+# drivers, which do not agree on it: run-all-together.sh omits it,
+# run-spectra-icse2019.sh passes `0.7,0.1,0.2`, and
+# run-all-sensitivity-syntcomp.sh passes `1,0,0` — status alone, with no
+# similarity pressure whatever. Running the last of those would set counter,
+# which weights syntactic and semantic similarity, against an AuRUS told to
+# ignore both on a third of the corpus, and would flatter counter on repair
+# quality for a reason unrelated to search.
 #
-# The legacy three-value spellings do not run against the current build at
-# all: `-factors` now requires four values and a three-value argument prints
-# usage and exits, so the drivers cannot simply be copied.
+# All 26 therefore run at `0.7,0.1,0.2`, which departs from the drivers only
+# for the SYNTCOMP third: `Settings.setFactors` halves the semantic weight
+# into LOST_MODELS and WON_MODELS, so the value is exactly the shipped default
+# 0.7/0.1/0.1/0.1 that the other two drivers already run under. It is passed
+# explicitly rather than left to the default so the archived settings string
+# records the choice.
 #
 # `-removeGuarantees` appears in none of the drivers and is not passed, so
 # AuRUS never deletes a guarantee. counter does, at p_remove_guarantee 0.05.
 # That asymmetry in operator sets is a threat to validity, not a bug.
 BASE_FLAGS = [
     "-Max=1000", "-Gen=1000", "-Pop=100", "-k=20", "-addA", "-geneNUM=0",
-    "-factors=0.7,0.1,0.1,0.1",
+    "-factors=0.7,0.1,0.2",
 ]
 
 # `-onlyInputsA` restricts generated assumptions to input variables. It is the
@@ -238,7 +246,7 @@ def run_one(aurus_root: Path, tlsf: Path, out_dir: Path, gato: int,
     wrapper shell.
     """
     out_dir.mkdir(parents=True, exist_ok=True)
-    cmd = [str(aurus_root / "scripts" / "unreal-repair.sh"),
+    cmd = [str(aurus_root / "unreal-repair.sh"),
            *flags, f"-GATO={gato}", f"-out={out_dir}", str(tlsf)]
     log_path = out_dir / "run.log"
     t_start = time.monotonic()
@@ -309,7 +317,7 @@ def main() -> None:
 
     if args.concurrency < 1:
         sys.exit("--concurrency must be >= 1")
-    repair_sh = args.aurus_root / "scripts" / "unreal-repair.sh"
+    repair_sh = args.aurus_root / "unreal-repair.sh"
     if not repair_sh.exists():
         sys.exit(f"Not an AuRUS checkout: {repair_sh} missing")
     if not (args.aurus_root / "bin" / "main" / "Main.class").exists():

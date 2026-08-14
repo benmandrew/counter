@@ -15,6 +15,15 @@ std::string input_screen_warning(const std::string& check_name) {
            "unrealizability.\n";
 }
 
+std::string input_screen_error_warning(const std::string& error) {
+    return "warning: the input specification could not be screened: " + error +
+           "\n"
+           "  Whether it holds the correctness properties is unknown, so this "
+           "run\n"
+           "  cannot say whether a repair of it is a repair of the property "
+           "too.\n";
+}
+
 std::vector<CorrectnessCheck> correctness_checks(SatisfiabilityChecker& sat,
                                                  RealizabilityChecker& real) {
     std::vector<CorrectnessCheck> checks;

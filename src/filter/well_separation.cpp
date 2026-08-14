@@ -1,5 +1,8 @@
 #include "filter/well_separation.hpp"
 
+#include <atomic>
+#include <exception>
+#include <optional>
 #include <string>
 #include <unordered_set>
 #include <utility>
@@ -92,15 +95,25 @@ bool specification_is_not_well_separated(const Specification& specification,
     // the definition of not being well-separated. The input/output partition is
     // the original spec's.
     const std::string formula = "(" + conjunction + ") -> (false)";
+    // A query that raises is undecided in exactly the sense a timeout is: no
+    // verdict came back. It is caught here rather than left to propagate
+    // because filters run outside the scoring pool's failure tolerance, so a
+    // single unparseable ltlsynt result -- SPOT 2.15.1 aborts with "Too many
+    // acceptance sets used" on specifications the search reaches routinely --
+    // would abort the whole run instead of costing one candidate.
+    std::optional<bool> realizable;
+    try {
+        realizable = checker.check_realizability_ltl(
+            formula, specification.m_in_atoms, specification.m_out_atoms);
+    } catch (const std::exception&) {
+        WellSeparationStats::n_errors.fetch_add(1, std::memory_order_relaxed);
+    }
     // An undecided query reads as not-well-separated, so the candidate is
     // dropped. This filter inverts the usual reading of a failed synthesis:
     // "unrealizable" is what keeps a candidate here, so defaulting a timeout to
     // it would admit specifications nobody checked, and the filter's own cost
     // is what makes timeouts more likely in the first place.
-    return checker
-        .check_realizability_ltl(formula, specification.m_in_atoms,
-                                 specification.m_out_atoms)
-        .value_or(true);
+    return realizable.value_or(true);
 }
 
 FilterFunction make_well_separation_filter(RealizabilityChecker& checker,

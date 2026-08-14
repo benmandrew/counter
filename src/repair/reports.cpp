@@ -7,6 +7,7 @@
 #include <iostream>
 #include <vector>
 
+#include "filter/well_separation.hpp"
 #include "fitness/function.hpp"
 #include "genetic/generation.hpp"
 #include "runner/black.hpp"
@@ -91,6 +92,11 @@ void print_diagnostics_report() {
         std::cout << "\nltl2tgba tautology substitutions (SPOT exit-2 bug, "
                      "treated as trivially true): "
                   << Ltl2tgbaStats::n_tautology_substitutions << "\n";
+    }
+    if (WellSeparationStats::n_errors > 0) {
+        std::cout << "\nWell-separation queries that raised (resolved as "
+                     "undecided, candidate dropped): "
+                  << WellSeparationStats::n_errors << "\n";
     }
     std::cout << "\nConstant-folded (decided by ltlfilt, no black call): "
               << SatisfiabilityChecker::n_constant_folded << "\n";

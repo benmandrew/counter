@@ -64,6 +64,11 @@ struct InputScreen {
     /// Name of the check the run's input failed. Empty when it passed, and
     /// when no screen ran.
     inline static std::string failed_check;
+    /// Why the screen could not finish, when an external tool raised. Empty
+    /// otherwise. Recorded separately from `failed_check` because an empty
+    /// `failed_check` otherwise reads as "passed every check", which a screen
+    /// that never ran to completion has not established.
+    inline static std::string error;
 };
 
 /// The warning printed when the input specification fails @p check_name.
@@ -73,6 +78,36 @@ struct InputScreen {
 /// repairs the property can be, and the search can reach one, so refusing to
 /// start would foreclose a repair the tool can express (issue #77).
 std::string input_screen_warning(const std::string& check_name);
+
+/// The warning printed when the screen could not finish because a tool raised.
+std::string input_screen_error_warning(const std::string& error);
+
+/// Screens the run's input against @p checks, recording the verdict in
+/// InputScreen and returning what the driver should print (empty when the input
+/// passed every check).
+///
+/// A tool that raises here is reported rather than propagated. The screen is
+/// advisory -- it warns and never rejects, for the reason input_screen_warning
+/// gives -- so a raising `black` or `ltlsynt` call costs the verdict alone.
+/// Letting it out would cost the whole run before the search started, and cost
+/// it badly: both drivers screen outside any handler of their own, so the throw
+/// escapes with neither a `fatal:` line nor a manifest to say what happened.
+template <typename Spec>
+std::string screen_input(const Spec& spec,
+                         const std::vector<CorrectnessCheckT<Spec>>& checks) {
+    try {
+        if (const std::optional<std::string> failed =
+                first_failing_check(spec, checks);
+            failed.has_value()) {
+            InputScreen::failed_check = *failed;
+            return input_screen_warning(*failed);
+        }
+    } catch (const std::exception& exc) {
+        InputScreen::error = exc.what();
+        return input_screen_error_warning(exc.what());
+    }
+    return {};
+}
 
 /// The FRETISH correctness checks, cheapest first.
 ///

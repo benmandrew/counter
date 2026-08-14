@@ -180,6 +180,27 @@ void test_undecided_query_reads_as_not_well_separated() {
            "well-separation: the memoised query should not re-run ltlsynt");
 }
 
+// ltlsynt does not only time out: SPOT 2.15.1 aborts with "Too many acceptance
+// sets used" on specifications the search reaches on its own, and the runner
+// raises on any output it cannot read as a verdict. Filters run outside the
+// scoring pool's failure tolerance, so that throw used to end the run rather
+// than cost one candidate. The throw is provoked here by handing ltlsynt an
+// LTL string it cannot parse: the same unreadable output on the same code
+// path, without the minutes of synthesis the acceptance-set abort costs.
+void test_raising_query_reads_as_not_well_separated() {
+    RealizabilityChecker checker;
+    Requirement assumption = continual("grant", timing::always());
+    assumption.m_ltl = "grant &";
+    const Specification spec = with_assumptions({assumption});
+    const std::size_t before = WellSeparationStats::n_errors.load();
+    expect(specification_is_not_well_separated(spec, checker),
+           "well-separation: a query that raises should drop the candidate "
+           "rather than escape the filter");
+    expect(WellSeparationStats::n_errors.load() == before + 1,
+           "well-separation: a raising query should be counted, so the drop "
+           "was the error policy and not a verdict");
+}
+
 }  // namespace
 
 void run_well_separation_filter_tests() {
@@ -192,4 +213,5 @@ void run_well_separation_filter_tests() {
     test_request_response_assumption_is_well_separated();
     test_filter_drops_only_the_non_well_separated_spec();
     test_undecided_query_reads_as_not_well_separated();
+    test_raising_query_reads_as_not_well_separated();
 }

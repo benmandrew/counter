@@ -4,9 +4,19 @@
 /// @brief Detection of specifications that are not well-separated: ones the
 ///        system can vacuously satisfy by forcing its own assumptions to fail.
 
+#include <atomic>
+#include <cstddef>
+
 #include "genetic/generation.hpp"
 #include "requirement.hpp"
 #include "runner/spot.hpp"
+
+struct WellSeparationStats {
+    /// ltlsynt queries that raised rather than answering, and were resolved as
+    /// undecided instead of propagating. Atomic because the filter runs its
+    /// checks concurrently, unlike the tool stats guarded by a cache mutex.
+    inline static std::atomic<std::size_t> n_errors{0};
+};
 
 /// Returns whether the system can vacuously satisfy @p specification by
 /// falsifying its own assumptions.
@@ -39,6 +49,15 @@
 /// dropped: this filter keeps a candidate exactly when the query comes back
 /// unrealizable, which makes the fallback every other caller uses the unsafe
 /// one here.
+///
+/// A query that *raises* is resolved identically: an exception is a query that
+/// produced no verdict, the same as one killed at its budget, so it is caught,
+/// counted in `WellSeparationStats::n_errors`, and dropped by the same
+/// `value_or` fallback. Letting it propagate instead would end the run, because
+/// filters run outside the scoring pool's `Config::max_scoring_failure_rate`
+/// tolerance -- and the throw is reachable in practice, since SPOT 2.15.1's
+/// `ltlsynt` aborts with "Too many acceptance sets used" on specifications the
+/// search reaches on its own.
 ///
 /// @param specification The specification to test
 /// @param checker       Realizability checker for the ltlsynt query;

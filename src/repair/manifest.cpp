@@ -13,6 +13,7 @@
 #include <nlohmann/json.hpp>
 
 #include "filter/correctness.hpp"
+#include "filter/well_separation.hpp"
 #include "fitness/function.hpp"
 #include "runner/black.hpp"
 #include "runner/ganak.hpp"
@@ -49,7 +50,11 @@ namespace {
 // tool_calls.black.calls as black's own exec count rather than the
 // satisfiability cache-miss count, which SPOT taking the first stage split in
 // two. Comparing black.calls across the boundary compares different things.
-constexpr int k_schema_version = 9;
+// 10 added n_well_separation_errors. The well-separation query used to let an
+// ltlsynt error end the run, so a run that finished implies zero of them; from
+// this version a finished run may have dropped candidates on a non-answer, and
+// only this field says how many.
+constexpr int k_schema_version = 10;
 
 // The inverse of the spellings config_io.cpp parses. It has no table to
 // borrow -- it only ever goes string to enum -- so these must be kept in step
@@ -261,6 +266,9 @@ void write_run_manifest(const std::string& output_dir,
         {"n_weak_operator_unresolved",
          SatisfiabilityChecker::n_weak_operator_unresolved.load()},
         {"n_tautology_substitutions", Ltl2tgbaStats::n_tautology_substitutions},
+        // Well-separation queries that raised instead of answering, resolved as
+        // undecided (the candidate is dropped) rather than propagating.
+        {"n_well_separation_errors", WellSeparationStats::n_errors.load()},
         {"fitness_cache", fitness_cache_json()}};
 
     const std::filesystem::path path = dir / k_run_manifest_name;

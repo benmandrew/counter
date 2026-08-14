@@ -5,6 +5,7 @@
 #include <atomic>
 #include <cstddef>
 #include <cstdint>
+#include <exception>
 #include <functional>
 #include <optional>
 #include <string>
@@ -14,6 +15,7 @@
 #include <vector>
 
 #include "bounded_async.hpp"
+#include "filter/well_separation.hpp"
 #include "prop_formula.hpp"
 #include "runner/black.hpp"
 #include "runner/spot.hpp"
@@ -336,11 +338,18 @@ bool tlsf_is_not_well_separated(const tlsf::Specification& spec,
     // Not well-separated exactly when (assumptions) -> false is realizable: the
     // system has a strategy forcing its own assumptions to fail. An undecided
     // query reads as realizable and so drops the candidate, for the reason
-    // given in filter/well_separation.cpp.
+    // given in filter/well_separation.cpp -- which is also where the catch
+    // below is justified, and whose counter this shares, so the two paths
+    // report one figure for one property.
     const std::string formula = "(" + spec.assumption_ltl() + ") -> (false)";
-    return checker
-        .check_realizability_ltl(formula, spec.m_inputs, spec.m_outputs)
-        .value_or(true);
+    std::optional<bool> realizable;
+    try {
+        realizable = checker.check_realizability_ltl(formula, spec.m_inputs,
+                                                     spec.m_outputs);
+    } catch (const std::exception&) {
+        WellSeparationStats::n_errors.fetch_add(1, std::memory_order_relaxed);
+    }
+    return realizable.value_or(true);
 }
 
 FilterFunctionT<tlsf::Specification> tlsf_make_well_separation_filter(

@@ -388,11 +388,30 @@ std::string ltlsynt_budget_screen(
         return {};
     }
     const auto start = std::chrono::steady_clock::now();
-    const std::optional<bool> decided = query();
+    // A raising query is an undecided one, exactly as a timeout is, and is
+    // caught for the same reason the input screen catches: this runs before the
+    // driver's own handler, so letting it out ends the run with neither a
+    // `fatal:` line nor a manifest. The screen is advisory either way -- it
+    // times a query the run was about to make anyway -- so the cost of a raise
+    // is the timing, not the run.
+    std::optional<bool> decided;
+    std::string error;
+    try {
+        decided = query();
+    } catch (const std::exception& exc) {
+        error = exc.what();
+    }
     const auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
         std::chrono::steady_clock::now() - start);
     BudgetScreen::observed_ms = elapsed.count();
     BudgetScreen::decided = decided.has_value();
+    if (!error.empty()) {
+        return "warning: the input specification's own realizability query "
+               "failed: " +
+               error +
+               "\n         The status objective cannot be decided for any "
+               "candidate this tool rejects the same way.\n";
+    }
     if (decided.has_value()) {
         return {};
     }

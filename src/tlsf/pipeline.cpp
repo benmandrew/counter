@@ -64,13 +64,9 @@ int run_repair(const std::string& input_path, const std::string& output_dir,
     // what the gate would otherwise only reveal at the end. MUC repair needs no
     // separate screen -- extraction leaves the environment side untouched, and
     // well-separation reads only that side.
-    if (const std::optional<std::string> failed = first_failing_check(
-            original, tlsf_correctness_checks(global_sat_checker(),
-                                              global_real_checker()));
-        failed.has_value()) {
-        InputScreen::failed_check = *failed;
-        std::cerr << input_screen_warning(*failed);
-    }
+    std::cerr << screen_input(
+        original,
+        tlsf_correctness_checks(global_sat_checker(), global_real_checker()));
     // After the input screen and before anything is scored: the query is
     // memoised, so this is the call the first scoring pass was about to make
     // anyway, timed.

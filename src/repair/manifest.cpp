@@ -54,7 +54,12 @@ namespace {
 // ltlsynt error end the run, so a run that finished implies zero of them; from
 // this version a finished run may have dropped candidates on a non-answer, and
 // only this field says how many.
-constexpr int k_schema_version = 10;
+// 11 added input_screen_error. Before it, a screen that raised ended the run
+// before any manifest was written, so `input_screen: null` meant the input
+// passed every check. From this version the run survives, and null means either
+// that or a screen that never produced a verdict -- this field is what tells
+// them apart.
+constexpr int k_schema_version = 11;
 
 // The inverse of the spellings config_io.cpp parses. It has no table to
 // borrow -- it only ever goes string to enum -- so these must be kept in step
@@ -246,6 +251,14 @@ void write_run_manifest(const std::string& output_dir,
         {"input_screen", InputScreen::failed_check.empty()
                              ? nlohmann::json(nullptr)
                              : nlohmann::json(InputScreen::failed_check)},
+        // Null unless a tool raised while screening, in which case
+        // `input_screen` above is null for want of a verdict rather than
+        // because the input passed. A campaign partitioning on `input_screen`
+        // must read this key too, or it counts an unscreened run as a clean
+        // one.
+        {"input_screen_error", InputScreen::error.empty()
+                                   ? nlohmann::json(nullptr)
+                                   : nlohmann::json(InputScreen::error)},
         // Null when no screen ran, which is the case under an unlimited
         // budget. `decided` false means the budget could not settle the input
         // specification's own realizability, so a campaign can partition its

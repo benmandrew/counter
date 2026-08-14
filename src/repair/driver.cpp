@@ -121,13 +121,9 @@ int run_fretish_repair(const Config& cfg, const std::string& input_path,
     // population_size copies of this specification and no filter ever sees
     // them, so a property the gate will reject at the output is worth saying
     // out loud at the start of the run rather than at the end of it.
-    if (const std::optional<std::string> failed = first_failing_check(
-            original_spec,
-            correctness_checks(global_sat_checker(), global_real_checker()));
-        failed.has_value()) {
-        InputScreen::failed_check = *failed;
-        std::cerr << input_screen_warning(*failed);
-    }
+    std::cerr << screen_input(
+        original_spec,
+        correctness_checks(global_sat_checker(), global_real_checker()));
     // After the input screen and before anything is scored: the query is
     // memoised, so this is the call the original population was about to make
     // anyway, timed.

@@ -262,7 +262,7 @@ void test_evolve_generation_selects_parents_before_offspring_filtering() {
     // The filter is applied after breeding, and the generation is then padded
     // back to the requested size if filtering shrinks the offspring pool.
     // Padding is truncation selection's path, so this pins WeightedAverage
-    // rather than taking the Nsga2Truncate default: NSGA-II pools parents with
+    // rather than taking the Nsga2Apportion default: NSGA-II pools parents with
     // offspring to refill a generation, so it never reaches the duplication
     // below.
     Config cfg;
@@ -306,7 +306,7 @@ void test_evolve_generation_elitism_preserves_best_through_filter() {
                                            },
                                            1.0, ""}});
     // elitism_rate only drives truncation selection, so this pins
-    // WeightedAverage rather than taking the Nsga2Truncate default: NSGA-II's
+    // WeightedAverage rather than taking the Nsga2Apportion default: NSGA-II's
     // (mu+lambda) survivor pooling is already elitist, and keeps the top spec
     // alive at elitism_rate = 0 -- which is exactly why that is its natural
     // setting.

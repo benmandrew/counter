@@ -3,8 +3,9 @@
 
 The head-to-head arm of the ablation campaign (PLAN §3.3): for each spec x
 repeat, invoke AuRUS's scripts/unreal-repair.sh from the AuRUS repo root with
-the campaign parameters (-Max=1000 -Gen=1000 -Pop=100 -k=10 -GATO=<gato>
--addA), one output directory per repeat. AuRUS is not seedable (its RNG comes
+the campaign parameters (BASE_FLAGS plus -GATO=<gato>, and -onlyInputsA for
+the nine specs run-all-together.sh drives), one output directory per repeat.
+AuRUS is not seedable (its RNG comes
 from Math.random() with no CLI override), so independent repeats stand in for
 seeds and every out.txt is archived.
 
@@ -43,41 +44,154 @@ import time
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
-# counter family name -> TLSF path relative to <aurus-root>/case-studies/.
-# Keys are the counter examples/ names so the CSV joins directly against
-# run_experiments.py's h2h-tlsf rows; values are AuRUS's own layout. This is
-# the 12-family head-to-head set (H2H_TLSF_SPECS): the fixes-backed TLSF
-# corpus minus amba (no AuRUS case study) and minus counter's own arbiter (a
-# different problem from AuRUS's), plus the AuRUS import arbiter-aurus.
-# takeoff is excluded on both sides: its upstream "genuine" fixes are both
-# invalid, so counter has no ideals to compare against — see EXPERIMENTS.md
-# 2026-07-24.
+# The 26 specifications the AuRUS paper evaluates, keyed by the name their
+# rows carry in this campaign's CSVs, valued by a path relative to
+# <aurus-root>. The tree spans two roots — the case studies and the loose
+# `examples/` one — so these are root-relative rather than rooted at
+# `case-studies/`, which is what previously made the examples/ rows unnameable.
+#
+# Eleven of the keys are counter examples/ names, so those rows join directly
+# against run_experiments.py's `aurus-h2h` rows; they are H2H_TLSF_SPECS there
+# and are the only ones a repair-quality statistic can be computed for. The
+# rest run here alone, counter having no family for them yet. Every out.txt is
+# archived, so an import later re-scores an existing run rather than needing
+# a new one.
+#
+# The six `-aurus` suffixes are deliberate. counter carries families named
+# `detector`, `full-arbiter`, `load-balancer`, `prioritized-arbiter`,
+# `round-robin-arbiter` and `simple-arbiter`, taken from SYNTCOMP at different
+# parameter instances than these (counter's simple_arbiter_unreal2_3_basic
+# against the paper's simple_arbiter_unreal2_2). Reusing the bare names would
+# assert a correspondence that does not hold, which is the same reason AuRUS's
+# arbiter is `arbiter-aurus` rather than `arbiter`.
+#
+# Two near-misses to leave alone: full_arbiter/ and syntcomp-unreal/lily02/
+# each hold a second unrealizable variant the paper does not use
+# (full_arbiter_unreal1_3_2_basic.tlsf, lilydemo01.tlsf), so these are picked
+# by filename and never by directory.
+#
+# lily02 is the syntcomp-unreal copy, not the top-level case-studies/lily02
+# one: the paper files Lily02 under SYNTCOMP and that copy carries the five
+# references (lilydemo03..07) the row is scored against, where the top-level
+# copy is a separate one-reference setup. The two lilydemo02.tlsf files are
+# byte-identical, so this fixes provenance rather than behaviour.
 SPEC_TLSF: dict[str, str] = {
-    "arbiter-aurus": "arbiter/arbiter.tlsf",
-    "codesample-un1":
-        "codeSampleV3un1/codeSamples_v3un1simple_Forklift_unrealizable.tlsf",
-    "codesample-un2":
-        "codeSampleV3un2/codeSamples_v3un2_Forklift_unrealizable.tlsf",
+    # Literature (5)
+    "arbiter-aurus": "case-studies/arbiter/arbiter.tlsf",
+    "minepump": "case-studies/minepump/minepump.tlsf",
+    "rg1": "case-studies/RG1/RG1.tlsf",
+    "rg2": "case-studies/RG2/RG2.tlsf",
+    "lift": "case-studies/lift/Lift.tlsf",
+    # SYNTCOMP (13)
+    "detector-aurus":
+        "case-studies/syntcomp-unreal/detector/detector_unreal_2.tlsf",
+    "full-arbiter-aurus":
+        "case-studies/syntcomp-unreal/full_arbiter/"
+        "full_arbiter_unreal1_3_2.tlsf",
+    "lily02": "case-studies/syntcomp-unreal/lily02/lilydemo02.tlsf",
+    "lily11": "case-studies/syntcomp-unreal/lily11/lilydemo11.tlsf",
+    "lily15": "case-studies/syntcomp-unreal/lily15/lilydemo15.tlsf",
+    "lily16": "case-studies/syntcomp-unreal/lily16/lilydemo16.tlsf",
+    "load-balancer-aurus":
+        "case-studies/syntcomp-unreal/load_balancer/"
+        "load_balancer_unreal1_2_2.tlsf",
+    "ltl2dba-r-2":
+        "case-studies/syntcomp-unreal/ltl2dba_R_2/ltl2dba_R_2.tlsf",
+    "ltl2dba-theta-2":
+        "case-studies/syntcomp-unreal/ltl2dba_theta_2/ltl2dba_theta_2.tlsf",
+    "ltl2dba27": "case-studies/syntcomp-unreal/ltl2dba27/ltl2dba27.tlsf",
+    "prioritized-arbiter-aurus":
+        "case-studies/syntcomp-unreal/prioritized_arbiter/"
+        "prioritized_arbiter_unreal1_3_2.tlsf",
+    "round-robin-arbiter-aurus":
+        "case-studies/syntcomp-unreal/round_robin/"
+        "round_robin_arbiter_unreal1_2_3.tlsf",
+    "simple-arbiter-aurus":
+        "case-studies/syntcomp-unreal/simple_arbiter/"
+        "simple_arbiter_unreal2_2.tlsf",
+    # SYNTECH15 (8)
     "gyro-var1":
-        "GyroUnrealizable_Var1/"
+        "case-studies/GyroUnrealizable_Var1/"
         "GyroUnrealizable_Var1_710_GyroAspect_unrealizable.tlsf",
     "gyro-var2":
-        "GyroUnrealizable_Var2/"
+        "case-studies/GyroUnrealizable_Var2/"
         "GyroUnrealizable_Var2_710_GyroAspect_unrealizable.tlsf",
     "humanoid-458":
-        "HumanoidLTL_458/HumanoidLTL_458_Humanoid_fixed_unrealizable.tlsf",
+        "case-studies/HumanoidLTL_458/"
+        "HumanoidLTL_458_Humanoid_fixed_unrealizable.tlsf",
     "humanoid-531":
-        "HumanoidLTL_531/HumanoidLTL_531_Humanoid_unrealizable.tlsf",
-    "lift": "lift/Lift.tlsf",
-    "lily02": "lily02/lilydemo02.tlsf",
-    "minepump": "minepump/minepump.tlsf",
-    "rg1": "RG1/RG1.tlsf",
-    "rg2": "RG2/RG2.tlsf",
+        "case-studies/HumanoidLTL_531/"
+        "HumanoidLTL_531_Humanoid_unrealizable.tlsf",
+    "humanoid-503":
+        "examples/icse2019/SYNTECH15/tlsf_specs/"
+        "HumanoidLTL_503_Humanoid_fixed_unrealizable.tlsf",
+    "humanoid-741":
+        "examples/icse2019/SYNTECH15/tlsf_specs/"
+        "HumanoidLTL_741_Humanoid_unrealizable.tlsf",
+    "humanoid-742":
+        "examples/icse2019/SYNTECH15/tlsf_specs/"
+        "HumanoidLTL_742_Humanoid_unrealizable.tlsf",
+    "pcar-v2-888":
+        "examples/icse2019/SYNTECH15/tlsf_specs/"
+        "PCarLTL_Unrealizable_V_2_unrealizable.0_888_PCar_fixed_unrealizable"
+        ".tlsf",
 }
 
-# Fixed GA parameters of the campaign (PLAN §5); only GATO is a knob, since
-# the 3600 s cap is the lever that bounds the phase's worst case.
-FIXED_FLAGS = ["-Max=1000", "-Gen=1000", "-Pop=100", "-k=10", "-addA"]
+# GA parameters common to all 26 runs. These come from the AuRUS authors' own
+# drivers under scripts/legacy/, which are the record of how the paper's
+# numbers were produced; all three of them agree on every flag here.
+#
+# `-k=20` is the model-counter bound. The 2026-07-24 campaign ran 10, which
+# counted traces to half the depth on AuRUS's side of a comparison where
+# counter's own `model_counting.default_bound` is 20; the legacy drivers
+# settle it independently of the paper's prose. `-GATO` is supplied per run
+# from --gato and is 7200 in all three drivers too. `-geneNUM=0` restates the
+# shipped default (GA_GENE_NUM_OF_MUTATIONS), so it is a no-op kept for
+# fidelity to the record. See experiments/2026-07-24-ablation/REPORT.md.
+#
+# `-factors` is STATUS,SYN,MC_strengthen,MC_weaken and is a DELIBERATE
+# DEPARTURE from the drivers, which do not agree on it: run-all-together.sh
+# omits it (taking the shipped 0.7,0.1,0.1,0.1), run-spectra-icse2019.sh
+# passes the equivalent `0.7,0.1,0.2` under an older three-value CLI whose
+# single semantic weight split evenly, and run-all-sensitivity-syntcomp.sh
+# passes `1,0,0` — status alone, with no similarity pressure whatever. Running
+# the last of those would set counter, which weights syntactic and semantic
+# similarity, against an AuRUS told to ignore both on half the corpus, and
+# would flatter counter on repair quality for a reason unrelated to search.
+# All 26 therefore run at 0.7,0.1,0.1,0.1, stated explicitly rather than left
+# to the default so the archived settings string records the choice.
+#
+# The legacy three-value spellings do not run against the current build at
+# all: `-factors` now requires four values and a three-value argument prints
+# usage and exits, so the drivers cannot simply be copied.
+#
+# `-removeGuarantees` appears in none of the drivers and is not passed, so
+# AuRUS never deletes a guarantee. counter does, at p_remove_guarantee 0.05.
+# That asymmetry in operator sets is a threat to validity, not a bug.
+BASE_FLAGS = [
+    "-Max=1000", "-Gen=1000", "-Pop=100", "-k=20", "-addA", "-geneNUM=0",
+    "-factors=0.7,0.1,0.1,0.1",
+]
+
+# `-onlyInputsA` restricts generated assumptions to input variables. It is the
+# one flag the drivers genuinely disagree on rather than merely spell
+# differently, so it is matched per group: run-all-together.sh passes it for
+# the five literature specs and the four SYNTECH15 ones it drives, and neither
+# of the other two drivers passes it. Without it AuRUS may assume over its own
+# outputs and return a repair the system satisfies by defeating its own
+# assumptions — which counter's output gate rejects and AuRUS's does not.
+ONLY_INPUTS_A = frozenset({
+    "arbiter-aurus", "minepump", "rg1", "rg2", "lift",
+    "gyro-var1", "gyro-var2", "humanoid-458", "humanoid-531",
+})
+
+
+def flags_for(spec: str) -> list[str]:
+    """Return the AuRUS flag list for one specification."""
+    flags = list(BASE_FLAGS)
+    if spec in ONLY_INPUTS_A:
+        flags.append("-onlyInputsA")
+    return flags
 
 # Grace beyond GATO before the process group is killed: AuRUS's own timeout is
 # internal to the GA loop, so a wedged JVM (or a straggling model-counting
@@ -116,7 +230,7 @@ def parse_out_txt(out_txt: Path) -> dict:
 
 
 def run_one(aurus_root: Path, tlsf: Path, out_dir: Path, gato: int,
-            env: dict) -> tuple[int | str, int, float]:
+            env: dict, flags: list[str]) -> tuple[int | str, int, float]:
     """Execute one AuRUS repair run; return (exit_code, killed, wall_time_s).
 
     The JVM runs in its own session so a timeout kill takes the whole process
@@ -125,7 +239,7 @@ def run_one(aurus_root: Path, tlsf: Path, out_dir: Path, gato: int,
     """
     out_dir.mkdir(parents=True, exist_ok=True)
     cmd = [str(aurus_root / "scripts" / "unreal-repair.sh"),
-           *FIXED_FLAGS, f"-GATO={gato}", f"-out={out_dir}", str(tlsf)]
+           *flags, f"-GATO={gato}", f"-out={out_dir}", str(tlsf)]
     log_path = out_dir / "run.log"
     t_start = time.monotonic()
     killed = 0
@@ -165,15 +279,25 @@ def main() -> None:
     parser.add_argument("--specs", nargs="+", choices=list(SPEC_TLSF),
                         default=list(SPEC_TLSF), metavar="SPEC",
                         help="Specs to run, by counter family name "
-                             "(default: the 12-family head-to-head set)")
-    parser.add_argument("--repeats", type=int, default=20, metavar="N",
-                        help="Independent repeats per spec (default: 20); "
+                             "(default: the whole head-to-head set)")
+    parser.add_argument("--repeats", type=int, default=30, metavar="N",
+                        help="Independent repeats per spec (default: 30); "
                              "AuRUS is not seedable, so repeats stand in for "
                              "seeds")
-    parser.add_argument("--gato", type=int, default=3600, metavar="S",
+    parser.add_argument("--repeat-offset", type=int, default=0, metavar="N",
+                        help="First repeat index (default: 0), so two hosts "
+                             "can split one repeat range: --repeats 15 on "
+                             "each, with --repeat-offset 15 on the second. "
+                             "Repeats are the AuRUS arm's only replicate "
+                             "dimension and are numbered, not seeded, so two "
+                             "hosts left at the default would both run 0..N-1 "
+                             "and half the machine time would produce "
+                             "duplicate indices that the merge discards")
+    parser.add_argument("--gato", type=int, default=7200, metavar="S",
                         help="AuRUS GA execution timeout in seconds "
-                             "(default: 3600); the run is hard-killed at "
-                             f"GATO + {KILL_GRACE_S} s if the JVM wedges")
+                             "(default: 7200, the published 2 h); the run is "
+                             f"hard-killed at GATO + {KILL_GRACE_S} s if the "
+                             "JVM wedges")
     parser.add_argument("--concurrency", type=int, default=10, metavar="N",
                         help="Concurrent AuRUS runs (default: 10)")
     parser.add_argument("--spot-bin", type=Path, default=None, metavar="PATH",
@@ -204,7 +328,9 @@ def main() -> None:
 
     # Repeat-major, mirroring run_experiments.py's seed-major order: a
     # wall-clock kill leaves every spec at the same repeat depth.
-    tasks = [(spec, rep) for rep in range(args.repeats)
+    tasks = [(spec, rep)
+             for rep in range(args.repeat_offset,
+                              args.repeat_offset + args.repeats)
              for spec in args.specs]
     to_run = [(s, r) for s, r in tasks
               if not (args.out_root / s / f"repeat-{r:02d}" / "out.txt").exists()]
@@ -212,7 +338,10 @@ def main() -> None:
                 if (s, r) not in done and (s, r) not in to_run]
 
     print("=" * 64)
-    print(f"  AuRUS baseline: {len(args.specs)} specs x {args.repeats} repeats")
+    lo = args.repeat_offset
+    hi = args.repeat_offset + args.repeats - 1
+    print(f"  AuRUS baseline: {len(args.specs)} specs x {args.repeats} "
+          f"repeats ({lo}-{hi})")
     print(f"    aurus:       {args.aurus_root}")
     print(f"    out:         {args.out_root}")
     print(f"    GATO:        {args.gato}s (kill at +{KILL_GRACE_S}s)")
@@ -250,11 +379,11 @@ def main() -> None:
         spec, rep = task
         run_id = f"{spec}/repeat-{rep:02d}"
         out_dir = args.out_root / spec / f"repeat-{rep:02d}"
-        tlsf = args.aurus_root / "case-studies" / SPEC_TLSF[spec]
+        tlsf = args.aurus_root / SPEC_TLSF[spec]
         with lock:
             print(f"[start]      {run_id}", flush=True)
         exit_code, killed, wall = run_one(
-            args.aurus_root, tlsf, out_dir, args.gato, env)
+            args.aurus_root, tlsf, out_dir, args.gato, env, flags_for(spec))
         row = {"spec": spec, "repeat": rep,
                **parse_out_txt(out_dir / "out.txt"),
                "wall_time_s": wall, "killed": killed, "exit_code": exit_code}

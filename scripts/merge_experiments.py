@@ -65,6 +65,10 @@ PROFILE_CSVS: dict[str, str] = {
     # so merging under either profile name merges the same rows.
     "ablate-tlsf": "results-ablate-tlsf.csv",
     "h2h-tlsf": "results-ablate-tlsf.csv",
+    # The 2026-08-14 head-to-head, deliberately NOT sharing the above: it runs
+    # 14 families at a 7200s cap where h2h-tlsf ran 12 at 600s, and neither the
+    # corpus nor the cap is in the resume key, so shared rows would collide.
+    "aurus-h2h": "results-aurus-h2h.csv",
     "replicate": "results-replicate.csv",
     # replicate-wkoff shares replicate's CSV (the weakening column separates the
     # rows), so merging under either name merges the same file.

@@ -150,6 +150,13 @@ DEFAULTS: dict = {
     # campaign archived before it -- see "Config vintage" in
     # experiments/README.md.
     "status_grading": "mrs",
+    # Mirrors include/config.hpp, which moved to "degree" on 2026-08-14. Emitted
+    # into [fitness] only when a sweep overrides it (see make_toml), so every
+    # existing grid stays byte-identical. Read only under status_grading =
+    # "mrs", so pinning it says nothing about a tiered arm either way -- and it
+    # is a config-vintage change for every campaign archived before it, none of
+    # which could state a key their binary had never heard of.
+    "mrs_admission_order": "degree",
     # TLSF-only [tlsf.mutation] split (see config.hpp). Emitted only when a sweep
     # overrides one of them (see make_toml), so the FRETISH and A/B TLSF grids
     # stay byte-identical to the pre-factor output; the mutation-split sweep sets
@@ -214,7 +221,9 @@ def make_toml(overrides: dict, defaults: dict = DEFAULTS) -> str:
         f"weight_status    = {_fmt(d['weight_status'])}",
     ] + ([
         f'status_grading   = "{d["status_grading"]}"',
-    ] if "status_grading" in overrides else []) + [
+    ] if "status_grading" in overrides else []) + ([
+        f'mrs_admission_order = "{d["mrs_admission_order"]}"',
+    ] if "mrs_admission_order" in overrides else []) + [
         "",
         "[mutation]",
         f"p_trigger  = {_fmt(d['p_trigger'])}",
@@ -414,16 +423,19 @@ DEFAULT_COMPUTE_MATCH_FACTOR = 1.5
 # being archived. A generated config states a key only where a sweep overrides
 # it, so everything else is inherited from the binary at run time — which means
 # changing a C++ default silently changes what every archived config *means*.
-# These three have crossed that line: allow_output_assumptions and
-# run_well_separation each moved twice, and status_grading went tiered -> mrs on
+# These four have crossed that line: allow_output_assumptions and
+# run_well_separation each moved twice, status_grading went tiered -> mrs on
 # 2026-08-12, swapping the status objective outright rather than shifting a
-# threshold. --pin-vintage writes them explicitly so a campaign archived today
-# still describes the run it was, whatever the defaults do afterwards. Add a key
-# here when its default moves; the cost of a spurious entry is one redundant
-# line per config, and the cost of a missing one is an archive that cannot be
-# reproduced.
+# threshold, and mrs_admission_order went spec -> degree on 2026-08-14, which
+# reorders the greedy walk inside that objective and so moves the score of every
+# candidate the walk grades. --pin-vintage writes them explicitly so a campaign
+# archived today still describes the run it was, whatever the defaults do
+# afterwards. Add a key here when its default moves; the cost of a spurious
+# entry is one redundant line per config, and the cost of a missing one is an
+# archive that cannot be reproduced.
 VINTAGE_KEYS: tuple[str, ...] = (
-    "status_grading", "allow_output_assumptions", "run_well_separation",
+    "status_grading", "mrs_admission_order", "allow_output_assumptions",
+    "run_well_separation",
 )
 
 

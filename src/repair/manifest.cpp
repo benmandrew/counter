@@ -59,7 +59,10 @@ namespace {
 // passed every check. From this version the run survives, and null means either
 // that or a screen that never produced a verdict -- this field is what tells
 // them apart.
-constexpr int k_schema_version = 11;
+// 12 added fitness.mrs_admission_order. The MRS walk's score depends on the
+// order it admits parts in, so two runs on one specification under one grading
+// scale are not comparable without it.
+constexpr int k_schema_version = 12;
 
 // The inverse of the spellings config_io.cpp parses. It has no table to
 // borrow -- it only ever goes string to enum -- so these must be kept in step
@@ -93,6 +96,16 @@ const char* status_grading_name(StatusGrading grading) {
             return "tiered";
         case StatusGrading::Mrs:
             return "mrs";
+    }
+    return "unknown";
+}
+
+const char* mrs_admission_order_name(MrsAdmissionOrder order) {
+    switch (order) {
+        case MrsAdmissionOrder::Spec:
+            return "spec";
+        case MrsAdmissionOrder::Degree:
+            return "degree";
     }
     return "unknown";
 }
@@ -158,7 +171,9 @@ nlohmann::json config_json(const Config& cfg) {
          {{"weight_syntactic", cfg.fitness_weight_syntactic},
           {"weight_semantic", cfg.fitness_weight_semantic},
           {"weight_status", cfg.fitness_weight_status},
-          {"status_grading", status_grading_name(cfg.status_grading)}}},
+          {"status_grading", status_grading_name(cfg.status_grading)},
+          {"mrs_admission_order",
+           mrs_admission_order_name(cfg.mrs_admission_order)}}},
         {"mutation",
          {{"p_trigger", cfg.p_trigger},
           {"p_response", cfg.p_response},

@@ -42,13 +42,22 @@ Three components are combined into each candidate's score. Semantic similarity a
    * - ``fitness.weight_syntactic``
      - 0.2
      - Shared sub-formula count, normalised to [0, 1]
+   * - ``fitness.mrs_admission_order``
+     - ``"degree"``
+     - Order the ``"mrs"`` greedy walk admits parts in: ``"spec"`` or ``"degree"``
    * - ``fitness.status_grading``
-     - ``"tiered"``
+     - ``"mrs"``
      - Scale the status component grades on: ``"tiered"`` or ``"mrs"``
 
 ``fitness.status_grading`` decides how finely the status component grades the region below realizability. ``"tiered"`` is the three-point scale above. ``"mrs"`` replaces its middle tier with the greedy maximal-realizable-subset fraction: the guarantee side is split into parts, and the score is the fraction of them that can be kept while the accumulated subset stays realizable against the full, unchanged environment side. Both keep 1.0 meaning realizable and well-separated.
 
-Three levels leave a genetic algorithm little to climb. Over the 21 specifications under ``examples/`` the tiered scale scores every one of them 0.5, where the MRS scale spreads them over 14 distinct values, with a median of 6 grade levels per specification and a maximum of 17. It costs more ``ltlsynt`` queries per candidate — a median of 4.6x one whole-specification check measured alone, falling to about 2.2x over a population, since the greedy walk's prefixes recur across near-identical candidates and hit the memoised checker. The two are crossed as an experiment factor, and ``"tiered"`` stays the default until a campaign decides between them.
+Three levels leave a genetic algorithm little to climb. Over the 21 specifications under ``examples/`` the tiered scale scores every one of them 0.5, where the MRS scale spreads them over 14 distinct values, with a median of 6 grade levels per specification and a maximum of 17. It costs more ``ltlsynt`` queries per candidate — a median of 4.6x one whole-specification check measured alone, falling to about 2.2x over a population, since the greedy walk's prefixes recur across near-identical candidates and hit the memoised checker. The campaign that crossed the two ran on 2026-08-11, paired over 20 TLSF specifications at 24 seeds each. ``"mrs"`` found a repair in 410 of 480 runs against ``"tiered"``'s 367, on 50 discordant pairs against 7 (sign test p < 0.0001), and repair quality did not move on the runs where both arms yielded. The median paired wall cost is 1.15x, and ``"mrs"`` is the default from that campaign on.
+
+``fitness.mrs_admission_order`` is read only under ``status_grading = "mrs"``, and chooses the order the greedy walk admits guarantee-side parts in. ``"spec"`` is the specification's own index order, which the walk shipped with. ``"degree"`` sorts the parts by ascending pairwise-conflict *degree* — how many other parts a part cannot be held together with — so a part that blocks many others is admitted last. Ties keep index order, and a part unrealizable on its own sorts last. It is the min-degree heuristic from constraint satisfaction.
+
+Greedy returns a maximal subset rather than a maximum one, so the order decides the score. Index order is measurably biased by one structure, a single early part conflicting with the rest of the guarantee side. On ``detector`` index order keeps 1 part of 7, where deferring that part keeps 6. Cost turns on the order being the *same* for every candidate in a run, which is what seed reproducibility and the memoised realizability checker both need. Measured over populations of mutants across six TLSF specifications, every fixed order costs 1.02x to 1.07x index order's ``ltlsynt`` execs, against 1.48x for a fresh order per candidate.
+
+``"degree"`` scores 0.587 against index order's 0.529 at 1.02x the execs, and scored no lower than index order on any of the six specifications. Choosing it costs ``n(n-1)/2 + n`` subset queries once, before the search starts. That is 28 on a 7-part specification and 136 on a 16-part one, against a run that scores tens of thousands of candidates. ``"degree"`` is the default from that measurement on. That is weaker evidence than the paired campaign that settled ``status_grading``, since everything measured so far scores mutants in isolation with no selection pressure, so nothing yet says what the finer gradient does to yield or ``implies_ideal``. A campaign reading both is still owed. The measurements are TLSF-path only. The FRETISH path accepts the same key, where its parts are whole guarantees.
 
 Semantic similarity is the expensive one: it counts the satisfying traces of a candidate up to ``model_counting.default_bound`` (default 20) using Ganak over the transition matrices of SPOT-generated automata. Raising the bound sharpens the measure and costs time.
 

@@ -63,7 +63,7 @@ Breeding is a single stage by design. Crossover and mutation interleave per offs
 Selection
 ---------
 
-``stage_select`` follows ``Config::selection_scheme``. The default, ``Nsga2Truncate``, ranks candidates by non-dominated sorting and crowding distance over the individual objectives (``include/genetic/nsga2.hpp``), pools parents with offspring, and truncates that pool at ``population_size``. ``Nsga2Apportion`` ranks identically but deduplicates the pool first and apportions the slots over the distinct survivors. ``WeightedAverage`` ranks by the aggregate scalar instead; it converges prematurely on the FRETISH corpus, and on TLSF it trades repair quality for yield — see :doc:`configuration`.
+``stage_select`` follows ``Config::selection_scheme``. Both NSGA-II schemes rank candidates by non-dominated sorting and crowding distance over the individual objectives (``include/genetic/nsga2.hpp``) and pool parents with offspring. ``Nsga2Truncate`` truncates that pool at ``population_size``. The default, ``Nsga2Apportion``, deduplicates the pool first and apportions the slots over the distinct survivors. ``WeightedAverage`` ranks by the aggregate scalar instead; it converges prematurely on the FRETISH corpus, and on TLSF it trades repair quality for yield — see :doc:`configuration`.
 
 Every scheme carries both the per-objective vector and the weighted scalar on each ``Scored<Spec>``, so outputs stay comparable across runs. :doc:`configuration` gives the measured differences between the three.
 

@@ -9,14 +9,14 @@
 /// The two NSGA-II schemes rank identically -- by Pareto non-domination and
 /// crowding distance over the individual objectives, searching for the Pareto
 /// front rather than one weighted compromise -- and are named for the only step
-/// where they differ, the survivor step. Nsga2Truncate (the default) ranks the
-/// pooled (mu + lambda) parents and offspring and cuts the pool at the target
-/// size. Nsga2Apportion deduplicates the pool first, ranks the distinct set,
-/// and apportions the target size's slots over it by 1 / (1 + rank) under the
-/// largest-remainder (Hamilton) method. A truncated pool holds only a handful
-/// of distinct specifications across its slots, so the cut runs arbitrarily
-/// through the Pareto front; apportioning instead makes breeding pressure
-/// proportional to rank without discarding any distinct candidate.
+/// where they differ, the survivor step. Nsga2Truncate ranks the pooled
+/// (mu + lambda) parents and offspring and cuts the pool at the target size.
+/// Nsga2Apportion (the default) deduplicates the pool first, ranks the distinct
+/// set, and apportions the target size's slots over it by 1 / (1 + rank) under
+/// the largest-remainder (Hamilton) method. A truncated pool holds only a
+/// handful of distinct specifications across its slots, so the cut runs
+/// arbitrarily through the Pareto front; apportioning instead makes breeding
+/// pressure proportional to rank without discarding any distinct candidate.
 /// WeightedAverage ranks by the single blended fitness scalar; it converges
 /// prematurely and is retained for comparison rather than use.
 enum class SelectionScheme : std::uint8_t {

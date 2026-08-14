@@ -1,6 +1,34 @@
+// Hand-written weakening ideal, replacing AuRUS's verbatim "genuine solution".
+//
+// The specification is unrealizable because `hlock0` is unconstrained at time
+// zero. INITIALLY pins `!hbusreq0` and PRESET pins `decide`, so an environment
+// that raises `hlock0` in the first step forces `X hlocked` (the only escape,
+// `X !hgrant0`, is closed off by the `!hbusreq0 && decide -> X hgrant0` rule).
+// A latched `hlocked` becomes `hmastlock` at the next `hready`, which forces
+// `start`, which sets `stateg2_0` on a SINGLE burst; `stateg2_0` then clears
+// only on `!hbusreq0`, so an environment holding `hbusreq0` high forever
+// defeats `G F !stateg2_0`. The lock arrives without a request, which no AHB
+// master does: `hlock0` is meaningful only alongside `hbusreq0`.
+//
+// AuRUS's solution (case-studies/syntcomp-unreal/amba/genuine/amba.tlsf) says
+// the same thing but in two places counter's search cannot reach, and one it
+// must not. It adds a REQUIRE section, and the genetic operators never grow
+// INITIALLY or REQUIRE; it adds `!hlock0` to the INITIALLY conjunct; and it
+// assumes `G F !statea1_0`, which names an OUTPUT, so the system can defeat
+// its own assumption by holding `statea1_0` high and win vacuously. That is
+// precisely the ill-separation the correctness table screens for.
+//
+// Assuming `G (hbusreq0 || !hlock0)` instead is input-only, hence well
+// separated, and lands in the one section `tlsf_add_assumption` can grow. It
+// is not a relocation of AuRUS's REQUIRE conjunct: the semantics are
+// Mealy,Strict, so REQUIRE appears in the weak-until guard `ψ_s W ¬ψ_e` as
+// well as the antecedent, and with REQUIRE absent that guard is plain `G ψ_s`.
+// The ASSERT invariant therefore still binds unconditionally here, where under
+// AuRUS's version the system may abandon it once the environment slips. The
+// assumption is the weaker of the two changes, and it is enough.
 INFO {
-  TITLE:       "AMBA"
-  DESCRIPTION: "Genuine Solution"
+  TITLE:       "amba_ahb_wo_ass_fairness_amba_ahb_1"
+  DESCRIPTION: "weakened: locking assumed to accompany a bus request"
   SEMANTICS:   Mealy,Strict
   TARGET:   Mealy
 }
@@ -14,15 +42,11 @@ MAIN {
   }
 
   INITIALLY {
-    (!hready && !hbusreq0 && !hlock0 && !hburst0 && !hburst1);
+    (!hready && !hbusreq0 && !hburst0 && !hburst1);
   }
 
   PRESET {
     (!hmaster0 && !hmastlock && start && decide && !hlocked && hgrant0 && !statea1_0 && !stateg2_0 && !stateg3_0 && !stateg3_1 && !stateg3_2);
-  }
-
-  REQUIRE {
-     G ((hbusreq0 || !hlock0));
   }
 
   ASSERT {
@@ -67,8 +91,8 @@ MAIN {
   }
 
   ASSUMPTIONS {
-     G ( F (!statea1_0));
      G ( F (hready));
+     G ((hbusreq0 || !hlock0));
   }
 
   GUARANTEES {

@@ -91,14 +91,20 @@ struct Config {
     /// Which order the MRS walk admits parts in (see MrsAdmissionOrder). Read
     /// only under StatusGrading::Mrs.
     ///
-    /// Spec is the default pending a campaign, not on evidence that it wins.
-    /// What is measured is a population of `tlsf_mutate` mutants scored in
-    /// isolation over six TLSF specifications: Degree scores 0.587 against
-    /// Spec's 0.529 at 1.02x the ltlsynt execs, and scored no lower than Spec
-    /// on any of the six. Nothing there says what the finer gradient does to
-    /// yield or implies_ideal, which is a question for the same kind of paired
-    /// campaign that settled status_grading above.
-    MrsAdmissionOrder mrs_admission_order = MrsAdmissionOrder::Spec;
+    /// Degree is the default on a population measurement rather than on a
+    /// campaign, which is weaker evidence than status_grading above rests on.
+    /// Over populations of `tlsf_mutate` mutants across six TLSF
+    /// specifications, scored in isolation, Degree scores 0.587 against Spec's
+    /// 0.529 at 1.02x the ltlsynt execs, and scored no lower than Spec on any
+    /// of the six. Those populations carry no selection pressure, so what the
+    /// finer gradient does to yield or implies_ideal is still unmeasured, and a
+    /// paired campaign is still owed.
+    ///
+    /// Moving this default changes what every archived config *means*, since
+    /// none of them state a key that did not exist when they ran. See "Config
+    /// vintage" in experiments/README.md, and VINTAGE_KEYS in
+    /// scripts/gen_configs.py.
+    MrsAdmissionOrder mrs_admission_order = MrsAdmissionOrder::Degree;
     std::size_t default_model_counting_bound = 20;
     SimilarityMetric similarity_metric = SimilarityMetric::Logarithmic;
     /// Keep only repairs the original logically implies -- genuine weakenings.

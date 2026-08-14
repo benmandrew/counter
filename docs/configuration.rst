@@ -43,7 +43,7 @@ Three components are combined into each candidate's score. Semantic similarity a
      - 0.2
      - Shared sub-formula count, normalised to [0, 1]
    * - ``fitness.mrs_admission_order``
-     - ``"spec"``
+     - ``"degree"``
      - Order the ``"mrs"`` greedy walk admits parts in: ``"spec"`` or ``"degree"``
    * - ``fitness.status_grading``
      - ``"mrs"``
@@ -57,7 +57,7 @@ Three levels leave a genetic algorithm little to climb. Over the 21 specificatio
 
 Greedy returns a maximal subset rather than a maximum one, so the order decides the score. Index order is measurably biased by one structure, a single early part conflicting with the rest of the guarantee side. On ``detector`` index order keeps 1 part of 7, where deferring that part keeps 6. Cost turns on the order being the *same* for every candidate in a run, which is what seed reproducibility and the memoised realizability checker both need. Measured over populations of mutants across six TLSF specifications, every fixed order costs 1.02x to 1.07x index order's ``ltlsynt`` execs, against 1.48x for a fresh order per candidate.
 
-``"degree"`` scores 0.587 against index order's 0.529 at 1.02x the execs, and scored no lower than index order on any of the six specifications. Choosing it costs ``n(n-1)/2 + n`` subset queries once, before the search starts. That is 28 on a 7-part specification and 136 on a 16-part one, against a run that scores tens of thousands of candidates. ``"spec"`` remains the default pending a campaign, because everything measured so far scores mutants in isolation with no selection pressure, so nothing yet says what the finer gradient does to yield or ``implies_ideal``. The measurements are TLSF-path only. The FRETISH path accepts the same key, where its parts are whole guarantees.
+``"degree"`` scores 0.587 against index order's 0.529 at 1.02x the execs, and scored no lower than index order on any of the six specifications. Choosing it costs ``n(n-1)/2 + n`` subset queries once, before the search starts. That is 28 on a 7-part specification and 136 on a 16-part one, against a run that scores tens of thousands of candidates. ``"degree"`` is the default from that measurement on. That is weaker evidence than the paired campaign that settled ``status_grading``, since everything measured so far scores mutants in isolation with no selection pressure, so nothing yet says what the finer gradient does to yield or ``implies_ideal``. A campaign reading both is still owed. The measurements are TLSF-path only. The FRETISH path accepts the same key, where its parts are whole guarantees.
 
 Semantic similarity is the expensive one: it counts the satisfying traces of a candidate up to ``model_counting.default_bound`` (default 20) using Ganak over the transition matrices of SPOT-generated automata. Raising the bound sharpens the measure and costs time.
 

@@ -213,10 +213,17 @@ void test_config_io_status_grading_mrs_parsed() {
            "config_io: status_grading = \"mrs\" should parse as Mrs");
 }
 
-void test_config_io_mrs_admission_order_defaults_to_spec() {
+void test_config_io_mrs_admission_order_defaults_to_degree() {
     const Config cfg;
+    expect(cfg.mrs_admission_order == MrsAdmissionOrder::Degree,
+           "config_io: mrs_admission_order should default to Degree");
+}
+
+void test_config_io_mrs_admission_order_spec_parsed() {
+    const Config cfg =
+        config_from_toml_string("[fitness]\nmrs_admission_order = \"spec\"\n");
     expect(cfg.mrs_admission_order == MrsAdmissionOrder::Spec,
-           "config_io: mrs_admission_order should default to Spec");
+           "config_io: mrs_admission_order = \"spec\" should parse as Spec");
 }
 
 void test_config_io_mrs_admission_order_degree_parsed() {
@@ -546,7 +553,8 @@ void run_config_io_tests() {
     test_config_io_status_grading_tiered_parsed();
     test_config_io_status_grading_mrs_parsed();
     test_config_io_status_grading_rejects_unknown();
-    test_config_io_mrs_admission_order_defaults_to_spec();
+    test_config_io_mrs_admission_order_defaults_to_degree();
+    test_config_io_mrs_admission_order_spec_parsed();
     test_config_io_mrs_admission_order_degree_parsed();
     test_config_io_mrs_admission_order_rejects_unknown();
     test_config_io_selection_scheme_weighted_parsed();

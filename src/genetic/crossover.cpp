@@ -107,25 +107,18 @@ Formula combine_subformula(const Formula& formula, const Formula& donor,
         });
 }
 
+// AuRUS merges two conjuncts by grafting, and only by grafting: with equal
+// probability it replaces a subformula of the first with one drawn from the
+// second (replaceSubformula), or joins the two under a fresh binary operator
+// (combineSubformula). Neither branch copies a parent's field verbatim, so
+// every crossover recombines.
 Formula crossover_formula(const Formula& first_parent,
                           const Formula& second_parent,
                           const RandomSource& random_source) {
-    const int selector = static_cast<int>(random_source.next_index(4));
-    switch (selector) {
-        case 0:
-            return first_parent;
-        case 1:
-            return second_parent;
-        case 2:
-            return replace_subformula(first_parent, second_parent,
-                                      random_source);
-        case 3:
-            return combine_subformula(first_parent, second_parent,
-                                      random_source);
-        default:
-            assert(false);
-            __builtin_unreachable();
+    if (random_source.next_bool()) {
+        return replace_subformula(first_parent, second_parent, random_source);
     }
+    return combine_subformula(first_parent, second_parent, random_source);
 }
 
 template <typename TimingVariant>
@@ -223,33 +216,51 @@ Requirement crossover_requirements(const Requirement& first_parent,
 
 namespace {
 
+// The slots of @p requirements crossover may read or write: a deleted
+// requirement is content its parent has thrown away, and a non-weakenable one
+// is locked, never changed and never acting as a crossover source.
+std::vector<std::size_t> crossover_slots(
+    const std::vector<Requirement>& requirements) {
+    std::vector<std::size_t> slots;
+    for (std::size_t i = 0; i < requirements.size(); ++i) {
+        if (requirements[i].m_weakenable && !requirements[i].m_removed) {
+            slots.push_back(i);
+        }
+    }
+    return slots;
+}
+
+// AuRUS recombines a side by drawing one conjunct from each parent — from
+// anywhere in either list — merging that pair, and leaving the rest of the
+// first parent's side alone. The donor is unrelated to the slot it lands in,
+// which is the whole point: a subformula of guarantee 3 can graft into
+// guarantee 0. Recombining every slot against the same index, as this did
+// until now, confines each graft to the pair of requirements that already
+// occupy the same position and can never move material between them.
+//
+// AuRUS removes the target conjunct and appends the merged one, which
+// reorders the side and shortens it when the merge fails. Counter writes the
+// merge back into the target's own slot instead: slot i of a candidate must
+// keep descending from slot i of the original, since the timing and semantic
+// similarity objectives pair the two by position. Deletion stays mutation's
+// move alone — crossover can neither resurrect a deleted requirement nor
+// delete a live one.
 std::vector<Requirement> crossover_req_lists(
     const std::vector<Requirement>& first,
     const std::vector<Requirement>& second, const RandomSource& random_source) {
-    assert(first.size() == second.size());
-    std::vector<Requirement> offspring;
-    offspring.reserve(first.size());
-    for (std::size_t i = 0; i < first.size(); ++i) {
-        // A non-weakenable requirement is never changed and never acts as a
-        // crossover source; keep the first parent's version verbatim. The
-        // weakenable flag is position-aligned between parents, so guarding on
-        // first[i] suffices for it.
-        //
-        // Removedness is not position-aligned — two parents can have deleted
-        // different guarantees — so both sides are checked. The slot is
-        // inherited whole from the first parent, which keeps crossover unable
-        // to resurrect a deleted guarantee or delete a live one: removal is
-        // mutation's job alone. Crossing a live requirement with a deleted
-        // one would otherwise breed from content the second parent has thrown
-        // away.
-        if (!first[i].m_weakenable || first[i].m_removed ||
-            second[i].m_removed) {
-            offspring.push_back(first[i]);
-        } else {
-            offspring.push_back(
-                crossover_requirements(first[i], second[i], random_source));
-        }
+    std::vector<Requirement> offspring = first;
+    const std::vector<std::size_t> targets = crossover_slots(first);
+    const std::vector<std::size_t> donors = crossover_slots(second);
+    if (targets.empty() || donors.empty()) {
+        return offspring;
     }
+    // Sequenced into locals: both draw, and argument evaluation order is
+    // unspecified.
+    const std::size_t target =
+        targets[random_source.next_index(targets.size())];
+    const std::size_t donor = donors[random_source.next_index(donors.size())];
+    offspring[target] =
+        crossover_requirements(first[target], second[donor], random_source);
     return offspring;
 }
 
@@ -259,10 +270,12 @@ Specification crossover_specifications(const Specification& first_parent,
                                        const Specification& second_parent,
                                        const RandomSource& random_source) {
     assert(random_source);
-    if (first_parent.m_assumptions.size() !=
-            second_parent.m_assumptions.size() ||
-        first_parent.m_guarantees.size() != second_parent.m_guarantees.size() ||
-        first_parent.m_in_atoms != second_parent.m_in_atoms ||
+    // Only the signals have to match. The two sides no longer need equal
+    // lengths: the offspring keeps the first parent's shape whatever the
+    // second parent's is, since the merge is written back into a slot of the
+    // first. That is what lets an individual that has gained an assumption
+    // still breed, which under index-for-index pairing it could not.
+    if (first_parent.m_in_atoms != second_parent.m_in_atoms ||
         first_parent.m_out_atoms != second_parent.m_out_atoms) {
         return first_parent;
     }

@@ -1,0 +1,42 @@
+// Ported from AuRUS's reference repair, case-studies/syntcomp-unreal/
+// full_arbiter/genuine/full_arbiter_3.tlsf, lowered with `syfco -f basic`.
+//
+// It drops the injected guarantee demanding that two requests arriving on
+// consecutive steps be answered by two grants raised on the same step, which
+// the at-most-one-grant ASSERT forbids outright.
+INFO {
+  TITLE:       "Full Arbiter"
+  DESCRIPTION: "Parameterized Arbiter, where no spurious grants are allowed"
+  SEMANTICS:   Mealy
+  TARGET:      Mealy
+}
+
+MAIN {
+  INPUTS {
+    r_0;
+    r_1;
+    r_2;
+  }
+  OUTPUTS {
+    g_0;
+    g_1;
+    g_2;
+  }
+  ASSERT {
+    (((g_0) && (G (! (r_0)))) -> (F (! (g_0))));
+    (((g_0) && (X ((! (r_0)) && (! (g_0))))) -> (X ((r_0) R (! (g_0)))));
+    (((g_1) && (G (! (r_1)))) -> (F (! (g_1))));
+    (((g_1) && (X ((! (r_1)) && (! (g_1))))) -> (X ((r_1) R (! (g_1)))));
+    (((g_2) && (G (! (r_2)))) -> (F (! (g_2))));
+    (((g_2) && (X ((! (r_2)) && (! (g_2))))) -> (X ((r_2) R (! (g_2)))));
+    ((((! (g_0)) && (! (g_1))) && (true)) || ((((! (g_0)) && (true)) || ((true) && (! (g_1)))) && (! (g_2))));
+  }
+  GUARANTEE {
+    ((r_0) R (! (g_0)));
+    (G ((r_0) -> (F (g_0))));
+    ((r_1) R (! (g_1)));
+    (G ((r_1) -> (F (g_1))));
+    ((r_2) R (! (g_2)));
+    (G ((r_2) -> (F (g_2))));
+  }
+}

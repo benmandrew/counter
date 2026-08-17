@@ -1,0 +1,30 @@
+// Ported from AuRUS's reference repair, case-studies/syntcomp-unreal/
+// simple_arbiter/genuine/simple_arbiter_2.tlsf, lowered with `syfco -f basic`.
+//
+// It drops the injected guarantee demanding that two requests arriving on
+// consecutive steps be answered by two grants raised on the same step, which
+// the at-most-one-grant ASSERT forbids outright.
+INFO {
+  TITLE:       "Simple Arbiter"
+  DESCRIPTION: "Parameterized Arbiter, where each request has to be eventually granted"
+  SEMANTICS:   Mealy
+  TARGET:      Mealy
+}
+
+MAIN {
+  INPUTS {
+    r_0;
+    r_1;
+  }
+  OUTPUTS {
+    g_0;
+    g_1;
+  }
+  ASSERT {
+    (((! (g_0)) && (true)) || ((true) && (! (g_1))));
+  }
+  GUARANTEE {
+    (G ((r_0) -> (F (g_0))));
+    (G ((r_1) -> (F (g_1))));
+  }
+}

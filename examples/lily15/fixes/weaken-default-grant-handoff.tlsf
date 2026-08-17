@@ -1,0 +1,49 @@
+// Hand-written weakening ideal: a default-on grant may also be dropped when
+// the other channel takes the bus, not only when its own request arrives.
+//
+// `mucs` returns { r2 -> F a2, !(a1 && a2), a1 W r1 } and, by symmetry, the
+// same trio with the indices swapped. Both cores say the same thing. `a1 W r1`
+// makes a1 on by default until the first r1, `a2 W r2` does the same for a2,
+// and at time zero -- before either request has arrived -- the two demand a1
+// and a2 together, which mutual exclusion forbids outright. Even later the
+// deadlock persists: with r1 never raised, a1 is held forever, so a2 never
+// rises and an r2 request goes unanswered.
+//
+// Weakening each `W` in its second argument (W is monotone there, so this is
+// implied by the original) says the default grant is released either by its
+// own request or by the other channel claiming the bus. That is the handoff
+// the arbiter already performs -- a1 is idle-parked until someone wants the
+// bus -- and it keeps both the acknowledgement liveness and the mutual
+// exclusion intact, rather than paying for realizability with the safety
+// property.
+INFO {
+  TITLE:       "Lily Demo V15"
+  DESCRIPTION: "weakened: a default grant is released by a handoff too"
+  SEMANTICS:   Mealy
+  TARGET:      Mealy
+}
+
+MAIN {
+
+  INPUTS {
+    r1;
+    r2;
+  }
+
+  OUTPUTS {
+    a1;
+    a2;
+  }
+
+  INVARIANTS {
+    r1 -> F a1;
+    r2 -> F a2;
+    !(a1 && a2);
+  }
+
+  GUARANTEES {
+    a1 W (r1 || a2);
+    a2 W (r2 || a1);
+  }
+
+}

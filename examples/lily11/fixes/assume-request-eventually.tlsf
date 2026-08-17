@@ -1,0 +1,44 @@
+// Hand-written weakening ideal: assumes the environment eventually asks for
+// something.
+//
+// The single guarantee is the NEGATION of a two-channel arbiter: the system
+// has to make `G(req -> F ack) && G(go -> F grant)` FALSE, so it must be
+// caught failing one of the two obligations. Against an environment that
+// never raises `req` and never raises `go`, both conjuncts hold vacuously
+// however the system behaves, and the negation cannot be established. That is
+// the whole of the unrealizability -- `mucs` returns the one guarantee, so
+// there is no culprit formula to weaken, only a missing assumption.
+//
+// `F req` is the least that closes it: one request at any time is enough,
+// since the system then simply never acknowledges and `G(req -> F ack)` is
+// false. It is an input-only assumption, so the system cannot defeat it, and
+// it is the honest reading of the specification -- a system that is never
+// exercised cannot be shown to misbehave.
+INFO {
+  TITLE:       "Lily Demo V11"
+  DESCRIPTION: "weakened: the environment eventually issues a request"
+  SEMANTICS:   Mealy
+  TARGET:      Mealy
+}
+
+MAIN {
+
+  INPUTS {
+    req;
+    go;
+  }
+
+  OUTPUTS {
+    grant;
+    ack;
+  }
+
+  ASSUMPTIONS {
+    F req;
+  }
+
+  GUARANTEES {
+    !( G(req -> F ack) && G(go -> F grant) );
+  }
+
+}

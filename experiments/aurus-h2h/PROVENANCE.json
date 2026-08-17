@@ -75,6 +75,23 @@
     "solutions_written": 287006,
     "integrity": "The n_solutions column sums to 287006 and the collected tree holds exactly 287006 spec*.tlsf files. All 780 rows have a run.log."
   },
+  "well_separation_sweep": {
+    "run_on": "2026-08-17",
+    "scope": "full: every one of the 287,006 candidate repairs, not a sample",
+    "tool": "scripts/check_well_separated.py, which re-derives the query from the TLSF text and calls ltlsynt directly. Deliberately not counter's in-run checker, which maps a realizability timeout to unrealizable and caches it -- for this query that reads as well-separated, so a verdict taken from it would launder timeouts into passes.",
+    "fast_path": "off, so every verdict came from ltlsynt. Exactly 2 ill-separated files had input-only assumptions and would have been misclassified as well-separated by the fast path.",
+    "ill_separated": 113958,
+    "well_separated": 173048,
+    "undecided": 0,
+    "rate": "39.71%",
+    "cost": "1.99 core-hours; mean 0.025s per ltlsynt call, max 0.25s against a 60s timeout that was never approached.",
+    "meaning": "AuRUS ran with -addA and may add assumptions freely, so a repair can reach realizability by adding assumptions the system then defeats. Two in five of its claimed repairs do exactly that. Any comparison quoting AuRUS's repair count without this correction overstates the baseline by that margin.",
+    "distribution": "Bimodal rather than uniform, so the per-family split matters more than the mean: lily16 98.1% and load-balancer-aurus 91.4% at one end; rg2, arbiter-aurus and humanoid-458 at 0.0% and rg1 at one file out of 7442 at the other.",
+    "families_with_no_output": "Five of the 26 emitted no repairs at all across 30 repeats each -- full-arbiter-aurus, humanoid-503, humanoid-531, humanoid-741, prioritized-arbiter-aurus -- so they contribute no denominator. They are exactly the five that capped 30/30 in the results CSV, two independent measurements agreeing.",
+    "denominator_caveat": "Measured over every emitted file rather than only those counter's `realize` confirms realizable. AuRUS emits only what Strix accepts, so the two should be close, but the exact figure waits on the aurus_validate run, which produces both columns in one pass.",
+    "csvs": "experiments/aurus-h2h/wellsep-av2.csv and wellsep-av3.csv, gitignored with the rest of the results. The sweep ran on each host over the half already on its disk; the two row counts sum to 287006 exactly.",
+    "csv_note": "The sweep tool's arm/spec columns are empty here: parse_run_id expects run_experiments' `sweep_..._seedNN` directory layout and the AuRUS tree is <family>/repeat-NN/, so family attribution comes from the path column."
+  },
   "caveats": [
     "The counter arm has not run. This directory records one side of a head-to-head, and no comparison may be drawn from it alone.",
     "AuRUS is not seedable: Settings.RANDOM_GENERATOR draws from Math.random(). The mitigation is 30 repeats per family with every run's log and solution set archived, the same mitigation the 2026-07-24 campaign used.",

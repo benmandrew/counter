@@ -219,11 +219,14 @@ for excluded in ("arbiter", "takeoff-tlsf", "arbiter-handshake",
     assert excluded not in R.H2H_TLSF_SPECS, \
         f"{excluded} must not be in the head-to-head corpus"
 
-# The declared scope partitions exactly into what counter can run and what is
-# still to be imported. A family imported without being struck off
-# H2H_PENDING_IMPORT fails here rather than silently staying out of the arm.
-check(sorted(R.H2H_TLSF_READY + R.H2H_PENDING_IMPORT),
-      sorted(R.H2H_TLSF_SPECS), "h2h ready/pending partition the corpus")
+# The declared scope partitions exactly into what counter can run, what is
+# still to be imported, and what is imported but can never be scored. A family
+# imported without being struck off H2H_PENDING_IMPORT fails here rather than
+# silently staying out of the arm, and a holdout dropped from every list fails
+# here rather than vanishing from the corpus.
+check(sorted(R.H2H_TLSF_READY + R.H2H_PENDING_IMPORT + R.H2H_UNSCOREABLE),
+      sorted(R.H2H_TLSF_SPECS),
+      "h2h ready/pending/unscoreable partition the corpus")
 assert not set(R.H2H_TLSF_READY) & set(R.H2H_PENDING_IMPORT), \
     "a family cannot be both ready and pending import"
 for spec in R.H2H_PENDING_IMPORT:
@@ -281,6 +284,24 @@ for spec in R.H2H_TLSF_READY:
 for spec in R.H2H_PENDING_IMPORT:
     assert not (R.EXAMPLES_DIR / spec).is_dir(), \
         f"examples/{spec}/ exists; strike it off H2H_PENDING_IMPORT"
+# The unscoreable ones are the opposite shape: imported, so the spec is there,
+# but deliberately without ideals. Asserting the absence of fixes/ is what
+# stops one being quietly authored later and the family staying held out
+# anyway -- if an ideal ever becomes possible, this fails and forces the
+# holdout to be revisited rather than silently outliving its reason.
+for spec in R.H2H_UNSCOREABLE:
+    assert (R.EXAMPLES_DIR / spec / "spec.tlsf").is_file(), \
+        f"examples/{spec}/spec.tlsf missing; H2H_UNSCOREABLE is for " \
+        f"imported families, not pending ones"
+    assert not any((R.EXAMPLES_DIR / spec / "fixes").glob("*.tlsf")), \
+        f"examples/{spec}/fixes/ has ideals; if one is valid, move {spec} " \
+        f"out of H2H_UNSCOREABLE"
+assert not (set(R.H2H_PENDING_IMPORT) & set(R.H2H_UNSCOREABLE)), \
+    "a family cannot be both pending and unscoreable"
+for spec in R.H2H_UNSCOREABLE + R.H2H_PENDING_IMPORT:
+    assert spec in R.H2H_TLSF_SPECS, \
+        f"{spec} is held out of a corpus it is not in"
+    assert spec not in R.H2H_TLSF_READY, f"{spec} is both held out and ready"
 assert V.parse_compare_output is R.parse_compare_output, \
     "aurus_validate must reuse run_experiments.parse_compare_output"
 

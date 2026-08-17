@@ -1,0 +1,25 @@
+INFO {
+  TITLE:       "Simple Arbiter, unrealizable variant 2"
+  DESCRIPTION: "Parameterized Arbiter, where each request has to be eventually granted"
+  SEMANTICS:   Mealy
+  TARGET:      Mealy
+}
+
+MAIN {
+  INPUTS {
+    r_0;
+    r_1;
+  }
+  OUTPUTS {
+    g_0;
+    g_1;
+  }
+  ASSERT {
+    (((! (g_0)) && (true)) || ((true) && (! (g_1))));
+  }
+  GUARANTEE {
+    (G ((r_0) -> (F (g_0))));
+    (G ((r_1) -> (F (g_1))));
+    (G ((((r_0) && (X (r_1))) -> (F ((g_0) && (g_1)))) && (true)));
+  }
+}

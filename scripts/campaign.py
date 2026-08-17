@@ -2193,6 +2193,7 @@ def confirm_discard(host: str, probe: HostProbe, refusals: list) -> bool:
     for kind, why in refusals:
         print(f"    {kind}: {why}")
     print(f"    checkout: {probe.branch} at {probe.head[:7]}")
+    print("    any commit(s) this checkout holds that the target does not")
     print("  Untracked files, including results, are left alone.")
     if not sys.stdin.isatty():
         print(f"  REFUSED: --force needs a terminal to confirm on; "
@@ -2247,19 +2248,27 @@ def cmd_stage(args: argparse.Namespace) -> int:
                   "again and ask)")
             rows.append([host, probe.branch, probe.head[:7], commit, "refused"])
             continue
-        if refusals and not (args.dry_run or confirm_discard(host, probe,
-                                                             refusals)):
+        # Confirm on --force itself, not on whether a refusal was found. The
+        # remote script has a fourth thing it declines to discard, a checkout
+        # ahead of the target commit, and the probe cannot see it: the host may
+        # not hold the target sha until the apply script fetches. So a host
+        # that is clean, idle and on the right branch yields no refusal here
+        # and still refuses over there. Gating on `refusals` made --force inert
+        # for exactly that host and skipped the prompt with it, which is the
+        # state a rebased branch leaves both machines in.
+        if args.force and not (args.dry_run or confirm_discard(host, probe,
+                                                               refusals)):
             ok = False
             rows.append([host, probe.branch, probe.head[:7], commit,
                          "not confirmed"])
             continue
         if args.dry_run:
             rows.append([host, probe.branch, probe.head[:7], commit,
-                         "would stage" + (" (--force)" if refusals else "")])
+                         "would stage" + (" (--force)" if args.force else "")])
             continue
         text, err = run_shell(
             host, stage_apply_script(source_path(host), branch, sha,
-                                     campaign["build"], bool(refusals)),
+                                     campaign["build"], args.force),
             timeout=args.build_timeout)
         result = parse_sections(text or "")
         if err or "err" in result or "end" not in result:

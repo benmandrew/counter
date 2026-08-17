@@ -1180,6 +1180,8 @@ check_true("git clean" not in apply_forced,
            "no git clean, ever: a host's untracked files are its results")
 check_true("rev-list --count" in apply_plain,
            "an unforced stage refuses a checkout ahead of the pushed commit")
+check_true('if [ "1" = "0" ]' in apply_forced,
+           "and a forced one leaves that guard unreachable")
 check_true(" -- -B " not in apply_plain,
            "`git checkout -- -B x` would read -B as a path name")
 check_true("| tail" not in apply_forced.split("@")[0] + apply_forced,
@@ -1331,6 +1333,25 @@ try:
     check(git(repo, "rev-parse", "--abbrev-ref", "HEAD"), "feat/fixture",
           "and the checkout is untouched")
     git(repo, "checkout", "-q", "--", ".")
+
+    # A host that is clean, idle and on the campaign's own branch yields no
+    # refusal from the probe, and --force must still take effect on it. The
+    # apply script declines a fourth thing the probe cannot see -- a checkout
+    # ahead of the target commit, which needs the fetch to detect -- so a
+    # --force that only engaged when a probe-level refusal existed was inert
+    # for exactly this host, and skipped the confirmation with it. That is the
+    # state a rebased branch leaves every staged machine in.
+    buffer = io.StringIO()
+    with contextlib.redirect_stdout(buffer):
+        code = C.cmd_stage(stage_args(force=True, dry_run=False))
+    check(code, 1, "--force on an unrefused host still needs confirming")
+    check_true("needs a terminal" in buffer.getvalue(),
+               "so it refuses without a terminal rather than staging quietly")
+    buffer = io.StringIO()
+    with contextlib.redirect_stdout(buffer):
+        code = C.cmd_stage(stage_args(force=True))
+    check_true("(--force)" in buffer.getvalue(),
+               "and a forced dry run says so even with nothing to refuse")
 
     # The whole apply path, against a stub binary that reports the commit its
     # checkout is on: push, fetch, checkout, build, and the version read back.

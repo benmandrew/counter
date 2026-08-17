@@ -17,12 +17,18 @@ hosts = { av2 = "0-9", av3 = "10-19" }
 # inheriting it from whatever the defaults become.
 configs = "python3 scripts/gen_configs.py --schemes nsga2-apportion --sweeps C --levels default --metric log --out-dir experiments/configs-aurus-h2h --pin-vintage"
 
-# jobs = 1 for the RAM reason the other TLSF profiles use: ltlsynt runs
-# multi-GB per call on these specs and max_concurrent_realizability is a
-# per-process cap, so a second concurrent counter would double the ceiling.
-# It matters more here than usual: the corpus is uncensored at a 7200s cap,
-# and the AuRUS arm showed six families running to that cap.
-phases = [ { profile = "aurus-h2h", jobs = 1 } ]
+# jobs = 8, against the RAM reason the other TLSF profiles set it to 1: ltlsynt
+# runs multi-GB per call and max_concurrent_realizability is a per-process cap,
+# so N concurrent counters multiply the ceiling by N. That argument was never
+# measured on this corpus, and it is wrong here. A 24-run calibration over 12
+# families at 2 seeds, deliberately sized so the queue stayed saturated rather
+# than fitting the worker count, peaked at load 21.7 of 32 cores and 18.7 GB of
+# 125 GB. ltlfilt, not ltlsynt, is this project's memory hog.
+#
+# The cost of the old value was not small: at jobs = 1 this campaign runs about
+# 31 hours per host against roughly 4, and two thirds of that is humanoid-742
+# alone, which caps at 7200s on every seed.
+phases = [ { profile = "aurus-h2h", jobs = 8 } ]
 
 # The AuRUS arm is NOT a phase: campaign.py phases invoke run_experiments.py
 # with a profile, and AuRUS runs through scripts/aurus_campaign.py instead.

@@ -997,10 +997,10 @@ PROFILES: dict[str, dict] = {
     },
     # The 2026-08-14 head-to-head. Separate from `h2h-tlsf` in every path it
     # writes, because it differs from that profile in the two things the resume
-    # key does not carry: the corpus is 14 families rather than 12, and the wall
-    # cap is 7200s rather than 600s. Sharing ablate-tlsf's CSV as `h2h-tlsf`
-    # does would put rows from both caps under one key and let the merge keep
-    # whichever arrived first.
+    # key does not carry: the corpus is 25 scoreable families rather than 12,
+    # and the wall cap is 7200s rather than 600s. Sharing ablate-tlsf's CSV as
+    # `h2h-tlsf` does would put rows from both caps under one key and let the
+    # merge keep whichever arrived first.
     #
     # 7200s matches AuRUS's `--gato 7200`, the published 2 h budget. The July
     # campaign ran counter at 600s against AuRUS at 3600s and reported the 6x

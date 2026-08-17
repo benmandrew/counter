@@ -1,7 +1,7 @@
 name = "aurus-h2h"
 branch = "feat/aurus-h2h"
 profile = "aurus-h2h"
-description = "counter against AuRUS on 14 shared TLSF families at a matched 7200s budget, both tools scored by compare against examples/<spec>/fixes."
+description = "counter against AuRUS on the AuRUS paper's 26 TLSF families at a matched 7200s budget, both tools scored by compare against examples/<spec>/fixes. The counter phase runs the H2H_TLSF_READY subset until the remaining families are imported."
 
 # Seeds 0-19 split evenly. Unlike the paired campaigns there is nothing to
 # cancel within a pair here -- the AuRUS arm is not seeded at all -- so the
@@ -11,8 +11,8 @@ hosts = { av2 = "0-9", av3 = "10-19" }
 # jobs = 1 for the RAM reason the other TLSF profiles use: ltlsynt runs
 # multi-GB per call on these specs and max_concurrent_realizability is a
 # per-process cap, so a second concurrent counter would double the ceiling.
-# It matters more here than usual, amba being the heaviest family in the
-# corpus and newly uncensored at a 7200s cap.
+# It matters more here than usual: the corpus is uncensored at a 7200s cap,
+# and the AuRUS arm showed six families running to that cap.
 phases = [ { profile = "aurus-h2h", jobs = 1 } ]
 
 # The AuRUS arm is NOT a phase: campaign.py phases invoke run_experiments.py

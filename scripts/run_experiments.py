@@ -958,7 +958,14 @@ PROFILES: dict[str, dict] = {
     # instead, so neither tool's figure needs that caveat and neither compares
     # to July's on cost.
     "aurus-h2h": {
-        "schemes": ["nsga2-truncate"],
+        # Both of these track the built-in defaults rather than pinning an
+        # arm, because a head-to-head has to run counter as it ships: a
+        # baseline comparison against a configuration no user gets by
+        # default measures the wrong thing. nsga2-apportion became the
+        # default in c71ecf0 and this profile followed it; `log` has been
+        # the default metric throughout. Re-check both against
+        # include/config.hpp whenever a default moves.
+        "schemes": ["nsga2-apportion"],
         "weakenings": None,
         "metrics": ["log"],
         "repair_modes": None,

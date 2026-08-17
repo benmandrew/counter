@@ -29,6 +29,7 @@ import importlib
 import io
 import json
 import os
+import re
 import shutil
 import signal
 import subprocess
@@ -1852,6 +1853,229 @@ try:
 finally:
     C.run_shell = REAL_RUN_SHELL
     shutil.rmtree(queue_root, ignore_errors=True)
+
+
+# ── Colour ────────────────────────────────────────────────────────────────────
+#
+# Two failures are worth guarding, and only one of them is visible. Escapes in
+# a redirected stream are the loud one: `tick` runs from cron into
+# $HOME/.counter-queue.log and `status` is piped and captured, and the C++ side
+# already carries a note about a status line that logged 59KB of escapes for
+# 1.2KB of content. The silent one is alignment -- column widths come from
+# len(cell), so an escape counted into a width shifts every column right of it
+# and the table still looks like a table. Both are tested against the real
+# rows, since a painter is only wrong on the cells it fires for.
+
+ANSI_RE = re.compile(r"\x1b\[[0-9;]*m")
+
+
+def strip_ansi(text: str) -> str:
+    return ANSI_RE.sub("", text)
+
+
+class FakeStream(io.StringIO):
+    """A stream that answers isatty() however it was told to."""
+
+    def __init__(self, tty: bool):
+        super().__init__()
+        self.tty = tty
+
+    def isatty(self) -> bool:
+        return self.tty
+
+
+TTY, PIPE = FakeStream(True), FakeStream(False)
+
+check(C.colour_enabled(stream=TTY, env={}), True, "a terminal is coloured")
+check(C.colour_enabled(stream=PIPE, env={}), False,
+      "a redirected stream is not: this is what keeps the cron tick's log and "
+      "every captured status readable")
+check(C.colour_enabled(stream=PIPE, env={"CLICOLOR_FORCE": "1"}), True,
+      "CLICOLOR_FORCE forces it back on down a pipe, for `less -R`")
+check(C.colour_enabled(stream=PIPE, env={"CLICOLOR_FORCE": "0"}), False,
+      "and 0 forces nothing")
+check(C.colour_enabled(stream=TTY,
+                       env={"NO_COLOR": "1", "CLICOLOR_FORCE": "1"}), False,
+      "NO_COLOR wins over the terminal and over the force alike")
+check(C.colour_enabled(stream=TTY, env={"NO_COLOR": ""}), True,
+      "an empty NO_COLOR is an unset one, per no-color.org")
+check(C.colour_enabled(no_color=True, stream=TTY,
+                       env={"CLICOLOR_FORCE": "1"}), False,
+      "--no-color beats everything, being the one thing typed on purpose")
+check(C.colour_enabled(env={}), sys.stdout.isatty(),
+      "and the stream defaults to stdout")
+
+closed = open(os.devnull)
+closed.close()
+check(C.colour_enabled(stream=closed, env={}), False,
+      "a closed stream raises rather than answering, and is not a terminal")
+check(C.colour_enabled(stream=object(), env={}), False,
+      "nor is a stream with no isatty at all")
+
+# Fixtures chosen to fire every branch of every painter: a reachable host, an
+# unreachable one, and one campaign per STATE.
+COLOUR_REPORTS = [
+    {"host": "av2", "reachable": True, "hostname": "av2", "branch": "feat/x",
+     "head": "abc1234", "dirty": False, "hidden": 0,
+     "processes": [{"comm": "counter", "profile": "tlsf"}],
+     "campaigns": [dict(done, profile="tlsf", state="running",
+                        branch="feat/x", binary_commit="abc1234")],
+     "queue": [
+         {"file": "001-tlsf.toml", "campaign": "tlsf", "state": "running",
+          "phase": 1, "phases": 2, "attempts": 1, "max_attempts": 3,
+          "seeds": "0-99", "updated": "2026-08-17T10:00:00"},
+         {"file": "002-x.toml", "campaign": "x", "state": "queued", "phase": 0,
+          "phases": 1, "attempts": 0, "max_attempts": 3, "seeds": "0-9",
+          "updated": "2026-08-17T09:00:00"},
+         {"file": "003-y.toml", "campaign": "y", "state": "failed", "phase": 0,
+          "phases": 1, "attempts": 3, "max_attempts": 3, "seeds": "0-9",
+          "updated": "2026-08-17T09:00:00", "last_error": "phase exited 3"},
+         {"file": "004-z.toml", "error": "unknown key `job`"}]},
+    {"host": "av3", "reachable": True, "hostname": "av3", "branch": "main",
+     "head": "deadbee", "dirty": True, "hidden": 0, "processes": [],
+     "campaigns": [
+         dict(done, profile="probe", state="stuck", branch="feat/other",
+              binary_commit="b093374", dirty_binary=True, rows_from_csv=True),
+         dict(done, profile="muc", state="done", branch="main",
+              binary_commit="deadbee"),
+         dict(done, profile="wellsep", state="stalled", branch="main",
+              binary_commit="deadbee")],
+     "queue": []},
+    dict(unreachable, host="av4"),
+    dict(unreachable, host="av5", error="timed out after 45s"),
+]
+
+STAGE_ROWS = [["av2", "feat/x", "abc1234", "abc1234", "staged"],
+              ["av3", "?", "?", "?", "stage failed"],
+              ["av4", "feat/x", "abc1234", "abc1234", "refused"],
+              ["av5", "feat/x", "abc1234", "abc1234", "not confirmed"],
+              ["av6", "feat/x", "abc1234", "abc1234", "BINARY MISMATCH"],
+              ["av7", "main", "deadbee", "deadbee", "would stage (--force)"]]
+START_ROWS = [["av2", "0-99", "12345", "launched"],
+              ["av3", "100-199", "-", "dry run"],
+              ["av4", "200-299", "-", "blocked"],
+              ["av5", "300-399", "-", "failed: no pid returned"]]
+
+COLOUR_TABLES = [
+    ("checkout", C.CHECKOUT_HEADERS, C.checkout_rows(COLOUR_REPORTS),
+     C.checkout_paint),
+    ("campaign", C.HEADERS, C.status_rows(COLOUR_REPORTS), C.status_paint),
+    ("queue", C.QUEUE_HEADERS, C.queue_rows(COLOUR_REPORTS), C.queue_paint),
+    ("stage", C.STAGE_HEADERS, STAGE_ROWS, C.stage_paint),
+    ("start", C.START_HEADERS, START_ROWS, C.start_paint),
+]
+
+try:
+    for name, headers, rows, paint in COLOUR_TABLES:
+        C.set_colour(False)
+        plain = C.render_table(rows, headers, paint)
+        check_true("\x1b" not in plain,
+                   f"the {name} table carries no escape with colour off")
+        C.set_colour(True)
+        painted = C.render_table(rows, headers, paint)
+        check_true("\x1b" in painted,
+                   f"the {name} table is actually coloured with colour on, so "
+                   f"the comparison below is not vacuous")
+        # The property that breaks: colour is decoration over a fixed layout,
+        # so removing it must give back the layout unchanged -- padding,
+        # rstripped line ends and all.
+        check(strip_ansi(painted), plain,
+              f"the {name} table's columns must not move when it is coloured")
+
+    # Every state the two STATE columns can hold is painted, or the colour is
+    # saying nothing about the reading it is meant to make findable.
+    C.set_colour(True)
+    for state in ("done", "running", "stuck", "stalled"):
+        check_true("\x1b" in C.status_paint(0, C.HEADERS.index("STATE"),
+                                            state, C.STYLE),
+                   f"campaign STATE {state} is coloured")
+    for state in C.QUEUE_STATES:
+        check_true("\x1b" in C.queue_paint(0, C.QUEUE_HEADERS.index("STATE"),
+                                           state, C.STYLE),
+                   f"queue STATE {state} is coloured")
+    # The two marks the legend explains are warnings, and only the mark is
+    # painted: the branch name beside it is not the warning.
+    branch = C.status_paint(0, C.HEADERS.index("BRANCH"), "feat/x!", C.STYLE)
+    check(strip_ansi(branch), "feat/x!", "the ! keeps its cell's width")
+    check_true(branch.startswith("feat/x\x1b"), "and only the ! is painted")
+    binary = C.status_paint(0, C.HEADERS.index("BINARY"), "b093374*", C.STYLE)
+    check_true(binary.startswith("b093374\x1b"), "same for the * on BINARY")
+
+    # A painter is not called at all with colour off, so a table pays nothing
+    # for having one.
+    def loud(row, col, cell, style):
+        raise AssertionError("painter called with colour off")
+
+    C.set_colour(False)
+    check(C.render_table([["a", "b"]], ["H1", "H2"], loud), "H1  H2\na   b",
+          "a painter is skipped entirely when colour is off")
+
+    # print_status is the whole of `status`, three tables and the notes, and
+    # the same property has to hold over the lot of it.
+    def status_text() -> str:
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf):
+            C.print_status(COLOUR_REPORTS)
+        return buf.getvalue()
+
+    C.set_colour(False)
+    plain_status = status_text()
+    C.set_colour(True)
+    painted_status = status_text()
+    check_true("\x1b" in painted_status, "print_status colours its tables")
+    check(strip_ansi(painted_status), plain_status,
+          "and the whole of `status` strips back to the uncoloured output")
+finally:
+    C.set_colour(False)
+
+parser = C.build_parser()
+for argv in (["status"], ["queue"], ["collect"], ["stage", "c"],
+             ["start", "c"]):
+    check(parser.parse_args(argv).no_color, False,
+          f"`{argv[0]}` prints a table, so it takes --no-color")
+    check(parser.parse_args(argv + ["--no-color"]).no_color, True,
+          f"`{argv[0]} --no-color` turns it off by hand")
+check_true(not hasattr(parser.parse_args(["tick", "--host", "av2"]),
+                       "no_color"),
+           "a verb that prints no table takes no such flag, and main() reads "
+           "the flag with a default rather than assuming one")
+
+# The wiring itself, through main(), which is the only thing that decides
+# whether a real run is coloured. A stubbed verb reports what main set.
+REAL_CMD_QUEUE = C.cmd_queue
+SEEN: list = []
+
+
+def colour_probe(args) -> int:
+    SEEN.append(C.STYLE.enabled)
+    return 0
+
+
+C.cmd_queue = colour_probe
+SAVED_ENV = {k: os.environ.pop(k) for k in ("NO_COLOR", "CLICOLOR_FORCE")
+             if k in os.environ}
+try:
+    for argv, tty, want, why in [
+            (["queue"], False, False,
+             "a redirected `queue` is never coloured, whatever the terminal "
+             "the run was started from"),
+            (["queue"], True, True, "a terminal is"),
+            (["queue", "--no-color"], True, False, "--no-color reaches main"),
+            (["queue", "--json"], True, False,
+             "and --json is never coloured, being parsed rather than read")]:
+        SEEN.clear()
+        old_argv, sys.argv = sys.argv, ["campaign.py", *argv]
+        try:
+            with contextlib.redirect_stdout(FakeStream(tty)):
+                with contextlib.suppress(SystemExit):
+                    C.main()
+        finally:
+            sys.argv = old_argv
+        check(SEEN, [want], why)
+finally:
+    C.cmd_queue = REAL_CMD_QUEUE
+    os.environ.update(SAVED_ENV)
+    C.set_colour(False)
 
 
 if FAILURES:

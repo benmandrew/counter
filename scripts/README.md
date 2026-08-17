@@ -644,6 +644,12 @@ An unreachable host prints a row saying so rather than aborting the poll, and
 sets a non-zero exit status, so a wrapper can tell a full poll from a partial
 one.
 
+The tables are coloured on a terminal and plain anywhere else, so a redirected
+poll and the cron tick's log stay readable. `--no-color`, on every verb that
+prints a table, and a non-empty `NO_COLOR` in the environment both turn it off;
+`CLICOLOR_FORCE=1` forces it on down a pipe, which is what `less -R` wants.
+`--json` is never coloured.
+
 ### Collecting a finished one
 
 ```sh

@@ -59,6 +59,8 @@ STATE is one of four:
 - `stuck` — the runner process is there and the log is older than that. Three hours is the harness's own bound on one run's silence (a 3600s `counter` timeout plus an 1800s `compare` timeout, doubled for a `--jobs 1` host), so `stuck` means the process is alive and producing nothing. Investigate it; do not wait for it.
 - `stalled` — no runner process names this profile. A finished-but-incomplete campaign and a machine that was rebooted look identical here, which is why the row still carries its counts.
 
+On a terminal every table is coloured — STATE by what it says, TREE and PROCESSES on the checkout table, the `!` and `*` marks themselves, and `queue` and the `stage` result table through the same renderer — and nowhere else: colour is off wherever stdout is not a terminal, since `tick` runs from cron into `$HOME/.counter-queue.log` and a `status` is as often piped as read, and escapes in either are the 59KB-of-escape-codes failure the root `CLAUDE.md` records against the C++ status line. `NO_COLOR` and `--no-color` turn it off on a terminal too, `CLICOLOR_FORCE=1` forces it back on for `less -R`, and `--json` is never coloured either way.
+
 Two marks qualify a row. A `~` before the ROWS count means the number is the whole CSV's length rather than this launch's share, used only where the runner returned no plan; it overstates progress wherever profiles share a CSV or a relaunch topped one up. A `!` after BRANCH means the campaign's manifest names a branch the checkout has since left, so a resume there would produce rows from other code. A `*` after BINARY means that launch used `--allow-stale-binary`, so its rows name a commit they did not come from.
 
 ## The binary freshness gate

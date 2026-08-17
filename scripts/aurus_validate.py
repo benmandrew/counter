@@ -17,14 +17,32 @@ blocks), verified against real AuRUS output files — `realize` and `compare`
 both consume them as-is, and `compare --repairs <repeat dir>` is safe because
 only the spec*.tlsf files in a repeat dir carry the .tlsf extension.
 
+Every repair that survives (a) is then asked whether it is well-separated —
+whether the system can force the spec's own assumptions to fail. AuRUS ran
+with -addA, so it may add assumptions freely, and a repair that reaches
+realizability by adding assumptions it then defeats is the cheat counter's
+status objective was rewritten to stop paying for. Without this column a
+claimed repair count says nothing about how many of the repairs mean
+anything. The query goes through check_well_separated.check_one (imported,
+not copied) rather than a counter binary: counter's in-run checker caches a
+realizability timeout as "unrealizable", which for this query reads as
+"well-separated", so a verdict taken from it would silently launder the
+timeouts. Unrealizable repairs are not asked — there is no strategy to
+defeat the assumptions with.
+
 Two CSVs land next to each other:
     <out-csv>                — one row per (spec, repeat): n_claimed,
                                n_realize_ok, n_disagree (claimed but not
                                REALIZABLE here — the detail CSV splits real
                                UNREALIZABLE flips from TIMEOUT/ERROR),
+                               n_ill_separated, n_sep_undecided,
                                best_relation, implies_genuine, n_implies
     <out-csv stem>_details.csv — one row per repair file with its verdict:
-                               REALIZABLE / UNREALIZABLE / TIMEOUT / ERROR
+                               REALIZABLE / UNREALIZABLE / TIMEOUT / ERROR,
+                               and separation: well-separated /
+                               not-well-separated / undecided, empty where
+                               the repair was not realizable or the check
+                               was skipped
 
 Resumable: a (spec, repeat) already present in the out CSV is skipped, and
 its detail rows are not re-emitted. Concurrency is per repeat (--jobs).
@@ -46,15 +64,20 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent))
 
 from run_experiments import parse_compare_output  # noqa: E402
+from check_well_separated import (  # noqa: E402
+    DEFAULT_LTLSYNT, VERDICT_NOT_WELL_SEPARATED, VERDICT_UNDECIDED,
+    check_one,
+)
 
 SPEC_TLSF_RE = re.compile(r"^spec(\d+)\.tlsf$")
 REPEAT_RE = re.compile(r"^repeat-(\d+)$")
 
 CSV_FIELDS = [
     "spec", "repeat", "n_claimed", "n_realize_ok", "n_disagree",
+    "n_ill_separated", "n_sep_undecided",
     "best_relation", "implies_genuine", "n_implies",
 ]
-DETAIL_FIELDS = ["spec", "repeat", "file", "realize_verdict"]
+DETAIL_FIELDS = ["spec", "repeat", "file", "realize_verdict", "separation"]
 
 
 def realize_verdict(realize_bin: Path, tlsf: Path, timeout: int) -> str:
@@ -69,6 +92,24 @@ def realize_verdict(realize_bin: Path, tlsf: Path, timeout: int) -> str:
     if result.returncode == 0 and out in ("REALIZABLE", "UNREALIZABLE"):
         return out
     return "ERROR"
+
+
+def separation_verdict(tlsf: Path, ltlsynt: Path, timeout: int) -> str:
+    """Well-separated / not-well-separated / undecided for one repair.
+
+    Delegates to check_well_separated.check_one rather than asking `realize`,
+    for the reason that script's docstring gives: counter's in-run checker
+    maps a realizability timeout to "unrealizable" and caches it, which for
+    this query reads as "well-separated". A CLI built on the same cache would
+    inherit the collapse. check_one shells to ltlsynt directly and reports a
+    timeout as undecided, so the two failure modes stay distinguishable in
+    the CSV.
+
+    fast_path stays off: the short-circuit for input-only assumptions is the
+    C++ filter's, and AuRUS ran with -addA, so the specs this scores are
+    exactly the ones whose assumptions may reference an output.
+    """
+    return check_one(tlsf, ltlsynt, float(timeout), fast_path=False).verdict
 
 
 def compare_repeat(compare_bin: Path, repeat_dir: Path, ideals_dir: Path,
@@ -125,6 +166,14 @@ def main() -> None:
                         default=repo_root / "build-release" / "realize",
                         metavar="PATH",
                         help="realize binary (default: %(default)s)")
+    parser.add_argument("--ltlsynt", type=Path, default=DEFAULT_LTLSYNT,
+                        metavar="PATH",
+                        help="ltlsynt for the well-separation query "
+                             "(default: %(default)s)")
+    parser.add_argument("--no-well-separation", action="store_true",
+                        help="skip the well-separation check; the "
+                             "n_ill_separated and n_sep_undecided columns "
+                             "then read 0 and the separation column is empty")
     parser.add_argument("--compare-bin", type=Path,
                         default=repo_root / "build-release" / "compare",
                         metavar="PATH",
@@ -190,9 +239,22 @@ def main() -> None:
         details = []
         for tlsf in repairs:
             verdict = realize_verdict(args.realize_bin, tlsf, args.timeout)
+            # Only realizable repairs are asked. Well-separation qualifies a
+            # repair that exists; on an unrealizable one there is no strategy
+            # to defeat the assumptions with, and asking anyway would spend an
+            # ltlsynt call per rejected candidate for a verdict nothing reads.
+            separation = ""
+            if verdict == "REALIZABLE" and not args.no_well_separation:
+                separation = separation_verdict(
+                    tlsf, args.ltlsynt, args.timeout)
             details.append({"spec": spec, "repeat": rep, "file": tlsf.name,
-                            "realize_verdict": verdict})
+                            "realize_verdict": verdict,
+                            "separation": separation})
         n_ok = sum(d["realize_verdict"] == "REALIZABLE" for d in details)
+        n_ill = sum(d["separation"] == VERDICT_NOT_WELL_SEPARATED
+                    for d in details)
+        n_sep_undecided = sum(d["separation"] == VERDICT_UNDECIDED
+                              for d in details)
 
         if repairs:
             ideals_dir = args.examples_dir / spec / "fixes"
@@ -207,6 +269,7 @@ def main() -> None:
 
         row = {"spec": spec, "repeat": rep, "n_claimed": len(repairs),
                "n_realize_ok": n_ok, "n_disagree": len(repairs) - n_ok,
+               "n_ill_separated": n_ill, "n_sep_undecided": n_sep_undecided,
                "best_relation": best_rel, "implies_genuine": implies,
                "n_implies": n_implies}
         with lock:
@@ -217,6 +280,8 @@ def main() -> None:
             n = state["completed"]
             note = ("" if row["n_disagree"] == 0
                     else f"  DISAGREE {row['n_disagree']}")
+            if n_ill:
+                note += f"  ILL-SEPARATED {n_ill}"
             print(f"[{n}/{len(to_run)}]  {run_id}  "
                   f"claimed {row['n_claimed']}, realize-ok {n_ok}, "
                   f"best {best_rel}{note}", flush=True)

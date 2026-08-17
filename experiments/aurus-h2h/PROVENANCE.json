@@ -1,0 +1,84 @@
+{
+  "campaign": "aurus-h2h",
+  "attribution": "recorded",
+  "generated_on": "2026-08-17",
+  "status": "partial: AuRUS arm complete, counter arm not yet run",
+  "method": "Recorded at run time, not reconstructed. The AuRUS arm was staged, launched, monitored and closed by the session that authored its harness; this file restates those records. The run window is taken from run.log mtimes in the collected output tree, which the harness writes as each run finishes.",
+  "profile_commit": {
+    "sha": "dea51b7b2f7a7179229c6ebc74c8b4c4f6bc9a55",
+    "subject": "fix(experiments): run AuRUS at the pre-fork base, not this project's fork",
+    "author_date": "2026-08-14 17:31",
+    "commit_date": "2026-08-14 17:31"
+  },
+  "profile_commit_confidence": "recorded",
+  "profile_commit_evidence": "Both hosts were staged to this commit on branch feat/aurus-h2h before launch, and each host's on-disk scripts/aurus_campaign.py still hashes to the blob this commit records (md5 c35d02c0adf2c5ad43fed052004e2b04, checked 2026-08-17). It is the commit that fixed the corpus at the paper's 26 rows and pointed the harness at the pre-fork AuRUS base.",
+  "binary_commit": null,
+  "binary_commit_note": "Null by construction rather than by loss. The AuRUS arm invokes unreal-repair.sh alone and links no counter binary, so there is nothing to stamp. The counter arm, when it runs, records its own commit through the --version stamping in run_experiments.py and this field must be filled in then.",
+  "aurus": {
+    "repo": "https://github.com/renzodegiovanni/unreal-repair (fork at /home/y19056ba/projects/tools/aurus)",
+    "commit": "3f6f01fad3404724d1cca33ad30ab4c63fe61bad",
+    "subject": "minors",
+    "author_date": "2024-05-28",
+    "basis": "The last upstream commit before this project's fork diverged. Deployed to both hosts as a git worktree at /home/y19056ba/projects/tools/aurus-base, rsynced without .git, so the hosts carry the tree and not the history.",
+    "deviations": [
+      {
+        "path": "lib/new_strix/strix",
+        "tracked_blob": "ff6cb37cf74d4d97e96a252dafb706edee336e5f",
+        "deployed_blob": "db8b56609061e28b8ebfa3f6dff9468b6abb26fe",
+        "reason": "The blob 3f6f01f tracks is a macOS Mach-O executable. On Linux it does not run, realizability checking fails, and every run returns zero solutions. The deployed blob is the Linux ELF Strix tracked by the fork at ccb42eadac650a2d55119e9f7d9209bdf2ce913f. This is the only file that differs from the base tree, and the substitution is unavoidable on this hardware.",
+        "verified": "file(1) reports ELF 64-bit LSB pie executable on both hosts; no run.log contains an ERR: lib/new_strix/strix line."
+      }
+    ],
+    "not_deviations": "Deliberately absent: the fork's SPOT satisfiability swap, its solver cache, and its parallel ranking. The arm runs the authors' algorithm as they left it."
+  },
+  "flags": {
+    "base": "-Max=1000 -Gen=1000 -Pop=100 -k=20 -addA -geneNUM=0 -factors=0.7,0.1,0.2 -GATO=7200",
+    "factors_note": "Settings.setFactors halves the semantic weight into LOST_MODELS_FACTOR and WON_MODELS_FACTOR, so -factors=0.7,0.1,0.2 is the 0.7/0.1/0.1/0.1 weighting requested. It is also the shipped default and what two of the three upstream drivers use.",
+    "only_inputs_a": [
+      "arbiter-aurus", "minepump", "rg1", "rg2", "lift",
+      "gyro-var1", "gyro-var2", "humanoid-458", "humanoid-531"
+    ],
+    "only_inputs_a_basis": "The nine families the upstream drivers pass -onlyInputsA for; no per-group -factors override was applied, at the user's direction.",
+    "no_reference_flags": "No -ref flags. Scoring is against this project's examples/<spec>/fixes through the compare binary, so both arms are one statistic over two populations. AuRUS's own case-studies/*/genuine/ directories are never read."
+  },
+  "run_window": {
+    "earliest": "2026-08-14T16:32:45Z",
+    "latest": "2026-08-15T16:46:22Z",
+    "note": "From run.log mtimes across the collected tree. av3's clock runs about 17 minutes fast, so its half carries that skew. Wall time per host as the harness reported it: av2 1422.4 min, av3 1455.5 min."
+  },
+  "hosts": {
+    "av2": { "repeats": "0-14", "rows": 390, "output_bytes": "772M" },
+    "av3": { "repeats": "15-29", "rows": 390, "output_bytes": "747M" }
+  },
+  "corpus": "The 26 TLSF specifications of the AuRUS paper, at the paths named in SPEC_TLSF. Six carry an -aurus suffix because this project has same-named families at different SYNTCOMP parameter instances. lily02 points at case-studies/syntcomp-unreal/lily02/lilydemo02.tlsf, the paper's row, whose file is byte-identical to the top-level copy.",
+  "results": {
+    "rows": 780,
+    "completed": 605,
+    "capped_at_gato": 173,
+    "killed_by_oom": 2,
+    "zero_solution_completions": 9,
+    "solutions_written": 287006,
+    "integrity": "The n_solutions column sums to 287006 and the collected tree holds exactly 287006 spec*.tlsf files. All 780 rows have a run.log."
+  },
+  "caveats": [
+    "The counter arm has not run. This directory records one side of a head-to-head, and no comparison may be drawn from it alone.",
+    "AuRUS is not seedable: Settings.RANDOM_GENERATOR draws from Math.random(). The mitigation is 30 repeats per family with every run's log and solution set archived, the same mitigation the 2026-07-24 campaign used.",
+    "Two full-arbiter-aurus runs (av2 repeat-04, av3 repeat-20) exited 137 with an empty n_solutions and no killed flag. The JVM was SIGKILLed under -Xmx8g while the harness timeout had not fired, which is the kernel OOM killer rather than a cap. They are failures and belong in neither the completed nor the capped bucket.",
+    "Cap rate concentrates in six families. humanoid-503, humanoid-531 and humanoid-741 capped 30 of 30; full-arbiter-aurus produced nothing at all (28 capped plus the 2 OOM rows); prioritized-arbiter-aurus capped 29 of 30 and pcar-v2-888 25 of 30. lily02 capped once. The other 20 families capped zero times.",
+    "Completing runs finish far below the budget: median wall 150 s against a 7200 s cap, maximum 6508 s. The capped runs are hard rather than marginal, so a longer budget would not convert many of them.",
+    "The macOS Strix substitution above is a deviation from the base tree and is not optional on Linux.",
+    "campaign.toml declares the seed split for the counter phase only. The AuRUS repeats were split by aurus_campaign.py --repeat-offset instead, which is why the host ranges here read 0-14 and 15-29 rather than the 0-9 and 10-19 that file names."
+  ],
+  "vendored_scripts": {
+    "vendored_on": "2026-08-17",
+    "note": "Verbatim copy of the driver that ran the AuRUS arm, so the directory reproduces without the git history. Verify with `git hash-object <file>`. aurus_validate.py is deliberately absent: it has not been run against these results yet, and vendoring the revision that eventually scores them is part of closing the campaign.",
+    "files": {
+      "aurus_campaign.py": {
+        "source_commit": "dea51b7b2f7a7179229c6ebc74c8b4c4f6bc9a55",
+        "blob": "c4805050b6984c52c9f4cde71f2e383bd7f2601d",
+        "reachable_from_main": false,
+        "basis": "recorded: staged to both hosts at launch, and both on-disk copies still hash to this blob (checked 2026-08-17). The branch feat/aurus-h2h is not yet merged, so this commit is not an ancestor of main."
+      }
+    }
+  }
+}

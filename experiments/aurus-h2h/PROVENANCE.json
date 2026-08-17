@@ -8,24 +8,39 @@
     "sha": "dea51b7b2f7a7179229c6ebc74c8b4c4f6bc9a55",
     "subject": "fix(experiments): run AuRUS at the pre-fork base, not this project's fork",
     "author_date": "2026-08-14 17:31",
-    "commit_date": "2026-08-14 17:31"
+    "commit_date": "2026-08-14 17:31",
+    "reachable_from_main": false,
+    "must_resolve": false,
+    "note": "Informational, and deliberately not held by a tag. No counter binary ran in this arm, so this sha pins nothing that determines a result; it names the revision the harness came from, and the harness itself is pinned exactly by the content-addressed blob under vendored_scripts. The 2026-08-17 rebase onto main rewrote this sha (the equivalent post-rebase commit is 87ec8db) and left the vendored blob byte-identical, which is why the rebase costs this record nothing. The version that does determine the results is under `aurus` below, and that one is tagged."
   },
   "profile_commit_confidence": "recorded",
   "profile_commit_evidence": "Both hosts were staged to this commit on branch feat/aurus-h2h before launch, and each host's on-disk scripts/aurus_campaign.py still hashes to the blob this commit records (md5 c35d02c0adf2c5ad43fed052004e2b04, checked 2026-08-17). It is the commit that fixed the corpus at the paper's 26 rows and pointed the harness at the pre-fork AuRUS base.",
   "binary_commit": null,
   "binary_commit_note": "Null by construction rather than by loss. The AuRUS arm invokes unreal-repair.sh alone and links no counter binary, so there is nothing to stamp. The counter arm, when it runs, records its own commit through the --version stamping in run_experiments.py and this field must be filled in then.",
   "aurus": {
-    "repo": "https://github.com/renzodegiovanni/unreal-repair (fork at /home/y19056ba/projects/tools/aurus)",
+    "repo": "git@github.com:benmandrew/AuRUS.git (fork of the authors' unreal-repair; also pushed to git@ssh.git.benmandrew.com:me/AuRUS.git)",
+    "note": "This is the version that determines every result in this file, and it lives in a different repository, so no tag in the counter repo can hold it. The three fields below are the record: `commit` is the upstream base, `deployed_commit` is the exact tree that ran, and `tracked_file_digest` verifies a deployment without needing either repository.",
     "commit": "3f6f01fad3404724d1cca33ad30ab4c63fe61bad",
     "subject": "minors",
     "author_date": "2024-05-28",
-    "basis": "The last upstream commit before this project's fork diverged. Deployed to both hosts as a git worktree at /home/y19056ba/projects/tools/aurus-base, rsynced without .git, so the hosts carry the tree and not the history.",
+    "commit_reachable": "An ancestor of the branches base, master and spot-ltl, and present on both remotes, so it is held without a tag of its own. It is not a branch tip: master's HEAD is ccb42ea, which carries the fork optimisations this campaign excluded, so checking out master reproduces the wrong thing.",
+    "pin": "The campaign is pinned at this commit plus the single documented Strix substitution below. Reproduce by checking out 3f6f01f and replacing lib/new_strix/strix with a Linux build of Strix 21.0.0.",
+    "tracked_file_digest": {
+      "value": "43ab120e2ea5c44aeed0d9ed49100d99d4dbe99fbcb7812088ac46f828cf9e02",
+      "over": "the 6713 tracked files of 3f6f01f, with the Strix substitution applied",
+      "recipe": "git ls-files | LC_ALL=C sort | xargs sha256sum | sha256sum",
+      "verified": "2026-08-17: identical on the local worktree, av2 and av3. A whole-directory digest deliberately is not used, because `ant compile` writes bin/ class files that differ per host and are not part of what ran.",
+      "purpose": "Checks a deployment against what ran using nothing but the files on disk, so the archive stays verifiable if the AuRUS repository becomes unavailable."
+    },
+    "deployment": "rsynced to both hosts at ~/projects/tools/aurus-base without .git, so the hosts carry the tree and not the history.",
     "deviations": [
       {
         "path": "lib/new_strix/strix",
         "tracked_blob": "ff6cb37cf74d4d97e96a252dafb706edee336e5f",
         "deployed_blob": "db8b56609061e28b8ebfa3f6dff9468b6abb26fe",
-        "reason": "The blob 3f6f01f tracks is a macOS Mach-O executable. On Linux it does not run, realizability checking fails, and every run returns zero solutions. The deployed blob is the Linux ELF Strix tracked by the fork at ccb42eadac650a2d55119e9f7d9209bdf2ce913f. This is the only file that differs from the base tree, and the substitution is unavoidable on this hardware.",
+        "reason": "The blob 3f6f01f tracks is a macOS Mach-O executable. On Linux it does not run, realizability checking fails, and every run returns zero solutions. This is the only file that differs from the base tree, and the substitution is unavoidable on this hardware.",
+        "same_version": "Both blobs are Strix 21.0.0. The deployed one answers `--version` with `strix 21.0.0`; the macOS blob carries the same version string and the same CLI strings. The swap is a platform build, so it changes no behaviour of the realizability check.",
+        "blob_origin": "The deployed blob was introduced by fork commit 6546a6c (`Split semantic factor into strengthening and weakening`), which is a descendant of 3f6f01f rather than upstream, and is the blob the fork still tracks at ccb42ea. So the bytes come from the fork's history even though the version matches upstream's. Nothing else from that commit is present.",
         "verified": "file(1) reports ELF 64-bit LSB pie executable on both hosts; no run.log contains an ERR: lib/new_strix/strix line."
       }
     ],
@@ -67,6 +82,7 @@
     "Cap rate concentrates in six families. humanoid-503, humanoid-531 and humanoid-741 capped 30 of 30; full-arbiter-aurus produced nothing at all (28 capped plus the 2 OOM rows); prioritized-arbiter-aurus capped 29 of 30 and pcar-v2-888 25 of 30. lily02 capped once. The other 20 families capped zero times.",
     "Completing runs finish far below the budget: median wall 150 s against a 7200 s cap, maximum 6508 s. The capped runs are hard rather than marginal, so a longer budget would not convert many of them.",
     "The macOS Strix substitution above is a deviation from the base tree and is not optional on Linux.",
+    "The counter arm will run against different engine code than the branch carried while the AuRUS arm ran. The 2026-08-17 rebase brought in ten commits, three of which change behaviour: selection_scheme now defaults to nsga2-apportion (c71ecf0), the MRS walk defaults to conflict-degree admission order (aa050f6), and crossover grafts donors from anywhere in the parent (5f2ae7b). None of this touches the AuRUS arm, which links no counter binary, so the results above are unaffected. The counter arm's own binary_commit records what it actually ran.",
     "campaign.toml declares the seed split for the counter phase only. The AuRUS repeats were split by aurus_campaign.py --repeat-offset instead, which is why the host ranges here read 0-14 and 15-29 rather than the 0-9 and 10-19 that file names."
   ],
   "vendored_scripts": {
@@ -77,7 +93,8 @@
         "source_commit": "dea51b7b2f7a7179229c6ebc74c8b4c4f6bc9a55",
         "blob": "c4805050b6984c52c9f4cde71f2e383bd7f2601d",
         "reachable_from_main": false,
-        "basis": "recorded: staged to both hosts at launch, and both on-disk copies still hash to this blob (checked 2026-08-17). The branch feat/aurus-h2h is not yet merged, so this commit is not an ancestor of main."
+        "held_by_tag": "provenance/aurus-h2h-arm",
+        "basis": "recorded: staged to both hosts at launch, and both on-disk copies still hash to this blob (checked 2026-08-17). The branch feat/aurus-h2h is not yet merged, so this commit is not an ancestor of main, and the 2026-08-17 rebase took it off the branch as well; the tag holds it. The blob is unchanged by the rebase, so `git hash-object` still verifies this copy."
       }
     }
   }

@@ -192,3 +192,41 @@ Both hosts run the campaign commit on branch `feat/aurus-h2h`, rebuilt before la
 The archived configs record only what the profile overrides; every other value comes from the binary's default at run time, so reproducing this campaign requires the commit `PROVENANCE.json` names. The AuRUS side is pinned by its own checkout, whose commit `PROVENANCE.json` records beside counter's.
 
 A head-to-head against a tool whose repairs supplied the scoring targets can only ever be reported with §7.1 attached to it. Writing the decision rule down before the rates exist is what keeps that caveat, and the 15 families still missing from one arm, from being negotiated after they do.
+
+## 10. Amendments
+
+Each amendment records the date, what changed, and why the change was admissible at the time it was made. An amendment is admissible only while the outcome it touches does not yet exist; once a rate is in hand, the rule that reads it is fixed.
+
+### 10.1 The primary rate is over well-separated repairs only (2026-08-17)
+
+**Amended before the counter arm ran.** No `implies_ideal` row existed for this campaign's profile at the time, so nothing about counter's side could have informed it.
+
+§5 pre-registered `implies_genuine` over every repair AuRUS emitted, because §7.7 recorded the ill-separation gap as unmeasured and no tool exposed the check. It is measured now: a full sweep over all 287,006 archived candidates found 113,958 of them (39.71%) not well-separated, with zero undecided verdicts.
+
+That number makes the original rule score the two arms by different standards. counter's output gate rejects an ill-separated survivor unconditionally, so counter's rate is over well-separated repairs by construction. Leaving AuRUS's rate over all of its output credits the baseline for repairs the other tool is built to discard.
+
+**The primary rate is therefore `implies_genuine` over the repairs that are both realizable under `realize` and well-separated under `check_well_separated`.** The unfiltered rate is retained as `implies_genuine_all`, reported beside it as a secondary measure, and is the quantity §5 originally named. Both appear in every row of `aurus_validation.csv`, along with `n_scored`, so the filter's effect is visible per family rather than asserted. Where the two rates disagree the filtered one governs; the pair is reported either way.
+
+The decision rule of §5 is otherwise unchanged: a two-sided Wilcoxon signed-rank test over families at alpha 0.05, with the family as the unit of analysis.
+
+### 10.2 Two threats added (2026-08-17)
+
+**7.10 The families are not independent observations.** The 25 scoreable families fall into six clusters and four singletons: six arbiters (`arbiter-aurus`, `full-arbiter-aurus`, `load-balancer-aurus`, `prioritized-arbiter-aurus`, `round-robin-arbiter-aurus`, `simple-arbiter-aurus`), four `lily`, four `humanoid`, three `ltl2dba`, two `gyro`, two `rg`, and `lift`, `minepump`, `detector-aurus`, `pcar-v2-888` alone. Variants within a cluster differ mostly in parameter count and can be expected to succeed or fail together, so the effective number of independent problem types is about 10 rather than 25. A Wilcoxon over 25 families treats correlated observations as independent and overstates significance accordingly.
+
+This also tightens §7.8's power bound rather than loosening it: against roughly 10 effective units, more than half the independent problem types must separate, all in one direction, for any p under 0.05 to exist.
+
+The test is therefore run twice and both results reported: over the 25 families as §5 pre-registered, and over the 10 clusters, each cluster contributing the mean of its families' rates. Where the two disagree, the cluster-level result is the one the conclusion rests on.
+
+**7.11 The ideal set is bounded by counter's operator image.** §7.1 records that the ideals were curated by one side of the comparison. The constraint is sharper than curation. `lint-ideals` rejects an ideal as `unreachable` when it adds a guarantee or a REQUIRE, on the stated ground that counter's operators cannot produce one — only ASSUME grows, and the guarantee side may only shrink. Every scoring target is thus, by rule, something counter is capable of reaching, and a correct AuRUS repair whose shape lies outside that image scores zero and can never be promoted to an ideal.
+
+Read with §7.6, the asymmetry runs in both directions and does not cancel: the ideal set admits guarantee deletions that AuRUS can never reach, and excludes guarantee additions that neither tool reaches but which would otherwise be legitimate repairs. Any quality result carries this alongside §7.1.
+
+### 10.3 Threats overtaken by events (2026-08-17)
+
+**7.7** is measured rather than pending: see §10.1. The column was implemented through `check_well_separated.check_one` rather than the `realize` flag the threat anticipated, because counter's in-run checker caches a realizability timeout as unrealizable, which for this query reads as well-separated; a CLI built on that cache would have laundered timeouts into passes.
+
+**7.9** no longer applies as written. The staged arm is 25 of 26 families rather than 11, and the pending list is empty. `humanoid-741` is held out permanently instead: its own input is ill-separated, and because well-separation reads the assumption side alone while the only assumption-side operator move strengthens the conjunction, no descendant can repair it. AuRUS also returned nothing for that family across all 30 repeats. The exclusion is recorded in `H2H_UNSCOREABLE` and enforced by `test_experiment_paths.py`.
+
+**7.5** predates three further engine changes now in the arm: `selection_scheme` defaults to `nsga2-apportion` (`c71ecf0`), the MRS walk defaults to conflict-degree admission order (`aa050f6`), and crossover grafts donors from anywhere in the parent (`5f2ae7b`). The profile follows the shipped defaults deliberately, so a head-to-head measures counter as a user gets it.
+
+**7.3** can now cite measurement rather than argument. Calibration over 12 families at two seeds put the median run at 73 s against the 7200 s cap, with one family (`humanoid-742`) capping both seeds and nothing else exceeding 893 s. The cap is not the binding constraint on counter's side for 24 of 25 families, which is the asymmetry §7.3 predicted, now quantified.

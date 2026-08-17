@@ -53,9 +53,11 @@ Usage:
 """
 
 import argparse
+import contextlib
 import csv
 import re
 import subprocess
+import tempfile
 import sys
 import threading
 from concurrent.futures import ThreadPoolExecutor
@@ -74,8 +76,9 @@ REPEAT_RE = re.compile(r"^repeat-(\d+)$")
 
 CSV_FIELDS = [
     "spec", "repeat", "n_claimed", "n_realize_ok", "n_disagree",
-    "n_ill_separated", "n_sep_undecided",
+    "n_ill_separated", "n_sep_undecided", "n_scored",
     "best_relation", "implies_genuine", "n_implies",
+    "best_relation_all", "implies_genuine_all", "n_implies_all",
 ]
 DETAIL_FIELDS = ["spec", "repeat", "file", "realize_verdict", "separation"]
 
@@ -110,6 +113,21 @@ def separation_verdict(tlsf: Path, ltlsynt: Path, timeout: int) -> str:
     exactly the ones whose assumptions may reference an output.
     """
     return check_one(tlsf, ltlsynt, float(timeout), fast_path=False).verdict
+
+
+@contextlib.contextmanager
+def subset_dir(repeat_dir: Path, keep: list[str]):
+    """A directory holding symlinks to `keep` alone, for a restricted compare.
+
+    `compare --repairs` globs a directory, so scoring a subset means giving it
+    a directory that contains only the subset. Symlinks rather than copies:
+    a repeat can hold hundreds of files and nothing is written through them.
+    """
+    with tempfile.TemporaryDirectory(prefix="aurus-scored-") as tmp:
+        out = Path(tmp)
+        for name in keep:
+            (out / name).symlink_to((repeat_dir / name).resolve())
+        yield out
 
 
 def compare_repeat(compare_bin: Path, repeat_dir: Path, ideals_dir: Path,
@@ -256,22 +274,48 @@ def main() -> None:
         n_sep_undecided = sum(d["separation"] == VERDICT_UNDECIDED
                               for d in details)
 
+        # The scored set is the repairs that are realizable AND well-separated.
+        # An ill-separated repair is one the system satisfies by defeating its
+        # own assumptions, and counter's output gate rejects those
+        # unconditionally, so crediting AuRUS for one would score the two arms
+        # by different standards. The unfiltered rate is kept alongside as
+        # implies_genuine_all because it is what PLAN.md pre-registered before
+        # the gap could be measured; see the 2026-08-17 amendment there.
+        scored = [d["file"] for d in details
+                  if d["realize_verdict"] == "REALIZABLE"
+                  and d["separation"] != VERDICT_NOT_WELL_SEPARATED]
+
         if repairs:
             ideals_dir = args.examples_dir / spec / "fixes"
             if ideals_dir.is_dir():
-                best_rel, implies, n_implies = compare_repeat(
+                best_all, implies_all, n_implies_all = compare_repeat(
                     args.compare_bin, rep_dir, ideals_dir, args.timeout)
+                if len(scored) == len(repairs):
+                    best_rel, implies, n_implies = (
+                        best_all, implies_all, n_implies_all)
+                elif scored:
+                    with subset_dir(rep_dir, scored) as only:
+                        best_rel, implies, n_implies = compare_repeat(
+                            args.compare_bin, only, ideals_dir, args.timeout)
+                else:
+                    best_rel, implies, n_implies = "none", 0, 0
             else:
                 print(f"    [{run_id}] WARN: no ideals dir {ideals_dir}")
                 best_rel, implies, n_implies = "unknown", 0, 0
+                best_all, implies_all, n_implies_all = "unknown", 0, 0
         else:
             best_rel, implies, n_implies = "none", 0, 0
+            best_all, implies_all, n_implies_all = "none", 0, 0
 
         row = {"spec": spec, "repeat": rep, "n_claimed": len(repairs),
                "n_realize_ok": n_ok, "n_disagree": len(repairs) - n_ok,
                "n_ill_separated": n_ill, "n_sep_undecided": n_sep_undecided,
+               "n_scored": len(scored),
                "best_relation": best_rel, "implies_genuine": implies,
-               "n_implies": n_implies}
+               "n_implies": n_implies,
+               "best_relation_all": best_all,
+               "implies_genuine_all": implies_all,
+               "n_implies_all": n_implies_all}
         with lock:
             append_rows(out_csv, CSV_FIELDS, [row])
             if details:

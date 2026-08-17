@@ -8,6 +8,15 @@ description = "counter against AuRUS on the AuRUS paper's 26 TLSF families at a 
 # split is only about halving wall time.
 hosts = { av2 = "0-9", av3 = "10-19" }
 
+# The configs are generated on the host, at stage time, because nothing else
+# puts them there: the branch carries the declaration but not the config tree,
+# which is untracked, and run_experiments.py exits 1 on an empty configs
+# directory. av3 had none when this was first enqueued and burned two of its
+# three attempts before anyone looked. --pin-vintage states every key whose
+# default has moved, so the archive says what this run was rather than
+# inheriting it from whatever the defaults become.
+configs = "python3 scripts/gen_configs.py --schemes nsga2-apportion --sweeps C --levels default --metric log --out-dir experiments/configs-aurus-h2h --pin-vintage"
+
 # jobs = 1 for the RAM reason the other TLSF profiles use: ltlsynt runs
 # multi-GB per call on these specs and max_concurrent_realizability is a
 # per-process cap, so a second concurrent counter would double the ceiling.

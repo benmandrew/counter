@@ -11,9 +11,12 @@ name = "arbiter-probe"          # must equal the directory name
 branch = "feat/arbiter-probe"   # the branch every host runs from
 profile = "arbiter-probe"       # default profile for phases that omit one
 build = "cmake --build build-release"   # optional, this is the default
+configs = "python3 scripts/gen_configs.py --sweeps C --out-dir experiments/configs-arbiter-probe"  # optional, no default
 hosts = { av2 = "0-99", av3 = "100-199" }
 phases = [ { profile = "arbiter-probe", jobs = 4 } ]
 ```
+
+`configs` is the `gen_configs.py` line the campaign needs, run on the host during `stage`, after the build and before the version check so a generator that fails reports as itself. It has no default, because no line is right for every campaign and the wrong flags are worse than nothing: a config tree is untracked, so the branch carries the declaration and not the configs, and until this key existed the invocation lived only in somebody's shell history. It runs in a subshell, so two generator calls joined with `&&` behave as written.
 
 A phase takes `profile`, `jobs`, and optionally `name`, `sweeps`, `specs` and `hosts`; `[[phases]]` headers mean the same thing as the inline array. Seed ranges are inclusive and may be comma-separated (`"0-9,20-29"`). Phases run in order on each host and stop at the first failure, so a phase that depends on an earlier one is safe to declare.
 
@@ -30,7 +33,9 @@ python scripts/campaign.py stage arbiter-probe --dry-run   # probe only
 python scripts/campaign.py stage arbiter-probe
 ```
 
-`stage` pushes the branch to origin, then on each declared host fetches it, checks it out at the pushed commit, runs the build command, and reads `build-release/counter --version` back to confirm the binary was built from that commit with `dirty=0`. A host that fails any of it is reported and nothing is launched.
+`stage` pushes the branch to origin, then on each declared host fetches it, checks it out at the pushed commit, runs the build command, runs the `configs` command where the campaign declares one, checks the configs directory of every profile its phases name, and reads `build-release/counter --version` back to confirm the binary was built from that commit with `dirty=0`. A host that fails any of it is reported and nothing is launched.
+
+The configs check runs whether or not the key is declared, which is the half that matters: the declarations written before the key have none, and `run_experiments.py` exits 1 on a directory holding no `.toml`. A queued campaign discovers that one tick at a time and spends its three attempts on it — which is what aurus-h2h did on av3, av2 having had a calibration run's configs lying around. `stage` now refuses the host by name and names the directory. The path comes from `run_experiments.PROFILES[…]["configs_dir"]` made relative to the runner's own `REPO_ROOT`: the value there is absolute against *this* checkout, and the script that reads it runs under somebody else's home directory. Every phase's profile is checked, not only the campaign-level default, since a second phase's directory is the one nothing else would look at.
 
 Staging **refuses by default**, and the three refusals are the three ways to destroy work that cannot be recovered from this side: a dirty checkout, a live `counter` or `run_experiments.py` process, and a checkout on any branch other than the campaign's. All three are reported at once rather than one per attempt. The hosts normally sit on somebody's in-flight branch, so switching them is the expected case and `--force` is the expected answer; what matters is that the answer is deliberate. Through the queue there is no such answer to give, which is why a tick stages the branch itself and refuses the other two — see "A tick stages its own branch" below. `--force` prints the modified files by name, the branch and head it is about to leave, and then requires the host name typed back at a terminal. Without a terminal it refuses outright, which is what keeps a scripted or cron-driven stage from resetting a machine.
 

@@ -652,6 +652,52 @@ try:
     check(campaign["phases"][0]["profile"], "tlsf", "the phase profile")
     check(campaign["build"], C.DEFAULT_BUILD_CMD, "the build command defaults")
 
+    # `configs` is optional and has no default: there is no command that is
+    # right for every campaign, and gen_configs.py run with the wrong flags is
+    # worse than not run at all. The check that follows it is not optional,
+    # which is the half that covers the declarations written before the key.
+    check(campaign["configs"], None, "and configs defaults to no command")
+    check(campaign["config_dirs"],
+          [C.profile_configs_dir("tlsf")],
+          "with the phase's own configs directory derived for the check")
+    check_true(not Path(campaign["config_dirs"][0]).is_absolute(),
+               "relative, since the absolute form names this machine's home "
+               "directory and the check runs on somebody else's")
+
+    write_declaration(decl_root, "gen", DECLARATION
+                      .replace("arbiter-probe", "gen")
+                      .replace('profile = "gen"', 'profile = "tlsf"')
+                      + '\nconfigs = "python3 scripts/gen_configs.py --x"\n')
+    check(C.load_campaign("gen", decl_root)["configs"],
+          "python3 scripts/gen_configs.py --x",
+          "a declared configs command is carried through")
+
+    for bad, why in (('configs = ""', "an empty configs command"),
+                     ("configs = 3", "a configs key that is not a string"),
+                     ("configs = true", "a configs key that is a flag")):
+        got = declaration_error(decl_root, "badconfigs", f"""
+name = "badconfigs"
+branch = "feat/x"
+hosts = {{ av2 = "0-1" }}
+phases = [ {{ profile = "full", jobs = 1 }} ]
+{bad}
+""")
+        check_true("configs must be a non-empty string" in got,
+                   f"{why} must be refused ({got!r})")
+
+    # Every profile the phases name, not only the campaign-level default: the
+    # second phase's configs directory is the one nothing else would check.
+    write_declaration(decl_root, "twoprofiles", """
+name = "twoprofiles"
+branch = "feat/x"
+hosts = { av2 = "0-1" }
+phases = [ { profile = "full", jobs = 1 }, { profile = "tlsf", jobs = 1 } ]
+""")
+    two = C.load_campaign("twoprofiles", decl_root)
+    check(two["config_dirs"],
+          sorted({C.profile_configs_dir("full"), C.profile_configs_dir("tlsf")}),
+          "a campaign straddling two profiles checks both configs directories")
+
     # The error worth the most noise. Overlapping ranges cost twice the machine
     # time and yield one row per key, so the campaign is smaller and slower
     # than it says while every table reads normal.
@@ -1184,8 +1230,11 @@ check(len(C.stage_refusals(host_probe(dirty=[" M x"], processes=[
     {"comm": "counter", "profile": None}]), "feat/other")), 3,
     "and all three are reported at once, not one per attempt")
 
-apply_forced = C.stage_apply_script("/r", "feat/x", "s" * 40, "make", True)
-apply_plain = C.stage_apply_script("/r", "feat/x", "s" * 40, "make", False)
+apply_forced = C.stage_apply_script("/r", "feat/x", "s" * 40, "make",
+                                    "gen --out x", ["experiments/configs"],
+                                    True)
+apply_plain = C.stage_apply_script("/r", "feat/x", "s" * 40, "make", None,
+                                   ["experiments/configs"], False)
 check_true("checkout -f" in apply_forced,
            "--force discards tracked modifications")
 check_true("checkout -f" not in apply_plain,
@@ -1201,6 +1250,89 @@ check_true(" -- -B " not in apply_plain,
 check_true("| tail" not in apply_forced.split("@")[0] + apply_forced,
            "a build piped into tail reports tail's exit status, so a failed "
            "build would read as a staged host")
+
+# The configs step: the declared command reaches the script, runs after the
+# build and before the version read, and the check runs either way.
+check_true("( gen --out x )" in apply_forced,
+           "the declared configs command reaches the apply script, in a "
+           "subshell so `! a && b` cannot bind the negation to half a chain")
+check_true("gen --out x" not in apply_plain,
+           "and a campaign declaring none gets no command")
+positions = [apply_forced.index(s)
+             for s in ("make", "gen --out x", "--version")]
+check(positions, sorted(positions),
+      "configs run after the build and before the binary is asked its commit, "
+      "so a generator failure reports as itself")
+check_true("##CONFIGS" in apply_forced and "##CONFIGS" in apply_plain,
+           "and the step has its own marker section on both paths")
+for script, why in ((apply_forced, "with a command"),
+                    (apply_plain, "and without one")):
+    check_true("no config files under" in script,
+               f"the configs check runs {why}: a declaration written before "
+               f"the key existed is exactly the case that broke")
+    check_true("find \"$cfgdir\" -name '*.toml' -print -quit" in script,
+               "the check is a find, stopping at the first hit")
+    check_true("for cfgdir in experiments/configs" in script,
+               "over the profile's own configs directory, named as a path the "
+               "host can resolve under its own checkout")
+    # zsh's default NOMATCH aborts the whole script where a pattern matches
+    # nothing -- which is precisely the state being tested for -- and every
+    # section below it then vanishes with no error anybody reads.
+    check_true("-name '*.toml'" in script,
+               "the glob is quoted, so zsh cannot expand it and abort")
+    for line in script.splitlines():
+        stripped = line.strip()
+        if "*.toml" in stripped:
+            check_true("'*.toml'" in stripped or '"*.toml"' in stripped,
+                       f"every *.toml is quoted, not just the first: {line!r}")
+check_true(C.configs_block(None, ["a b", "c"]).count("'a b'") == 1,
+           "a configs directory with a space in it survives the substitution")
+
+# And functionally, under the shell that would break it. ssh hands the script
+# to the lab login shell, which is zsh, and zsh's default NOMATCH never lets an
+# unquoted `*.toml` mean what it means in sh: with nothing matching it the find
+# is skipped outright and the check reads as a missing configs directory, and
+# with a stray .toml in the working directory it expands to that name and the
+# find searches for the wrong one. Both readings are the same wrong answer.
+if shutil.which("zsh"):
+    nomatch_root = Path(tempfile.mkdtemp(prefix="campaign-nomatch-"))
+    try:
+        block = C.configs_block(None, ["cfg"]).replace("@M@", C.MARK)
+        script = block + 'echo "##END"\n'
+        for made, want_end, why in (
+                ([], False, "an absent directory stops at the error"),
+                (["cfg/notes.txt"], False, "and so does one with no .toml"),
+                (["cfg/a/b.toml"], True, "a .toml anywhere under it passes")):
+            shutil.rmtree(nomatch_root / "cfg", ignore_errors=True)
+            for rel in made:
+                (nomatch_root / rel).parent.mkdir(parents=True, exist_ok=True)
+                (nomatch_root / rel).write_text("x\n")
+            proc = subprocess.run(["zsh", "-c", script], cwd=nomatch_root,
+                                  capture_output=True, text=True)
+            check_true(("##END" in proc.stdout) is want_end,
+                       f"under zsh, {why}: {proc.stdout!r} {proc.stderr!r}")
+            if not want_end:
+                check_true("no config files under" in proc.stdout
+                           and proc.returncode == 10,
+                           f"with the check's own message and status, not a "
+                           f"shell abort: {proc.stdout!r} {proc.stderr!r}")
+
+        # The quoting is load-bearing, and zsh says so: the same block with the
+        # pattern unquoted refuses a directory that does hold configs, because
+        # the stray .toml beside it is what the pattern expanded to.
+        (nomatch_root / "stray.toml").write_text("x\n")
+        broken = script.replace("-name '*.toml'", "-name *.toml")
+        check_true(broken != script, "the unquoted variant differs")
+        for variant, want_end, why in ((script, True, "quoted"),
+                                       (broken, False, "unquoted")):
+            proc = subprocess.run(["zsh", "-c", variant], cwd=nomatch_root,
+                                  capture_output=True, text=True)
+            check_true(("##END" in proc.stdout) is want_end,
+                       f"the {why} pattern reads the directory "
+                       f"{'right' if want_end else 'wrong'} under zsh: "
+                       f"{proc.stdout!r} {proc.stderr!r}")
+    finally:
+        shutil.rmtree(nomatch_root, ignore_errors=True)
 
 
 # ── stage and start, end to end against a throwaway checkout ──────────────────
@@ -1380,6 +1512,73 @@ try:
     binary.parent.mkdir(parents=True, exist_ok=True)
     binary.write_text(FAKE_BINARY)
     binary.chmod(0o755)
+
+    # The failure this exists for. run_experiments.py exits 1 on a configs
+    # directory with nothing in it, and a queued campaign spends its attempts
+    # discovering that one tick at a time; the stage is where it is cheap.
+    configs_dir = repo / C.profile_configs_dir("full")
+    buffer = io.StringIO()
+    with contextlib.redirect_stdout(buffer):
+        code = C.cmd_stage(stage_args(dry_run=False))
+    check(code, 1, "a host whose configs directory does not exist is refused")
+    check_true("no config files under" in buffer.getvalue()
+               and str(configs_dir) in buffer.getvalue(),
+               f"and the directory is named: {buffer.getvalue()!r}")
+    configs_dir.mkdir(parents=True, exist_ok=True)
+    (configs_dir / "notes.txt").write_text("not a config\n")
+    buffer = io.StringIO()
+    with contextlib.redirect_stdout(buffer):
+        code = C.cmd_stage(stage_args(dry_run=False))
+    check(code, 1, "an empty configs directory is refused the same way")
+    (configs_dir / "default" / "x.toml").parent.mkdir(exist_ok=True)
+    (configs_dir / "default" / "x.toml").write_text("generations = 1\n")
+
+    # A declared command runs on the host, after the build. This one writes
+    # the file the check then finds, which is the whole sequence in order.
+    generated = repo / C.profile_configs_dir("full") / "gen" / "made.toml"
+    # Two commands joined with && , which is what a campaign generating for
+    # two profiles writes, and which `! a && b` would mis-bind outside the
+    # subshell the step wraps it in.
+    with_cmd = FIXTURE_DECL + (
+        f'configs = "mkdir -p {generated.parent} && touch {generated}"\n')
+    write_declaration(repo, "fixture", with_cmd)
+    git(repo, "add", "experiments/fixture/campaign.toml")
+    git(repo, "commit", "-q", "--no-verify", "-m", "configs")
+    buffer = io.StringIO()
+    with contextlib.redirect_stdout(buffer):
+        code = C.cmd_stage(stage_args(dry_run=False))
+    check(code, 0, f"the configs command runs and stages: {buffer.getvalue()}")
+    check_true(generated.exists(),
+               "and the command it declared actually ran on the host")
+    generated.unlink()
+
+    # A configs command that fails is its own error, not a build failure and
+    # not a bad binary -- which is why it sits between the two.
+    write_declaration(repo, "fixture", FIXTURE_DECL + 'configs = "false"\n')
+    git(repo, "add", "experiments/fixture/campaign.toml")
+    git(repo, "commit", "-q", "--no-verify", "-m", "bad configs")
+    buffer = io.StringIO()
+    with contextlib.redirect_stdout(buffer):
+        code = C.cmd_stage(stage_args(dry_run=False))
+    check(code, 1, "a failing configs command fails the stage")
+    check_true("configs command failed" in buffer.getvalue(),
+               f"naming itself, not the build: {buffer.getvalue()!r}")
+
+    # `if ! false && true` is true, so an unwrapped chain would stage a host
+    # whose first generator never produced a file.
+    write_declaration(repo, "fixture", FIXTURE_DECL + 'configs = "false && '
+                                                      'true"\n')
+    git(repo, "add", "experiments/fixture/campaign.toml")
+    git(repo, "commit", "-q", "--no-verify", "-m", "bad chain")
+    buffer = io.StringIO()
+    with contextlib.redirect_stdout(buffer):
+        code = C.cmd_stage(stage_args(dry_run=False))
+    check(code, 1, "a chain whose first command fails fails the stage too")
+
+    write_declaration(repo, "fixture", FIXTURE_DECL)
+    git(repo, "add", "experiments/fixture/campaign.toml")
+    git(repo, "commit", "-q", "--no-verify", "-m", "restore")
+
     buffer = io.StringIO()
     with contextlib.redirect_stdout(buffer):
         code = C.cmd_stage(stage_args(dry_run=False))
@@ -1396,7 +1595,8 @@ try:
     with contextlib.redirect_stdout(buffer):
         code = C.cmd_stage(stage_args(dry_run=False))
     check(code, 1, "a stale binary fails the stage")
-    check_true("BINARY MISMATCH" in buffer.getvalue(), "and says which check")
+    check_true("BINARY MISMATCH" in buffer.getvalue(),
+               f"and says which check: {buffer.getvalue()!r}")
     binary.write_text(FAKE_BINARY)
     binary.chmod(0o755)
 

@@ -1462,7 +1462,7 @@ class CampaignError(Exception):
 
 
 CAMPAIGN_KEYS = {"name", "branch", "profile", "hosts", "phases", "build",
-                 "description"}
+                 "configs", "description"}
 PHASE_KEYS = {"name", "profile", "jobs", "sweeps", "specs", "hosts"}
 
 # `describe` prints a declaration for a campaign that has already closed. It
@@ -1561,6 +1561,28 @@ def known_profiles() -> set:
     return set(run_experiments.PROFILES)
 
 
+def profile_configs_dir(profile: str) -> str:
+    """A profile's configs directory, relative to the repo root.
+
+    ``PROFILES`` holds it as an absolute path, built from the ``REPO_ROOT`` of
+    whichever checkout imported the runner — this one. The stage script runs on
+    a lab machine whose checkout sits under a different home directory, so the
+    absolute form names a path that does not exist over there, and a check
+    against it would pass or fail for a reason that has nothing to do with the
+    campaign. Relative to the runner's own root is the one form that means the
+    same thing on both sides, since the script has already cd'd to the host's
+    checkout before it looks.
+    """
+    import run_experiments  # noqa: PLC0415
+    path = Path(run_experiments.PROFILES[profile]["configs_dir"])
+    try:
+        return str(path.relative_to(run_experiments.REPO_ROOT))
+    except ValueError:
+        raise CampaignError(
+            f"profile {profile!r} puts its configs at {path}, outside the "
+            f"checkout — stage cannot name that path on a host") from None
+
+
 def campaign_path(name: str, root: Path | None = None) -> Path:
     return (root or REPO_ROOT) / "experiments" / name / "campaign.toml"
 
@@ -1650,7 +1672,17 @@ def load_campaign(name: str, root: Path | None = None) -> dict:
     build = raw.get("build", DEFAULT_BUILD_CMD)
     if not isinstance(build, str) or not build:
         raise CampaignError(f"{path}: build must be a non-empty string")
+    configs = raw.get("configs")
+    if configs is not None and (not isinstance(configs, str) or not configs):
+        raise CampaignError(f"{path}: configs must be a non-empty string")
+    # Every profile the phases name, not just the campaign-level one: a
+    # campaign whose phases straddle two profiles reads two configs
+    # directories, and checking only the default leaves the second phase to
+    # fail on the host, hours after the stage said the host was ready.
+    config_dirs = sorted({profile_configs_dir(phase["profile"])
+                          for phase in normalised})
     return {"name": name, "branch": branch, "build": build, "path": path,
+            "configs": configs, "config_dirs": config_dirs,
             "hosts": seeds_by_host, "phases": normalised,
             "description": raw.get("description", "")}
 
@@ -2277,9 +2309,45 @@ if ! @BUILD@ > "$buildlog" 2>&1; then
   echo "@M@ERR build failed"; exit 7
 fi
 tail -5 "$buildlog"; rm -f "$buildlog"
+echo "@M@CONFIGS"
+@CONFIGS@
 echo "@M@BIN"
 ./@BIN@ --version 2>/dev/null || { echo "@M@ERR binary will not report a version"; exit 8; }
 echo "@M@END"
+"""
+
+# Runs after the build and before the version read, so a generator that fails
+# reports as itself rather than as a broken build or a bad binary. The command
+# goes in a subshell, unlike the build's: a campaign generating configs for two
+# profiles writes two gen_configs.py calls joined with `&&`, and `! a && b`
+# binds the negation to the first alone, so the second would run unwatched and
+# a failure in the first would read as a successful stage.
+CONFIGS_STEP = r"""configlog=$(mktemp) || { echo "@M@ERR mktemp failed"; exit 9; }
+if ! ( @CONFIGS_CMD@ ) > "$configlog" 2>&1; then
+  tail -20 "$configlog"; rm -f "$configlog"
+  echo "@M@ERR configs command failed"; exit 9
+fi
+tail -5 "$configlog"; rm -f "$configlog"
+"""
+
+# The half that runs whether or not the campaign declares a command: every
+# declaration written before the key existed still has to fail here rather than
+# on the host three ticks later, which is what run_experiments.py exiting 1 on
+# an empty configs directory cost the aurus-h2h launch.
+#
+# `find` with a quoted pattern rather than a glob: the lab login shell is zsh,
+# whose default NOMATCH never lets `*.toml` — the exact thing being tested for
+# — mean what it means in sh. Unmatched, the find is skipped outright and the
+# check reads as an empty directory; matched against a stray .toml in the
+# working directory, the find searches for that name instead. Both are the same
+# wrong answer, and neither says anything on stdout. -print -quit stops at the
+# first hit rather than walking a directory of thousands.
+CONFIGS_CHECK = r"""for cfgdir in @CONFIG_DIRS@; do
+  if [ -z "$(find "$cfgdir" -name '*.toml' -print -quit 2>/dev/null)" ]; then
+    echo "@M@ERR no config files under $(pwd)/$cfgdir — generate them with scripts/gen_configs.py, and declare that command as configs = ... in campaign.toml"
+    exit 10
+  fi
+done
 """
 # No `git clean`: a host's untracked files are its results, and a campaign
 # staged over them would delete the previous campaign's output. `checkout -f`
@@ -2290,9 +2358,21 @@ echo "@M@END"
 # version check two lines later.
 
 
+def configs_block(configs: str | None, config_dirs: list) -> str:
+    """The configs section: the declared command, then the check, or just the
+    check. The check is never conditional — a campaign that declares no command
+    is the case that broke, not the case to trust."""
+    step = (CONFIGS_STEP.replace("@CONFIGS_CMD@", configs) if configs else "")
+    check = CONFIGS_CHECK.replace(
+        "@CONFIG_DIRS@", " ".join(shlex.quote(d) for d in config_dirs))
+    return step + check
+
+
 def stage_apply_script(root: str, branch: str, sha: str, build: str,
+                       configs: str | None, config_dirs: list,
                        force: bool) -> str:
     return (STAGE_APPLY_SCRIPT
+            .replace("@CONFIGS@", configs_block(configs, config_dirs))
             .replace("@ROOT@", shlex.quote(root))
             .replace("@BRANCH@", shlex.quote(branch))
             .replace("@SHA@", shlex.quote(sha))
@@ -2380,7 +2460,8 @@ def cmd_stage(args: argparse.Namespace) -> int:
           f"{', '.join(hosts)}")
 
     if args.dry_run:
-        print("Dry run: probing only, pushing nothing and building nothing.\n")
+        print("Dry run: probing only — nothing pushed, built, or generated, "
+              "and the configs check is not run.\n")
     else:
         _, err = git_output(["push", "origin", f"{branch}:{branch}"])
         if err:
@@ -2426,7 +2507,8 @@ def cmd_stage(args: argparse.Namespace) -> int:
             continue
         text, err = run_shell(
             host, stage_apply_script(source_path(host), branch, sha,
-                                     campaign["build"], args.force),
+                                     campaign["build"], campaign["configs"],
+                                     campaign["config_dirs"], args.force),
             timeout=args.build_timeout)
         result = parse_sections(text or "")
         if err or "err" in result or "end" not in result:

@@ -129,7 +129,7 @@
   ],
   "vendored_scripts": {
     "vendored_on": "2026-08-17, extended 2026-08-18",
-    "note": "Verbatim copies of the drivers that ran both arms, so the directory reproduces without the git history. aurus_campaign.py ran the AuRUS arm; campaign.py, gen_configs.py, run_experiments.py and merge_experiments.py ran and collected the counter arm; aurus_validate.py and check_well_separated.py produced the AuRUS quality and well-separation columns. analyse_aurus_h2h.py, which computes the decision, lives in scripts/ rather than here because it ran nothing.",
+    "note": "Verbatim copies of the drivers that ran both arms, so the directory reproduces without the git history. aurus_campaign.py ran the AuRUS arm; campaign.py, gen_configs.py, run_experiments.py and merge_experiments.py ran and collected the counter arm; aurus_validate.py and check_well_separated.py produced the AuRUS quality and well-separation columns. analyse_aurus_h2h.py, which computes the decision, lives in scripts/ rather than here because it ran nothing. maximal.cpp and maximality_sweep.py produced the diversity comparison, and maximal.cpp is the first vendored file that is not a script: reproducing that measurement is a compile rather than an invocation, so the source is what has to be held. It needs the rest of the tree at its source_commit to build, which the vendored copy alone does not supply -- the copy pins what was compiled, and the commit is where the build comes from.",
     "files": {
       "aurus_campaign.py": {
         "source_commit": "dea51b7b2f7a7179229c6ebc74c8b4c4f6bc9a55",
@@ -137,8 +137,28 @@
         "reachable_from_main": false,
         "held_by_tag": "provenance/aurus-h2h-arm",
         "basis": "recorded: staged to both hosts at launch, and both on-disk copies still hash to this blob (checked 2026-08-17). The branch feat/aurus-h2h is not yet merged, so this commit is not an ancestor of main, and the 2026-08-17 rebase took it off the branch as well; the tag holds it. The blob is unchanged by the rebase, so `git hash-object` still verifies this copy."
+      },
+      "maximal.cpp": {
+        "source_commit": "ed726d460ea98f0e36e9c28f5e5dce6820c03302",
+        "blob": "159ec1ecf9762eb64e54f4002b1ad5e2d6d9ffe4",
+        "reachable_from_main": false,
+        "repo_path": "src/maximal.cpp",
+        "build": "cmake --build build-release --target maximal",
+        "basis": "recorded: built from this commit on both hosts and locally, and all three binaries answer --version with it.",
+        "held_by": "branch feat/aurus-h2h (pushed to origin 2026-08-18)",
+        "held_by_note": "Not provenance/aurus-h2h-arm: that tag holds dea51b7, the pre-rebase tip, which no branch reaches. This commit is the branch tip and is reached by the branch itself. If feat/aurus-h2h is ever split into reconstructed pull requests rather than merged -- as feat/replicate-campaign was -- this sha stops resolving and needs a tag of its own before that happens."
+      },
+      "maximality_sweep.py": {
+        "source_commit": "ed726d460ea98f0e36e9c28f5e5dce6820c03302",
+        "blob": "ab21d4784a8225a550aedddb6d2829653a3dd9dd",
+        "reachable_from_main": false,
+        "repo_path": "scripts/maximality_sweep.py",
+        "basis": "recorded: drove the sweep on both hosts from this commit.",
+        "held_by": "branch feat/aurus-h2h (pushed to origin 2026-08-18)",
+        "held_by_note": "Not provenance/aurus-h2h-arm: that tag holds dea51b7, the pre-rebase tip, which no branch reaches. This commit is the branch tip and is reached by the branch itself. If feat/aurus-h2h is ever split into reconstructed pull requests rather than merged -- as feat/replicate-campaign was -- this sha stops resolving and needs a tag of its own before that happens."
       }
-    }
+    },
+    "tag_note": "provenance/aurus-h2h-arm was named by the aurus_campaign.py entry before it existed; it was created on 2026-08-18, annotated, at dea51b7. Never delete it -- that commit is dangling and git gc would collect it, and the blob this file names would stop resolving."
   },
   "counter_arm": {
     "run_on": "2026-08-17T17:40Z to 2026-08-17T22:37Z",
@@ -289,5 +309,15 @@
     "reason": "The first validation pass ran compare at a 300s per-call timeout and returned `unknown` on 36 of 780 repeats, which read as zero in the rate. This pass re-asks them at 3600s.",
     "cannot_change_the_outcome": "Resolving an unknown can only add AuRUS successes, never remove one. humanoid-742 is currently a tie contributing nothing to the test, and lift already favours AuRUS, so the direction of the decision is fixed either way and only the margin can move. The decision block is therefore final as recorded; this block takes the resolved counts when the pass lands.",
     "command": "scripts/aurus_validate.py --aurus-out ~/h2h-recheck --jobs 8 --timeout 3600, over a symlink tree of the two families"
+  },
+  "diversity": {
+    "status": "in flight as of 2026-08-18",
+    "question": "Whether AuRUS's candidate-count advantage over counter -- 317 against 4 per run, the volume asymmetry recorded in decision_mechanism part 4 -- survives being asked as a question about distinct repairs rather than about files. Every one of AuRUS's 287,006 outputs is syntactically distinct, verbatim and comment-stripped, so nothing cheaper than an implication sweep can answer it.",
+    "method": "Both arms through counter's own TLSF maximality filter, tlsf_make_implication_filter, exposed over a directory by the maximal binary. Two counts per directory: `maximal`, the specs no other spec strictly dominates, which is the filter counter runs and keeps whole equivalence classes together; and `classes`, those survivors quotiented by mutual implication.",
+    "why_two_counts": "AuRUS's own MaximalSolutions filter is not the same predicate and would not give the same number. It marks `to` subsumed on any `from => to`, without requiring the converse to fail, and its already-subsumed skip then spares the rest of the class -- so each equivalence class collapses to one survivor whose identity depends on execution order. That is `classes`, reported under a name that reads like `maximal`. Both counts are recorded here so the comparison does not turn on which definition was used. The underlying implication check agrees between the two tools: flat whole-formula LTL, `f1 & !(f2)` unsat, no assume-guarantee contravariance.",
+    "control": "counter's arm goes through the same filter, which is also the idempotence check -- its pipeline already applied it at step 6, so `maximal` must equal `distinct` on every counter row. It did on the run checked by hand before launch.",
+    "cost": "Not the quadratic the pair enumeration suggests. check_pair short-circuits once either endpoint is flagged, so a subsumed spec stops paying for its remaining pairs and the cost lands near n times the surviving set. Measured 86 CPU-seconds for 275 candidates, against the ~35 CPU-minutes 37,675 pairs at the measured 28 ms per implication check would have cost.",
+    "hosts": "av2 and av3 each sweep their own AuRUS output at --jobs 6, under a 1800 s per-directory wall cap; the counter arm's 500 run directories were swept locally. A capped directory is recorded as such rather than dropped, so the sweep never reports a diversity number it did not finish measuring.",
+    "cannot_change_the_outcome": "The decision block stands on implies_ideal and implies_genuine, neither of which this touches. Diversity is a separate axis and is reported as one."
   }
 }

@@ -305,9 +305,16 @@ for spec in R.H2H_UNSCOREABLE + R.H2H_PENDING_IMPORT:
 assert V.parse_compare_output is R.parse_compare_output, \
     "aurus_validate must reuse run_experiments.parse_compare_output"
 
-# merge_experiments mirrors the per-profile CSV names; the ablation profiles
-# must be present there, with h2h-tlsf pointing at ablate-tlsf's CSV.
-for name in ("ablate-fret", "ablate-tlsf", "h2h-tlsf"):
+# merge_experiments mirrors the per-profile CSV names and result directories,
+# in two separate tables that nothing but this ties together. Over every profile
+# rather than a named few: aurus-h2h was added to PROFILE_CSVS alone and the
+# omission surfaced as a KeyError from `campaign.py collect`, after the campaign
+# had finished, which is the worst moment to discover it.
+for name in P:
+    assert name in M.PROFILE_CSVS, \
+        f"profile {name} is missing from merge_experiments.PROFILE_CSVS"
+    assert name in M.PROFILE_RESULT_DIRS, \
+        f"profile {name} is missing from merge_experiments.PROFILE_RESULT_DIRS"
     check(M.PROFILE_CSVS[name], P[name]["results_csv"].name,
           f"merge CSV for {name}")
     check(M.PROFILE_RESULT_DIRS[name], P[name]["results_dir"].name,

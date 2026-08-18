@@ -60,13 +60,14 @@ PROFILE_CSVS: dict[str, str] = {
     # exists -- but the entry stays so the archived CSVs remain mergeable.
     "wellsep-timing": "results-wellsep-timing.csv",
     "arbiter-hp": "results-arbiter-hp.csv",
+    "arbiter-padd": "results-arbiter-padd.csv",
     "ablate-fret": "results-ablate-fret.csv",
     # h2h-tlsf shares ablate-tlsf's CSV (that sharing is its dedup mechanism),
     # so merging under either profile name merges the same rows.
     "ablate-tlsf": "results-ablate-tlsf.csv",
     "h2h-tlsf": "results-ablate-tlsf.csv",
     # The 2026-08-14 head-to-head, deliberately NOT sharing the above: it runs
-    # 14 families at a 7200s cap where h2h-tlsf ran 12 at 600s, and neither the
+    # 25 families at a 7200s cap where h2h-tlsf ran 12 at 600s, and neither the
     # corpus nor the cap is in the resume key, so shared rows would collide.
     "aurus-h2h": "results-aurus-h2h.csv",
     "replicate": "results-replicate.csv",
@@ -108,9 +109,11 @@ PROFILE_RESULT_DIRS: dict[str, str] = {
     "wellsep": "results-wellsep",
     "wellsep-timing": "results-wellsep-timing",
     "arbiter-hp": "results-arbiter-hp",
+    "arbiter-padd": "results-arbiter-padd",
     "ablate-fret": "results-ablate-fret",
     "ablate-tlsf": "results-ablate-tlsf",
     "h2h-tlsf": "results-ablate-tlsf",
+    "aurus-h2h": "results-aurus-h2h",
     "replicate": "results-replicate",
     "replicate-wkoff": "results-replicate",
     "replicate-recap": "results-replicate",

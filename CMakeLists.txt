@@ -188,6 +188,9 @@ target_link_libraries(ltl PRIVATE counter_fitness)
 add_executable(mucs src/mucs.cpp)
 target_link_libraries(mucs PRIVATE counter_fitness)
 
+add_executable(maximal src/maximal.cpp)
+target_link_libraries(maximal PRIVATE counter_fitness)
+
 add_custom_target(ganak_binary ALL DEPENDS "${GANAK_EXECUTABLE}")
 add_custom_target(black_binary ALL DEPENDS "${BLACK_EXECUTABLE}")
 if(DEFINED BLACK_EXTERNAL_TARGET)
@@ -215,7 +218,7 @@ include(cmake/format.cmake)
 include(cmake/lint.cmake)
 include(cmake/githooks.cmake)
 
-foreach(counter_target counter_core counter_fitness counter compare realize ltl)
+foreach(counter_target counter_core counter_fitness counter compare realize ltl maximal)
     if(MSVC)
         target_compile_options(${counter_target} PRIVATE /W4 /permissive-)
     else()

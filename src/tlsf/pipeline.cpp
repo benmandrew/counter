@@ -109,7 +109,7 @@ int run_repair(const std::string& input_path, const std::string& output_dir,
         cfg.repair_mode == RepairMode::Muc
             ? internal::run_muc(original, cfg, random_source, fitness, progress)
             : internal::run_monolithic(original, cfg, random_source, fitness,
-                                       progress);
+                                       progress, output_dir);
     const std::size_t n_realizable = survivors.size();
     if (cfg.run_weakening_filter && !survivors.empty()) {
         survivors = internal::keep_weakenings(survivors, original,

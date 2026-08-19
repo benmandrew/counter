@@ -18,6 +18,7 @@
 #include "filter/correctness.hpp"
 #include "filter/implication.hpp"
 #include "fitness/status.hpp"
+#include "genetic/accumulator.hpp"
 #include "runner/black.hpp"
 #include "runner/spot.hpp"
 #include "serialisation.hpp"
@@ -80,11 +81,22 @@ std::vector<ScoredSpecification> original_population(
     return population;
 }
 
-std::pair<std::vector<ScoredSpecification>, std::vector<FilterRunStats>>
-run_evolution(const Config& cfg, std::vector<ScoredSpecification> population,
-              const AggregateWeightedFitnessFunction& fitness_function,
-              const std::vector<FilterFunction>& filter_functions,
-              RandomSource& random_source, DashboardWriter& dashboard) {
+EvolutionResult run_evolution(
+    const Config& cfg, std::vector<ScoredSpecification> population,
+    const AggregateWeightedFitnessFunction& fitness_function,
+    const std::vector<FilterFunction>& filter_functions,
+    RandomSource& random_source, DashboardWriter& dashboard,
+    const std::string& output_dir) {
+    // The same serialiser repair_N.json goes through, so an accumulated file
+    // is a specification document and nothing else -- no fitness record, since
+    // these are gate-passing candidates rather than the run's filtered output.
+    RepairAccumulator<Specification> accumulator(
+        cfg.accumulate_repairs,
+        AccumulatedRepairWriter<Specification>(
+            output_dir, ".json", [](const Specification& spec) {
+                const nlohmann::json jobj = spec;
+                return jobj.dump(2) + "\n";
+            }));
     const std::vector<std::string> objective_names =
         fitness_objective_names(fitness_function);
     std::vector<FilterRunStats> filter_stats;
@@ -188,6 +200,10 @@ run_evolution(const Config& cfg, std::vector<ScoredSpecification> population,
         for (const ScoredSpecification& cand : population) {
             if (is_realizable_repair(cand.specification)) {
                 ++n_real;
+                // Free: this is the gate query the status line needs anyway,
+                // so accumulating here costs a hash insertion and no solver
+                // call. A second gate call would not be.
+                accumulator.insert(cand.specification, gen_idx + 1);
             }
         }
         status.set(col_real, std::to_string(n_real));
@@ -201,7 +217,8 @@ run_evolution(const Config& cfg, std::vector<ScoredSpecification> population,
             mean_objectives(objective_names, objectives), n_real,
             population.size());
     }
-    return {std::move(population), std::move(filter_stats)};
+    return {std::move(population), std::move(filter_stats),
+            accumulator.specifications()};
 }
 
 std::vector<Specification> collect_realizable_specifications(

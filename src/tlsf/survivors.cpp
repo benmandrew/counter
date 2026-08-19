@@ -9,6 +9,7 @@
 #include "config.hpp"
 #include "filter/correctness.hpp"
 #include "fitness/function.hpp"
+#include "genetic/accumulator.hpp"
 #include "genetic/pipeline.hpp"
 #include "genetic/scored.hpp"
 #include "runner/black.hpp"
@@ -45,6 +46,21 @@ bool is_tlsf_repair(const Specification& spec, const Config& cfg) {
            !first_failing_check(spec, gate_checks()).has_value();
 }
 
+// Serial on purpose wherever this is called: the specifications reaching it
+// were scored during the search, so the fitness cache is warm and each rescore
+// is a cache hit; fanning it out would nest solver dispatch inside solver
+// dispatch for nothing.
+Scored<Specification> score_one(
+    const Specification& spec,
+    const AggregateWeightedFitnessFunctionT<Specification>& fitness) {
+    auto [objectives, scalar] = fitness.objectives_and_fitness(spec);
+    Scored<Specification> scored;
+    scored.specification = spec;
+    scored.fitness = scalar;
+    scored.objectives = std::move(objectives);
+    return scored;
+}
+
 std::vector<Specification> specifications_of(
     const std::vector<Scored<Specification>>& scored) {
     std::vector<Specification> specs;
@@ -77,13 +93,11 @@ std::vector<Scored<Specification>> keep_matching(
 
 }  // namespace
 
-std::vector<Scored<Specification>> realizable_survivors(
-    const std::vector<Scored<Specification>>& population, const Config& cfg,
-    const AggregateWeightedFitnessFunctionT<Specification>& fitness) {
-    // Each status check is an `ltlsynt` query and the whole final population
-    // is checked, so a serial sweep here costs a subprocess per distinct
-    // candidate. Verdicts are collected by index and the survivors compacted
-    // in population order, so the output matches a serial sweep exactly.
+std::vector<char> gate_verdicts(
+    const std::vector<Scored<Specification>>& population, const Config& cfg) {
+    // Each status check is an `ltlsynt` query and the whole population is
+    // checked, so a serial sweep here costs a subprocess per distinct
+    // candidate.
     const std::size_t max_in_flight = dispatch_window();
     std::vector<char> keep(population.size(), 0);
     if (max_in_flight <= 1) {
@@ -103,6 +117,15 @@ std::vector<Scored<Specification>> realizable_survivors(
                 keep[idx] = realizable ? 1 : 0;
             });
     }
+    return keep;
+}
+
+std::vector<Scored<Specification>> realizable_survivors(
+    const std::vector<Scored<Specification>>& population, const Config& cfg,
+    const AggregateWeightedFitnessFunctionT<Specification>& fitness) {
+    // Compacted in population order, so the output matches a serial sweep
+    // exactly whatever order the concurrent queries answered in.
+    const std::vector<char> keep = gate_verdicts(population, cfg);
     std::vector<Scored<Specification>> survivors;
     for (std::size_t idx = 0; idx < population.size(); ++idx) {
         if (keep[idx] == 0) {
@@ -115,18 +138,28 @@ std::vector<Scored<Specification>> realizable_survivors(
                             return kept.specification == scored.specification;
                         });
         if (!seen) {
-            // Serial on purpose: the final generation scored these same specs,
-            // so the fitness cache is warm and each rescore is a cache hit;
-            // fanning it out would nest solver dispatch inside solver dispatch
-            // for nothing.
-            auto [objectives, scalar] =
-                fitness.objectives_and_fitness(scored.specification);
-            Scored<Specification> survivor;
-            survivor.specification = scored.specification;
-            survivor.fitness = scalar;
-            survivor.objectives = std::move(objectives);
-            survivors.push_back(std::move(survivor));
+            survivors.push_back(score_one(scored.specification, fitness));
         }
+    }
+    order_population(cfg, survivors);
+    return survivors;
+}
+
+std::vector<Scored<Specification>> merge_accumulated_survivors(
+    std::vector<Scored<Specification>> survivors,
+    const std::vector<Specification>& accumulated, const Config& cfg,
+    const AggregateWeightedFitnessFunctionT<Specification>& fitness) {
+    // With the key off this is every TLSF run's path, and the work below --
+    // a copy of the survivors, a hash set over them and a second ordering --
+    // would all be spent arriving back at the argument.
+    if (accumulated.empty()) {
+        return survivors;
+    }
+    std::vector<Specification> specs = specifications_of(survivors);
+    const std::size_t n_before = specs.size();
+    AccumulatorStats::n_contributed += merge_accumulated(specs, accumulated);
+    for (std::size_t idx = n_before; idx < specs.size(); ++idx) {
+        survivors.push_back(score_one(specs[idx], fitness));
     }
     order_population(cfg, survivors);
     return survivors;

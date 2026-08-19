@@ -141,6 +141,14 @@ DEFAULTS: dict = {
     # "Config vintage" in experiments/README.md.
     "run_well_separation": True,
     "allow_output_assumptions": True,
+    # Report every gate-passing candidate of every generation rather than only
+    # the final population's. Off in the binary, and emitted into [genetic] only
+    # when a sweep overrides it (see make_toml), so every existing grid stays
+    # byte-identical; TLSF sweep N crosses it. Sweep N states it on both arms
+    # rather than letting the control inherit silence, so neither of its levels
+    # is exposed to a later default move -- the crossing "Config vintage" in
+    # experiments/README.md records for four other keys.
+    "accumulate_repairs": False,
     "black_timeout_ms": 1000,
     "repair_mode": "monolithic",
     # Mirrors include/config.hpp, which moved to "mrs" on the 2026-08-11
@@ -213,7 +221,9 @@ def make_toml(overrides: dict, defaults: dict = DEFAULTS) -> str:
         f"crossover_rate  = {_fmt(d['crossover_rate'])}",
         f"mutation_rate   = {_fmt(d['mutation_rate'])}",
     ] + ([f"elitism_rate    = {_fmt(d['elitism_rate'])}"]
-         if "elitism_rate" in overrides else []) + [
+         if "elitism_rate" in overrides else []) + (
+        [f"accumulate_repairs = {_fmt(d['accumulate_repairs'])}"]
+        if "accumulate_repairs" in overrides else []) + [
         "",
         "[fitness]",
         f"weight_syntactic = {_fmt(d['weight_syntactic'])}",
@@ -607,6 +617,20 @@ TLSF_SWEEP_G: list[tuple[str, dict]] = [
     ("mrs",    {"status_grading": "mrs"}),
 ]
 
+# TLSF sweep N: the cross-generation accumulator, off against on. counter
+# otherwise reports the maximal antichain of its *final* population, so a
+# candidate that passed the output gate in generation 3 and was not selected
+# into generation 4 is a repair the search found and discarded. The AuRUS
+# baseline keeps them all, which is most of why the 2026-08-14 head-to-head
+# recorded it emitting a median of 448 solutions against counter's 4. Repair
+# quality is judged existentially, so a larger emitted set cannot lower
+# implies_ideal; the question is how much it raises it, and what the extra gate
+# sweep per generation costs on this path.
+TLSF_SWEEP_N: list[tuple[str, dict]] = [
+    ("accoff", {"accumulate_repairs": False}),   # control
+    ("accon",  {"accumulate_repairs": True}),
+]
+
 TLSF_SWEEPS: list[tuple[str, list]] = [
     ("A", TLSF_SWEEP_A),
     ("B", TLSF_SWEEP_B),
@@ -617,6 +641,7 @@ TLSF_SWEEPS: list[tuple[str, list]] = [
     ("Q", TLSF_SWEEP_Q),
     ("R", TLSF_SWEEP_R),
     ("G", TLSF_SWEEP_G),
+    ("N", TLSF_SWEEP_N),
     # The compute-matched control, on the same terms as the FRETISH grid's S:
     # TLSF_SWEEP_R is SWEEP_R, so make_sweep_s already emits the right levels
     # and main() rebuilds this entry from --compute-match-factor whichever table

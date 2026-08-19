@@ -271,6 +271,32 @@ struct Config {
     /// 280 that stop matching an ideal, against 14 more that find a repair at
     /// all. docs/configuration.rst records both sides and the untested ground.
     SelectionScheme selection_scheme = SelectionScheme::Nsga2Apportion;
+    /// Report every candidate that passed the output gate in *any* generation,
+    /// not only those the final population still holds. A candidate that was
+    /// gate-passing in generation 3 and was not selected into generation 4 is
+    /// otherwise discarded, even though repair quality is judged existentially
+    /// over what the run emits, so a larger pool can only help it.
+    ///
+    /// Off by default because it changes what a run emits, and an archived
+    /// campaign config that omits the key would otherwise silently mean
+    /// something it did not (see the config vintage note in
+    /// experiments/README.md). It costs nothing to switch on for the FRETISH
+    /// path, whose per-generation "real" counter already asks the gate; on the
+    /// TLSF path, which asks it once after evolution, it buys the extra repairs
+    /// with one gate sweep per generation.
+    ///
+    /// Inert under `[tlsf] repair_mode = "muc"`, which evolves cores rather
+    /// than whole specifications.
+    ///
+    /// It has an on-disk side effect: with the key on, each newly accumulated
+    /// specification is written to `<output-dir>/accumulated/` as it is found,
+    /// one file per specification, flushed and closed on the spot, so a run
+    /// killed by an external wall-clock cap keeps what it had already
+    /// accumulated. Those files hold raw gate-passing candidates rather than
+    /// the run's filtered output, which stays `repair_N.json` /
+    /// `repair_N.tlsf` alone. The directory is created on the first write, so
+    /// with the key off nothing is created.
+    bool accumulate_repairs = false;
     double selection_rate = 0.5;
     /// Elitism: the top elitism_rate fraction of the population carries over
     /// into the next generation verbatim, bypassing crossover, mutation, and

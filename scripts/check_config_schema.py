@@ -209,6 +209,7 @@ DEFAULT_FIELDS = {
     "genetic.elitism_rate": "elitism_rate",
     "genetic.crossover_rate": "crossover_rate",
     "genetic.mutation_rate": "mutation_rate",
+    "genetic.accumulate_repairs": "accumulate_repairs",
     "fitness.weight_syntactic": "fitness_weight_syntactic",
     "fitness.weight_semantic": "fitness_weight_semantic",
     "fitness.weight_status": "fitness_weight_status",

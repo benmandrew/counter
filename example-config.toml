@@ -31,6 +31,11 @@ mutation_rate   = 1.0  # per offspring, unlike the per-requirement rates in [mut
 # wall time on FRETISH and 13% less on TLSF, and is the arm to reach for when
 # throughput matters more than how many repairs come back.
 selection_scheme = "nsga2-apportion"
+# Report every candidate that passed the output gate in any generation, not only
+# the ones the final population still holds. Off by default: it changes what a
+# run emits, and it costs a gate sweep per generation on the TLSF path (free on
+# the FRETISH one, which already asks). Inert under [tlsf] repair_mode = "muc".
+accumulate_repairs = false
 
 [fitness]
 weight_syntactic = 0.2

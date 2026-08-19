@@ -13,10 +13,20 @@
     "sha": "864ae63",
     "branch": "campaign/weakening-arbiter",
     "subject": "fix(experiments): cut weakening-arbiter to six families",
-    "reachable_from_main": false,
+    "reachable_from_main": true,
     "held_by_tag": "provenance/weakening-arbiter",
-    "held_by_tag_note": "The branch campaign/weakening-arbiter is split into pull requests rather than merged, so the same content reaches main under fresh shas while every sha this file names -- the profile commit 864ae63 and the four vendored blobs -- still points into the branch. The annotated tag provenance/weakening-arbiter holds them, pointing at e4f90fb, the close commit, rather than at 864ae63: a tag on the profile commit alone would leave the archive and this file itself unreachable once the branch is deleted. Never delete the tag. This is the 2026-07-31-replicate position exactly, and the root CLAUDE.md rule it established applies -- splitting a branch instead of merging it silently invalidates any recorded sha pointing into it.",
-    "reachable_from_main_note": "false and expected to stay false. The pull requests reproduce this content under new shas; they do not make 864ae63 reachable. Verify with `git merge-base --is-ancestor 864ae63 main`, which should keep failing, and resolve the recorded blobs through the tag."
+    "held_by_tag_note": "REDUNDANT, RETAINED, AND NOT COVERED BY THE NEVER-DELETE RULE. The annotated tag provenance/weakening-arbiter points at ab57f51 and was created on 2026-08-19 under a since-reversed decision to split the branch rather than merge it. Under the merge-commit disposition recorded above, main itself holds the profile commit and all four vendored blob shas, so the tag holds nothing main does not. It is kept only as insurance while #125 and #126 are open, since a squash or rebase merge would replay the content under fresh shas and make it load-bearing again. Once `git merge-base --is-ancestor 864ae63 main` succeeds the tag may be deleted freely. Unlike provenance/tlsf-branch and provenance/replicate-campaign, deleting this one costs nothing.",
+    "reachable_from_main_note": "Recorded ahead of the merge. The branch is merged into main with merge commits through pull requests #125 and #126, which makes 864ae63 and ab57f51 genuine ancestors of main rather than reproducing their content under fresh shas. Verify with `git merge-base --is-ancestor 864ae63 main`, which fails until the merge lands and succeeds afterwards. This supersedes an earlier plan to split the branch without merging it; the earlier disposition is why the tag below exists.",
+    "merge_disposition": {
+      "decided_on": "2026-08-19",
+      "method": "merge commit",
+      "pull_requests": [
+        125,
+        126
+      ],
+      "stack": 127,
+      "why": "The branch merges into main rather than being split, so every sha this file names becomes reachable from main directly. A squash or rebase merge would not: both replay the content under new shas and would leave the recorded blob shas resolvable only through the tag, which is the 2026-07-31-replicate position the root CLAUDE.md documents. If the merge method changes, this field, reachable_from_main and held_by_tag_note all have to change with it."
+    }
   },
   "profile_commit_confidence": "recorded",
   "profile_commit_evidence": "Both hosts were staged through campaign.py stage, which fetches the pushed commit, checks it out, rebuilds and reads counter --version back before anything launches. Each per-host manifest (results-wkarb-manifest-avlab12.json, -av3.json) records git.head = 864ae63a2f5e45a5841d538beeac0635665cf028 with counter and compare both at 864ae63, dirty 0. The launch gate in run_experiments.py was left on; --allow-stale-binary was never passed to a run that produced a retained row.",

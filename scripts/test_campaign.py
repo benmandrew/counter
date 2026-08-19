@@ -825,11 +825,24 @@ frozen_campaign = {
          "specs": None, "hosts": {"av3": list(range(13, 25))}},
     ],
     "branch": "feat/x",
+    "build": "make",
 }
-entry = C.new_entry(frozen_campaign, "av2", 3)
+entry = C.new_entry(frozen_campaign, "av2", 3, "c" * 40)
 check(entry["seeds"], "0-34", "the entry still freezes the campaign range")
 check(entry["phase_seeds"], ["0-34", "0-12", ""],
       "and freezes each phase's own range beside it")
+check((entry["commit"], entry["build"]), ("c" * 40, "make"),
+      "and the commit and build command a tick stages with, which it cannot "
+      "read off a branch it is not standing on")
+
+# The build command reaches the host as a TOML string in the entry, and the
+# ones that need `sh -c` carry both quote kinds plus `&&`. weakening-arbiter's
+# is the shape in use, and a build that half survives the trip stages a host
+# with no configs on it.
+compound = ("sh -c 'cmake --build build-release && python3 "
+            "scripts/gen_configs.py --tlsf --weakening both'")
+check(C.parse_toml(C.dump_toml({"build": compound}))["build"], compound,
+      "a compound build command round-trips through the entry unchanged")
 
 check(C.entry_phase_seeds(entry, 1), "0-12",
       "a tick reads the phase's frozen range")
@@ -1226,6 +1239,11 @@ def make_repo(root: Path, name: str, declaration: str, branch: str) -> None:
     git(root, "commit", "-q", "--no-verify", "-m", "init")
     git(root, "checkout", "-q", "-b", branch)
     git(root, "checkout", "-q", "-")
+    # Both branches pushed, which is how a host's checkout comes to be on one:
+    # it fetched it. A tick refuses to move off a HEAD no remote branch
+    # contains, so a fixture that never pushed would refuse for a reason no
+    # lab machine is ever in.
+    git(root, "push", "-q", "origin", "--all")
 
 
 def local_only(host: str, script: str, timeout: int = C.SSH_TIMEOUT_S):
@@ -1488,8 +1506,17 @@ sys.exit(int(control("exit-code") or 0))
 TWO_PHASE_DECL = """
 name = "queued"
 branch = "feat/queued"
+build = "true"
 hosts = { local = "0-3" }
 phases = [ { profile = "full", jobs = 1 }, { profile = "tlsf", jobs = 2 } ]
+"""
+
+OTHER_DECL = """
+name = "other"
+branch = "feat/other"
+build = "true"
+hosts = { local = "4-5" }
+phases = [ { profile = "full", jobs = 1 } ]
 """
 
 queue_root = Path(tempfile.mkdtemp(prefix="campaign-queue-"))
@@ -1498,6 +1525,13 @@ try:
     make_repo(repo, "queued", TWO_PHASE_DECL, "feat/queued")
     default_branch = git(repo, "rev-parse", "--abbrev-ref", "HEAD")
     git(repo, "checkout", "-q", "feat/queued")
+    # A tick stages before it runs, and staging reads the binary back the way
+    # run_experiments.py does. Untracked, so the checkout it performs leaves it
+    # alone, exactly as the real build-release/counter is untracked.
+    binary = repo / C.COUNTER_BINARY
+    binary.parent.mkdir(parents=True, exist_ok=True)
+    binary.write_text(FAKE_BINARY)
+    binary.chmod(0o755)
     control_dir = queue_root / "stub"
     control_dir.mkdir()
     stub = control_dir / "stub_runner.py"
@@ -1509,11 +1543,16 @@ try:
     C.RUNNER_CMD = f"{sys.executable} {stub}"
     C.run_shell = local_only
     C.source_path = lambda host: str(repo)
+    # Machine-wide by design, so a fixture would otherwise refuse to stage
+    # whenever this box happened to be running a campaign of its own. Supplied
+    # here instead, and asserted in both directions below.
+    C.local_processes = lambda: FIXTURE_PROCESSES
+    FIXTURE_PROCESSES = []
     campaign = C.load_campaign("queued", repo)
 
     def tick_args(**kwargs) -> argparse.Namespace:
         base = {"host": "local", "root": str(repo), "lock": str(lock),
-                "dry_run": False}
+                "dry_run": False, "no_stage": False}
         base.update(kwargs)
         return argparse.Namespace(**base)
 
@@ -1651,21 +1690,132 @@ try:
     check((entry["state"], entry["attempts"]), ("queued", 0),
           "which is the only way out of failed")
 
-    # An entry whose branch the checkout has left must not run: its rows would
-    # come from code the campaign never declared.
+    # ── the tick stages the checkout it needs ─────────────────────────────────
+    #
+    # An entry whose branch the checkout has left must not run its phase there:
+    # the rows would come from code the campaign never declared. Until the tick
+    # could stage, that meant burning attempts until somebody staged it by
+    # hand, which is unusable for a queue holding two campaigns on two
+    # branches. It now moves the checkout itself.
     (control_dir / "exit-code").unlink()
     calls.unlink()
     git(repo, "checkout", "-q", default_branch)
+
+    # Not while somebody's edits are in the tree. This is one of the two
+    # refusals the tick keeps, because a reset here destroys work that no
+    # fetch brings back.
+    (repo / "dirty.txt").write_text("x")
+    git(repo, "add", "dirty.txt")
+    git(repo, "commit", "-q", "--no-verify", "-m", "tracked")
+    git(repo, "push", "-q", "origin", "HEAD")
+    (repo / "dirty.txt").write_text("edited")
     code, printed = tick()
-    check(code, 1, "a checkout on the wrong branch does not run a phase")
-    check_true("stage it first" in only_entry()["last_error"],
-               "and the entry says what to do about it")
+    check(code, 1, "a dirty checkout is not staged out from under its edits")
+    check_true("modified tracked file" in only_entry()["last_error"],
+               "and the entry names what stopped it")
+    check(C.checkout_branch(repo)[0], default_branch, "the branch did not move")
     check_true(not calls.exists(), "and nothing was run")
+    git(repo, "checkout", "-q", "--", "dirty.txt")
+
+    # Nor under a live run. Swapping the binary mid-campaign would leave every
+    # row after it naming a commit it did not come from.
+    FIXTURE_PROCESSES = [{"comm": "counter", "profile": None}]
+    entry = only_entry()
+    entry.update({"state": "queued", "attempts": 0})
+    C.write_entry(entry["path"], entry)
+    code, printed = tick()
+    check(code, 1, "a live run stops the staging too")
+    check_true("live process" in only_entry()["last_error"], "and says which")
+    check(C.checkout_branch(repo)[0], default_branch, "branch still not moved")
+    FIXTURE_PROCESSES = []
+
+    # --no-stage puts the old refusal back, for a host driven by hand.
+    entry = only_entry()
+    entry.update({"state": "queued", "attempts": 0})
+    C.write_entry(entry["path"], entry)
+    code, printed = tick(no_stage=True)
+    check(code, 1, "--no-stage never moves the checkout")
+    check_true("stage it first" in only_entry()["last_error"],
+               "and says so in the words the tick used before it could stage")
+
+    # Clean, idle, and the branch is the only thing in the way: it stages.
+    entry = only_entry()
+    entry.update({"state": "queued", "attempts": 0})
+    C.write_entry(entry["path"], entry)
+    code, printed = tick()
+    check(code, 0, "an idle, clean checkout is staged onto the entry's branch")
+    check(C.checkout_branch(repo)[0], "feat/queued", "which is where it lands")
+    check(git(repo, "rev-parse", "HEAD"), only_entry()["commit"],
+          "at the commit the entry froze, not wherever the branch now points")
+    check_true("staging feat/queued" in printed, "and the tick says it did")
+    check_true("--profile full" in calls.read_text(),
+               "then runs the phase it was staged for")
+
+    # A staging that cannot finish costs an attempt and holds the reason,
+    # exactly as a failed phase does. A build that half ran is the case worth
+    # catching: it leaves the previous commit's binary in place, and every row
+    # the phase went on to write would name a commit it did not come from.
+    calls.unlink()
+    git(repo, "checkout", "-q", default_branch)
+    entry = only_entry()
+    entry.update({"state": "queued", "phase": 0, "attempts": 0,
+                  "max_attempts": 3, "build": "false"})
+    C.write_entry(entry["path"], entry)
+    code, printed = tick()
+    check(code, 1, "a build that fails fails the staging")
+    check_true("build command failed" in only_entry()["last_error"],
+               "and the entry holds the reason")
+    check(only_entry()["attempts"], 1, "one attempt spent")
+    check_true(not calls.exists(), "and the phase never ran")
+
+    entry = only_entry()
+    entry.update({"state": "queued", "attempts": 0, "build": "true",
+                  "commit": "0" * 40})
+    C.write_entry(entry["path"], entry)
+    code, printed = tick()
+    check(code, 1, "so does a commit no fetch can produce")
+    check_true(not calls.exists(), "with nothing run")
+
+    # ── two campaigns, two branches, one queue ────────────────────────────────
+    #
+    # The case the whole thing is for: a second campaign on a second branch,
+    # queued behind the first, staged by the tick when its turn comes.
+    entry = only_entry()
+    entry.update({"state": "done", "commit": git(repo, "rev-parse",
+                                                 "feat/queued")})
+    C.write_entry(entry["path"], entry)
+    calls.unlink() if calls.exists() else None
+
+    git(repo, "checkout", "-q", "-b", "feat/other")
+    write_declaration(repo, "other", OTHER_DECL)
+    git(repo, "add", "-A")
+    git(repo, "commit", "-q", "--no-verify", "-m", "other campaign")
+    with contextlib.redirect_stdout(io.StringIO()):
+        code = C.cmd_enqueue(argparse.Namespace(
+            campaign="other", host=["local"], max_attempts=2, again=False,
+            dry_run=False))
+    check(code, 0, "the second campaign is enqueued from its own branch")
+    other_sha = git(repo, "rev-parse", "feat/other")
+    # And the host goes back to where the first campaign left it, which is the
+    # position that used to need `stage --force` and a human.
     git(repo, "checkout", "-q", "feat/queued")
 
-    rows = C.queue_rows([{"host": "local", "queue": [C.entry_body(only_entry())]}])
-    check(rows[0][3], "queued", "the queue table reports the state")
-    check(rows[0][4], "0/2", "the next phase against the total")
+    code, printed = tick()
+    check(code, 0, "the tick takes the next entry and stages its branch")
+    check(C.checkout_branch(repo)[0], "feat/other", "moving to it unattended")
+    check(git(repo, "rev-parse", "HEAD"), other_sha, "at its frozen commit")
+    entries = C.queue_entries(repo)
+    check(len(entries), 2, "both entries are still on the host")
+    check(entries[1]["state"], "done", "the second campaign ran to completion")
+    check_true("--seeds 4 5" in calls.read_text(),
+               "over the seeds its own declaration gives this host")
+
+    rows = C.queue_rows([{"host": "local",
+                          "queue": [C.entry_body(entries[1])]}])
+    check(rows[0][3], f"feat/other@{other_sha[:7]}",
+          "the queue table names the branch each entry needs")
+    check(rows[0][4], "done", "beside its state")
+    check(rows[0][5], "1/1", "and the next phase against the total")
 
     line = C.cron_line("av2", "/home/benandrew/projects/counter")
     check_true("tick --host av2" in line, "the crontab line names its host")

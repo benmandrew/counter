@@ -14,7 +14,7 @@ Only ``src/version.cpp`` includes the generated header, and only ``counter_core`
 
 ``dirty`` reports modified *tracked* files (``git status --porcelain --untracked-files=no``). Untracked files are excluded on purpose: they are not compiled into anything, so they cannot explain a binary that disagrees with its commit. A source tree that is not a git work tree at all — an exported tarball, say — falls back to ``unknown`` rather than failing the build.
 
-All five binaries answer the flag — ``counter``, ``realize``, ``compare``, ``ltl`` and ``mucs`` — since a campaign's numbers come out of ``counter`` and ``compare`` together, and knowing which built one of them is worth little without the other.
+All six binaries answer the flag — ``counter``, ``realize``, ``compare``, ``ltl``, ``mucs`` and ``maximal`` — since a campaign's numbers come out of ``counter`` and ``compare`` together, and knowing which built one of them is worth little without the other.
 
 ``scripts/run_experiments.py`` shells the flag once at startup, records ``commit`` and ``dirty`` on every CSV row and in the per-host launch manifest, and refuses to start when a binary's commit differs from the working tree's HEAD or the binary was built dirty. ``--allow-stale-binary`` downgrades that to a warning.
 

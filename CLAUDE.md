@@ -154,7 +154,7 @@ The risk to watch is that deletion is monotonically good for realizability: the 
 
 ## Profiling
 
-`COUNTER_PROFILE=<path>` turns on the *scope profiler* (`include/profile.hpp`), which writes a table to stderr and JSON to that path; `COUNTER_PROFILE=1` gives the table alone. Every binary reports. The report registers with `atexit` on the first scope opened, so `realize`, `mucs` and `compare` need no wiring of their own — and a binary that opens no scope prints nothing at all. Both `counter` drivers additionally call `profile::report_if_enabled()` explicitly, so the profile lands before the manifest write and the closing `Done in` rather than after them; the call is idempotent, so the `atexit` registration remains the mechanism.
+`COUNTER_PROFILE=<path>` turns on the *scope profiler* (`include/profile.hpp`), which writes a table to stderr and JSON to that path; `COUNTER_PROFILE=1` gives the table alone. Every binary reports. The report registers with `atexit` on the first scope opened, so `realize`, `mucs`, `compare` and `maximal` need no wiring of their own — and a binary that opens no scope prints nothing at all. Both `counter` drivers additionally call `profile::report_if_enabled()` explicitly, so the profile lands before the manifest write and the closing `Done in` rather than after them; the call is idempotent, so the `atexit` registration remains the mechanism.
 
 Read wall time against per-thread CPU time. A site with large wall and near-zero CPU is blocked on a child process, not computing: `proc/read` sits at a cpu/wall ratio of about 0.01 on a real run. That ratio is the diagnostic.
 
@@ -184,7 +184,7 @@ Two calls that both draw from the `RandomSource` must never be arguments of the 
 
 ## TLSF repair modes
 
-Binaries: `counter` (genetic repair), `realize`, `compare`, `ltl`, `mucs` — run each with `--help` for flags.
+Binaries: `counter` (genetic repair), `realize`, `compare`, `ltl`, `mucs`, `maximal` — run each with `--help` for flags.
 
 `mucs` extracts a minimal unrealizable core. Prints the smallest subset of the guarantee-side sections (PRESET, ASSERT, GUARANTEE) that stays unrealizable against the full, unchanged environment side (INITIALLY, REQUIRE, ASSUME) — the culprit formulae behind unrealizability. Uses QuickXplain over `ltlsynt`. Prints `REALIZABLE (no core)` if the input is already realizable. TLSF-only (FRETISH JSON is not supported).
 

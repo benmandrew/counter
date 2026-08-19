@@ -9,6 +9,7 @@ add_executable(counter_tests
     filter/implication_tests.cpp
     filter/vacuity_tests.cpp
     filter/well_separation_tests.cpp
+    genetic/accumulator_tests.cpp
     genetic/crossover_tests.cpp
     genetic/generation_tests.cpp
     genetic/determinism_tests.cpp
@@ -81,6 +82,7 @@ add_test(NAME counter_tests.ganak_runner COMMAND counter_tests ganak_runner)
 add_test(NAME counter_tests.ltlfilt_runner COMMAND counter_tests ltlfilt_runner)
 add_test(NAME counter_tests.process_runner COMMAND counter_tests process_runner)
 add_test(NAME counter_tests.spot_runner COMMAND counter_tests spot_runner)
+add_test(NAME counter_tests.accumulator COMMAND counter_tests accumulator)
 add_test(NAME counter_tests.crossover COMMAND counter_tests crossover)
 add_test(NAME counter_tests.generation COMMAND counter_tests generation)
 add_test(NAME counter_tests.determinism COMMAND counter_tests determinism)

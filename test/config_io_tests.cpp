@@ -40,6 +40,7 @@ generations     = 5
 population_size = 100
 crossover_rate  = 0.2
 mutation_rate   = 0.8
+accumulate_repairs = true
 
 [fitness]
 weight_syntactic = 0.3
@@ -73,6 +74,11 @@ dashboard        = true
            "config_io: crossover_rate should be parsed from TOML");
     expect(cfg.mutation_rate == 0.8,
            "config_io: mutation_rate should be parsed from TOML");
+    expect(cfg.accumulate_repairs,
+           "config_io: accumulate_repairs should be parsed from TOML");
+    expect(!Config{}.accumulate_repairs,
+           "config_io: accumulate_repairs must default to false, or every "
+           "archived config silently means something new");
     expect(cfg.fitness_weight_syntactic == 0.3,
            "config_io: fitness weight_syntactic should be parsed from TOML");
     expect(cfg.fitness_weight_semantic == 0.4,

@@ -9,6 +9,7 @@ void run_ganak_runner_tests();
 void run_ltlfilt_runner_tests();
 void run_process_runner_tests();
 void run_spot_runner_tests();
+void run_accumulator_tests();
 void run_crossover_tests();
 void run_generation_tests();
 void run_determinism_tests();

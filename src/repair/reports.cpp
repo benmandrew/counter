@@ -9,6 +9,7 @@
 
 #include "filter/well_separation.hpp"
 #include "fitness/function.hpp"
+#include "genetic/accumulator.hpp"
 #include "genetic/generation.hpp"
 #include "runner/black.hpp"
 #include "runner/ganak.hpp"
@@ -115,6 +116,9 @@ void print_diagnostics_report() {
     std::cout << "Weak-operator queries left unresolved (ltlfilt could not "
                  "rewrite W/M, black is unsound on them): "
               << SatisfiabilityChecker::n_weak_operator_unresolved << "\n";
+    std::cout << "\nRepairs contributed by the cross-generation accumulator "
+                 "(0 unless genetic.accumulate_repairs is set): "
+              << AccumulatorStats::n_contributed << "\n";
     std::cout << "\nFitness cache: "
               << AggregateWeightedFitnessFunction::n_cache_hits << " hits / "
               << AggregateWeightedFitnessFunction::n_cache_misses

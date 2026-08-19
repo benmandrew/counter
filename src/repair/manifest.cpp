@@ -15,6 +15,7 @@
 #include "filter/correctness.hpp"
 #include "filter/well_separation.hpp"
 #include "fitness/function.hpp"
+#include "genetic/accumulator.hpp"
 #include "runner/black.hpp"
 #include "runner/ganak.hpp"
 #include "runner/ltlfilt.hpp"
@@ -66,7 +67,12 @@ namespace {
 // a limit of its own instead of a verdict ended the run and no manifest was
 // written at all; from this version the query resolves as undecided and this
 // field is the only record that it happened.
-constexpr int k_schema_version = 13;
+// 14 added genetic.accumulate_repairs and n_accumulated_repairs. Before it a
+// run's repairs all came from its final population, so the output was a
+// function of the last generation alone; from this version the key can union
+// in the repairs earlier generations found, and only this field says how many
+// of them the run would otherwise have thrown away.
+constexpr int k_schema_version = 14;
 
 // The inverse of the spellings config_io.cpp parses. It has no table to
 // borrow -- it only ever goes string to enum -- so these must be kept in step
@@ -170,7 +176,8 @@ nlohmann::json config_json(const Config& cfg) {
           {"elitism_rate", cfg.elitism_rate},
           {"crossover_rate", cfg.crossover_rate},
           {"mutation_rate", cfg.mutation_rate},
-          {"selection_scheme", scheme_name(cfg.selection_scheme)}}},
+          {"selection_scheme", scheme_name(cfg.selection_scheme)},
+          {"accumulate_repairs", cfg.accumulate_repairs}}},
         {"fitness",
          {{"weight_syntactic", cfg.fitness_weight_syntactic},
           {"weight_semantic", cfg.fitness_weight_semantic},
@@ -302,6 +309,12 @@ void write_run_manifest(const std::string& output_dir,
         // a verdict, resolved as undecided rather than ending the run.
         {"n_ltlsynt_capability_errors",
          RealizabilityChecker::n_capability_errors},
+        // Repairs the cross-generation accumulator added that the final
+        // population's own collection did not already hold. Zero when
+        // genetic.accumulate_repairs is off, and also when every accumulated
+        // repair happened to survive to the last generation, so it is read
+        // against the config key rather than on its own.
+        {"n_accumulated_repairs", AccumulatorStats::n_contributed},
         // Well-separation queries that raised instead of answering, resolved as
         // undecided (the candidate is dropped) rather than propagating.
         {"n_well_separation_errors", WellSeparationStats::n_errors.load()},

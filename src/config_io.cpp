@@ -109,7 +109,7 @@ const KeySpec& config_key_spec() {
         {{"genetic",
           section({"generations", "population_size", "selection_rate",
                    "elitism_rate", "crossover_rate", "mutation_rate",
-                   "selection_scheme"})},
+                   "selection_scheme", "accumulate_repairs"})},
          {"fitness",
           section({"weight_syntactic", "weight_semantic", "weight_status",
                    "status_grading", "mrs_admission_order"})},
@@ -187,6 +187,9 @@ void apply_genetic(const toml::table& tbl, Config& cfg) {
     if (auto val = tbl["mutation_rate"].value<double>()) {
         require_probability(*val, "genetic.mutation_rate");
         cfg.mutation_rate = *val;
+    }
+    if (auto val = tbl["accumulate_repairs"].value<bool>()) {
+        cfg.accumulate_repairs = *val;
     }
     if (auto val = tbl["selection_scheme"].value<std::string>()) {
         if (*val == "weighted") {

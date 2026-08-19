@@ -17,6 +17,7 @@
 #include "evolution.hpp"
 #include "filter/correctness.hpp"
 #include "fitness/function.hpp"
+#include "genetic/accumulator.hpp"
 #include "genetic/generation.hpp"
 #include "genetic/random_source.hpp"
 #include "manifest.hpp"
@@ -163,12 +164,19 @@ int run_fretish_repair(const Config& cfg, const std::string& input_path,
 
     const auto wall_start = std::chrono::steady_clock::now();
     try {
-        auto [population_result, filter_stats] =
-            run_evolution(cfg, std::move(population), fitness_function,
-                          filter_functions, random_source, dashboard);
-        population = std::move(population_result);
-        const std::vector<Specification> realizable_vec =
+        EvolutionResult evolved = run_evolution(
+            cfg, std::move(population), fitness_function, filter_functions,
+            random_source, dashboard, output_dir);
+        population = std::move(evolved.population);
+        std::vector<FilterRunStats> filter_stats =
+            std::move(evolved.filter_stats);
+        std::vector<Specification> realizable_vec =
             collect_realizable_specifications(population);
+        // The accumulated candidates passed this same gate in the generation
+        // they were collected in, so they are merged rather than re-checked;
+        // the final filters below screen the union as one set.
+        AccumulatorStats::n_contributed +=
+            merge_accumulated(realizable_vec, evolved.accumulated);
         auto [maximal, final_filter_stats] =
             filter_maximal_specifications(cfg, original_spec, realizable_vec);
         const std::vector<ScoredSpecification> scored_maximal =

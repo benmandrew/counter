@@ -27,11 +27,24 @@ std::vector<ScoredSpecification> original_population(
     const AggregateWeightedFitnessFunction& fitness_function,
     std::size_t population_size);
 
-std::pair<std::vector<ScoredSpecification>, std::vector<FilterRunStats>>
-run_evolution(const Config& cfg, std::vector<ScoredSpecification> population,
-              const AggregateWeightedFitnessFunction& fitness_function,
-              const std::vector<FilterFunction>& filter_functions,
-              RandomSource& random_source, DashboardWriter& dashboard);
+// What one search leaves behind: the final population, the per-filter totals
+// summed over every generation, and -- only under cfg.accumulate_repairs -- the
+// gate-passing candidates seen along the way.
+struct EvolutionResult {
+    std::vector<ScoredSpecification> population;
+    std::vector<FilterRunStats> filter_stats;
+    std::vector<Specification> accumulated;
+};
+
+// @p output_dir is where the accumulator streams each gate-passing candidate
+// as it finds it, under cfg.accumulate_repairs; nothing is created there
+// otherwise.
+EvolutionResult run_evolution(
+    const Config& cfg, std::vector<ScoredSpecification> population,
+    const AggregateWeightedFitnessFunction& fitness_function,
+    const std::vector<FilterFunction>& filter_functions,
+    RandomSource& random_source, DashboardWriter& dashboard,
+    const std::string& output_dir);
 
 std::vector<Specification> collect_realizable_specifications(
     const std::vector<ScoredSpecification>& population);

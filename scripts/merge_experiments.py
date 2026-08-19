@@ -70,6 +70,7 @@ PROFILE_CSVS: dict[str, str] = {
     # 25 families at a 7200s cap where h2h-tlsf ran 12 at 600s, and neither the
     # corpus nor the cap is in the resume key, so shared rows would collide.
     "aurus-h2h": "results-aurus-h2h.csv",
+    "accumulator": "results-accumulator.csv",
     "replicate": "results-replicate.csv",
     # replicate-wkoff shares replicate's CSV (the weakening column separates the
     # rows), so merging under either name merges the same file.
@@ -114,6 +115,7 @@ PROFILE_RESULT_DIRS: dict[str, str] = {
     "ablate-tlsf": "results-ablate-tlsf",
     "h2h-tlsf": "results-ablate-tlsf",
     "aurus-h2h": "results-aurus-h2h",
+    "accumulator": "results-accumulator",
     "replicate": "results-replicate",
     "replicate-wkoff": "results-replicate",
     "replicate-recap": "results-replicate",

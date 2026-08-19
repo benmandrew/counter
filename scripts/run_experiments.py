@@ -1035,6 +1035,40 @@ PROFILES: dict[str, dict] = {
         "results_csv": EXPERIMENTS_DIR / "results-aurus-h2h.csv",
         "default_jobs": 1,
     },
+    # The cross-generation accumulator, off against on (TLSF sweep N), over the
+    # aurus-h2h corpus at that campaign's operating point so the rows sit beside
+    # the head-to-head's. Paired within this campaign by (spec, seed): the two
+    # arms differ in one key and share a seed, so a difference is the key's.
+    #
+    # The archived aurus-h2h rows are context and NOT the control. The engine
+    # has moved since that campaign closed -- p_remove_guarantee, the MRS status
+    # grading and the crossover graft all landed after it -- so its accoff-
+    # equivalent rows would confound the accumulator with three other changes.
+    #
+    # The 240s cap is far below aurus-h2h's 7200s and is a budget decision, not
+    # a measurement one: this is a one-hour look at whether the key adds
+    # repairs, and the corpus's median run is 22s against a p75 of 161s. It
+    # censors the slow families identically in both arms, so the pairing holds;
+    # what it cannot answer is whether the accumulator's advantage grows with
+    # the budget, which needs a longer run.
+    "accumulator": {
+        "schemes": ["nsga2-apportion"],
+        "weakenings": None,
+        "metrics": ["log"],
+        "repair_modes": None,
+        "sweeps": ["N"],
+        "levels": {"N": ["accoff", "accon"]},
+        "specs": H2H_TLSF_READY,
+        "seeds": list(range(4)),
+        "timeout_caps": {s: 240 for s in H2H_TLSF_READY},
+        "baseline_aliases": {},
+        "configs_dir": EXPERIMENTS_DIR / "configs-accumulator",
+        "results_dir": EXPERIMENTS_DIR / "results-accumulator",
+        "results_csv": EXPERIMENTS_DIR / "results-accumulator.csv",
+        # jobs is set by the phase; 8 is what the aurus-h2h calibration cleared
+        # on this corpus (load 21.7 of 32, 18.7 GB of 125 GB).
+        "default_jobs": 8,
+    },
     # nsga2 vs nsga2-replicate on FRETISH, at the gen40/pop1000 operating point
     # the cj-large and metric campaigns used — so the control arm is checkable
     # against their rows rather than being taken on trust. Three arms:

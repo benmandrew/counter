@@ -97,3 +97,17 @@ Both hosts are staged from the branch head before launch, and `campaign.py stage
 Campaign directory `experiments/weakening-arbiter/`, tracked contents: this `PLAN.md`, `campaign.toml`, `PROVENANCE.json` written at launch, and `scripts/` — verbatim copies of the harness scripts that ran it, with blob shas recorded. The archived configs record only what the `weakening` factor overrides, so reproducing the campaign requires the commit `PROVENANCE.json` names.
 
 A probe that measures what a filter discards is a smaller claim than one about what a different search would find. The distinction is the reason this plan registers no threshold, and the reason the fitness work has to come before any campaign that would.
+
+## 10. Deviation from the registered corpus
+
+The registered corpus of 10 `ARBITER_PROBE_SPECS` families is cut to 6, retaining `arbiter`, `arbiter-aurus`, `arbiter-handshake`, `full-arbiter`, `prioritized-arbiter` and `lily02`, and dropping `amba`, `round-robin-arbiter`, `simple-arbiter` and `load-balancer`. The cut was made on 2026-08-19, after 24 rows had been written, 9 on av2 and 15 on av3, and before any analysis of the endpoint.
+
+The cause is the cost model in §5, drawn from the `2026-08-10-arbiter-probe` archive at 131 s of `counter` per seed summed over the 10 specifications, worst single run 190 s. That archive predates two changes to the shipped defaults, MRS status grading (measured at 1.89x cost) and `p_remove_guarantee`. Per-run cost on the campaign binary is roughly 6x what the model predicted, and `full-arbiter` took 65.5 s against a predicted 10.8 s. This is the "Config vintage" hazard the root `CLAUDE.md` records for archived configs, arriving in a cost model rather than in a config, where a changed C++ default silently changed what a prior campaign's timings predict.
+
+`amba` hit the 900 s cap in both arms on every attempt, recording `timed_out = 1` and `n_repairs = 0`. §5 states that a cap which fires records `n_repairs = 0`, which is indistinguishable from the finding being looked for, so `amba` could not have contributed to the endpoint however long it ran. It accounted for about 88% of the campaign's wall time.
+
+`round-robin-arbiter`, `simple-arbiter` and `load-balancer` were dropped on cost alone. All three already yield under `wkon`, at 100%, 82.5% and 92.5% of seeds in arbiter-probe, so they stood as controls rather than as the families the question is about.
+
+The seed count is unchanged at 20 (av2 0–9, av3 10–19), as are the endpoint, the two arms and both zero-yield families, `full-arbiter` at 1 of 40 under `wkon` in arbiter-probe and `prioritized-arbiter` at 0 of 40. Power against a 15% `wkoff` rate stays at 0.96. What is lost is any statement about `amba`, and the breadth of the control set. The campaign can no longer say the restriction is free *across the arbiter corpus*, only across the six families it now covers.
+
+The 24 rows already written stay in the CSV, `amba`'s timeouts included. They are a true record that `amba` is undecidable at 900 s on this engine, and `run_experiments.py` resumes on the natural key, so they are not re-run. The cut is by cost and by cap, made before any endpoint was read, and it removes no family on the basis of what its arms showed. A cost model is only as current as the defaults it was measured under.

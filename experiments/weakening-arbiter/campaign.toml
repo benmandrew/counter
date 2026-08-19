@@ -24,4 +24,15 @@ hosts = { av2 = "0-9", av3 = "10-19" }
 # jobs = 1 for the RAM reason every TLSF profile uses: ltlsynt runs multi-GB
 # per call on the arbiter specs and max_concurrent_realizability is a
 # per-process cap, so a second concurrent counter would double the ceiling.
-phases = [ { profile = "weakening-arbiter", jobs = 1 } ]
+[[phases]]
+profile = "weakening-arbiter"
+jobs = 1
+# Corpus cut from 10 families to 6 after 24 rows, see PLAN.md section 10. The
+# cost model came from the 2026-08-10 arbiter-probe archive, which predates MRS
+# status grading as the default (1.89x) and p_remove_guarantee, so per-run cost
+# is ~6x what it predicted. amba hit the 900 s cap in both arms and returned
+# nothing, taking ~88% of the wall time on its own; round-robin-arbiter,
+# simple-arbiter and load-balancer already yield under wkon and are the next
+# most expensive. full-arbiter and prioritized-arbiter, the two zero-yield
+# families the question is about, are kept, and the seed count is untouched.
+specs = ["arbiter", "arbiter-aurus", "arbiter-handshake", "full-arbiter", "prioritized-arbiter", "lily02"]

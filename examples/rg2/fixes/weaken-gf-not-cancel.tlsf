@@ -1,0 +1,27 @@
+// Examples taken from "Environment Assumptions for Synthesis"
+INFO {
+  TITLE:       "Unrealizability example (weaker: G F !cancel)"
+  DESCRIPTION: "Assumption-strengthening repair, weaker than G(!cancel): assume cancel is released infinitely often (G F !cancel)"
+  SEMANTICS:   Moore
+  TARGET:      Mealy
+}
+
+MAIN {
+  INPUTS {
+	req;
+	cancel;
+  }
+  OUTPUTS {
+	grant;
+  }
+
+  ASSUMPTIONS {
+	//Weaker domain-suitable assumption: cancel released infinitely often
+	G F (!cancel);
+  }
+
+  GUARANTEE {
+	G(req -> X (F grant));
+	G( (cancel || grant) -> X !grant);
+	}
+}

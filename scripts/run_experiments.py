@@ -1107,6 +1107,64 @@ PROFILES: dict[str, dict] = {
         # jobs=1 for the same RAM reason as every other TLSF profile.
         "default_jobs": 1,
     },
+    # ── 2026-08-19-weakening-arbiter ────────────────────────────────────────
+    # Does the weakening restriction cost reachable repairs on the arbiter
+    # families? run_weakening is a *final* screen (include/config.hpp:111-118),
+    # so the two arms share a seed and a search and differ only in what
+    # survives step 6. Any repair the wkoff arm returns that its wkon twin does
+    # not is therefore incomparable to the original by construction, and no new
+    # metric is needed to identify one -- best_relation compares a repair
+    # against an *ideal* (src/compare.cpp:366-368), not against the input, so
+    # the yield difference is the response variable and n_repairs carries it.
+    #
+    # Same 10 families as arbiter-probe, whose 2026-08-10 archive is the cost
+    # model: 131 s of counter per seed summed over the specs, no run within 5x
+    # of the 900 s cap (worst was amba at 190 s). 10 seeds per host at jobs=1
+    # is ~44 min of counter plus compare, which is the hour asked for.
+    #
+    # Power, against arbiter-probe's wkon yields: prioritized-arbiter ran 0/40
+    # and full-arbiter 1/40, so a wkoff rate of 15% shows at least one repair in
+    # 20 seeds with probability 0.96. This sizes a *reachability* probe -- it
+    # answers whether incomparable repairs exist on a family, not at what rate.
+    # A null is not evidence of absence at this seed count.
+    #
+    # Caveat recorded here because the result cannot be read without it: tier-1
+    # fitness work is unfixed, so the wkoff arm is scored by objectives that
+    # under-price deletion (Logarithmic containment saturates,
+    # src/fitness/semantic_similarity.cpp:35-45; a tombstone contributes a flat
+    # 0 at :228-231; MRS normalises by the candidate's own live guarantee
+    # count, src/fitness/status.cpp:263-265). Expect its output to skew towards
+    # gutted rewrites. Read the arm for reachability, never for quality.
+    #
+    # Generate the configs with
+    #   python3 scripts/gen_configs.py --tlsf --weakening both \
+    #       --sweeps A --levels gen10 --out-dir experiments/configs-wkarb
+    "weakening-arbiter": {
+        "schemes": ["nsga2-truncate"],
+        "weakenings": ["wkon", "wkoff"],
+        "metrics": None,
+        "repair_modes": None,
+        "sweeps": ["A"],
+        "levels": {"A": ["gen10"]},
+        "specs": list(ARBITER_PROBE_SPECS),
+        # 10 per host, seed-major disjoint across av2/av3.
+        "seeds": list(range(20)),
+        # arbiter-probe's flat 900 s on this operating point and these hosts,
+        # where the worst observed run was 190 s. Sized never to bite: a cap
+        # that fires records n_repairs = 0, which is indistinguishable from the
+        # finding this campaign is looking for.
+        "timeout_caps": {spec: 900 for spec in ARBITER_PROBE_SPECS},
+        # wkoff returns strictly more repairs than wkon by construction and
+        # compare's cost scales with them, the same asymmetry that censored
+        # replicate's comparisons at the 600 s default.
+        "compare_timeout": 1800,
+        "baseline_aliases": {},
+        "configs_dir": EXPERIMENTS_DIR / "configs-wkarb",
+        "results_dir": EXPERIMENTS_DIR / "results-wkarb",
+        "results_csv": EXPERIMENTS_DIR / "results-wkarb.csv",
+        # jobs=1 for the same RAM reason as every other TLSF profile.
+        "default_jobs": 1,
+    },
     # ── 2026-08-11-selection-default ────────────────────────────────────────
     # Whether nsga2-apportion should replace nsga2-truncate as the shipped
     # default. See experiments/2026-08-11-selection-default/PLAN.md for the

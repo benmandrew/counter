@@ -42,6 +42,13 @@ host that will run it, under ``experiments/queue/NNN-<name>.toml``, and a cron
 tick takes the lowest-numbered queued entry and runs its next phase under a
 lock. Nothing polls: the tick is the only thing that watches a run.
 
+A queue holds campaigns on different branches, so a tick stages the checkout
+onto the branch and commit its entry froze at enqueue, then rebuilds. It does
+that for the branch alone. A dirty checkout and a live run still stop it dead,
+because those are the two things a reset destroys and nothing here can bring
+back; ``stage --force`` remains the only way past either, and it wants a human
+at a terminal.
+
 ``describe`` is the archive's half of the same idea, for the campaigns that
 closed before any of this existed. It derives a declaration from what the
 archive already carries -- the merged results CSV, the per-host CSVs and
@@ -58,6 +65,7 @@ import argparse
 import ast
 import errno
 import fcntl
+import getpass
 import json
 import os
 import re
@@ -2171,8 +2179,8 @@ def probe_host(host: str) -> HostProbe:
     return parse_stage_probe(text or "", err)
 
 
-def git_output(args: list) -> tuple:
-    proc = subprocess.run(["git", "-C", str(REPO_ROOT), *args],
+def git_output(args: list, root: Path | None = None) -> tuple:
+    proc = subprocess.run(["git", "-C", str(root or REPO_ROOT), *args],
                           capture_output=True, text=True)
     if proc.returncode != 0:
         tail = [ln.strip() for ln in proc.stderr.splitlines() if ln.strip()]
@@ -2462,7 +2470,9 @@ def cmd_start(args: argparse.Namespace) -> int:
 # States, and every transition between them:
 #
 #   (new)    -> queued           enqueue
-#   queued   -> running          tick picks the lowest-numbered entry
+#   queued   -> running          tick picks the lowest-numbered entry, and
+#                                again while it stages the entry's branch
+#   running  -> queued           staged, with the phase still to run
 #   running  -> queued           phase finished, another phase remains
 #   running  -> done             last phase finished
 #   running  -> queued           phase failed or was interrupted, attempts left
@@ -2524,12 +2534,26 @@ def log_line(entry: dict, message: str) -> None:
     entry["updated"] = stamp
 
 
-def new_entry(campaign: dict, host: str, max_attempts: int) -> dict:
+def new_entry(campaign: dict, host: str, max_attempts: int,
+              commit: str) -> dict:
     stamp = time.strftime("%Y-%m-%dT%H:%M:%S")
     entry = {
         "campaign": campaign["name"],
         "host": host,
         "branch": campaign["branch"],
+        # The commit the branch was at when this was enqueued, and the build
+        # command that turns it into a binary. Both are here rather than read
+        # from campaign.toml at tick time because the declaration lives on the
+        # campaign's own branch: a tick standing on another branch cannot read
+        # a word of it until after the checkout it is about to perform. These
+        # two fields are exactly what that checkout needs.
+        #
+        # Freezing the commit has the same force as freezing the seeds below.
+        # A campaign's phases run over hours and requeue between them, and one
+        # whose phases straddled two commits would write rows under a single
+        # `commit` column that came from two different binaries.
+        "commit": commit,
+        "build": campaign["build"],
         # Frozen at enqueue: an edit to campaign.toml between enqueue and tick
         # must not silently move a host's share of the seeds under a run that
         # has already produced rows against the old split. Phases that narrow
@@ -2584,6 +2608,20 @@ def cmd_enqueue(args: argparse.Namespace) -> int:
     except CampaignError as exc:
         print(f"error: {exc}")
         return 2
+    branch = campaign["branch"]
+    sha, err = git_output(["rev-parse", branch])
+    if err:
+        print(f"error: no local branch {branch!r} to enqueue ({err})")
+        return 2
+    # Pushed here rather than left to `stage`, because a tick now stages the
+    # entry itself and fetches from origin to do it. An entry naming a commit
+    # no host can fetch is one that burns its attempts and stops.
+    if not args.dry_run:
+        _, err = git_output(["push", "origin", f"{branch}:{branch}"])
+        if err:
+            print(f"error: pushing {branch} to origin failed: {err}")
+            return 1
+        print(f"pushed {branch} to origin at {sha[:7]}")
     rows, ok = [], True
     for host in hosts:
         root = source_path(host) if host != LOCAL else str(REPO_ROOT)
@@ -2607,7 +2645,7 @@ def cmd_enqueue(args: argparse.Namespace) -> int:
             continue
         index = max([entry_index(n) for n in names] + [0]) + 1
         name = f"{index:03d}-{campaign['name']}.toml"
-        entry = new_entry(campaign, host, args.max_attempts)
+        entry = new_entry(campaign, host, args.max_attempts, sha)
         body = dump_toml(entry_body(entry))
         if args.dry_run:
             rows.append([host, name, "dry run"])
@@ -2629,8 +2667,9 @@ def cmd_enqueue(args: argparse.Namespace) -> int:
         rows.append([host, name, f"queued, {entry['seeds']}"])
     print(render_table(rows, ["HOST", "ENTRY", "RESULT"]))
     if ok and not args.dry_run:
-        print("\nThe cron tick will pick these up. Do not wait on them: "
-              "`campaign.py queue` says where they are.")
+        print(f"\nThe cron tick will pick these up, staging {branch} at "
+              f"{sha[:7]} first where the host is on something else. Do not "
+              f"wait on them: `campaign.py queue` says where they are.")
     return 0 if ok else 1
 
 
@@ -2660,22 +2699,193 @@ def acquire_lock(path: Path):
     return handle
 
 
-def run_phase(root: Path, phase: dict, seeds: list, log_path: Path) -> int:
-    """Run one phase to completion, in the foreground, appending to a log.
+def run_step(root: Path, command, log_path: Path, shell: bool = False) -> int:
+    """Run one command in the checkout, appending everything it says to a log.
 
-    No deadline: a phase is hours of work and the lock is what keeps a second
-    tick off it. A tick killed here costs nothing — run_experiments.py resumes
-    off the results CSV, so the next one continues rather than repeats.
+    No deadline anywhere on this path: a phase is hours of work and the lock is
+    what keeps a second tick off it. A tick killed here costs nothing —
+    run_experiments.py resumes off the results CSV, so the next one continues
+    rather than repeats, and a killed build is simply rebuilt.
     """
-    command = shlex.split(RUNNER_CMD) + phase_args(phase, seeds)
     log_path.parent.mkdir(parents=True, exist_ok=True)
     with open(log_path, "a") as log:
-        log.write(f"\n=== {time.strftime('%Y-%m-%dT%H:%M:%S')} "
-                  f"{' '.join(command)}\n")
+        shown = command if shell else " ".join(command)
+        log.write(f"\n=== {time.strftime('%Y-%m-%dT%H:%M:%S')} {shown}\n")
         log.flush()
-        proc = subprocess.run(command, cwd=str(root), stdout=log,
+        proc = subprocess.run(command, cwd=str(root), shell=shell, stdout=log,
                               stderr=subprocess.STDOUT)
     return proc.returncode
+
+
+def run_phase(root: Path, phase: dict, seeds: list, log_path: Path) -> int:
+    return run_step(root, shlex.split(RUNNER_CMD) + phase_args(phase, seeds),
+                    log_path)
+
+
+def entry_log_path(entry: dict, root: Path) -> Path:
+    return queue_dir(root) / (Path(entry["file"]).stem + ".log")
+
+
+# -- staging, from a tick -----------------------------------------------------
+#
+# `stage` is the attended path. It reaches a host over ssh and refuses three
+# things — a dirty checkout, a live run, and another branch — and the way past
+# any of them is a human typing the host name back at a terminal.
+#
+# A queue holding campaigns on two branches cannot use that. The only thing
+# between one entry and the next is a branch, and there is nobody at the
+# terminal when the tick fires at 03:05. So the tick stages the one refusal
+# that destroys nothing: it re-points the checkout at the entry's own commit,
+# which is on origin, and rebuilds. It never answers the other two. Uncommitted
+# work and a live run are both cases where the checkout carries something this
+# side cannot reconstruct, and resetting either unattended is precisely the
+# failure `stage --force` was written to make impossible.
+
+
+def local_processes() -> list:
+    """Runner and engine processes on this machine.
+
+    A seam, for the same reason probe_processes is one on the remote path: the
+    check is machine-wide by design, so a test standing in a fixture checkout
+    would otherwise inherit whatever this box happens to be running and refuse
+    for reasons that have nothing to do with the fixture.
+    """
+    proc = subprocess.run(["ps", "-o", "comm=,args=", "-u", getpass.getuser()],
+                          capture_output=True, text=True)
+    return live_processes(proc.stdout.splitlines())
+
+
+def tick_stage_refusals(root: Path) -> list:
+    """Why a tick must not re-point this checkout. Empty means it may.
+
+    Two of stage's three: the branch is the one the tick is here to change.
+    """
+    out = []
+    dirty, err = git_output(["status", "--porcelain", "--untracked-files=no"],
+                            root)
+    if err:
+        return [f"cannot read the checkout's state: {err}"]
+    lines = [ln for ln in dirty.splitlines() if ln.strip()]
+    if lines:
+        names = ", ".join(ln.split(None, 1)[-1] for ln in lines[:5])
+        out.append(f"{len(lines)} modified tracked file(s) ({names}) — commit "
+                   f"or discard them, then requeue")
+    busy = list(dict.fromkeys(p["comm"] for p in local_processes()))
+    if busy:
+        out.append(f"live process(es): {', '.join(busy)} — a checkout under a "
+                   f"running campaign swaps the binary its rows name")
+    # An unpushed commit is the third thing a checkout can hold that nothing
+    # here can bring back. `stage` guards the same case by refusing a checkout
+    # ahead of the pushed commit, which cannot be asked across two unrelated
+    # branches; asking whether any remote branch contains HEAD can.
+    contained, err = git_output(["branch", "-r", "--contains", "HEAD"], root)
+    if err is None and not contained.strip():
+        head, _ = git_output(["rev-parse", "--short", "HEAD"], root)
+        out.append(f"HEAD ({head or '?'}) is on no remote branch — push it, "
+                   f"or stage this host by hand")
+    return out
+
+
+def stage_checkout(root: Path, entry: dict, log_path: Path):
+    """Fetch, check out the entry's commit, rebuild, verify. None on success.
+
+    Neither `git checkout -f` nor `git clean`, for two different reasons. The
+    tree is clean by the time this runs, so -f would only ever discard
+    something the refusals above were meant to stop; and a host's untracked
+    files are its results, which `clean` would delete.
+
+    The binary is read back the way `stage` reads it, because that is the
+    check run_experiments.py itself makes one step later: a build that half
+    ran leaves a binary from the previous commit, and every row the phase then
+    wrote would name a commit it did not come from.
+    """
+    branch, commit = entry["branch"], entry["commit"]
+    build = entry.get("build") or DEFAULT_BUILD_CMD
+    if run_step(root, ["git", "fetch", "origin", branch], log_path):
+        return f"git fetch origin {branch} failed"
+    if run_step(root, ["git", "checkout", "-B", branch, commit], log_path):
+        return f"git checkout -B {branch} {commit[:7]} failed"
+    if run_step(root, build, log_path, shell=True):
+        return f"the build command failed: {build}"
+    binary = root / COUNTER_BINARY
+    if not binary.is_file():
+        return f"no {COUNTER_BINARY} after the build"
+    proc = subprocess.run([str(binary), "--version"], cwd=str(root),
+                          capture_output=True, text=True)
+    version = parse_version_lines(proc.stdout.splitlines())
+    if version.get("commit") != commit:
+        return (f"binary reports {version.get('commit_short') or '?'}, "
+                f"not {commit[:7]}")
+    if version.get("dirty") != "0":
+        return "binary was built from a dirty tree"
+    return None
+
+
+def ensure_staged(entry: dict, root: Path, args: argparse.Namespace):
+    """Put the checkout on what the entry names, or say why it stays put.
+
+    None means the tick may go on and run the phase. Anything else is the
+    tick's exit code, with the entry already rewritten and the reason printed.
+
+    The commit is checked as well as the branch. An entry froze one at enqueue,
+    and a branch that has moved since is a different campaign from the one the
+    earlier phases wrote rows for.
+    """
+    branch, err = checkout_branch(root)
+    if err:
+        fail_or_requeue(entry, f"cannot read the checkout's branch: {err}")
+        write_entry(entry["path"], entry)
+        print(f"tick: {entry['file']} {entry['state']}: {entry['last_error']}")
+        return 1
+    head, _ = git_output(["rev-parse", "HEAD"], root)
+    commit = entry.get("commit")
+    if branch == entry.get("branch") and (not commit or head == commit):
+        return None
+
+    want = entry.get("branch")
+    want = f"{want} at {commit[:7]}" if commit else str(want)
+    if not commit or args.no_stage:
+        # An entry written before this field existed names no commit to stage
+        # to, and there is nothing safe to guess: the branch has moved since,
+        # or it would not be here. It refuses exactly as every entry used to.
+        why = "--no-stage" if commit else "the entry names no commit"
+        fail_or_requeue(entry, f"checkout is on {branch}, entry wants {want} "
+                               f"— stage it first ({why})")
+        write_entry(entry["path"], entry)
+        print(f"tick: {entry['file']} {entry['state']}: {entry['last_error']}")
+        return 1
+    refusals = tick_stage_refusals(root)
+    if refusals:
+        fail_or_requeue(entry, f"cannot stage {want}: {'; '.join(refusals)}")
+        write_entry(entry["path"], entry)
+        print(f"tick: {entry['file']} {entry['state']}: {entry['last_error']}")
+        return 1
+
+    entry["state"] = "running"
+    log_line(entry, f"staging {want}, from {branch}")
+    write_entry(entry["path"], entry)
+    print(f"tick: {entry['file']} staging {want} (checkout was on {branch})")
+    if args.dry_run:
+        entry["state"] = "queued"
+        log_line(entry, "dry run, not staged")
+        write_entry(entry["path"], entry)
+        print(f"  would check out {want} and build with: "
+              f"{entry.get('build') or DEFAULT_BUILD_CMD}")
+        return 0
+    why = stage_checkout(root, entry, entry_log_path(entry, root))
+    if why:
+        fail_or_requeue(entry, f"staging {want}: {why}")
+        write_entry(entry["path"], entry)
+        print(f"tick: {entry['file']} {entry['state']}: {entry['last_error']}")
+        return 1
+    # Back to queued rather than left running: the staging succeeded, and a
+    # tick killed between here and the phase must not spend an attempt on work
+    # that is already done. tick_entry marks it running again immediately.
+    entry["state"] = "queued"
+    log_line(entry, f"staged {want}")
+    write_entry(entry["path"], entry)
+    print(f"tick: {entry['file']} staged {want}")
+    return None
 
 
 def fail_or_requeue(entry: dict, why: str) -> None:
@@ -2735,6 +2945,12 @@ def cmd_tick(args: argparse.Namespace) -> int:
             print("tick: nothing queued.")
             return 0
         entry = ready[0]
+        # Before load_campaign, not after: the declaration is tracked on the
+        # campaign's own branch, so a checkout standing on another one cannot
+        # read it until this has moved it.
+        code = ensure_staged(entry, root, args)
+        if code is not None:
+            return code
         try:
             campaign = load_campaign(entry["campaign"], root)
         except CampaignError as exc:
@@ -2749,18 +2965,9 @@ def cmd_tick(args: argparse.Namespace) -> int:
 
 def tick_entry(entry: dict, campaign: dict, root: Path,
                args: argparse.Namespace) -> int:
-    branch, err = checkout_branch(root)
-    if err:
-        fail_or_requeue(entry, f"cannot read the checkout's branch: {err}")
-        write_entry(entry["path"], entry)
-        return 1
-    if branch != entry.get("branch"):
-        fail_or_requeue(entry, f"checkout is on {branch}, entry wants "
-                               f"{entry.get('branch')} — stage it first")
-        write_entry(entry["path"], entry)
-        print(f"tick: {entry['file']} {entry['state']}: {entry['last_error']}")
-        return 1
-
+    # No branch check here. ensure_staged is the one place that decides what
+    # the checkout may run, and a second test of its own predicate would be
+    # dead code rather than a safety net.
     index = int(entry.get("phase", 0))
     if index >= len(campaign["phases"]):
         entry["state"] = "done"
@@ -2779,7 +2986,7 @@ def tick_entry(entry: dict, campaign: dict, root: Path,
         print(f"tick: {entry['file']} phase {index} ({phase['name']}) skipped")
         return 0
     seeds = parse_seed_range(text, f"{entry['file']}: phase {index} seeds")
-    log_path = queue_dir(root) / (Path(entry["file"]).stem + ".log")
+    log_path = entry_log_path(entry, root)
 
     entry["state"] = "running"
     entry["pid"] = os.getpid()
@@ -2824,8 +3031,8 @@ def checkout_branch(root: Path) -> tuple:
 
 # -- queue listing and cron ---------------------------------------------------
 
-QUEUE_HEADERS = ["HOST", "ENTRY", "CAMPAIGN", "STATE", "PHASE", "TRIES",
-                 "SEEDS", "UPDATED", "NOTE"]
+QUEUE_HEADERS = ["HOST", "ENTRY", "CAMPAIGN", "BRANCH", "STATE", "PHASE",
+                 "TRIES", "SEEDS", "UPDATED", "NOTE"]
 
 
 def queue_rows(reports: list) -> list:
@@ -2834,11 +3041,17 @@ def queue_rows(reports: list) -> list:
         for entry in report.get("queue", []):
             name = Path(entry.get("file", "?")).name
             if entry.get("error"):
-                rows.append([report["host"], name, "-", "unparseable", "-",
-                             "-", "-", "-", entry["error"]])
+                rows.append([report["host"], name, "-", "-", "unparseable",
+                             "-", "-", "-", "-", entry["error"]])
                 continue
+            # The branch is the column that matters once a queue holds
+            # campaigns on more than one: it is what the tick stages to, and
+            # the reason a checkout moves between two entries.
+            commit = str(entry.get("commit", ""))
             rows.append([
                 report["host"], name, str(entry.get("campaign", "?")),
+                str(entry.get("branch", "?"))
+                + (f"@{commit[:7]}" if commit else ""),
                 str(entry.get("state", "?")),
                 f"{entry.get('phase', '?')}/{entry.get('phases', '?')}",
                 f"{entry.get('attempts', 0)}/"
@@ -3077,6 +3290,10 @@ def build_parser() -> argparse.ArgumentParser:
     tick.add_argument("--host", help="Only entries naming this host.")
     tick.add_argument("--root", help="Checkout to work in (default: this one).")
     tick.add_argument("--lock", help=f"Lock file (default: {QUEUE_LOCK}).")
+    tick.add_argument("--no-stage", action="store_true",
+                      help="Never move the checkout. An entry on another "
+                           "branch burns an attempt and says `stage it "
+                           "first`, as it did before ticks could stage.")
     tick.add_argument("--dry-run", action="store_true",
                       help="Pick an entry and print its phase; run nothing.")
     tick.set_defaults(func=cmd_tick)

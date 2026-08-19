@@ -32,7 +32,7 @@ python scripts/campaign.py stage arbiter-probe
 
 `stage` pushes the branch to origin, then on each declared host fetches it, checks it out at the pushed commit, runs the build command, and reads `build-release/counter --version` back to confirm the binary was built from that commit with `dirty=0`. A host that fails any of it is reported and nothing is launched.
 
-Staging **refuses by default**, and the three refusals are the three ways to destroy work that cannot be recovered from this side: a dirty checkout, a live `counter` or `run_experiments.py` process, and a checkout on any branch other than the campaign's. All three are reported at once rather than one per attempt. The hosts normally sit on somebody's in-flight branch, so switching them is the expected case and `--force` is the expected answer; what matters is that the answer is deliberate. `--force` prints the modified files by name, the branch and head it is about to leave, and then requires the host name typed back at a terminal. Without a terminal it refuses outright, which is what keeps a scripted or cron-driven stage from resetting a machine.
+Staging **refuses by default**, and the three refusals are the three ways to destroy work that cannot be recovered from this side: a dirty checkout, a live `counter` or `run_experiments.py` process, and a checkout on any branch other than the campaign's. All three are reported at once rather than one per attempt. The hosts normally sit on somebody's in-flight branch, so switching them is the expected case and `--force` is the expected answer; what matters is that the answer is deliberate. Through the queue there is no such answer to give, which is why a tick stages the branch itself and refuses the other two — see "A tick stages its own branch" below. `--force` prints the modified files by name, the branch and head it is about to leave, and then requires the host name typed back at a terminal. Without a terminal it refuses outright, which is what keeps a scripted or cron-driven stage from resetting a machine.
 
 `git clean` is never run. A host's untracked files are its results, and the campaign staged over them would delete the previous campaign's output; `checkout -f` discards tracked modifications and nothing else. An unforced stage also refuses a checkout that is ahead of the pushed commit rather than dropping those commits.
 
@@ -91,7 +91,23 @@ The crontab line must not wrap the tick in `flock` on that same lock file. It di
 
 `running` with no tick holding the lock means an interrupted tick rather than a live phase, since a tick runs its phase in the foreground. Recovery costs one attempt and re-runs the same phase over the same seeds; `run_experiments.py` resumes off the results CSV, so a tick killed mid-phase costs nothing but the runs that were in flight. The attempt cap (three by default, `--max-attempts`) is what separates a slow phase from a broken one: past it the entry stops moving and holds the exit status in `last_error`, and only `requeue` restarts it, after somebody has read `experiments/queue/NNN-<name>.log`.
 
-An entry whose branch the checkout has left burns attempts and says `stage it first`, rather than running a campaign's seeds against code the declaration never named.
+## A tick stages its own branch
+
+Campaigns queue up on different branches, and the only thing standing between one entry and the next is a checkout. `stage` cannot answer that: switching a host's branch is one of its three refusals, `--force` prints what it will discard and requires the host name typed back at a terminal, and there is nobody at one when the tick fires at 03:05. So a tick that finds the checkout somewhere other than its entry's branch fetches the entry's commit, checks it out, runs the build command and reads `build-release/counter --version` back — `stage`, performed from inside the host, before the phase runs.
+
+It stages for the branch alone. The other two refusals hold, and a tick that meets either spends an attempt and stops with the reason in `last_error`:
+
+- **a dirty checkout** — somebody's uncommitted edits, which no fetch brings back;
+- **a live `counter` or `run_experiments.py`** — checking out under a running campaign rebuilds the binary its remaining rows will name, so every row after the swap carries a commit it did not come from;
+- **a HEAD no remote branch contains** — an unpushed commit, the third thing the checkout can hold that this side cannot reconstruct. `stage` guards the same case by refusing a checkout ahead of the pushed commit, a question that cannot be asked across two unrelated branches.
+
+`stage --force` remains the only way past any of the three, and `tick --no-stage` restores the old behaviour — an entry on another branch burns attempts and says `stage it first` — for a host being driven by hand.
+
+`enqueue` is what makes this possible: it pushes the campaign's branch to origin and freezes the branch's **commit** and the campaign's **build** command into the entry, beside the seed ranges it already froze. Both are there because the declaration is tracked on the campaign's own branch, so a tick standing anywhere else cannot read a word of `campaign.toml` until after the checkout it is about to perform; the commit and the build command are exactly what that checkout needs. Freezing the commit has the same force as freezing the seeds: a campaign's phases run over hours and requeue between them, and one whose phases straddled two commits would write rows under a single `commit` column that came from two binaries. A branch that moves after `enqueue` therefore does not move the entry — re-enqueue it to pick the new commit up.
+
+Entries are still taken in strict numerical order, which is what keeps the checkout still: an entry requeues at its own number between phases, so it stays the lowest-numbered one until it is `done` and a campaign runs to completion before the next branch is staged. `campaign.py queue` prints the branch and commit each entry needs, beside its state.
+
+An entry written before this existed names no commit. There is nothing safe to guess — the branch has moved since, or the entry would not be waiting — so it refuses exactly as every entry used to, and the fix is `stage` by hand.
 
 ## Collecting and closing
 

@@ -536,6 +536,18 @@ and the entry stops at the cap (`--max-attempts`, three by default) with the
 reason in `last_error`, rather than being retried for ever. `cron --print`
 prints the line and installs nothing.
 
+`enqueue` pushes the campaign's branch to origin and freezes its commit and its
+build command into the entry, beside the seed ranges it already froze. A tick
+whose entry names a branch the checkout is not on fetches that commit, checks it
+out and runs the build, then reads `build-release/counter --version` back before
+it runs a phase, which is `stage` performed by the tick with no terminal to
+answer to. It stages for the branch alone: a dirty checkout and a live `counter`
+or `run_experiments.py` each stop it, holding the reason in `last_error`, and so
+does a HEAD no remote branch contains. Those are the cases where the checkout
+carries something no fetch brings back, and `stage --force` — which names what
+it will discard and wants the host name typed back — stays the only way past
+them. `tick --no-stage` restores the old refusal for a host driven by hand.
+
 ### Polling a running campaign
 
 ```sh

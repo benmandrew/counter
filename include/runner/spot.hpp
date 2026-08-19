@@ -80,6 +80,11 @@ class RealizabilityChecker {
     /// other, so a formula that times out costs one exec however often the
     /// search revisits it.
     inline static std::size_t n_timeouts = 0;
+    /// ltlsynt calls that ran to completion and reported a limit of its own
+    /// rather than a verdict, reported as nullopt like a timeout. Counted
+    /// separately because the two say different things: a timeout is a budget
+    /// this run chose, and this is a ceiling the tool was built with.
+    inline static std::size_t n_capability_errors = 0;
 
     /// Checks whether the specification is realizable using ltlsynt. Returns
     /// true (realizable), false (unrealizable), or nullopt (timed out, so

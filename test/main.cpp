@@ -14,6 +14,10 @@ namespace {
 // Handles the genetic-algorithm suites. Split out of run_suite for the same
 // reason as run_tlsf_suite below.
 bool run_genetic_suite(std::string_view suite_name) {
+    if (suite_name == "accumulator") {
+        run_accumulator_tests();
+        return true;
+    }
     if (suite_name == "crossover") {
         run_crossover_tests();
         return true;
@@ -233,6 +237,7 @@ int main(int argc, const char* const argv[]) {
             run_ltlfilt_runner_tests();
             run_process_runner_tests();
             run_spot_runner_tests();
+            run_accumulator_tests();
             run_crossover_tests();
             run_generation_tests();
             run_determinism_tests();

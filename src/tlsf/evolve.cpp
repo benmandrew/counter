@@ -13,12 +13,14 @@
 #include "filter/correctness.hpp"
 #include "filter_report.hpp"
 #include "fitness/function.hpp"
+#include "genetic/accumulator.hpp"
 #include "genetic/generation.hpp"
 #include "genetic/pipeline.hpp"
 #include "genetic/random_source.hpp"
 #include "genetic/scored.hpp"
 #include "runner/black.hpp"
 #include "runner/spot.hpp"
+#include "survivors.hpp"
 #include "thread_pool.hpp"
 #include "tlsf/filter.hpp"
 #include "tlsf/operators.hpp"
@@ -53,12 +55,35 @@ std::vector<FilterFunctionT<Specification>> build_per_gen_filters(
     return filters;
 }
 
+namespace {
+
+// Not free, unlike the FRETISH path: nothing else asks the gate per generation
+// here, so this sweep is work the run would not otherwise do. The status query
+// behind it is memoised from scoring, leaving the correctness rows as the real
+// cost. Hence the early return rather than a caller-side branch.
+void accumulate_gate_passing(
+    const std::vector<Scored<Specification>>& population, const Config& cfg,
+    std::size_t generation, RepairAccumulator<Specification>& accumulator) {
+    if (!accumulator.enabled()) {
+        return;
+    }
+    const std::vector<char> keep = gate_verdicts(population, cfg);
+    for (std::size_t idx = 0; idx < population.size(); ++idx) {
+        if (keep[idx] != 0) {
+            accumulator.insert(population[idx].specification, generation);
+        }
+    }
+}
+
+}  // namespace
+
 std::vector<Scored<Specification>> evolve_population(
     const Specification& spec, const Config& cfg,
     const RandomSource& random_source,
     const AggregateWeightedFitnessFunctionT<Specification>& fitness,
     std::vector<FilterRunStats>& filter_stats_out,
-    const DashboardProgress& progress) {
+    const DashboardProgress& progress,
+    RepairAccumulator<Specification>& accumulator_out) {
     const std::vector<FilterFunctionT<Specification>> per_gen_filters =
         build_per_gen_filters(spec, cfg);
 
@@ -124,6 +149,8 @@ std::vector<Scored<Specification>> evolve_population(
         }
         std::cout << "gen " << (gen + 1) << "/" << cfg.generations
                   << "  best fitness " << maximum << "\n";
+        accumulate_gate_passing(population, cfg, dashboard_gen,
+                                accumulator_out);
         if (progress.writer != nullptr) {
             std::vector<std::vector<double>> objectives;
             objectives.reserve(population.size());

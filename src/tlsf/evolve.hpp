@@ -11,6 +11,7 @@
 #include "dashboard.hpp"
 #include "filter_report.hpp"
 #include "fitness/function.hpp"
+#include "genetic/accumulator.hpp"
 #include "genetic/generation.hpp"
 #include "genetic/random_source.hpp"
 #include "genetic/scored.hpp"
@@ -38,11 +39,16 @@ std::vector<FilterFunctionT<Specification>> build_per_gen_filters(
 // Evolves `spec` under `cfg` against `fitness`, returning the final scored
 // population and, via `filter_stats_out`, this run's per-filter in/out totals.
 // Shared by both repair modes; in MUC mode `spec` is a core sub-specification.
+//
+// Gate-passing candidates are offered to `accumulator_out` at the end of each
+// generation. Unlike the FRETISH path this costs a gate sweep the run would not
+// otherwise make, so it happens only when the accumulator is enabled.
 std::vector<Scored<Specification>> evolve_population(
     const Specification& spec, const Config& cfg,
     const RandomSource& random_source,
     const AggregateWeightedFitnessFunctionT<Specification>& fitness,
     std::vector<FilterRunStats>& filter_stats_out,
-    const DashboardProgress& progress);
+    const DashboardProgress& progress,
+    RepairAccumulator<Specification>& accumulator_out);
 
 }  // namespace tlsf::internal

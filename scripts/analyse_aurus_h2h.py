@@ -64,6 +64,22 @@ def num(s, default=float("nan")):
         return default
 
 
+# An empty arm is a real state -- a corpus where nothing was repaired, or a
+# filter that kept nothing -- and it reaches here as an empty list rather than
+# as an error. Printing "n/a" says that; dividing by zero loses the whole
+# secondary block, including the figures that are defined.
+def pct(numerator, denominator, places=1):
+    if not denominator:
+        return "n/a"
+    return f"{100 * numerator / denominator:.{places}f}%"
+
+
+def med(values, places=0):
+    if not values:
+        return "n/a"
+    return f"{statistics.median(values):.{places}f}"
+
+
 # -- Wilcoxon signed-rank ------------------------------------------------------
 
 def signed_rank(diffs):
@@ -278,19 +294,19 @@ print("=" * 78)
 
 c_yield = sum(truth(r["found_repair"]) for r in counter_rows)
 print(f"counter yield              {c_yield}/{len(counter_rows)} "
-      f"({100 * c_yield / len(counter_rows):.1f}%)")
+      f"({pct(c_yield, len(counter_rows))})")
 
 c_reps = [num(r["n_repairs"]) for r in counter_rows if truth(r["found_repair"])]
 a_claimed = [num(r["n_claimed"]) for r in aurus_rows]
 a_scored = [num(r["n_scored"]) for r in aurus_rows]
 print(f"solutions per run          counter median "
-      f"{statistics.median(c_reps):.0f} maximal repairs, "
-      f"AuRUS median {statistics.median(a_claimed):.0f} claimed "
-      f"({statistics.median(a_scored):.0f} after the §10.1 filter)")
+      f"{med(c_reps)} maximal repairs, "
+      f"AuRUS median {med(a_claimed)} claimed "
+      f"({med(a_scored)} after the §10.1 filter)")
 
 c_to = sum(truth(r["timed_out"]) for r in counter_rows)
 print(f"counter timeout rate       {c_to}/{len(counter_rows)} "
-      f"({100 * c_to / len(counter_rows):.1f}%) at the 7200 s cap")
+      f"({pct(c_to, len(counter_rows))}) at the 7200 s cap")
 
 tot_claimed = sum(int(num(r["n_claimed"], 0)) for r in aurus_rows)
 tot_ok = sum(int(num(r["n_realize_ok"], 0)) for r in aurus_rows)
@@ -300,7 +316,7 @@ tot_und = sum(int(num(r["n_sep_undecided"], 0)) for r in aurus_rows)
 print(f"AuRUS re-validation        {tot_ok}/{tot_claimed} claimed repairs "
       f"REALIZABLE under ltlsynt, {tot_dis} disagreements")
 print(f"AuRUS ill-separated        {tot_ill}/{tot_claimed} "
-      f"({100 * tot_ill / tot_claimed:.2f}%), {tot_und} undecided")
+      f"({pct(tot_ill, tot_claimed, 2)}), {tot_und} undecided")
 
 # The filter's effect on the conclusion, not just on the counts: how many
 # families the §10.1 amendment actually moves.

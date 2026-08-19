@@ -93,6 +93,11 @@ void print_diagnostics_report() {
                      "treated as trivially true): "
                   << Ltl2tgbaStats::n_tautology_substitutions << "\n";
     }
+    if (RealizabilityChecker::n_capability_errors > 0) {
+        std::cout << "\nltlsynt queries past SPOT's acceptance-set limit "
+                     "(resolved as undecided): "
+                  << RealizabilityChecker::n_capability_errors << "\n";
+    }
     if (WellSeparationStats::n_errors > 0) {
         std::cout << "\nWell-separation queries that raised (resolved as "
                      "undecided, candidate dropped): "

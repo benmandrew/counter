@@ -167,12 +167,27 @@ bool is_tautology_print_error(const ProcessResult& result) {
                std::string::npos;
 }
 
-bool parse_realizability_output(const ProcessResult& result) {
+// ltlsynt refuses a formula needing more acceptance sets than SPOT's
+// compile-time ceiling, 32 unless SPOT was configured with
+// --enable-max-accsets=N. It is telling us it cannot answer, which is what a
+// timeout says too, so it resolves to undecided rather than ending the run.
+// Matched by signature rather than folded into the fallback for the reason
+// parse_realizability_output throws on everything else: output nobody has
+// recognised must never be read as a verdict.
+bool is_acceptance_set_limit_error(const ProcessResult& result) {
+    return result.m_output.find("Too many acceptance sets used") !=
+           std::string::npos;
+}
+
+std::optional<bool> parse_realizability_output(const ProcessResult& result) {
     if (result.m_output.find("UNREALIZABLE") != std::string::npos) {
         return false;
     }
     if (result.m_output.find("REALIZABLE") != std::string::npos) {
         return true;
+    }
+    if (is_acceptance_set_limit_error(result)) {
+        return std::nullopt;
     }
     // ltlsynt's output crossed a process boundary and didn't match either
     // expected form: don't let assert() (a no-op in release builds) treat
@@ -351,9 +366,7 @@ std::optional<bool> RealizabilityChecker::check_realizability_ltl(
     // "realizable" -- so the direction is the caller's to pick, and this
     // reports nullopt rather than picking one for everybody.
     const std::optional<bool> realizable =
-        result.m_timed_out
-            ? std::nullopt
-            : std::optional<bool>(parse_realizability_output(result));
+        result.m_timed_out ? std::nullopt : parse_realizability_output(result);
     // Diagnostic hook (off unless COUNTER_LTLSYNT_LOG names a file): append one
     // "elapsed_s timed_out n_atoms" line per ltlsynt exec, for studying the
     // call-duration distribution and tuning ltlsynt_timeout. Zero cost when the
@@ -370,6 +383,8 @@ std::optional<bool> RealizabilityChecker::check_realizability_ltl(
     total_cpu_s += result.m_cpu_s;
     if (result.m_timed_out) {
         n_timeouts++;
+    } else if (!realizable.has_value()) {
+        n_capability_errors++;
     }
     // Undecided is memoised like any other outcome, for the reason the ltlfilt
     // cache gives: a formula that blew the budget once will blow it every

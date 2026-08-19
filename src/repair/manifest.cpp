@@ -62,7 +62,11 @@ namespace {
 // 12 added fitness.mrs_admission_order. The MRS walk's score depends on the
 // order it admits parts in, so two runs on one specification under one grading
 // scale are not comparable without it.
-constexpr int k_schema_version = 12;
+// 13 added n_ltlsynt_capability_errors. Before it, an ltlsynt run that reported
+// a limit of its own instead of a verdict ended the run and no manifest was
+// written at all; from this version the query resolves as undecided and this
+// field is the only record that it happened.
+constexpr int k_schema_version = 13;
 
 // The inverse of the spellings config_io.cpp parses. It has no table to
 // borrow -- it only ever goes string to enum -- so these must be kept in step
@@ -294,6 +298,10 @@ void write_run_manifest(const std::string& output_dir,
         {"n_weak_operator_unresolved",
          SatisfiabilityChecker::n_weak_operator_unresolved.load()},
         {"n_tautology_substitutions", Ltl2tgbaStats::n_tautology_substitutions},
+        // ltlsynt calls that reported SPOT's acceptance-set ceiling rather than
+        // a verdict, resolved as undecided rather than ending the run.
+        {"n_ltlsynt_capability_errors",
+         RealizabilityChecker::n_capability_errors},
         // Well-separation queries that raised instead of answering, resolved as
         // undecided (the candidate is dropped) rather than propagating.
         {"n_well_separation_errors", WellSeparationStats::n_errors.load()},

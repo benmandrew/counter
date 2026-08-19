@@ -14,8 +14,9 @@
     "branch": "campaign/weakening-arbiter",
     "subject": "fix(experiments): cut weakening-arbiter to six families",
     "reachable_from_main": false,
-    "held_by_tag": null,
-    "held_by_tag_note": "UNRESOLVED AT CLOSE. The branch campaign/weakening-arbiter exists locally and on origin and holds every sha this file names, so nothing is dangling today. If the branch is merged, the shas become reachable from main and no tag is needed. If it is split into pull requests or rebased instead, tag its tip provenance/weakening-arbiter before deleting the branch, or git gc collects these objects and the recorded blob shas stop resolving. See the 2026-07-31-replicate precedent in the root CLAUDE.md."
+    "held_by_tag": "provenance/weakening-arbiter",
+    "held_by_tag_note": "The branch campaign/weakening-arbiter is split into pull requests rather than merged, so the same content reaches main under fresh shas while every sha this file names -- the profile commit 864ae63 and the four vendored blobs -- still points into the branch. The annotated tag provenance/weakening-arbiter holds them, pointing at e4f90fb, the close commit, rather than at 864ae63: a tag on the profile commit alone would leave the archive and this file itself unreachable once the branch is deleted. Never delete the tag. This is the 2026-07-31-replicate position exactly, and the root CLAUDE.md rule it established applies -- splitting a branch instead of merging it silently invalidates any recorded sha pointing into it.",
+    "reachable_from_main_note": "false and expected to stay false. The pull requests reproduce this content under new shas; they do not make 864ae63 reachable. Verify with `git merge-base --is-ancestor 864ae63 main`, which should keep failing, and resolve the recorded blobs through the tag."
   },
   "profile_commit_confidence": "recorded",
   "profile_commit_evidence": "Both hosts were staged through campaign.py stage, which fetches the pushed commit, checks it out, rebuilds and reads counter --version back before anything launches. Each per-host manifest (results-wkarb-manifest-avlab12.json, -av3.json) records git.head = 864ae63a2f5e45a5841d538beeac0635665cf028 with counter and compare both at 864ae63, dirty 0. The launch gate in run_experiments.py was left on; --allow-stale-binary was never passed to a run that produced a retained row.",
@@ -31,16 +32,42 @@
     "merged_total": 246,
     "endpoint_rows": 240,
     "endpoint_note": "6 specs x 2 arms x 20 seeds. The remaining 6 rows are amba (4) and load-balancer (2), left over from the aborted 10-family launch and retained deliberately; see corpus_cut below.",
-    "per_host": {"av2": 122, "av3": 124},
+    "per_host": {
+      "av2": 122,
+      "av3": 124
+    },
     "seeds": "0-19, av2 0-9 and av3 10-19, disjoint",
-    "commit_column": {"864ae63": 222, "80c2790": 24},
+    "commit_column": {
+      "864ae63": 222,
+      "80c2790": 24
+    },
     "commit_column_note": "24 rows carry 80c2790, the aborted launch's commit, and 18 of those sit on the six retained families and count toward the 240 endpoint rows. 80c2790..864ae63 changes only experiments/weakening-arbiter/PLAN.md and campaign.toml, so the binary that produced them is byte-identical in behaviour to the one that produced the other 222. Recorded rather than discarded because the resume key does not include commit, which is what let them join.",
-    "dirty_column": {"0": 246}
+    "dirty_column": {
+      "0": 246
+    }
   },
   "corpus_cut": {
     "when": "2026-08-19, after 24 rows and before any endpoint was read",
-    "from": ["arbiter", "arbiter-aurus", "arbiter-handshake", "full-arbiter", "prioritized-arbiter", "round-robin-arbiter", "simple-arbiter", "amba", "load-balancer", "lily02"],
-    "to": ["arbiter", "arbiter-aurus", "arbiter-handshake", "full-arbiter", "prioritized-arbiter", "lily02"],
+    "from": [
+      "arbiter",
+      "arbiter-aurus",
+      "arbiter-handshake",
+      "full-arbiter",
+      "prioritized-arbiter",
+      "round-robin-arbiter",
+      "simple-arbiter",
+      "amba",
+      "load-balancer",
+      "lily02"
+    ],
+    "to": [
+      "arbiter",
+      "arbiter-aurus",
+      "arbiter-handshake",
+      "full-arbiter",
+      "prioritized-arbiter",
+      "lily02"
+    ],
     "why": "The cost model in PLAN.md section 5 came from 2026-08-10-arbiter-probe, which predates MRS status grading as the shipped default (1.89x cost) and p_remove_guarantee. Per-run cost on this binary is ~6x the prediction: full-arbiter 65.5 s against 10.8 s, and amba hit the 900 s cap in both arms on every attempt, recording n_repairs = 0 while taking ~88% of the wall time. round-robin-arbiter, simple-arbiter and load-balancer went on cost alone, all three already yielding under wkon. Carried as a phase-level `specs` override in campaign.toml, so the profile still states the corpus the question is about. PLAN.md section 10 is the record.",
     "cost_to_the_claim": "The campaign cannot say the restriction is free across the arbiter corpus, only across the six families it covers. No family was removed on the basis of what its arms showed."
   },

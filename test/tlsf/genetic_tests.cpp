@@ -235,10 +235,11 @@ void test_temporal_mutation_atoms_from_inputs_only() {
     }
 }
 
-void test_add_assumption_appends_fairness() {
-    // With p_add_assumption forced to 1, mutation appends a fairness assumption
-    // `G F <input>` (input optionally negated) to the ASSUME section and leaves
-    // the rest of the specification untouched.
+// An appended assumption is a fairness property `G F <input>`, or, under
+// p_conditional_assumption, a guarded `G(<guard> -> o <input>)` whose
+// consequent carries F, X or no modality at all. The obliged literal is an
+// input whatever allow_output_assumptions says.
+void test_add_assumption_forms() {
     tlsf::Specification spec;
     spec.m_inputs = {"req"};
     spec.m_outputs = {"grant"};
@@ -256,10 +257,44 @@ void test_add_assumption_appends_fairness() {
         expect(mutated.m_guarantee == spec.m_guarantee,
                "add-assumption: guarantees are left untouched");
         const std::string text = mutated.m_assume.front().m_formula.to_string();
-        expect(text == "G(F(req))" || text == "G(F(!(req)))",
-               "add-assumption: appended a G F <input> fairness assumption");
+        const bool fairness = text == "G(F(req))" || text == "G(F(!(req)))";
+        // With one input and outputs barred, every literal in either form is
+        // `req`.
+        const bool guarded =
+            text.rfind("G((", 0) == 0 && text.find("->") != std::string::npos;
+        expect(fairness || guarded,
+               "add-assumption: appended a fairness or guarded assumption");
         expect(text.find("grant") == std::string::npos,
-               "add-assumption: an output signal never enters an assumption");
+               "add-assumption: no output atom reaches an assumption when "
+               "allow_output_assumptions is off");
+    }
+}
+
+// The obliged literal is an input even with allow_output_assumptions on, which
+// governs the guard alone: `G(<output> -> F <input>)` stays reachable and
+// `G(<input> -> F <output>)` does not.
+void test_add_assumption_never_obliges_an_output() {
+    tlsf::Specification spec;
+    spec.m_inputs = {"req"};
+    spec.m_outputs = {"grant"};
+    spec.m_guarantee = {parse("INPUTS { req; } OUTPUTS { grant; } "
+                              "GUARANTEE { G (req -> F grant); }")
+                            .m_guarantee.front()};
+    Config cfg;
+    cfg.p_add_assumption = 1.0;
+    cfg.allow_output_assumptions = true;
+    cfg.p_conditional_assumption = 1.0;
+    for (std::size_t seed = 0; seed < 40; ++seed) {
+        const RandomSource rng = make_random_source_from_seed(seed);
+        const tlsf::Specification mutated = tlsf_mutate(spec, rng, cfg);
+        const std::string text = mutated.m_assume.front().m_formula.to_string();
+        const std::size_t arrow = text.find("->");
+        expect(arrow != std::string::npos,
+               "add-assumption: p_conditional_assumption 1 draws the guarded "
+               "form");
+        expect(text.substr(arrow).find("grant") == std::string::npos,
+               "add-assumption: the consequent is drawn from the inputs even "
+               "with allow_output_assumptions on");
     }
 }
 
@@ -561,7 +596,8 @@ void run_tlsf_genetic_tests() {
     test_mutation_side_probability_selects_side();
     test_temporal_mutation_changes_skeleton();
     test_temporal_mutation_atoms_from_inputs_only();
-    test_add_assumption_appends_fairness();
+    test_add_assumption_forms();
+    test_add_assumption_never_obliges_an_output();
     test_remove_guarantee_tombstones_in_place();
     test_remove_guarantee_keeps_the_last_live_conjunct();
     test_add_assumption_can_reference_output_when_allowed();

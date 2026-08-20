@@ -80,7 +80,7 @@ default_bound = 20
 metric        = "logarithmic"  # or "direct"
 
 [filters]
-run_weakening   = true
+run_weakening   = false
 run_implication = true
 run_vacuity     = true
 run_well_separation = false

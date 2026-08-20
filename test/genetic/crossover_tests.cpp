@@ -26,7 +26,7 @@ RandomSource make_source(std::vector<std::size_t> values,
 }
 
 // Every crossover grafts: there is no branch that copies a parent's field
-// verbatim, so an all-zeroes source replaces rather than inherits.
+// verbatim, so an all-ones source replaces rather than inherits.
 void test_crossover_always_recombines() {
     const Requirement first_parent{Formula("P"), Formula("Q"),
                                    timing::immediately()};
@@ -34,11 +34,12 @@ void test_crossover_always_recombines() {
                                     timing::next_timepoint()};
     const Requirement offspring = crossover_requirements(
         first_parent, second_parent, make_source({1, 1}, 1U));
-    expect(
-        offspring.m_condition.to_string() == "R",
-        "crossover: the replace branch grafts the second parent's condition");
+    expect(offspring.m_condition.to_string() == "R",
+           "crossover: the replace branch grafts the second parent's "
+           "condition");
     expect(offspring.m_response.to_string() == "S",
-           "crossover: the replace branch grafts the second parent's response");
+           "crossover: the replace branch grafts the second parent's "
+           "response");
 }
 
 void test_timing_crossover_can_swap_parameters() {
@@ -46,8 +47,11 @@ void test_timing_crossover_can_swap_parameters() {
                                    timing::within_ticks(5)};
     const Requirement second_parent{Formula("P"), Formula("Q"),
                                     timing::for_ticks(10)};
-    const Requirement offspring = crossover_requirements(
-        first_parent, second_parent, make_source({0, 0, 0, 0, 2}, 0));
+    // A field spends four draws -- branch, site, orientation, connective --
+    // so the timing draw is the ninth.
+    const Requirement offspring =
+        crossover_requirements(first_parent, second_parent,
+                               make_source({0, 0, 0, 0, 0, 0, 0, 0, 2}, 0));
     const auto* within = std::get_if<timing::WithinTicks>(&offspring.m_timing);
     expect(within != nullptr,
            "crossover: parameter crossover should preserve the operator from"

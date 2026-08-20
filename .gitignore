@@ -71,6 +71,11 @@ semantics.txt
 # result it was meant to bind; the root PLAN.md is ignored for the opposite
 # reason, being a working file with no such claim on it.
 !/experiments/*/PLAN.md
+# A finding a campaign's data establishes about the engine rather than about the
+# campaign's own factors. Tracked for the same reason as the plan: it makes a
+# claim about the code that a later reader has to be able to check against the
+# rows it was drawn from, and those rows live in this directory.
+!/experiments/*/REPORT.md
 # A campaign's declaration: the branch, the per-host seed split and the phases
 # scripts/campaign.py drives it from. Tracked because it has to reach the lab
 # machines, which get it by checking out the campaign's branch, and because the

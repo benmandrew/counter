@@ -17,6 +17,11 @@
 /// is replaced by one of the second, or the two are joined under one of
 /// ∧, ∨, U, W. Everything else is @p parent_a's, so the offspring keeps its
 /// section shape. Deleted conjuncts take no part on either side.
+///
+/// A target in an initial-condition section (INITIALLY or PRESET) takes a
+/// donor from its counterpart section alone, since basic TLSF requires an
+/// initial condition to be propositional over one side's own signals. The
+/// graft replaces the first occurrence of its site, not every one.
 tlsf::Specification tlsf_crossover(const tlsf::Specification& parent_a,
                                    const tlsf::Specification& parent_b,
                                    const RandomSource& random_source);

@@ -239,6 +239,10 @@ void test_weakening_screen_rejects_non_weakening() {
     // which repair the search reaches depends on the survivor step, and this
     // test is about the screen rather than about whichever scheme is current.
     cfg.selection_scheme = SelectionScheme::Nsga2Truncate;
+    // This fixture is chosen so that the repair the search reaches is *not* a
+    // weakening, and which repair that is depends on the mutation and
+    // crossover grammar: a change there can stop the fixture exercising the
+    // screen at all.
 
     const RandomSource random_source = make_random_source_from_seed(1);
     const int status =

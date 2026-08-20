@@ -3,6 +3,8 @@
 #include <cstddef>
 #include <vector>
 
+#include "config.hpp"
+#include "genetic/random_source.hpp"
 #include "prop_formula.hpp"
 #include "tlsf/crossover.hpp"
 #include "tlsf/mutation.hpp"
@@ -23,6 +25,11 @@ tlsf::Specification tlsf_simplify(tlsf::Specification spec) {
 
 const GeneticOperators<tlsf::Specification>& tlsf_operators() {
     static const GeneticOperators<tlsf::Specification> ops{
-        tlsf_crossover, tlsf_mutate, tlsf_simplify};
+        [](const tlsf::Specification& parent_a,
+           const tlsf::Specification& parent_b,
+           const RandomSource& random_source, const Config&) {
+            return tlsf_crossover(parent_a, parent_b, random_source);
+        },
+        tlsf_mutate, tlsf_simplify};
     return ops;
 }

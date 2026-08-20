@@ -1,0 +1,577 @@
+#include <unistd.h>
+
+#include <algorithm>
+#include <cctype>
+#include <chrono>
+#include <filesystem>
+#include <fstream>
+#include <sstream>
+#include <string>
+#include <utility>
+#include <vector>
+
+#include <nlohmann/json.hpp>
+
+#include "runner/process.hpp"
+#include "test_suite.hpp"
+#include "test_support.hpp"
+
+// Where the driver binaries land, from CMake. These suites are the only place
+// the test binary reaches for another target's output, so the path arrives as
+// a definition rather than being reconstructed from argv[0].
+#ifndef COUNTER_DRIVER_DIR
+#error "COUNTER_DRIVER_DIR must be defined by the build"
+#endif
+
+namespace {
+
+using std::chrono::milliseconds;
+
+// A driver that has not answered by now is wedged rather than slow: the
+// specifications below decide in tens of milliseconds, and the longest run any
+// suite here asks for is two generations over a population of eight.
+constexpr milliseconds k_deadline{120'000};
+
+// One request signal, one grant signal, and no way to serve a request every
+// tick while alternating: the environment holds `req` high and the second
+// guarantee forbids two grants in a row. Small enough that ltlsynt decides it
+// in milliseconds, which is what makes it usable in seven suites.
+const char* const k_unrealizable = R"(INFO {
+  TITLE:       "alternating grant"
+  DESCRIPTION: "unrealizable: a persistent request outruns the alternation"
+  SEMANTICS:   Mealy
+  TARGET:      Mealy
+}
+
+MAIN {
+  INPUTS { req; }
+  OUTPUTS { grant; }
+  GUARANTEES {
+    G(req -> X grant);
+    G(grant -> X !grant);
+  }
+}
+)";
+
+// The same specification with the assumption that closes the gap, which is
+// what `p_add_assumption` reaches for. Realizable, a genuine weakening of the
+// above, and well separated, so `lint-ideals` passes it on every check.
+const char* const k_realizable = R"(INFO {
+  TITLE:       "alternating grant"
+  DESCRIPTION: "realizable: the request cannot persist"
+  SEMANTICS:   Mealy
+  TARGET:      Mealy
+}
+
+MAIN {
+  INPUTS { req; }
+  OUTPUTS { grant; }
+  ASSUMPTIONS {
+    G(req -> X !req);
+  }
+
+  GUARANTEES {
+    G(req -> X grant);
+    G(grant -> X !grant);
+  }
+}
+)";
+
+// The FRETISH half, so that `counter` is exercised on both front ends: the
+// TLSF specification above never reaches src/repair/, and the two paths share
+// only the CLI.
+const char* const k_fretish = R"({
+  "assumptions": [],
+  "guarantees": [
+    {
+      "condition": "true",
+      "condition-type": "trigger",
+      "response": "takeoff_roll",
+      "timing": { "type": "ForTicks", "ticks": 5 }
+    },
+    {
+      "condition": "!takeoff_roll",
+      "condition-type": "trigger",
+      "response": "lift_off",
+      "timing": { "type": "AfterTicks", "ticks": 1 }
+    }
+  ],
+  "in_atoms": [],
+  "out_atoms": ["takeoff_roll", "lift_off"]
+}
+)";
+
+// Two generations over eight individuals, single-threaded. The width is the
+// smallest that reliably leaves the filters something to report; the thread
+// count is pinned because a run these suites compare against itself must not
+// depend on how many cores the machine has.
+const char* const k_config = R"([genetic]
+generations = 2
+population_size = 8
+
+[runtime]
+parallel = 1
+)";
+
+// A directory unique to the calling suite and to this process, removed on
+// scope exit so a failed run cannot feed the next one stale repairs.
+class TempDir {
+   public:
+    explicit TempDir(const std::string& name)
+        : m_path(std::filesystem::temp_directory_path() /
+                 ("counter_e2e_" + name + "_" + std::to_string(getpid()))) {
+        std::filesystem::remove_all(m_path);
+        std::filesystem::create_directories(m_path);
+    }
+    ~TempDir() { std::filesystem::remove_all(m_path); }
+
+    TempDir(const TempDir&) = delete;
+    TempDir& operator=(const TempDir&) = delete;
+    TempDir(TempDir&&) = delete;
+    TempDir& operator=(TempDir&&) = delete;
+
+    [[nodiscard]] std::filesystem::path path() const { return m_path; }
+    [[nodiscard]] std::string string() const { return m_path.string(); }
+
+   private:
+    std::filesystem::path m_path;
+};
+
+std::filesystem::path write_file(const std::filesystem::path& path,
+                                 const std::string& contents) {
+    std::filesystem::create_directories(path.parent_path());
+    std::ofstream file(path);
+    file << contents;
+    return path;
+}
+
+std::string read_file(const std::filesystem::path& path) {
+    std::ifstream file(path);
+    std::ostringstream contents;
+    contents << file.rdbuf();
+    return contents.str();
+}
+
+bool contains(const std::string& haystack, const std::string& needle) {
+    return haystack.find(needle) != std::string::npos;
+}
+
+struct DriverRun {
+    int m_exit_code = -1;
+    /// stdout and stderr merged, as execute_and_capture returns them.
+    std::string m_output;
+};
+
+DriverRun run_driver(const std::string& name,
+                     const std::vector<std::string>& arguments) {
+    std::vector<std::string> argv{std::string(COUNTER_DRIVER_DIR) + "/" + name};
+    argv.insert(argv.end(), arguments.begin(), arguments.end());
+    const ProcessResult result = execute_and_capture(argv, k_deadline);
+    expect(!result.m_timed_out, name + ": answered within its deadline");
+    return {result.m_exit_code, result.m_output};
+}
+
+// Every driver answers --version with the commit it was built from, and
+// nothing but src/version.cpp reads the generated header, so this is the only
+// place a binary built against a stale one would show up.
+void expect_reports_version(const std::string& name) {
+    const DriverRun run = run_driver(name, {"--version"});
+    expect(run.m_exit_code == 0, name + ": --version exits zero");
+    expect(contains(run.m_output, "commit="),
+           name + ": --version names its commit");
+    expect(contains(run.m_output, "commit_short="),
+           name + ": --version abbreviates its commit");
+    expect(contains(run.m_output, "dirty="),
+           name + ": --version reports the tree state");
+}
+
+// The repairs themselves, which a TLSF run writes beside a `repair_N.fitness`
+// sidecar of the same stem prefix: matching on the prefix alone counts each
+// repair twice.
+std::vector<std::filesystem::path> repair_files(
+    const std::filesystem::path& dir) {
+    const std::string prefix = "repair_";
+    std::vector<std::filesystem::path> found;
+    for (const auto& entry : std::filesystem::directory_iterator(dir)) {
+        const std::string stem = entry.path().stem().string();
+        if (stem.rfind(prefix, 0) != 0) {
+            continue;
+        }
+        const std::string index = stem.substr(prefix.size());
+        const bool is_repair =
+            !index.empty() &&
+            std::all_of(index.begin(), index.end(), [](unsigned char digit) {
+                return std::isdigit(digit);
+            });
+        if (is_repair) {
+            found.push_back(entry.path());
+        }
+    }
+    std::sort(found.begin(), found.end());
+    return found;
+}
+
+// The contract every completed run has to satisfy, whatever the search found.
+// Deliberately not "N repairs": which candidates survive is a property of the
+// operators, pinned by the determinism suite, and asserting it here would make
+// every deliberate change to the search break the driver's own test.
+nlohmann::json expect_run_manifest(const std::filesystem::path& dir,
+                                   const std::string& input, int seed,
+                                   const std::string& label) {
+    const std::filesystem::path manifest_path = dir / "run.json";
+    expect(std::filesystem::exists(manifest_path), label + ": writes run.json");
+    const nlohmann::json manifest =
+        nlohmann::json::parse(read_file(manifest_path));
+    expect(manifest.at("seed").get<int>() == seed,
+           label + ": the manifest carries the seed it was given");
+    expect(manifest.at("input").get<std::string>() == input,
+           label + ": the manifest names its input");
+    expect(manifest.contains("schema_version"),
+           label + ": the manifest is versioned");
+    expect(
+        manifest.at("config").at("genetic").at("generations").get<int>() == 2,
+        label + ": the manifest echoes the config it ran under");
+    expect(manifest.at("config").at("runtime").at("parallel").get<int>() == 1,
+           label + ": the manifest echoes the thread count it ran under");
+    expect(
+        manifest.at("n_repairs").get<std::size_t>() == repair_files(dir).size(),
+        label + ": the manifest's repair count matches the files written");
+    return manifest;
+}
+
+void test_counter_repairs_tlsf() {
+    const TempDir dir("counter_tlsf");
+    const std::string input =
+        write_file(dir.path() / "spec.tlsf", k_unrealizable).string();
+    const std::string config =
+        write_file(dir.path() / "config.toml", k_config).string();
+    const std::filesystem::path first = dir.path() / "first";
+    const std::filesystem::path second = dir.path() / "second";
+    std::filesystem::create_directories(first);
+    std::filesystem::create_directories(second);
+
+    const DriverRun run =
+        run_driver("counter", {"--input", input, "--output-dir", first.string(),
+                               "--config", config, "--seed", "2"});
+    expect(run.m_exit_code == 0, "counter: a TLSF run exits zero");
+    expect(contains(run.m_output, "Seed: 2"),
+           "counter: the run prints the seed it was given");
+    expect(contains(run.m_output, "Filter report:"),
+           "counter: the run prints the filter report");
+    expect(contains(run.m_output, "Done in"),
+           "counter: the run prints its closing line");
+    expect_run_manifest(first, input, 2, "counter/tlsf");
+
+    // The same seed twice, which is the whole claim --seed makes. Compared over
+    // the repairs rather than run.json, whose timings are wall-clock.
+    const DriverRun again = run_driver(
+        "counter", {"--input", input, "--output-dir", second.string(),
+                    "--config", config, "--seed", "2"});
+    expect(again.m_exit_code == 0, "counter: the repeat run exits zero");
+    const std::vector<std::filesystem::path> first_repairs =
+        repair_files(first);
+    const std::vector<std::filesystem::path> second_repairs =
+        repair_files(second);
+    expect(first_repairs.size() == second_repairs.size(),
+           "counter: one seed writes the same number of repairs twice");
+    for (std::size_t i = 0; i < first_repairs.size(); ++i) {
+        expect(first_repairs[i].filename() == second_repairs[i].filename(),
+               "counter: the repairs are named the same way twice");
+        expect(read_file(first_repairs[i]) == read_file(second_repairs[i]),
+               "counter: one seed writes byte-identical repairs twice");
+    }
+}
+
+void test_counter_repairs_fretish() {
+    const TempDir dir("counter_fretish");
+    const std::string input =
+        write_file(dir.path() / "spec.json", k_fretish).string();
+    const std::string config =
+        write_file(dir.path() / "config.toml", k_config).string();
+    const std::filesystem::path out = dir.path() / "out";
+    std::filesystem::create_directories(out);
+
+    const DriverRun run =
+        run_driver("counter", {"--input", input, "--output-dir", out.string(),
+                               "--config", config, "--seed", "5"});
+    expect(run.m_exit_code == 0, "counter: a FRETISH run exits zero");
+    expect(contains(run.m_output, "Done in"),
+           "counter: the FRETISH run prints its closing line");
+    expect_run_manifest(out, input, 5, "counter/fretish");
+    for (const auto& repair : repair_files(out)) {
+        expect(repair.extension() == ".json",
+               "counter: a FRETISH run writes FRETISH repairs");
+        expect(nlohmann::json::parse(read_file(repair)).contains("guarantees"),
+               "counter: each repair parses as a specification");
+    }
+}
+
+void test_counter_rejects_bad_arguments() {
+    const TempDir dir("counter_args");
+    const std::string input =
+        write_file(dir.path() / "spec.tlsf", k_unrealizable).string();
+
+    // An unknown flag is refused rather than ignored, which is what stops a
+    // campaign silently running without the knob it thought it set.
+    const DriverRun unknown = run_driver(
+        "counter", {"--input", input, "--output-dir", dir.string(), "--bogus"});
+    expect(unknown.m_exit_code != 0, "counter: an unknown flag is refused");
+    expect(contains(unknown.m_output, "--bogus"),
+           "counter: the refusal names the flag it did not accept");
+
+    const DriverRun no_output = run_driver("counter", {"--input", input});
+    expect(no_output.m_exit_code != 0,
+           "counter: a run without --output-dir is refused");
+
+    const DriverRun missing =
+        run_driver("counter", {"--input", (dir.path() / "absent.tlsf").string(),
+                               "--output-dir", dir.string()});
+    expect(missing.m_exit_code != 0,
+           "counter: an input that is not there is refused");
+}
+
+void test_realize_decides_both_ways() {
+    const TempDir dir("realize");
+    const std::string unrealizable =
+        write_file(dir.path() / "unrealizable.tlsf", k_unrealizable).string();
+    const std::string realizable =
+        write_file(dir.path() / "realizable.tlsf", k_realizable).string();
+
+    const DriverRun one = run_driver("realize", {unrealizable});
+    expect(one.m_exit_code == 0, "realize: a single input exits zero");
+    expect(contains(one.m_output, "UNREALIZABLE"),
+           "realize: the unrealizable specification is reported as such");
+
+    const DriverRun other = run_driver("realize", {realizable});
+    expect(contains(other.m_output, "REALIZABLE") &&
+               !contains(other.m_output, "UNREALIZABLE"),
+           "realize: the weakened specification is realizable");
+
+    // Several inputs at once switch the output to one labelled line each,
+    // which is the shape a script reads back.
+    const DriverRun both = run_driver("realize", {unrealizable, realizable});
+    expect(both.m_exit_code == 0, "realize: several inputs exit zero");
+    expect(contains(both.m_output, unrealizable + ": UNREALIZABLE"),
+           "realize: each line names the file it decided");
+    expect(contains(both.m_output, realizable + ": REALIZABLE"),
+           "realize: each line carries that file's verdict");
+
+    const DriverRun absent =
+        run_driver("realize", {(dir.path() / "absent.tlsf").string()});
+    expect(absent.m_exit_code != 0, "realize: an unreadable input is refused");
+}
+
+void test_ltl_lowers_both_formats() {
+    const TempDir dir("ltl");
+    const std::string tlsf =
+        write_file(dir.path() / "spec.tlsf", k_unrealizable).string();
+    const std::string fretish =
+        write_file(dir.path() / "spec.json", k_fretish).string();
+
+    const DriverRun lowered = run_driver("ltl", {tlsf});
+    expect(lowered.m_exit_code == 0, "ltl: a TLSF input exits zero");
+    expect(contains(lowered.m_output, "GUARANTEE:"),
+           "ltl: the TLSF sections are named");
+    expect(contains(lowered.m_output, "G((req) -> (X(grant)))"),
+           "ltl: each guarantee is printed as LTL");
+    expect(contains(lowered.m_output, "combined LTL:"),
+           "ltl: the whole lowering is printed too");
+
+    const DriverRun requirements = run_driver("ltl", {fretish});
+    expect(requirements.m_exit_code == 0, "ltl: a FRETISH input exits zero");
+    expect(contains(requirements.m_output, "[guarantee]"),
+           "ltl: each FRETISH requirement is labelled");
+    expect(contains(requirements.m_output, "LTL:"),
+           "ltl: each FRETISH requirement carries its lowering");
+
+    const DriverRun absent =
+        run_driver("ltl", {(dir.path() / "absent.tlsf").string()});
+    expect(absent.m_exit_code != 0, "ltl: an unreadable input is refused");
+}
+
+void test_mucs_extracts_a_core() {
+    const TempDir dir("mucs");
+    const std::string unrealizable =
+        write_file(dir.path() / "unrealizable.tlsf", k_unrealizable).string();
+    const std::string realizable =
+        write_file(dir.path() / "realizable.tlsf", k_realizable).string();
+    const std::string fretish =
+        write_file(dir.path() / "spec.json", k_fretish).string();
+
+    const DriverRun core = run_driver("mucs", {unrealizable});
+    expect(core.m_exit_code == 0, "mucs: an unrealizable input exits zero");
+    expect(contains(core.m_output, "core: 2 of 2 guarantee-side formulae"),
+           "mucs: both guarantees are needed for the conflict");
+    expect(contains(core.m_output, "[GUARANTEE] G((req) -> (X(grant)))"),
+           "mucs: the core names the formulae it holds");
+
+    const DriverRun none = run_driver("mucs", {realizable});
+    expect(none.m_exit_code == 0, "mucs: a realizable input exits zero");
+    expect(contains(none.m_output, "REALIZABLE (no core)"),
+           "mucs: a realizable input has no core to report");
+
+    // FRETISH is refused rather than half-handled: the extraction works over
+    // TLSF guarantee-side sections, which FRETISH JSON has no equivalent of.
+    const DriverRun wrong_format = run_driver("mucs", {fretish});
+    expect(wrong_format.m_exit_code != 0, "mucs: FRETISH JSON is refused");
+    expect(contains(wrong_format.m_output, ".tlsf"),
+           "mucs: the refusal says which format it wanted");
+}
+
+void test_compare_orders_repairs_against_ideals() {
+    const TempDir dir("compare");
+    const std::filesystem::path repairs = dir.path() / "repairs";
+    const std::filesystem::path ideals = dir.path() / "ideals";
+    write_file(repairs / "repair_0.tlsf", k_realizable);
+    write_file(ideals / "add_assumption.tlsf", k_realizable);
+
+    const DriverRun run = run_driver("compare", {"--repairs", repairs.string(),
+                                                 "--ideals", ideals.string()});
+    expect(run.m_exit_code == 0, "compare: a run over one pair exits zero");
+    expect(contains(run.m_output, "equivalent to add_assumption.tlsf"),
+           "compare: a repair identical to the ideal is equivalent to it");
+    expect(contains(run.m_output, "Summary: 1 equivalent"),
+           "compare: the summary counts the relation it found");
+
+    // The unrealizable original is strictly stronger than its own weakening,
+    // which is the relation the search is trying to move away from.
+    const std::filesystem::path stronger = dir.path() / "stronger";
+    write_file(stronger / "repair_0.tlsf", k_unrealizable);
+    const DriverRun ordered = run_driver(
+        "compare",
+        {"--repairs", stronger.string(), "--ideals", ideals.string()});
+    expect(ordered.m_exit_code == 0, "compare: the second run exits zero");
+    expect(contains(ordered.m_output, "Summary: 0 equivalent"),
+           "compare: the original is not equivalent to its weakening");
+
+    const DriverRun absent =
+        run_driver("compare", {"--repairs", (dir.path() / "absent").string(),
+                               "--ideals", ideals.string()});
+    expect(absent.m_exit_code != 0,
+           "compare: a repairs directory that is not there is refused");
+}
+
+void test_lint_ideals_checks_a_subject() {
+    const TempDir dir("lint_ideals");
+    const std::filesystem::path good = dir.path() / "good";
+    write_file(good / "spec.tlsf", k_unrealizable);
+    write_file(good / "fixes" / "add_assumption.tlsf", k_realizable);
+
+    const DriverRun passing = run_driver("lint-ideals", {good.string()});
+    expect(passing.m_exit_code == 0,
+           "lint-ideals: a subject whose ideal passes exits zero");
+    expect(contains(passing.m_output, "add_assumption.tlsf"),
+           "lint-ideals: the table names each ideal");
+    expect(contains(passing.m_output, "0 ideal(s) failed at least one check"),
+           "lint-ideals: nothing is reported against a good ideal");
+
+    // The unrealizable specification as its own ideal: a weakening of itself,
+    // reachable, well separated and non-trivial, and unrealizable, so exactly
+    // one column fails.
+    const std::filesystem::path bad = dir.path() / "bad";
+    write_file(bad / "spec.tlsf", k_unrealizable);
+    write_file(bad / "fixes" / "still_unrealizable.tlsf", k_unrealizable);
+
+    const DriverRun failing = run_driver("lint-ideals", {bad.string()});
+    expect(failing.m_exit_code == 1,
+           "lint-ideals: a subject with a failing ideal exits one");
+    expect(contains(failing.m_output, "FAIL"),
+           "lint-ideals: the failing check is marked in the table");
+    expect(contains(failing.m_output, "1 ideal(s) failed at least one check"),
+           "lint-ideals: the footer counts the failures");
+
+    const DriverRun absent =
+        run_driver("lint-ideals", {(dir.path() / "absent").string()});
+    expect(absent.m_exit_code == 2,
+           "lint-ideals: a subject that is not there is a load error");
+}
+
+// signal_tracer reads its frames from stdin, which execute_and_capture leaves
+// as the test process's own — under ctest that is whatever invoked it, so the
+// driver's input would be neither empty nor under this suite's control. The
+// piped spawn is how a caller states it: closing the write end immediately is
+// a trace of no frames, which is the deterministic half of a crash report. The
+// frames are the part that depends on where the crash happened.
+std::string run_signal_tracer(const std::vector<std::string>& arguments) {
+    std::vector<std::string> argv{std::string(COUNTER_DRIVER_DIR) +
+                                  "/signal_tracer"};
+    argv.insert(argv.end(), arguments.begin(), arguments.end());
+    const PipedChild child =
+        spawn_piped_child(argv, ParentDeathPolicy::KillWithParentThread,
+                          ExecutableLookup::AbsolutePath);
+    close(child.m_write_fd);
+    const std::pair<std::string, bool> read =
+        read_until_eof(child.m_read_fd, k_deadline);
+    expect(!read.second, "signal_tracer: answered within its deadline");
+    close(child.m_read_fd);
+    reap_with_grace(child.m_pid, milliseconds{1'000}, "signal_tracer",
+                    child.m_rss_floor_kb);
+    return read.first;
+}
+
+void test_signal_tracer_writes_a_report() {
+    const TempDir dir("signal_tracer");
+    const std::filesystem::path report = dir.path() / "crash.txt";
+
+    const std::string streamed =
+        run_signal_tracer({report.string(), "6", "4242", "seed=1 spec=probe"});
+    expect(streamed.empty(),
+           "signal_tracer: a named report file takes the whole report");
+    const std::string written = read_file(report);
+    expect(contains(written, "=== CRASH REPORT ==="),
+           "signal_tracer: the report is written to the named file");
+    expect(contains(written, "Signal: SIGABRT (6)"),
+           "signal_tracer: the signal number is translated to its name");
+    expect(contains(written, "PID:    4242"),
+           "signal_tracer: the crashed process is identified");
+    expect(contains(written, "seed=1 spec=probe"),
+           "signal_tracer: the crash metadata is carried through");
+    expect(contains(written, "Stack trace:"),
+           "signal_tracer: the trace section is written even when empty");
+
+    // A second crash appends rather than replacing: a run that dies twice must
+    // not lose the first report.
+    run_signal_tracer({report.string(), "11", "4243", ""});
+    const std::string appended = read_file(report);
+    expect(contains(appended, "PID:    4242") &&
+               contains(appended, "PID:    4243"),
+           "signal_tracer: a second report is appended to the first");
+    expect(contains(appended, "Signal: SIGSEGV (11)"),
+           "signal_tracer: the second signal is named too");
+}
+
+}  // namespace
+
+void run_counter_driver_tests() {
+    test_counter_repairs_tlsf();
+    test_counter_repairs_fretish();
+    test_counter_rejects_bad_arguments();
+    expect_reports_version("counter");
+}
+
+void run_realize_driver_tests() {
+    test_realize_decides_both_ways();
+    expect_reports_version("realize");
+}
+
+void run_ltl_driver_tests() {
+    test_ltl_lowers_both_formats();
+    expect_reports_version("ltl");
+}
+
+void run_mucs_driver_tests() {
+    test_mucs_extracts_a_core();
+    expect_reports_version("mucs");
+}
+
+void run_compare_driver_tests() {
+    test_compare_orders_repairs_against_ideals();
+    expect_reports_version("compare");
+}
+
+void run_lint_ideals_driver_tests() {
+    test_lint_ideals_checks_a_subject();
+    expect_reports_version("lint-ideals");
+}
+
+void run_signal_tracer_driver_tests() { test_signal_tracer_writes_a_report(); }

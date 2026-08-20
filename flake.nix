@@ -62,6 +62,14 @@
             # normal GCC-based build.
             clang
 
+            # Coverage (`cmake --workflow --preset coverage`, then
+            # scripts/coverage_badge.py): llvm-profdata merges the profiles the
+            # instrumented suite writes and llvm-cov reads them back. Both must
+            # be the same LLVM release as the clang above, since the profile
+            # format is versioned -- an older llvm-profdata reports a current
+            # profile as malformed rather than as out of date.
+            llvmPackages.llvm
+
             # Docs targets (doxygen + sphinx)
             doxygen
             (python3.withPackages (ps: with ps; [

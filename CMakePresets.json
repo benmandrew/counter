@@ -45,6 +45,17 @@
       }
     },
     {
+      "name": "coverage",
+      "displayName": "Coverage",
+      "inherits": "base",
+      "binaryDir": "${sourceDir}/build-coverage",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug",
+        "CMAKE_CXX_FLAGS": "-fprofile-instr-generate -fcoverage-mapping",
+        "CMAKE_EXE_LINKER_FLAGS": "-fprofile-instr-generate"
+      }
+    },
+    {
       "name": "tsan",
       "displayName": "TSan",
       "inherits": "base",
@@ -82,6 +93,10 @@
       "configurePreset": "relwithdebinfo"
     },
     {
+      "name": "coverage",
+      "configurePreset": "coverage"
+    },
+    {
       "name": "tsan",
       "configurePreset": "tsan"
     },
@@ -110,6 +125,16 @@
       "configurePreset": "relwithdebinfo",
       "output": {
         "outputOnFailure": true
+      }
+    },
+    {
+      "name": "coverage",
+      "configurePreset": "coverage",
+      "output": {
+        "outputOnFailure": true
+      },
+      "environment": {
+        "LLVM_PROFILE_FILE": "${sourceDir}/build-coverage/profraw/%p.profraw"
       }
     },
     {
@@ -155,6 +180,14 @@
         { "type": "configure", "name": "relwithdebinfo" },
         { "type": "build", "name": "relwithdebinfo" },
         { "type": "test", "name": "relwithdebinfo" }
+      ]
+    },
+    {
+      "name": "coverage",
+      "steps": [
+        { "type": "configure", "name": "coverage" },
+        { "type": "build", "name": "coverage" },
+        { "type": "test", "name": "coverage" }
       ]
     },
     {

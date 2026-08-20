@@ -45,6 +45,7 @@ cmake --workflow --preset debug      # configure + build + test
 | `relwithdebinfo` | `build-relwithdebinfo/` | release-like, with debug info |
 | `tsan` | `build-tsan/` | ThreadSanitizer; disables address space layout randomisation (ASLR) for the tests |
 | `bench` | `build-bench/` | release, plus the benchmarks in [`bench/`](../bench) registered as tests |
+| `coverage` | `build-coverage/` | clang only; source-based coverage instrumentation, see [below](#coverage) |
 
 `cmake --workflow --preset <name>` configures, builds and tests in one step. After the first configure, `cmake --build build` rebuilds incrementally.
 
@@ -81,6 +82,44 @@ cmake --build build --target lint          # cpplint + clang-tidy + cppcheck + c
 cmake --build build --target format        # apply clang-format in-place
 cmake --build build --target format-ci     # dry-run, fails if unformatted
 ```
+
+### Driver tests
+
+`test/drivers/e2e_tests.cpp` holds one *end-to-end* suite per built driver, registered as `counter_tests.driver_counter`, `driver_realize`, `driver_ltl`, `driver_mucs`, `driver_compare`, `driver_lint_ideals` and `driver_signal_tracer`. Each spawns the binary through `execute_and_capture` rather than calling into the library, so these are the only tests that cover `src/main.cpp`, `src/repair/`, `src/crash/` and each standalone tool's own argument handling. `signal_tracer` is the exception, spawned through `spawn_piped_child`: it reads its frames from stdin, which `execute_and_capture` leaves as the test process's own, so under ctest its input would be whatever invoked the run rather than anything this suite chose. They locate the binaries through the `COUNTER_DRIVER_DIR` compile definition (`$<TARGET_FILE_DIR:counter>`), and `test/CMakeLists.txt` declares the seven drivers as dependencies of `counter_tests` so they are built before ctest runs. A new driver needs all three — a suite, the dependency and the ctest registration.
+
+The fixtures are inline in the test file rather than files under `examples/`, so editing an example cannot change what the tests assert. The four are a two-signal unrealizable TLSF specification, its realizable weakening with one added assumption, a two-guarantee FRETISH JSON, and a two-generation config over eight individuals.
+
+What they assert is the driver's contract rather than the search's result: exit status, the stdout markers, and `run.json`'s seed, input, schema version and echoed config, plus the invariant that `n_repairs` equals the number of `repair_N` files written. The `counter` suite runs the same seed twice and requires byte-identical repairs. Which repairs the search finds is pinned by the `determinism` suite instead, since asserting it here would break the driver tests on every deliberate change to the operators.
+
+A TLSF run writes a `repair_N.fitness.json` sidecar beside each `repair_N.tlsf`, so a file filter matching the `repair_` prefix alone counts every repair twice. The seven entries add about 2.5 seconds, against 14.5 seconds for the whole suite under the `coverage` preset and 24 seconds under `debug`, where every binary they spawn is sanitised too.
+
+### Coverage
+
+The `coverage` preset compiles with clang's *source-based coverage* instrumentation, `-fprofile-instr-generate -fcoverage-mapping`, as a Debug build under `build-coverage/`. It is clang only, since gcc rejects both flags and `--coverage` with gcov would report a different number from a different tool. The preset's test half points `LLVM_PROFILE_FILE` at `build-coverage/profraw/%p.profraw`, so running the suite any other way leaves no profile to measure.
+
+One script is the whole workflow.
+
+```sh
+python scripts/coverage_badge.py           # build, test, write docs/coverage.svg
+python scripts/coverage_badge.py --check   # fail if the committed badge is stale
+```
+
+It configures, builds, runs `ctest --preset coverage`, merges the raw profiles with `llvm-profdata`, exports a summary with `llvm-cov export --summary-only` over `src/` and `include/`, and writes `docs/coverage.svg`. Stale profiles are deleted first, because they accumulate and an old one credits lines this build may not even contain. A failing suite refuses to write the badge. `--json <file>` reuses an llvm-cov export already made, and `--no-run` re-exports the profiles already on disk.
+
+The badge is a committed file rather than a call out to a badge service, so the README renders on a fork with no secrets and in an offline clone. That holds only while the file is regenerated when the number moves, which is what `--check` is for. It runs as the tail of the `coverage` entry in the build matrix of [`.github/workflows/ci.yml`](../.github/workflows/ci.yml), on every push and pull request, with `--no-run` so that it reads the profiles that entry's own `ctest` wrote rather than measuring the tree a second time.
+
+The measurement covers every instrumented binary rather than the test binary alone: `counter`, `compare`, `lint-ideals`, `ltl`, `mucs`, `realize`, `signal_tracer` and `test/counter_tests`. Over `counter_tests` by itself the figure is 89.3%, and over all eight it is 83.6%. Every file in `src/` and `include/` now has non-zero coverage, and what remains uncovered is error and terminal branches — `include/status_line.hpp` at 54.8% for its tty-only paths, and the per-driver argument-error paths that not every suite exercises. A new binary goes into `BINARIES` in the script, which fails loudly when a name it holds is not built.
+
+`llvm-profdata` and `llvm-cov` must come from the same LLVM release as the clang that built the tree. The profile format is versioned, so an older tool reports a current profile as malformed. The Nix dev shell carries `llvmPackages.llvm` for this; on a host with several LLVMs installed, `LLVM_COV` and `LLVM_PROFDATA` override the lookup.
+
+Without help, the first coverage configure rebuilds Spot, black and Ganak into `build-coverage/third_party`, and Spot alone is a 30-minute build. Linking the debug tree's copies in beforehand avoids that, since `cmake/spot.cmake` skips the external project when its done-stamp is already there:
+
+```sh
+mkdir -p build-coverage
+ln -s ../build/third_party build-coverage/third_party
+```
+
+The figure moves by up to two tenths of a percentage point between runs of one binary — 83.60% to 83.80% over five runs — because the suite spawns real tools and branches on their timings and peak resident set. The badge prints a whole number, so that jitter matters only near a rounding boundary, and the current figure sits a tenth of a point above one. `--check` therefore carries `CHECK_SLACK`, a quarter of a point of tolerance beyond the committed number's rounding band: a run that lands the other side of the boundary passes, and a real drop of a third of a point or more still fails. Regenerating the badge and committing it is what a genuine move calls for.
 
 ## Documentation
 

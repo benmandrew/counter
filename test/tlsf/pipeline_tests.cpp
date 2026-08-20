@@ -239,6 +239,12 @@ void test_weakening_screen_rejects_non_weakening() {
     // which repair the search reaches depends on the survivor step, and this
     // test is about the screen rather than about whichever scheme is current.
     cfg.selection_scheme = SelectionScheme::Nsga2Truncate;
+    // Pinned for the same reason, and it is the sharper case: this fixture is
+    // chosen so that the repair the search reaches is *not* a weakening, and
+    // which repair that is depends on the mutation and crossover grammar.
+    // Under the legacy grammar the search reaches a genuine weakening instead,
+    // and the fixture stops exercising the screen at all.
+    cfg.repaired_operators = true;
 
     const RandomSource random_source = make_random_source_from_seed(1);
     const int status =

@@ -27,29 +27,87 @@ RandomSource make_source(std::vector<std::size_t> values,
         });
 }
 
+// The two grammars genetic.repaired_operators selects between. Every test
+// below names the one it is asserting about, since the two consume different
+// draws from the same source.
+Config legacy_config() {
+    Config cfg;
+    cfg.repaired_operators = false;
+    return cfg;
+}
+
+Config repaired_config() {
+    Config cfg;
+    cfg.repaired_operators = true;
+    return cfg;
+}
+
 void test_mutation_with_false_source_leaves_formula_unchanged() {
     const Formula formula("P & Q");
     // P & Q has 3 subformulae; fallback 1 gives next_index(3) = 1 != 0, so no
     // subformula is selected and the formula is left unchanged.
-    const Formula mutated = mutate_formula(formula, {}, make_source({}, 1));
+    const Formula mutated =
+        mutate_formula(formula, {}, make_source({}, 1), legacy_config());
     expect(mutated.to_string() == "(P) & (Q)",
            "mutation: source that never selects a subformula should leave "
            "formula unchanged");
 }
 
 void test_mutation_renames_atom_to_one_from_atoms_list() {
-    // True source forces the rename branch; atoms = {"Q"} so "P" becomes "Q".
+    // Legacy: true source forces the rename branch; atoms = {"Q"} so "P"
+    // becomes "Q".
     const Formula formula("P");
-    const Formula mutated = mutate_formula(formula, {"Q"}, make_source({}, 1U));
+    const Formula mutated =
+        mutate_formula(formula, {"Q"}, make_source({}, 1U), legacy_config());
     expect(mutated.to_string() == "Q",
            "mutation: true source should mutate atom to one from the provided "
            "atoms list");
+    // Repaired: an atom has three moves, rename (0), negate (1) and graft (2),
+    // so a zero source selects the subformula and then the rename branch.
+    const Formula repaired =
+        mutate_formula(formula, {"Q"}, make_source({}, 0U), repaired_config());
+    expect(repaired.to_string() == "Q",
+           "mutation: the repaired grammar's move 0 is still the rename");
+}
+
+// The third move on an atom grows it in place: a drawn anchor is joined to it
+// under a connective from {and, or, implies, iff}. Without this the only rule
+// that could grow a formula fired at a Not node, so guarding a positive
+// literal took three chained mutations (see
+// experiments/2026-08-14-aurus-h2h/REPORT.md).
+void test_mutation_grafts_an_anchor_onto_an_atom() {
+    const Formula formula("P");
+    // Draws: select subformula (bound 1), move 2 of 3, anchor index 0 of 1,
+    // anchor polarity 0 of 2 (positive), connective 0 of 4 (and), anchor-first
+    // 1 of 2.
+    const Formula mutated = mutate_formula(
+        formula, {"Q"}, make_source({0, 2, 0, 0, 0, 1}, 0U), repaired_config());
+    expect(mutated.to_string() == "(Q) & (P)",
+           "mutation: the graft branch joins a drawn anchor to the atom");
+    // The same draws with a negated anchor give the guard shape a minimal
+    // guarantee weakening needs.
+    const Formula guarded = mutate_formula(
+        formula, {"Q"}, make_source({0, 2, 0, 1, 0, 1}, 0U), repaired_config());
+    expect(guarded.to_string() == "(!(Q)) & (P)",
+           "mutation: the graft branch can draw a negated anchor");
+}
+
+// With no atom pool there is no anchor to draw, so the atom keeps its two
+// original moves and the graft case is not reachable.
+void test_mutation_without_atoms_never_grafts() {
+    const Formula formula("P");
+    const Formula mutated =
+        mutate_formula(formula, {}, make_source({0, 1}, 0U), repaired_config());
+    expect(mutated.to_string() == "!(P)",
+           "mutation: an empty atom pool leaves rename and negate only");
 }
 
 void test_mutation_atom_unchanged_when_no_atoms_provided() {
-    // True source forces the rename branch; empty atoms → name unchanged.
+    // Legacy: true source forces the rename branch; empty atoms → name
+    // unchanged.
     const Formula formula("P");
-    const Formula mutated = mutate_formula(formula, {}, make_source({}, 1U));
+    const Formula mutated =
+        mutate_formula(formula, {}, make_source({}, 1U), legacy_config());
     expect(mutated.to_string() == "P",
            "mutation: atom name should be left unchanged when atoms list is "
            "empty");
@@ -60,8 +118,8 @@ void test_mutation_atom_selected_from_atoms_list() {
     // mutate_atom_formula consumes next_bool() = true (value 1) → rename
     // branch, mutate_atom_name consumes next_index(3) = 2 → atoms[2] = "c".
     const Formula formula("x");
-    const Formula mutated =
-        mutate_formula(formula, {"a", "b", "c"}, make_source({1, 1, 2}, 0));
+    const Formula mutated = mutate_formula(
+        formula, {"a", "b", "c"}, make_source({1, 1, 2}, 0), legacy_config());
     expect(mutated.to_string() == "c",
            "mutation: atom should be replaced by the atom at the index chosen "
            "by the random source");
@@ -892,6 +950,8 @@ void test_remove_guarantee_disabled_by_zero_probability() {
 void run_mutation_tests() {
     test_mutation_with_false_source_leaves_formula_unchanged();
     test_mutation_renames_atom_to_one_from_atoms_list();
+    test_mutation_grafts_an_anchor_onto_an_atom();
+    test_mutation_without_atoms_never_grafts();
     test_mutation_atom_unchanged_when_no_atoms_provided();
     test_mutation_atom_selected_from_atoms_list();
     test_timing_mutation_non_parameterized_becomes_within_one_tick();

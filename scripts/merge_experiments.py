@@ -65,6 +65,13 @@ PROFILE_CSVS: dict[str, str] = {
     # so merging under either profile name merges the same rows.
     "ablate-tlsf": "results-ablate-tlsf.csv",
     "h2h-tlsf": "results-ablate-tlsf.csv",
+    # The 2026-08-20 operator cross; one CSV per path, never shared, since
+    # the two paths run different corpora at different operating points.
+    "opswk-fret": "results-opswk-fret.csv",
+    "opswk-tlsf": "results-opswk-tlsf.csv",
+    "ops-pilot": "results-ops-pilot.csv",
+    "ops-tlsf": "results-ops-tlsf.csv",
+    "ops-fret": "results-ops-fret.csv",
     "replicate": "results-replicate.csv",
     # replicate-wkoff shares replicate's CSV (the weakening column separates the
     # rows), so merging under either name merges the same file.
@@ -107,6 +114,11 @@ PROFILE_RESULT_DIRS: dict[str, str] = {
     "ablate-fret": "results-ablate-fret",
     "ablate-tlsf": "results-ablate-tlsf",
     "h2h-tlsf": "results-ablate-tlsf",
+    "opswk-fret": "results-opswk-fret",
+    "opswk-tlsf": "results-opswk-tlsf",
+    "ops-pilot": "results-ops-pilot",
+    "ops-tlsf": "results-ops-tlsf",
+    "ops-fret": "results-ops-fret",
     "replicate": "results-replicate",
     "replicate-wkoff": "results-replicate",
     "replicate-recap": "results-replicate",

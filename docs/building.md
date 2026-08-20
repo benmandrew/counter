@@ -45,6 +45,7 @@ cmake --workflow --preset debug      # configure + build + test
 | `relwithdebinfo` | `build-relwithdebinfo/` | release-like, with debug info |
 | `tsan` | `build-tsan/` | ThreadSanitizer; disables address space layout randomisation (ASLR) for the tests |
 | `bench` | `build-bench/` | release, plus the benchmarks in [`bench/`](../bench) registered as tests |
+| `coverage` | `build-coverage/` | clang only; source-based coverage instrumentation, see [below](#coverage) |
 
 `cmake --workflow --preset <name>` configures, builds and tests in one step. After the first configure, `cmake --build build` rebuilds incrementally.
 
@@ -81,6 +82,34 @@ cmake --build build --target lint          # cpplint + clang-tidy + cppcheck + c
 cmake --build build --target format        # apply clang-format in-place
 cmake --build build --target format-ci     # dry-run, fails if unformatted
 ```
+
+### Coverage
+
+The `coverage` preset compiles with clang's *source-based coverage* instrumentation, `-fprofile-instr-generate -fcoverage-mapping`, as a Debug build under `build-coverage/`. It is clang only, since gcc rejects both flags and `--coverage` with gcov would report a different number from a different tool. The preset's test half points `LLVM_PROFILE_FILE` at `build-coverage/profraw/%p.profraw`, so running the suite any other way leaves no profile to measure.
+
+One script is the whole workflow.
+
+```sh
+python scripts/coverage_badge.py           # build, test, write docs/coverage.svg
+python scripts/coverage_badge.py --check   # fail if the committed badge is stale
+```
+
+It configures, builds, runs `ctest --preset coverage`, merges the raw profiles with `llvm-profdata`, exports a summary with `llvm-cov export --summary-only` over `src/` and `include/`, and writes `docs/coverage.svg`. Stale profiles are deleted first, because they accumulate and an old one credits lines this build may not even contain. A failing suite refuses to write the badge. `--json <file>` reuses an llvm-cov export already made, and `--no-run` re-exports the profiles already on disk.
+
+The badge is a committed file rather than a call out to a badge service, so the README renders on a fork with no secrets and in an offline clone. That holds only while the file is regenerated when the number moves, which is what `--check` is for. It runs as the tail of the `coverage` entry in the build matrix of [`.github/workflows/ci.yml`](../.github/workflows/ci.yml), on every push and pull request, with `--no-run` so that it reads the profiles that entry's own `ctest` wrote rather than measuring the tree a second time.
+
+The measurement covers every instrumented binary rather than the test binary alone: `counter`, `compare`, `lint-ideals`, `ltl`, `mucs`, `realize`, `signal_tracer` and `test/counter_tests`. Over `counter_tests` by itself the figure is 86.7%, and over all eight it is 71.0%. The difference is the driver code (`src/repair/*.cpp`, `src/compare.cpp`, `src/lint_ideals.cpp`) that no test runs, which is uncovered rather than absent and belongs in the denominator. A new binary goes into `BINARIES` in the script, which fails loudly when a name it holds is not built.
+
+`llvm-profdata` and `llvm-cov` must come from the same LLVM release as the clang that built the tree. The profile format is versioned, so an older tool reports a current profile as malformed. The Nix dev shell carries `llvmPackages.llvm` for this; on a host with several LLVMs installed, `LLVM_COV` and `LLVM_PROFDATA` override the lookup.
+
+Without help, the first coverage configure rebuilds Spot, black and Ganak into `build-coverage/third_party`, and Spot alone is a 30-minute build. Linking the debug tree's copies in beforehand avoids that, since `cmake/spot.cmake` skips the external project when its done-stamp is already there:
+
+```sh
+mkdir -p build-coverage
+ln -s ../build/third_party build-coverage/third_party
+```
+
+The figure moves by about a tenth of a percentage point between runs of one binary, because the suite spawns real tools and branches on their timings and peak resident set: `src/runner/process.cpp`, `black.cpp` and `spot.cpp` account for all of the movement measured so far. The badge prints a whole number, so that jitter matters only near a rounding boundary, and `--check` carries `CHECK_SLACK` for it — a quarter of a point of tolerance beyond the committed number's rounding band, which passes a run that landed the other side of a boundary and still fails a real drop. Regenerating the badge and committing it is what a genuine move calls for.
 
 ## Documentation
 

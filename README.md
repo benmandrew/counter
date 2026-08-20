@@ -1,5 +1,7 @@
 # Counter
 
+![Coverage](docs/coverage.svg)
+
 Counter repairs unrealisable reactive specifications using a genetic algorithm.
 
 A reactive specification is *unrealisable* when no implementation can satisfy it against every environment — the specification is at fault, not the code. Tools like `ltlsynt` will say so, but not what to change. Counter searches for the repairs: edits to the specification that make it realisable while staying as close as possible to what was originally written.

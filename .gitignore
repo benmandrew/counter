@@ -6,6 +6,10 @@
 # Common build directories
 /build*/
 
+# Raw profiles from a coverage-instrumented binary run without
+# LLVM_PROFILE_FILE set, which lands wherever it was invoked from.
+*.profraw
+
 # CI jobs that run in symlinked trees produce these artifacts.
 /real_work/
 /work

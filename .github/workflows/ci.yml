@@ -273,6 +273,14 @@ jobs:
   # tsan finishes inside debug's time (167s against 194s on the last full run),
   # so a pull request waits exactly as long as it did.
   #
+  # The coverage entry is here rather than in a job of its own so that the badge
+  # check reuses this one's work: its build is the instrumented one and its
+  # ctest run is what writes the profiles, leaving the check itself an export
+  # and a byte comparison. Instrumenting the debug preset instead would have
+  # cost no CI job at all, and was rejected because that preset is the one
+  # everybody builds locally -- it would slow the daily loop and drop a .profraw
+  # in whatever directory a binary was run from.
+  #
   # Not on the schedule: a scheduled run only reaches here over a commit that
   # was pushed to main, and that push already built and tested all four
   # configurations against the same Nix-pinned toolchain and the same
@@ -293,10 +301,11 @@ jobs:
           release='{"preset":"release","build_dir":"build-release"}'
           gcc='{"preset":"debug","build_dir":"build","compiler":"gcc","cmake_args":"-DCMAKE_C_COMPILER=gcc -DCMAKE_CXX_COMPILER=g++"}'
           tsan='{"preset":"tsan","build_dir":"build-tsan"}'
+          coverage='{"preset":"coverage","build_dir":"build-coverage"}'
           if [ "${{ github.event_name }}" = "pull_request" ]; then
-            include="$debug,$release,$tsan"
+            include="$debug,$release,$tsan,$coverage"
           else
-            include="$debug,$gcc,$release,$tsan"
+            include="$debug,$gcc,$release,$tsan,$coverage"
           fi
           echo "matrix={\"include\":[$include]}" >> "$GITHUB_OUTPUT"
 
@@ -348,4 +357,13 @@ jobs:
             echo "::group::Test"
             ctest --preset ${{ matrix.preset }}
             echo "::endgroup::"
+
+            # The badge is a committed file, so nothing makes it wrong except a
+            # commit that moves the number and leaves it behind. --no-run reads
+            # the profiles the ctest above wrote rather than measuring again.
+            if [ "${{ matrix.preset }}" = "coverage" ]; then
+              echo "::group::Coverage badge"
+              python3 scripts/coverage_badge.py --check --no-run
+              echo "::endgroup::"
+            fi
           '

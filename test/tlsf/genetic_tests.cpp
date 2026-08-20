@@ -21,6 +21,19 @@
 
 namespace {
 
+// The two grammars genetic.repaired_operators selects between.
+Config legacy_config() {
+    Config cfg;
+    cfg.repaired_operators = false;
+    return cfg;
+}
+
+Config repaired_config() {
+    Config cfg;
+    cfg.repaired_operators = true;
+    return cfg;
+}
+
 tlsf::Specification parse(const std::string& main_body,
                           const std::string& semantics = "Mealy") {
     return tlsf::parse("INFO { SEMANTICS: " + semantics + "; }\nMAIN {\n" +
@@ -245,7 +258,36 @@ void test_add_assumption_appends_fairness() {
     spec.m_guarantee = {parse("INPUTS { req; } OUTPUTS { grant; } "
                               "GUARANTEE { G (req -> F grant); }")
                             .m_guarantee.front()};
-    Config cfg;
+    Config cfg = legacy_config();
+    cfg.p_add_assumption = 1.0;
+    cfg.allow_output_assumptions = false;
+    for (std::size_t seed = 0; seed < 20; ++seed) {
+        const RandomSource rng = make_random_source_from_seed(seed);
+        const tlsf::Specification mutated = tlsf_mutate(spec, rng, cfg);
+        expect(mutated.m_assume.size() == 1,
+               "add-assumption: exactly one assumption is appended");
+        expect(mutated.m_guarantee == spec.m_guarantee,
+               "add-assumption: guarantees are left untouched");
+        const std::string text = mutated.m_assume.front().m_formula.to_string();
+        expect(text == "G(F(req))" || text == "G(F(!(req)))",
+               "add-assumption: appended a G F <input> fairness assumption");
+        expect(text.find("grant") == std::string::npos,
+               "add-assumption: an output signal never enters an assumption");
+    }
+}
+
+// The repaired template widens the shape: the guarded form `G(<guard> -> o
+// <input>)` is drawn under p_conditional_assumption, its consequent carrying
+// F, X or no modality at all. What does not widen is the obliged literal,
+// which is an input whatever allow_output_assumptions says.
+void test_add_assumption_repaired_forms() {
+    tlsf::Specification spec;
+    spec.m_inputs = {"req"};
+    spec.m_outputs = {"grant"};
+    spec.m_guarantee = {parse("INPUTS { req; } OUTPUTS { grant; } "
+                              "GUARANTEE { G (req -> F grant); }")
+                            .m_guarantee.front()};
+    Config cfg = repaired_config();
     cfg.p_add_assumption = 1.0;
     cfg.allow_output_assumptions = false;
     for (std::size_t seed = 0; seed < 20; ++seed) {
@@ -257,9 +299,8 @@ void test_add_assumption_appends_fairness() {
                "add-assumption: guarantees are left untouched");
         const std::string text = mutated.m_assume.front().m_formula.to_string();
         const bool fairness = text == "G(F(req))" || text == "G(F(!(req)))";
-        // Under p_conditional_assumption the guarded form is drawn instead,
-        // its consequent carrying F, X or no modality at all. With one input
-        // and outputs barred, every literal in either form is `req`.
+        // With one input and outputs barred, every literal in either form is
+        // `req`.
         const bool guarded =
             text.rfind("G((", 0) == 0 && text.find("->") != std::string::npos;
         expect(fairness || guarded,
@@ -267,8 +308,34 @@ void test_add_assumption_appends_fairness() {
         expect(text.find("grant") == std::string::npos,
                "add-assumption: no output atom reaches an assumption when "
                "allow_output_assumptions is off");
-        expect(text.find("grant") == std::string::npos,
-               "add-assumption: an output signal never enters an assumption");
+    }
+}
+
+// The obliged literal is an input even with allow_output_assumptions on, which
+// governs the guard alone: `G(<output> -> F <input>)` stays reachable and
+// `G(<input> -> F <output>)` does not.
+void test_add_assumption_repaired_never_obliges_an_output() {
+    tlsf::Specification spec;
+    spec.m_inputs = {"req"};
+    spec.m_outputs = {"grant"};
+    spec.m_guarantee = {parse("INPUTS { req; } OUTPUTS { grant; } "
+                              "GUARANTEE { G (req -> F grant); }")
+                            .m_guarantee.front()};
+    Config cfg = repaired_config();
+    cfg.p_add_assumption = 1.0;
+    cfg.allow_output_assumptions = true;
+    cfg.p_conditional_assumption = 1.0;
+    for (std::size_t seed = 0; seed < 40; ++seed) {
+        const RandomSource rng = make_random_source_from_seed(seed);
+        const tlsf::Specification mutated = tlsf_mutate(spec, rng, cfg);
+        const std::string text = mutated.m_assume.front().m_formula.to_string();
+        const std::size_t arrow = text.find("->");
+        expect(arrow != std::string::npos,
+               "add-assumption: p_conditional_assumption 1 draws the guarded "
+               "form");
+        expect(text.substr(arrow).find("grant") == std::string::npos,
+               "add-assumption: the consequent is drawn from the inputs even "
+               "with allow_output_assumptions on");
     }
 }
 
@@ -444,7 +511,7 @@ void test_crossover_grafts_across_slots() {
     for (std::size_t seed = 0; seed < 60; ++seed) {
         const RandomSource rng = make_random_source_from_seed(seed);
         const tlsf::Specification child =
-            tlsf_crossover(parent_a, parent_b, rng);
+            tlsf_crossover(parent_a, parent_b, rng, legacy_config());
         expect(child.m_guarantee.size() == 2,
                "crossover: section sizes are preserved");
         expect(child.m_inputs == parent_a.m_inputs &&
@@ -480,7 +547,7 @@ void test_crossover_accepts_mismatched_shape() {
     for (std::size_t seed = 0; seed < 20; ++seed) {
         const RandomSource rng = make_random_source_from_seed(seed);
         const tlsf::Specification child =
-            tlsf_crossover(parent_a, parent_b, rng);
+            tlsf_crossover(parent_a, parent_b, rng, repaired_config());
         expect(child.m_guarantee.size() == 1,
                "crossover: the offspring keeps the first parent's shape");
         saw_change = saw_change || !(child == parent_a);
@@ -495,7 +562,8 @@ void test_crossover_mismatched_signals_returns_first() {
     parent_b.m_inputs = {"other"};
 
     const RandomSource rng = make_random_source_from_seed(1);
-    const tlsf::Specification child = tlsf_crossover(parent_a, parent_b, rng);
+    const tlsf::Specification child =
+        tlsf_crossover(parent_a, parent_b, rng, legacy_config());
     expect(child == parent_a,
            "crossover: mismatched signals return the first parent unchanged");
 }
@@ -509,18 +577,20 @@ void test_crossover_skips_deleted_conjuncts() {
     tlsf::Specification parent_b = globally({"!(r)", "!(g)"});
     parent_b.m_guarantee[1].m_removed = true;
 
-    for (std::size_t seed = 0; seed < 40; ++seed) {
-        const RandomSource rng = make_random_source_from_seed(seed);
-        const tlsf::Specification child =
-            tlsf_crossover(parent_a, parent_b, rng);
-        expect(child.m_guarantee[0] == parent_a.m_guarantee[0],
-               "crossover: a deleted slot is never the target of a merge");
-        expect(
-            child.m_guarantee[0].m_removed && !child.m_guarantee[1].m_removed,
-            "crossover: the removal flags are the first parent's");
-        expect(child.m_guarantee[1].m_formula.to_string().find("!(g)") ==
-                   std::string::npos,
-               "crossover: a deleted conjunct is never a donor");
+    for (const Config& cfg : {legacy_config(), repaired_config()}) {
+        for (std::size_t seed = 0; seed < 40; ++seed) {
+            const RandomSource rng = make_random_source_from_seed(seed);
+            const tlsf::Specification child =
+                tlsf_crossover(parent_a, parent_b, rng, cfg);
+            expect(child.m_guarantee[0] == parent_a.m_guarantee[0],
+                   "crossover: a deleted slot is never the target of a merge");
+            expect(child.m_guarantee[0].m_removed &&
+                       !child.m_guarantee[1].m_removed,
+                   "crossover: the removal flags are the first parent's");
+            expect(child.m_guarantee[1].m_formula.to_string().find("!(g)") ==
+                       std::string::npos,
+                   "crossover: a deleted conjunct is never a donor");
+        }
     }
 }
 
@@ -571,6 +641,8 @@ void run_tlsf_genetic_tests() {
     test_temporal_mutation_changes_skeleton();
     test_temporal_mutation_atoms_from_inputs_only();
     test_add_assumption_appends_fairness();
+    test_add_assumption_repaired_forms();
+    test_add_assumption_repaired_never_obliges_an_output();
     test_remove_guarantee_tombstones_in_place();
     test_remove_guarantee_keeps_the_last_live_conjunct();
     test_add_assumption_can_reference_output_when_allowed();

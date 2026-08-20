@@ -80,8 +80,8 @@ Specification simplify_offspring(Specification offspring) {
 const GeneticOperators<Specification>& fretish_operators() {
     static const GeneticOperators<Specification> ops{
         [](const Specification& first, const Specification& second,
-           const RandomSource& random_source) {
-            return crossover_specifications(first, second, random_source);
+           const RandomSource& random_source, const Config& cfg) {
+            return crossover_specifications(first, second, random_source, cfg);
         },
         [](const Specification& spec, const RandomSource& random_source,
            const Config& cfg) {

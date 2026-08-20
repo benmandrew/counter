@@ -74,12 +74,12 @@ std::vector<Formula> graft_sites(const Formula& formula) {
     return sites;
 }
 
-// One occurrence gives way, not every one. A graft site is drawn as a *value*
-// rather than as a position, so a conjunct holding the same subformula twice
-// used to have both rewritten, which multiplied the donor and the size delta a
-// single merge was supposed to make. Only 6 of the 25 aurus-h2h inputs hold a
-// repeated temporal subformula, so this changes little in the corpus and makes
-// the operator match what its callers document.
+// One occurrence gives way, not every one -- under repaired_operators. A graft
+// site is drawn as a *value* rather than as a position, so a conjunct holding
+// the same subformula twice had both rewritten, which multiplied the donor and
+// the size delta a single merge was supposed to make. Only 6 of the 25
+// aurus-h2h inputs hold a repeated temporal subformula, so this changes little
+// in the corpus and makes the operator match what its callers document.
 Formula replace_first(const Formula& subject, const Formula& pattern,
                       const Formula& replacement) {
     bool replaced = false;
@@ -94,17 +94,42 @@ Formula replace_first(const Formula& subject, const Formula& pattern,
         });
 }
 
+// The pre-2026-08-19 graft, kept because repaired_operators selects the arm of
+// a paired campaign that has not been run: a smoke test does not move a
+// default, so the losing arm has to stay runnable from the same binary until
+// the measurement lands, as accumulate_repairs does.
+Formula replace_everywhere(const Formula& subject, const Formula& pattern,
+                           const Formula& replacement) {
+    return subject.rewrite_post_order(
+        [&pattern,
+         &replacement](const Formula& subtree) -> std::optional<Formula> {
+            if (subtree == pattern) {
+                return replacement;
+            }
+            return std::nullopt;
+        });
+}
+
+// Neither branch draws, so the choice costs nothing in the RNG stream.
+Formula replace_site(const Formula& subject, const Formula& pattern,
+                     const Formula& replacement, const Config& cfg) {
+    return cfg.repaired_operators
+               ? replace_first(subject, pattern, replacement)
+               : replace_everywhere(subject, pattern, replacement);
+}
+
 // AuRUS's replaceSubformula: one subformula of @p into gives way to one drawn
 // from @p from.
 Formula replace_subformula(const Formula& into, const Formula& from,
-                           const RandomSource& random_source) {
+                           const RandomSource& random_source,
+                           const Config& cfg) {
     const std::vector<Formula> sites = graft_sites(into);
     const std::vector<Formula> donors = graft_sites(from);
     // Sequenced into locals: both draw, and argument evaluation order is
     // unspecified.
     const std::size_t site = random_source.next_index(sites.size());
     const std::size_t donor = random_source.next_index(donors.size());
-    return replace_first(into, sites[site], donors[donor]);
+    return replace_site(into, sites[site], donors[donor], cfg);
 }
 
 // AuRUS's combineSubformula: a subformula of @p into is joined with one drawn
@@ -112,7 +137,8 @@ Formula replace_subformula(const Formula& into, const Formula& from,
 // are not commutative, so which side the donor lands on is a further draw;
 // ∧ and ∨ take none, as in AuRUS.
 Formula combine_subformula(const Formula& into, const Formula& from,
-                           const RandomSource& random_source) {
+                           const RandomSource& random_source,
+                           const Config& cfg) {
     const std::vector<Formula> sites = graft_sites(into);
     const std::vector<Formula> donors = graft_sites(from);
     const std::size_t site = random_source.next_index(sites.size());
@@ -123,17 +149,17 @@ Formula combine_subformula(const Formula& into, const Formula& from,
     if (join_op < 2) {
         const Formula::Kind kind =
             join_op == 0 ? Formula::Kind::And : Formula::Kind::Or;
-        return replace_first(
+        return replace_site(
             into, site_formula,
-            Formula::make_binary(kind, site_formula, donor_formula));
+            Formula::make_binary(kind, site_formula, donor_formula), cfg);
     }
     const Formula::Kind kind =
         join_op == 2 ? Formula::Kind::Until : Formula::Kind::WeakUntil;
     const bool donor_on_the_right = random_source.next_bool();
     const Formula& lhs = donor_on_the_right ? site_formula : donor_formula;
     const Formula& rhs = donor_on_the_right ? donor_formula : site_formula;
-    return replace_first(into, site_formula,
-                         Formula::make_binary(kind, lhs, rhs));
+    return replace_site(into, site_formula,
+                        Formula::make_binary(kind, lhs, rhs), cfg);
 }
 
 // A conjunct crossover may rewrite: its section and its slot in it. Deleted
@@ -180,10 +206,12 @@ DonorPools live_donors(const std::array<const Section*, 3>& sections) {
 }
 
 // Every conjunct on the side may donate, except into an initial condition,
-// which takes only its counterpart section.
+// which under repaired_operators takes only its counterpart section. Off, the
+// three pools are concatenated in section order, which is exactly the single
+// pool the operator collected before 2026-08-19.
 std::vector<Formula> donors_for(const DonorPools& pools,
-                                std::size_t section_index) {
-    if (section_index == 0) {
+                                std::size_t section_index, const Config& cfg) {
+    if (cfg.repaired_operators && section_index == 0) {
         return pools[0];
     }
     std::vector<Formula> all;
@@ -197,22 +225,30 @@ std::vector<Formula> donors_for(const DonorPools& pools,
 // parent A) and a conjunct of parent B, independently and from anywhere on the
 // side, and graft the second into the first.
 void cross_side(const std::vector<Slot>& targets, const DonorPools& pools,
-                const RandomSource& random_source) {
-    if (targets.empty()) {
+                const RandomSource& random_source, const Config& cfg) {
+    // The legacy pool is the whole side, so its emptiness is known before the
+    // target is drawn and it gave up without drawing. The repaired pool depends
+    // on the target's section, so the draw has to happen first. Testing it here
+    // keeps the legacy draw stream exact; under the repaired grammar the second
+    // test is the only one that can fire.
+    const bool side_has_donor =
+        !pools[0].empty() || !pools[1].empty() || !pools[2].empty();
+    if (targets.empty() || (!cfg.repaired_operators && !side_has_donor)) {
         return;
     }
     const std::size_t target = random_source.next_index(targets.size());
     const Slot& slot = targets[target];
-    const std::vector<Formula> donors = donors_for(pools, slot.m_section_index);
+    const std::vector<Formula> donors =
+        donors_for(pools, slot.m_section_index, cfg);
     if (donors.empty()) {
         return;
     }
     const std::size_t donor = random_source.next_index(donors.size());
     Formula& into = (*slot.m_section)[slot.m_index].m_formula;
     if (random_source.next_bool()) {
-        into = replace_subformula(into, donors[donor], random_source);
+        into = replace_subformula(into, donors[donor], random_source, cfg);
     } else {
-        into = combine_subformula(into, donors[donor], random_source);
+        into = combine_subformula(into, donors[donor], random_source, cfg);
     }
 }
 
@@ -220,7 +256,8 @@ void cross_side(const std::vector<Slot>& targets, const DonorPools& pools,
 
 tlsf::Specification tlsf_crossover(const tlsf::Specification& parent_a,
                                    const tlsf::Specification& parent_b,
-                                   const RandomSource& random_source) {
+                                   const RandomSource& random_source,
+                                   const Config& cfg) {
     // Only the signals have to match. Section sizes need not: the offspring
     // keeps parent A's shape whatever parent B's is, since the merge is
     // written back into a slot of A. Requiring equal sizes, as index-for-index
@@ -233,9 +270,9 @@ tlsf::Specification tlsf_crossover(const tlsf::Specification& parent_a,
     tlsf::Specification result = parent_a;
     cross_side(live_slots(tlsf::mutable_assumption_sections_of(result)),
                live_donors(tlsf::assumption_sections_of(parent_b)),
-               random_source);
+               random_source, cfg);
     cross_side(live_slots(tlsf::mutable_guarantee_sections_of(result)),
                live_donors(tlsf::guarantee_sections_of(parent_b)),
-               random_source);
+               random_source, cfg);
     return result;
 }

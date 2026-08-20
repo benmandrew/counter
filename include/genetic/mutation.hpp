@@ -17,13 +17,19 @@
 /// names are replaced by atoms drawn from @p atoms; if @p atoms is empty,
 /// atom names are left unchanged.
 ///
+/// With `cfg.repaired_operators` on, an atom has a third move beside rename
+/// and negate: a drawn anchor is grafted onto it under a drawn connective, so
+/// a positive literal can be guarded in one draw. Off, an atom is renamed or
+/// negated only, and a rename may draw the name the atom already has.
+///
 /// @param formula        The formula to mutate
 /// @param atoms          Pool of atom names to draw replacements from
 /// @param random_source  Random source for branch and selector choices
+/// @param cfg            Configuration selecting the atom-mutation grammar
 /// @return               A mutated formula
 Formula mutate_formula(const Formula& formula,
                        const std::vector<std::string>& atoms,
-                       const RandomSource& random_source);
+                       const RandomSource& random_source, const Config& cfg);
 
 /// Direction of a mutation within the logical partial order on requirements:
 /// Weaken admits more behaviours, Strengthen admits fewer.

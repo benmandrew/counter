@@ -39,7 +39,8 @@ std::string random_atom(const std::vector<std::string>& atoms,
 
 std::string mutate_atom_name(const std::string& atom,
                              const std::vector<std::string>& atoms,
-                             const RandomSource& random_source) {
+                             const RandomSource& random_source,
+                             const Config& cfg) {
     if (atom == "true") {
         return "false";
     }
@@ -49,14 +50,35 @@ std::string mutate_atom_name(const std::string& atom,
     if (atoms.empty()) {
         return atom;
     }
+    const std::size_t index = random_source.next_index(atoms.size());
     // Prefer a distinct atom, as the TLSF path's flip_or_replace_atom does.
     // Without this a rename is a no-op one time in the pool size, which on a
-    // two-signal specification is every other draw.
-    std::size_t index = random_source.next_index(atoms.size());
-    if (atoms[index] == atom && atoms.size() > 1) {
-        index = (index + 1) % atoms.size();
+    // two-signal specification is every other draw. The step past costs no
+    // draw, so both grammars consume the same one index here.
+    if (cfg.repaired_operators && atoms[index] == atom && atoms.size() > 1) {
+        return atoms[(index + 1) % atoms.size()];
     }
     return atoms[index];
+}
+
+// The grammar before 2026-08-19: an atom is renamed or negated, and nothing
+// else. Retained rather than deleted because repaired_operators is the arm
+// selector of a paired campaign that has not been run, the same standing
+// accumulate_repairs has -- a smoke test is not a decision, so the measurement
+// is owed before the default moves and the losing arm has to stay runnable
+// until it arrives. Note the branch reads next_bool() where the repaired
+// grammar reads next_index(n): the two consume one draw of the same bound
+// when the pool is empty, but map it the other way round.
+Formula mutate_atom_formula_legacy(const Formula& formula,
+                                   const std::string& atom,
+                                   const std::vector<std::string>& atoms,
+                                   const RandomSource& random_source,
+                                   const Config& cfg) {
+    if (random_source.next_bool()) {
+        return Formula::make_atom(
+            mutate_atom_name(atom, atoms, random_source, cfg));
+    }
+    return Formula::make_unary(Formula::Kind::Not, formula);
 }
 
 // Rename the atom, negate it, or graft a drawn anchor onto it under a fresh
@@ -69,21 +91,18 @@ std::string mutate_atom_name(const std::string& atom,
 // the consequence: minepump's ideals guard a positive antecedent, and counter
 // reached one in 1 of 20 seeds while AuRUS, whose add-disjunct rule has no
 // such gate, reached it in 30 of 30.
-Formula mutate_atom_formula(const Formula& formula,
-                            const std::vector<std::string>& atoms,
-                            const RandomSource& random_source) {
-    const std::optional<std::string> atom = formula.atom_name();
-    if (!atom.has_value()) {
-        assert(false);
-        __builtin_unreachable();
-    }
+Formula mutate_atom_formula_repaired(const Formula& formula,
+                                     const std::string& atom,
+                                     const std::vector<std::string>& atoms,
+                                     const RandomSource& random_source,
+                                     const Config& cfg) {
     // Without a pool there is no anchor to draw, so the graft case is dropped
     // rather than guarded inside it.
     const std::size_t n_moves = atoms.empty() ? 2 : 3;
     switch (random_source.next_index(n_moves)) {
         case 0:
             return Formula::make_atom(
-                mutate_atom_name(*atom, atoms, random_source));
+                mutate_atom_name(atom, atoms, random_source, cfg));
         case 1:
             return Formula::make_unary(Formula::Kind::Not, formula);
         default: {
@@ -106,6 +125,22 @@ Formula mutate_atom_formula(const Formula& formula,
                                 : Formula::make_binary(kind, formula, anchor);
         }
     }
+}
+
+Formula mutate_atom_formula(const Formula& formula,
+                            const std::vector<std::string>& atoms,
+                            const RandomSource& random_source,
+                            const Config& cfg) {
+    const std::optional<std::string> atom = formula.atom_name();
+    if (!atom.has_value()) {
+        assert(false);
+        __builtin_unreachable();
+    }
+    return cfg.repaired_operators
+               ? mutate_atom_formula_repaired(formula, *atom, atoms,
+                                              random_source, cfg)
+               : mutate_atom_formula_legacy(formula, *atom, atoms,
+                                            random_source, cfg);
 }
 
 Formula mutate_not_subtree(Formula child, const std::vector<std::string>& atoms,
@@ -145,7 +180,7 @@ Formula mutate_binary_subtree(const std::pair<Formula, Formula>& children,
 
 Formula mutate_formula(const Formula& formula,
                        const std::vector<std::string>& atoms,
-                       const RandomSource& random_source) {
+                       const RandomSource& random_source, const Config& cfg) {
     assert(random_source);
     const std::size_t n_subformulas = formula.n_subformulae();
     const auto mutation_function =
@@ -155,7 +190,7 @@ Formula mutate_formula(const Formula& formula,
         }
         switch (subtree.kind()) {
             case Formula::Kind::Atom:
-                return mutate_atom_formula(subtree, atoms, random_source);
+                return mutate_atom_formula(subtree, atoms, random_source, cfg);
             case Formula::Kind::Not: {
                 auto child_opt = subtree.unary_child();
                 if (!child_opt.has_value()) {
@@ -412,11 +447,11 @@ Requirement mutate_requirement(const Requirement& requirement,
     // to discard candidates that moved the wrong way.
     if (random_source.next_real() < cfg.p_response) {
         mutated.m_response =
-            mutate_formula(requirement.m_response, atoms, random_source);
+            mutate_formula(requirement.m_response, atoms, random_source, cfg);
     }
     if (random_source.next_real() < cfg.p_trigger) {
-        mutated.m_condition = mutate_formula(requirement.m_condition,
-                                             condition_atoms, random_source);
+        mutated.m_condition = mutate_formula(
+            requirement.m_condition, condition_atoms, random_source, cfg);
     }
     if (random_source.next_real() < cfg.p_timing) {
         mutated.m_timing = mutate_timing(requirement.m_timing, direction,

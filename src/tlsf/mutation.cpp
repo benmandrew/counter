@@ -100,9 +100,17 @@ std::string flip_or_replace_atom(const std::string& atom,
 // (inputs on the assumption side — or inputs ∪ outputs there too under
 // allow_output_assumptions — and inputs ∪ outputs on the guarantee side),
 // assumed non-empty.
+// Case (3)'s arm count. Arm (d), which re-emits the node's own connective, is
+// counter's own addition and is reachable only under repaired_operators; the
+// other three are Brizzio's. It is a function rather than a ternary at the
+// draw so that mutate_temporal stays under the cognitive-complexity ceiling.
+std::size_t binary_arm_count(const Config& cfg) {
+    return cfg.repaired_operators ? 4 : 3;
+}
+
 Formula mutate_temporal(const Formula& formula,
                         const std::vector<std::string>& atoms,
-                        const RandomSource& random_source) {
+                        const RandomSource& random_source, const Config& cfg) {
     switch (formula.kind()) {
         case Formula::Kind::Atom: {
             // Case (1): (a)/(b) replace the atom, or (c) wrap it in a unary op.
@@ -128,7 +136,7 @@ Formula mutate_temporal(const Formula& formula,
                 return formula;
             }
             Formula mutated_child =
-                mutate_temporal(*child, atoms, random_source);
+                mutate_temporal(*child, atoms, random_source, cfg);
             switch (random_source.next_index(4)) {
                 case 0:  // (a) drop o1.
                     return mutated_child;
@@ -161,27 +169,29 @@ Formula mutate_temporal(const Formula& formula,
             // re-emit. counter keeps Implies as a first-class node, so without
             // a branch that preserves the node's own connective an implication
             // was reachable only to be destroyed, and a guarded implication —
-            // the shape of every minimal guarantee weakening — was
-            // unreachable. Preserving the kind also gives this path its only
+            // the shape of every minimal guarantee weakening — was unreachable.
+            // Preserving the kind also gives this path its only
             // structure-preserving move; every other arm regenerates the
-            // conjunct.
+            // conjunct. The three-arm draw stays reachable because
+            // repaired_operators is a campaign arm selector whose measurement
+            // is still owed, as accumulate_repairs is.
             const auto children = formula.binary_children();
             if (!children.has_value()) {
                 return formula;
             }
-            switch (random_source.next_index(4)) {
+            switch (random_source.next_index(binary_arm_count(cfg))) {
                 case 3: {  // (d) keep o2, mutating both children.
-                    const Formula left =
-                        mutate_temporal(children->first, atoms, random_source);
-                    const Formula right =
-                        mutate_temporal(children->second, atoms, random_source);
+                    const Formula left = mutate_temporal(children->first, atoms,
+                                                         random_source, cfg);
+                    const Formula right = mutate_temporal(
+                        children->second, atoms, random_source, cfg);
                     return Formula::make_binary(formula.kind(), left, right);
                 }
                 case 0: {  // (a) collapse to one mutated child.
                     const Formula& chosen = random_source.next_bool()
                                                 ? children->first
                                                 : children->second;
-                    return mutate_temporal(chosen, atoms, random_source);
+                    return mutate_temporal(chosen, atoms, random_source, cfg);
                 }
                 // The kind draw and both child mutations draw, and arguments of
                 // one call are evaluated in an unspecified order, so each draw
@@ -189,10 +199,10 @@ Formula mutate_temporal(const Formula& formula,
                 // compilers.
                 case 1: {  // (b) mutate both children under a new binary op.
                     const Formula::Kind kind = pick_binary_kind(random_source);
-                    const Formula left =
-                        mutate_temporal(children->first, atoms, random_source);
-                    const Formula right =
-                        mutate_temporal(children->second, atoms, random_source);
+                    const Formula left = mutate_temporal(children->first, atoms,
+                                                         random_source, cfg);
+                    const Formula right = mutate_temporal(
+                        children->second, atoms, random_source, cfg);
                     return Formula::make_binary(kind, left, right);
                 }
                 case 2: {  // (c) as (b), then wrap in a unary op.
@@ -200,10 +210,10 @@ Formula mutate_temporal(const Formula& formula,
                         pick_unary_kind(random_source);
                     const Formula::Kind inner_kind =
                         pick_binary_kind(random_source);
-                    const Formula left =
-                        mutate_temporal(children->first, atoms, random_source);
-                    const Formula right =
-                        mutate_temporal(children->second, atoms, random_source);
+                    const Formula left = mutate_temporal(children->first, atoms,
+                                                         random_source, cfg);
+                    const Formula right = mutate_temporal(
+                        children->second, atoms, random_source, cfg);
                     return Formula::make_unary(
                         outer_kind,
                         Formula::make_binary(inner_kind, left, right));
@@ -274,9 +284,10 @@ bool is_initial_condition_section(std::size_t section_index) {
 // rewrites can discard a child, which would delete a nested temporal subtree.
 Formula mutate_propositional_parts(const Formula& formula,
                                    const std::vector<std::string>& atoms,
-                                   const RandomSource& random_source) {
+                                   const RandomSource& random_source,
+                                   const Config& cfg) {
     if (formula.is_propositional()) {
-        return mutate_formula(formula, atoms, random_source);
+        return mutate_formula(formula, atoms, random_source, cfg);
     }
     switch (formula.kind()) {
         case Formula::Kind::Not:
@@ -289,7 +300,7 @@ Formula mutate_propositional_parts(const Formula& formula,
             }
             return Formula::make_unary(
                 formula.kind(),
-                mutate_propositional_parts(*child, atoms, random_source));
+                mutate_propositional_parts(*child, atoms, random_source, cfg));
         }
         default: {
             const auto children = formula.binary_children();
@@ -299,9 +310,9 @@ Formula mutate_propositional_parts(const Formula& formula,
             // Sequenced into locals: both calls draw, and argument evaluation
             // order is unspecified.
             const Formula left = mutate_propositional_parts(
-                children->first, atoms, random_source);
+                children->first, atoms, random_source, cfg);
             const Formula right = mutate_propositional_parts(
-                children->second, atoms, random_source);
+                children->second, atoms, random_source, cfg);
             return Formula::make_binary(formula.kind(), left, right);
         }
     }
@@ -337,10 +348,56 @@ Formula apply_consequent_modality(const Formula& body,
     }
 }
 
-// Appends a new environment assumption to the ASSUME section. Strengthening the
-// environment this way is how the algorithm repairs unrealizability the
-// rewrite-only mutation cannot reach (e.g. the missing request-fairness of an
-// unrealizable GR(1) arbiter). The unconditional form is a fairness property
+// The template before 2026-08-19. With allow_output_assumptions off the
+// assumption is an unconditional fairness property `G F <input>` (input negated
+// on a coin flip), drawn from the inputs only. Under the flag the atom pool
+// widens to inputs ∪ outputs and a conditional form `G(c -> F r)` becomes
+// reachable (guarded by p_conditional_assumption), so the search can express
+// reactive-environment assumptions that reference outputs. What was supposed to
+// keep the system from writing itself an assumption it can force to fail is the
+// well-separation filter, and it only half does — see the repaired template
+// below.
+//
+// Retained rather than deleted for the same reason as the rest of this key: a
+// paired campaign is owed before the default moves, so both arms have to be
+// runnable from one binary. It also draws differently: the consequent is drawn
+// before the conditional coin here, and after it there.
+tlsf::Specification tlsf_add_assumption_legacy(
+    const tlsf::Specification& spec, const RandomSource& random_source,
+    const Config& cfg) {
+    tlsf::Specification mutated = spec;
+    if (!cfg.allow_output_assumptions) {
+        const std::string& signal =
+            spec.m_inputs[random_source.next_index(spec.m_inputs.size())];
+        Formula atom = Formula::make_atom(signal);
+        if (random_source.next_bool()) {
+            atom = Formula::make_unary(Formula::Kind::Not, atom);
+        }
+        mutated.m_assume.emplace_back(Formula::make_unary(
+            Formula::Kind::Globally,
+            Formula::make_unary(Formula::Kind::Eventually, atom)));
+        return mutated;
+    }
+    std::vector<std::string> pool = spec.m_inputs;
+    pool.insert(pool.end(), spec.m_outputs.begin(), spec.m_outputs.end());
+    const auto draw = [&pool, &random_source]() {
+        Formula atom =
+            Formula::make_atom(pool[random_source.next_index(pool.size())]);
+        if (random_source.next_bool()) {
+            atom = Formula::make_unary(Formula::Kind::Not, atom);
+        }
+        return atom;
+    };
+    Formula body = Formula::make_unary(Formula::Kind::Eventually, draw());
+    if (random_source.next_real() < cfg.p_conditional_assumption) {
+        body = Formula::make_binary(Formula::Kind::Implies, draw(), body);
+    }
+    mutated.m_assume.emplace_back(
+        Formula::make_unary(Formula::Kind::Globally, body));
+    return mutated;
+}
+
+// The repaired template. The unconditional form is a fairness property
 // `G F <input>`; under p_conditional_assumption a guarded form
 // `G(<guard> -> o <input>)` is drawn instead, o coming from
 // apply_consequent_modality.
@@ -348,21 +405,21 @@ Formula apply_consequent_modality(const Formula& body,
 // The obliged literal is always an *input*, whatever allow_output_assumptions
 // says. An assumption that obliges an output is one the system can defeat by
 // withholding its own signal, which discharges every guarantee at a stroke.
-// Well-separation was documented here as the safeguard against that, and it
-// only half is: it catches the unconditional `G F <output>`, of which the
+// Well-separation was documented as the safeguard against that, and it only
+// half is: it catches the unconditional `G F <output>`, of which the
 // 2026-08-14-aurus-h2h corpus contains none, and it passes the guarded
 // `G(<lit> -> F <output>)`, of which that corpus contains 180 across 175
 // repairs. The check asks whether the environment *can* satisfy the
 // assumptions, and an environment that never raises the guard can. Drawing the
 // consequent from the inputs closes the gap without a new solver query.
 //
-// allow_output_assumptions now governs the guard alone, which is the reactive
+// allow_output_assumptions here governs the guard alone, which is the reactive
 // shape it exists for: conditioning on system behaviour adds no obligation the
 // system can dodge. `G(<output> -> F <input>)` stays reachable, and
-// `G(<input> -> F <output>)` no longer is.
-tlsf::Specification tlsf_add_assumption(const tlsf::Specification& spec,
-                                        const RandomSource& random_source,
-                                        const Config& cfg) {
+// `G(<input> -> F <output>)` does not.
+tlsf::Specification tlsf_add_assumption_repaired(
+    const tlsf::Specification& spec, const RandomSource& random_source,
+    const Config& cfg) {
     if (spec.m_inputs.empty()) {
         // With no input there is nothing the environment alone can be obliged
         // to do, and every assumption expressible here would be one the system
@@ -399,6 +456,18 @@ tlsf::Specification tlsf_add_assumption(const tlsf::Specification& spec,
     return mutated;
 }
 
+// Appends a new environment assumption to the ASSUME section. Strengthening the
+// environment this way is how the algorithm repairs unrealizability the
+// rewrite-only mutation cannot reach (e.g. the missing request-fairness of an
+// unrealizable GR(1) arbiter).
+tlsf::Specification tlsf_add_assumption(const tlsf::Specification& spec,
+                                        const RandomSource& random_source,
+                                        const Config& cfg) {
+    return cfg.repaired_operators
+               ? tlsf_add_assumption_repaired(spec, random_source, cfg)
+               : tlsf_add_assumption_legacy(spec, random_source, cfg);
+}
+
 // Deletes one guarantee-side conjunct (PRESET, ASSERT or GUARANTEE) by
 // tombstoning it in place. The slot stays so that crossover still sees a
 // matching shape and the similarity objectives keep pairing the same conjuncts;
@@ -419,6 +488,34 @@ tlsf::Specification tlsf_remove_guarantee(const tlsf::Specification& spec,
     const Slot& slot = slots[random_source.next_index(slots.size())];
     (*slot.m_section)[slot.m_index].m_removed = true;
     return mutated;
+}
+
+// The atom pool the grammar before 2026-08-19 drew from: the guarantee side
+// takes inputs ∪ outputs, the assumption side the inputs, widened to
+// inputs ∪ outputs under allow_output_assumptions so a rewrite can keep or
+// introduce an output atom (letting a guard drawn by tlsf_add_assumption be
+// reshaped rather than overwritten).
+std::vector<std::string> side_atom_pool(const tlsf::Specification& spec,
+                                        bool assumption_side,
+                                        const Config& cfg) {
+    std::vector<std::string> pool = spec.m_inputs;
+    if (!assumption_side || cfg.allow_output_assumptions) {
+        pool.insert(pool.end(), spec.m_outputs.begin(), spec.m_outputs.end());
+    }
+    return pool;
+}
+
+// The repaired pool follows the section, not just the side. An initial
+// condition is over one side's own signals alone: INITIALLY over the inputs,
+// PRESET over the outputs. Every other section keeps the side pool above.
+std::vector<std::string> section_atom_pool(const tlsf::Specification& spec,
+                                           bool assumption_side,
+                                           std::size_t section_index,
+                                           const Config& cfg) {
+    if (is_initial_condition_section(section_index)) {
+        return assumption_side ? spec.m_inputs : spec.m_outputs;
+    }
+    return side_atom_pool(spec, assumption_side, cfg);
 }
 
 }  // namespace
@@ -467,40 +564,46 @@ tlsf::Specification tlsf_mutate(const tlsf::Specification& spec,
         return spec;
     }
 
-    const Slot& slot = slots[random_source.next_index(slots.size())];
-
-    // The pool follows the section, not just the side. An initial condition is
-    // over one side's own signals alone: INITIALLY over the inputs, PRESET over
-    // the outputs. Elsewhere the guarantee side draws from inputs ∪ outputs,
-    // and the assumption side from the inputs, widened to inputs ∪ outputs
-    // under allow_output_assumptions so a rewrite can keep or introduce an
-    // output atom (letting a guard drawn by tlsf_add_assumption be reshaped
-    // rather than overwritten).
+    // The two grammars draw the slot at different points, because they need
+    // different things from it. The repaired pool follows the *section*, so the
+    // slot has to be drawn before the pool can be built; the legacy pool
+    // follows the side alone, and gives up before drawing anything when it
+    // comes out empty. Keeping each order is what makes a seed reproduce under
+    // its own arm.
     std::vector<std::string> pool;
-    if (is_initial_condition_section(slot.m_section_index)) {
-        pool = assumption_side ? mutated.m_inputs : mutated.m_outputs;
-    } else {
-        pool = mutated.m_inputs;
-        if (!assumption_side || cfg.allow_output_assumptions) {
-            pool.insert(pool.end(), mutated.m_outputs.begin(),
-                        mutated.m_outputs.end());
+    std::size_t slot_index = 0;
+    if (cfg.repaired_operators) {
+        slot_index = random_source.next_index(slots.size());
+        pool = section_atom_pool(mutated, assumption_side,
+                                 slots[slot_index].m_section_index, cfg);
+        if (pool.empty()) {
+            return spec;
         }
+    } else {
+        pool = side_atom_pool(mutated, assumption_side, cfg);
+        if (pool.empty()) {
+            // Without atoms, mutate_formula's structural rewrites cannot draw
+            // a replacement atom; leave the specification unchanged.
+            return spec;
+        }
+        slot_index = random_source.next_index(slots.size());
     }
-    if (pool.empty()) {
-        // Without atoms, mutate_formula's structural rewrites cannot draw a
-        // replacement atom; leave the specification unchanged.
-        return spec;
-    }
+    const Slot& slot = slots[slot_index];
 
     tlsf::SectionEntry& entry = (*slot.m_section)[slot.m_index];
     // An initial condition must stay propositional, so it takes the rewrite
     // that preserves the temporal skeleton — of which it has none — rather
-    // than the one that introduces operators.
-    const bool temporal = !is_initial_condition_section(slot.m_section_index) &&
-                          random_source.next_real() < cfg.tlsf_p_temporal;
+    // than the one that introduces operators. The short circuit is deliberate:
+    // under the repaired grammar an initial condition costs no temporal draw
+    // at all.
+    const bool initial_condition =
+        cfg.repaired_operators &&
+        is_initial_condition_section(slot.m_section_index);
+    const bool temporal =
+        !initial_condition && random_source.next_real() < cfg.tlsf_p_temporal;
     entry.m_formula =
-        temporal
-            ? mutate_temporal(entry.m_formula, pool, random_source)
-            : mutate_propositional_parts(entry.m_formula, pool, random_source);
+        temporal ? mutate_temporal(entry.m_formula, pool, random_source, cfg)
+                 : mutate_propositional_parts(entry.m_formula, pool,
+                                              random_source, cfg);
     return mutated;
 }

@@ -4,6 +4,7 @@
 /// @brief Crossover operators that combine two parent requirements or
 ///        specifications to produce an offspring.
 
+#include "config.hpp"
 #include "genetic/random_source.hpp"
 #include "requirement.hpp"
 
@@ -13,13 +14,20 @@
 /// is replaced by one drawn from the second parent's, or the two are joined
 /// under a fresh binary operator. Neither branch copies a field verbatim.
 ///
+/// `cfg.repaired_operators` selects where within a field the graft lands: on,
+/// the site is drawn uniformly over the field's nodes; off, a fair coin is
+/// tossed at each node of a post-order walk, which can reach the end of the
+/// walk having grafted nowhere and return the first parent's field unchanged.
+///
 /// @param first_parent  First parent requirement
 /// @param second_parent Second parent requirement
 /// @param random_source Random source for branch and selector choices
+/// @param cfg           Configuration selecting the graft-site draw
 /// @return              Offspring requirement
 Requirement crossover_requirements(const Requirement& first_parent,
                                    const Requirement& second_parent,
-                                   const RandomSource& random_source);
+                                   const RandomSource& random_source,
+                                   const Config& cfg);
 
 /// Produces an offspring specification by merging one requirement per side.
 /// For the assumptions and again for the guarantees, one slot of @p
@@ -32,9 +40,11 @@ Requirement crossover_requirements(const Requirement& first_parent,
 /// @param first_parent  First parent specification
 /// @param second_parent Second parent specification
 /// @param random_source Random source for slot and branch choices
+/// @param cfg           Configuration selecting the graft-site draw
 /// @return              Offspring specification, or @p first_parent unchanged
 ///                      if the parents' in/out atoms differ or either side has
 ///                      no eligible slot
 Specification crossover_specifications(const Specification& first_parent,
                                        const Specification& second_parent,
-                                       const RandomSource& random_source);
+                                       const RandomSource& random_source,
+                                       const Config& cfg);

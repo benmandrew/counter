@@ -37,6 +37,13 @@ selection_scheme = "nsga2-apportion"
 # the FRETISH one, which already asks). Inert under [tlsf] repair_mode = "muc".
 accumulate_repairs = false
 
+# Use the repaired mutation and crossover grammar of 2026-08-19 rather than the
+# one that preceded it. Off by default: the repairs change the RNG draw stream
+# and what a run emits, so an archived config that omits the key keeps meaning
+# what it did, and the paired campaign that would move the default is still
+# owed.
+repaired_operators = false
+
 [fitness]
 weight_syntactic = 0.2
 weight_semantic  = 0.5

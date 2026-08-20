@@ -14,7 +14,8 @@
 /// identity.
 template <typename Spec>
 struct GeneticOperators {
-    std::function<Spec(const Spec&, const Spec&, const RandomSource&)>
+    std::function<Spec(const Spec&, const Spec&, const RandomSource&,
+                       const Config&)>
         crossover;
     std::function<Spec(const Spec&, const RandomSource&, const Config&)> mutate;
     std::function<Spec(Spec)> simplify;

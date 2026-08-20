@@ -11,11 +11,16 @@
 
 #include <unistd.h>
 
+#ifdef __APPLE__
+#include <mach-o/dyld.h>
+#endif
+
 #include <algorithm>
 #include <atomic>
 #include <chrono>
 #include <cstdint>
 #include <cstdlib>
+#include <cstring>
 #include <filesystem>
 #include <fstream>
 #include <iterator>
@@ -193,6 +198,25 @@ void test_thread_cpu_excludes_other_threads() {
            "thread burns almost none of its own, whatever the process does");
 }
 
+// The running test binary's own path, for the re-exec below. /proc/self/exe is
+// the Linux spelling and there is no procfs on macOS; _NSGetExecutablePath is
+// the direct equivalent, and reports the buffer size it wants when the one it
+// is given is too small.
+std::string this_executable() {
+#ifdef __APPLE__
+    std::uint32_t size = 0;
+    _NSGetExecutablePath(nullptr, &size);
+    std::string path(size, '\0');
+    if (_NSGetExecutablePath(path.data(), &size) != 0) {
+        return {};
+    }
+    path.resize(std::strlen(path.c_str()));
+    return path;
+#else
+    return "/proc/self/exe";
+#endif
+}
+
 void test_a_counter_name_survives_the_exit_report() {
     // Same defect as the interning one above, one registry over: the report is
     // registered with atexit on the first scope, so everything it reads has to
@@ -211,6 +235,7 @@ void test_a_counter_name_survives_the_exit_report() {
     if (is_the_child) {
         return;
     }
+
     const std::filesystem::path report =
         std::filesystem::temp_directory_path() /
         ("counter-profile-" + std::to_string(getpid()) + ".json");
@@ -219,7 +244,7 @@ void test_a_counter_name_survives_the_exit_report() {
     // in this process -- which would have it write over the file being read.
     setenv("COUNTER_PROFILE", report.c_str(), 1);
     const ProcessResult child = execute_and_capture(
-        {"/proc/self/exe", "profile"}, std::chrono::seconds(300));
+        {this_executable(), "profile"}, std::chrono::seconds(300));
     unsetenv("COUNTER_PROFILE");
     expect(child.m_exit_code == 0,
            "profile: the child test run should pass, or the report below says "

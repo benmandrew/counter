@@ -23,6 +23,28 @@ constexpr std::size_t k_num_buffer_size = 32;
 constexpr std::size_t k_frame_buffer_size = 100;
 constexpr std::size_t k_metadata_buffer_size = 4096;
 
+// pipe2(O_CLOEXEC) where it exists; pipe plus FD_CLOEXEC where it does not.
+// Async-signal-safe either way, which is the constraint at the one call site
+// -- and the reason the second form is not made atomic the way the runner's
+// is. See that call site.
+int make_cloexec_pipe_unsafe(std::array<int, 2>& fds) {
+#ifdef __APPLE__
+    if (pipe(fds.data()) != 0) {
+        return -1;
+    }
+    for (const int pipe_fd : fds) {
+        if (fcntl(pipe_fd, F_SETFD, FD_CLOEXEC) != 0) {
+            close(fds[0]);
+            close(fds[1]);
+            return -1;
+        }
+    }
+    return 0;
+#else
+    return pipe2(fds.data(), O_CLOEXEC);
+#endif
+}
+
 std::array<char, k_path_buffer_size> g_tracer_path = {};
 std::array<char, k_path_buffer_size> g_crash_dir = {};
 std::array<char, k_metadata_buffer_size> g_crash_metadata = {};
@@ -166,8 +188,17 @@ void crash_handler(int signo, [[maybe_unused]] siginfo_t* siginfo,
     // into its own tracer. Without close-on-exec that copy survives execl and
     // holds the pipe open, our tracer never reads EOF, and waitpid below blocks
     // forever. pipe2 sets the flag atomically; pipe+fcntl would race the fork.
+    //
+    // That race is reopened on macOS, which has no pipe2, and is accepted here
+    // rather than closed. The mutual exclusion that closes it for the two
+    // runner forks (SpawnGuard in src/runner/process.cpp) cannot be used from
+    // a signal handler: taking a lock there is not async-signal-safe and
+    // deadlocks outright if this thread already held it when the signal
+    // arrived. pipe and fcntl are both on the async-signal-safe list, so the
+    // shim below is legal where a mutex is not, and the residual window costs
+    // at worst a lost crash report from one of several simultaneous crashes.
     std::array<int, 2> pipefd = {-1, -1};
-    if (pipe2(pipefd.data(), O_CLOEXEC) != 0) {
+    if (make_cloexec_pipe_unsafe(pipefd) != 0) {
         _exit(1);
     }
 

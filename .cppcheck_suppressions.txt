@@ -27,3 +27,12 @@ constParameterCallback
 # type and suggests the reference be tightened. Scoped to the one header that
 # owns a generator, so the check still fires elsewhere.
 constParameterReference:*/genetic/random_source.hpp
+
+# SpawnGuard holds spawn_mutex across [pipe creation, fork] on macOS, and is an
+# empty class everywhere else -- Linux has pipe2, which closes that window in
+# the kernel, so serialising forks there would cost concurrency for nothing.
+# cppcheck analyses with neither platform's macros set, so what it sees is a
+# local whose constructor and destructor are both empty, and it is right about
+# that configuration. Scoped to the one file that spawns, so the check still
+# fires on a genuinely dead local anywhere else.
+unusedVariable:*/runner/process.cpp

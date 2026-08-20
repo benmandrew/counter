@@ -22,7 +22,9 @@ struct ProcessResult {
     std::string m_output;
     /// The child's user+sys CPU seconds, from wait4's rusage.
     double m_cpu_s = 0.0;
-    /// The child's peak resident set in kilobytes, from wait4's ru_maxrss, or
+    /// The child's peak resident set in kilobytes, from wait4's ru_maxrss
+    /// (which the runner normalises: that field is kilobytes on Linux and
+    /// bytes on macOS), or
     /// zero when that figure could not be told apart from this process's own
     /// footprint — see m_peak_rss_floor_kb, which is the whole subtlety here.
     ///
@@ -84,15 +86,25 @@ ProcessResult execute_and_capture(
 /// away. PR_SET_PDEATHSIG is tied to the forking *thread*, not to the process,
 /// which makes it safe for a call that forks and waits in one place and wrong
 /// for anything longer-lived.
+///
+/// macOS has no mechanism that survives the exec, so the request is made of a
+/// reaper process of counter's own instead (see src/runner/process.cpp). That
+/// is a weaker guarantee — it depends on the reaper being alive and
+/// schedulable, where the Linux one holds with every thread of counter wedged
+/// — and it is process-scoped rather than thread-scoped. The distinction below
+/// is preserved regardless, by registering only the first case: collapsing the
+/// two would contain the persistent formaliser child as well, which is the
+/// behaviour this enum exists to keep it out of.
 enum class ParentDeathPolicy : std::uint8_t {
-    /// Set PR_SET_PDEATHSIG. Correct only when the forking thread waits for
-    /// the child before returning, as execute_and_capture does.
+    /// Set PR_SET_PDEATHSIG, or register with the reaper. Correct only when
+    /// the forking thread waits for the child before returning, as
+    /// execute_and_capture does.
     KillWithParentThread,
-    /// Leave PDEATHSIG unset, for a child that outlives the thread that
-    /// spawned it. Setting it here would kill the child as soon as that thread
-    /// returned — for a lazily-spawned persistent process that means the first
-    /// pool worker to touch it. Containment on parent death is then the
-    /// owner's teardown to arrange.
+    /// Leave PDEATHSIG unset and register nothing, for a child that outlives
+    /// the thread that spawned it. Setting it here would kill the child as
+    /// soon as that thread returned — for a lazily-spawned persistent process
+    /// that means the first pool worker to touch it. Containment on parent
+    /// death is then the owner's teardown to arrange.
     SurviveParentThread,
 };
 
@@ -121,11 +133,11 @@ struct PipedChild {
 /// scoring thread would inherit them and hold this call's ends open past its
 /// own exec, so its reader never sees end of file.
 ///
-/// This and execute_and_capture are the only two forks in the codebase, and
-/// nothing may add a third outside process.cpp. posix_spawn would be the
-/// cheaper primitive, but it has no attribute for PR_SET_PDEATHSIG — the one
-/// mechanism that stops a killed run from stranding multi-GB tool processes
-/// (PR #47).
+/// This and execute_and_capture are the only two forks a caller can reach, and
+/// nothing may add a third outside process.cpp — which holds one more, for the
+/// macOS reaper. posix_spawn would be the cheaper primitive, but it has no
+/// attribute for PR_SET_PDEATHSIG — the one mechanism that stops a killed run
+/// from stranding multi-GB tool processes (PR #47).
 PipedChild spawn_piped_child(const std::vector<std::string>& arguments,
                              ParentDeathPolicy policy, ExecutableLookup lookup);
 

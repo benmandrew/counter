@@ -26,10 +26,18 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 
 option(COUNTER_TSAN "Build with ThreadSanitizer" OFF)
 if(COUNTER_TSAN)
-    set(CMAKE_CROSSCOMPILING_EMULATOR
-        "setarch" "${CMAKE_SYSTEM_PROCESSOR}" "-R"
-        CACHE STRING "Disable ASLR for TSan shadow memory" FORCE)
-    message(STATUS "TSan: wrapping tests with setarch ${CMAKE_SYSTEM_PROCESSOR} -R (ASLR disabled)")
+    # setarch is util-linux. macOS disables ASLR for a child through the
+    # debugger rather than the loader, so there is no equivalent wrapper to
+    # substitute here; TSan runs without the shadow-memory guarantee that
+    # -R buys, and reports it as a mapping failure when it matters.
+    if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+        set(CMAKE_CROSSCOMPILING_EMULATOR
+            "setarch" "${CMAKE_SYSTEM_PROCESSOR}" "-R"
+            CACHE STRING "Disable ASLR for TSan shadow memory" FORCE)
+        message(STATUS "TSan: wrapping tests with setarch ${CMAKE_SYSTEM_PROCESSOR} -R (ASLR disabled)")
+    else()
+        message(STATUS "TSan: no setarch on ${CMAKE_SYSTEM_NAME}; tests run with ASLR enabled")
+    endif()
 endif()
 
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)

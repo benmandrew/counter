@@ -1,5 +1,9 @@
 #include "profile.hpp"
 
+#ifdef __APPLE__
+#include <mach/mach.h>
+#endif
+
 #include <algorithm>
 #include <cstdlib>
 #include <cstring>
@@ -92,12 +96,54 @@ std::uint64_t wall_ns() {
            static_cast<std::uint64_t>(now.tv_nsec);
 }
 
+#ifdef __APPLE__
+// macOS has no clock id for per-thread CPU, and the process-wide clock is not
+// a substitute: the whole diagnostic this profiler exists for is that a scope
+// with large wall and near-zero CPU is blocked on a child rather than
+// computing, and that reading is only true of a per-thread clock. thread_info
+// reports the same user and system time the Linux clock id does.
+//
+// mach_thread_self returns a send right the caller owns, so calling it per
+// scope and dropping the reference would leak a port per scope. Held for the
+// life of the thread instead, and released with it.
+class ThreadPort {
+   public:
+    ThreadPort() : m_port(mach_thread_self()) {}
+    ~ThreadPort() { mach_port_deallocate(mach_task_self(), m_port); }
+    ThreadPort(const ThreadPort&) = delete;
+    ThreadPort& operator=(const ThreadPort&) = delete;
+    ThreadPort(ThreadPort&&) = delete;
+    ThreadPort& operator=(ThreadPort&&) = delete;
+    mach_port_t get() const { return m_port; }
+
+   private:
+    mach_port_t m_port;
+};
+
+std::uint64_t thread_cpu_ns() {
+    static thread_local ThreadPort port;
+    thread_basic_info_data_t info{};
+    mach_msg_type_number_t info_count = THREAD_BASIC_INFO_COUNT;
+    const kern_return_t status =
+        thread_info(port.get(), THREAD_BASIC_INFO,
+                    reinterpret_cast<thread_info_t>(&info), &info_count);
+    if (status != KERN_SUCCESS) {
+        return 0;
+    }
+    const auto to_ns = [](const time_value_t& value) {
+        return (static_cast<std::uint64_t>(value.seconds) * 1'000'000'000ULL) +
+               (static_cast<std::uint64_t>(value.microseconds) * 1'000ULL);
+    };
+    return to_ns(info.user_time) + to_ns(info.system_time);
+}
+#else
 std::uint64_t thread_cpu_ns() {
     struct timespec now{};
     clock_gettime(CLOCK_THREAD_CPUTIME_ID, &now);
     return (static_cast<std::uint64_t>(now.tv_sec) * 1'000'000'000ULL) +
            static_cast<std::uint64_t>(now.tv_nsec);
 }
+#endif
 
 Site& site(const char* name) {
     const std::scoped_lock lock(registry_mutex());

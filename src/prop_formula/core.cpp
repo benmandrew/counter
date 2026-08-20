@@ -5,6 +5,7 @@
 #include <string>
 #include <utility>
 
+#include "hash_combine.hpp"
 #include "internal.hpp"
 
 Formula::Formula() : m_impl(std::make_unique<Impl>("true")) {}
@@ -67,16 +68,13 @@ bool Formula::is_propositional() const {
 // the parser's layout (see transform.cpp).
 std::size_t Formula::hash() const noexcept {
     using prop_formula_internal::Node;
-    auto combine = [](std::size_t seed, std::size_t val) noexcept {
-        return seed ^ (val + 0x9e3779b9U + (seed << 6) + (seed >> 2));
-    };
     std::size_t seed = 0;
     for (const Node& node : m_impl->m_nodes) {
-        seed = combine(seed, std::hash<std::uint8_t>{}(
-                                 static_cast<std::uint8_t>(node.m_type)));
-        seed = combine(seed, std::hash<std::string>{}(node.m_variable));
-        seed = combine(seed, std::hash<std::size_t>{}(node.m_left));
-        seed = combine(seed, std::hash<std::size_t>{}(node.m_right));
+        seed = hash_combine(seed, std::hash<std::uint8_t>{}(
+                                      static_cast<std::uint8_t>(node.m_type)));
+        seed = hash_combine(seed, std::hash<std::string>{}(node.m_variable));
+        seed = hash_combine(seed, std::hash<std::size_t>{}(node.m_left));
+        seed = hash_combine(seed, std::hash<std::size_t>{}(node.m_right));
     }
     return seed;
 }

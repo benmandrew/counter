@@ -1387,15 +1387,27 @@ PROFILES: dict[str, dict] = {
         "specs": list(H2H_TLSF_SPECS),
         # 10 per host, seed-major disjoint across av2/av3.
         "seeds": list(range(20)),
-        # PILOT-SIZED: see experiments/ops-grammar/PLAN.md. Sized at 4x the
-        # slowest run a pilot over this corpus, operating point and both arms
-        # measured, floored at 600 s. humanoid-531 earns its own line -- it was
-        # already cap-bound at 600 s in the 2026-07-24 archive (median 377 s),
-        # so its true tail was never observed there.
+        # PILOT-SIZED by campaign ops-pilot at this jobs value: 4x the slowest
+        # run observed over both arms, floored at 600 s and rounded to the
+        # minute. Nothing in the pilot timed out under its non-binding 3600 s
+        # cap, so every one of these maxima is an observation rather than a
+        # censored bound -- which is what the 2026-07-24 archive could not give,
+        # humanoid-531 having been cap-bound at 600 s there.
+        #
+        # humanoid-531 is why the pilot existed. Its treatment arm ran to
+        # 630.4 s against the control's 390.4 s, so the 600 s cap this campaign
+        # would otherwise have inherited fires on opsfixed and not on
+        # opslegacy. That is the directional censoring PLAN.md section 8
+        # registers, and it would have shown up as the treatment losing.
+        #
+        # The nine unpiloted families keep the 600 s floor on archive evidence:
+        # the slowest of them is gyro-var2 at an 85.9 s archived maximum,
+        # against gyro-var1's archived 86.7 s, which piloted at 118.5 s. 600 s
+        # is about 5x that.
         "timeout_caps": {
             "arbiter-aurus": 600, "codesample-un1": 600,
             "codesample-un2": 600, "gyro-var1": 600, "gyro-var2": 600,
-            "humanoid-458": 600, "humanoid-531": 2400, "lift": 900,
+            "humanoid-458": 600, "humanoid-531": 2580, "lift": 960,
             "lily02": 600, "minepump": 600, "rg1": 600, "rg2": 600,
         },
         # Both arms accumulate, so both return more candidates than any archived

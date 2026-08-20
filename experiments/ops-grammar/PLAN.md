@@ -70,7 +70,19 @@ The TLSF phase runs at `jobs = 4` rather than the `jobs = 1` every other TLSF pr
 
 The concurrency is why the pilot has to run at the campaign's own `jobs`. Each run gets a quarter of the threads, so per-run wall time rises even as throughput improves, and a cap sized at `jobs = 1` would censor — directionally against the treatment arm, which is the failure mode section 8 registers. A first pass of the pilot ran at `jobs = 1` and produced six rows; they were deleted rather than carried forward, because they size a campaign that is no longer the one being run, and because mixing two concurrencies in one cap-sizing dataset would hide exactly the effect the caps exist to bound.
 
-[PILOT NUMBERS PENDING]
+The pilot ran to completion on 2026-08-20, 24 of 24 rows, none of them timed out under the non-binding cap, so every figure below is an observed maximum rather than a censored bound.
+
+| spec | `opslegacy` median / max | `opsfixed` median / max | cap |
+|---|---|---|---|
+| `gyro-var1` | 59.0 / 94.4 s | 64.8 / 118.5 s | 600 s (floor) |
+| `lift` | 129.0 / 209.7 s | 145.6 / 236.1 s | 960 s |
+| `humanoid-531` | 310.6 / 390.4 s | 456.5 / 630.4 s | 2580 s |
+
+The nine unpiloted families keep the 600 s floor on archive evidence: the slowest of them is `gyro-var2` at an 85.9 s archived maximum, against `gyro-var1`'s archived 86.7 s, which piloted at 118.5 s, leaving the floor at roughly 5x the expected maximum.
+
+`humanoid-531` is the family the pilot existed for, and it justified the exercise. Its treatment arm ran to 630.4 s against the control's 390.4 s, so the 600 s cap this campaign would otherwise have inherited from the head-to-head fires on `opsfixed` and never on `opslegacy`. That is precisely the directional censoring section 8 registers, it would have surfaced as the treatment losing, and no amount of care in the analysis would have recovered it from the rows.
+
+One figure is registered here because it is uncomfortable rather than because it is reassuring. The paired wall ratio over the pilot's 12 pairs has a median of **1.250**, sitting exactly on the bound that decision-rule outcome 1 imposes. The bound was fixed a priori, following the accumulator campaign, and it does not move now: adjusting a threshold after seeing a measurement land on it is the failure this document exists to prevent. Two things qualify the number without softening it. The pilot covers the three most expensive families and none of the nine cheap ones, and the spread is enormous — per-family medians of 0.733, 1.070 and 1.598, with individual pairs from 0.241 to 5.828. The campaign's own 240 pairs are what the rule reads, not these 12.
 
 The campaign is 480 TLSF runs plus 240 FRETISH runs, 720 in total, split evenly over av2 and av3.
 

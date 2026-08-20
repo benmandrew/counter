@@ -115,6 +115,14 @@ Pre-registered and binding. Four outcomes, and the campaign takes exactly one of
 3. No significant difference either way: do not flip. The repairs stay behind the key, and `REPORT.md`'s claim is downgraded to "the moves are reachable now, and reaching them did not measurably help at this corpus and budget".
 4. The repaired arm loses: revert. The seven landed as one commit, so an ablation is a fresh campaign rather than a re-read of this one's rows.
 
+## 9a. Amendment, 2026-08-20: the wall-ratio bound is per path
+
+Outcome 1 reads "wins the primary endpoint on at least one path at p < 0.05, loses neither path significantly, and the median paired wall ratio is under 1.25". It does not say whether that ratio is the winning path's or a figure pooled across both, and the two readings diverge far enough to change the decision. The ratio is hereby **per path, gating the path that won**: a path triggers outcome 1 only if it both wins its own endpoint and holds its own median paired wall ratio under 1.25. A rule whose win criterion is per path cannot coherently carry a global cost gate, and nothing else in section 9 pools the paths.
+
+**What was known when this was written, stated plainly because it is the only thing that makes the amendment worth anything.** The FRETISH path had completed and been scored: 120 pairs, 9 treatment-only wins against 3, exact McNemar p = 0.146, and a median paired wall ratio of 1.699 with a minimum of 1.193. So the FRETISH ratio was already known to fail the bound under either reading, and FRETISH already failed the endpoint conjunct independently — this amendment cannot rescue it and does not try to. The TLSF path stood at 10 of 240 rows on av2 and 32 of 240 on av3, so the figure the amendment actually governs did not exist and could not be anticipated from what did: the pilot's TLSF families gave a median ratio of 1.250 against FRETISH's 1.699, and the two operating points differ by a factor of four in generations and five in population.
+
+The alternative was to leave the ambiguity standing and resolve it after the TLSF rows landed, which is worth nothing at all. Recording it here, against a timestamp that precedes the data, is what makes it checkable. Outcome 1 is now harder for FRETISH than a pooled reading would have made it and unchanged for TLSF, which is the direction an amendment should run when the amender has already seen half the results.
+
 ## 10. Provenance
 
 Branch `fix/mutation-operators`. The campaign rests on four commits: `d46351f` "docs(experiments): document mutation/crossover audit from aurus-h2h", `3e9fb62` "fix(genetic): repair mutation and crossover grammar defects from aurus-h2h", `6a4466d` "feat(config): gate the operator repairs behind `repaired_operators`", and `aa775c7` "feat(experiments): add sweep O and the ops-grammar campaign".

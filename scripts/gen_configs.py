@@ -88,19 +88,18 @@ REPAIRS: dict[str, list[tuple[str, str]]] = {
     "both": [("mono", "monolithic"), ("muc", "muc")],
 }
 
-# Mirrors the built-in defaults from include/config.hpp, with one deliberate
-# exception today and a second that becomes one when a pending default moves.
+# Mirrors the built-in defaults from include/config.hpp, with two deliberate
+# exceptions.
 #
-# run_weakening is pinned true here. That is NOT currently a divergence:
-# include/config.hpp has `run_weakening_filter = true`, and an earlier version
-# of this comment claimed it defaulted false, which was simply wrong. The pin
-# still earns its place, and is written to survive the flip. run_weakening is a
-# crossed factor (wkon/wkoff) whose flat, non-crossed configs are attributed to
+# run_weakening is pinned True here and the binary has defaulted it False since
+# 2026-08-20, so this is now a real divergence rather than a pending one. The
+# pin does not follow the binary, and must not. run_weakening is a crossed
+# factor (wkon/wkoff) whose flat, non-crossed configs are attributed to
 # LEGACY_WEAKENING ("wkon") by run_experiments.py, and `weakening` is one of
 # merge_experiments.KEY_FIELDS, so the emitted value has to keep matching that
-# recorded CSV column or ~225k archived rows stop joining their own key. When
-# the binary default goes to false, this pin becomes a real divergence with that
-# same justification, and the value here must not follow it. config.hpp also
+# recorded CSV column or ~225k archived rows stop joining their own key. Moving
+# the pin would buy nothing and would put every new row at odds with every
+# archived one on a key field. config.hpp also
 # defaults metric to "logarithmic", but
 # the experiment baseline stays "direct": a flat (non-crossed) config carries no
 # metric directory, so run_experiments.py's metric_of() attributes it to

@@ -112,9 +112,27 @@ struct Config {
     /// mid-search measurably costs repair quality and never gains it (over the
     /// 9,796 paired runs of the cj-large campaign it lost 1,005 and won 410,
     /// costing 20 points of implies-ideal on fsm), whereas screening the final
-    /// population leaves the search bit-identical. On by default, since it is
-    /// the only check that a written repair does not forbid behaviour the
-    /// original allowed.
+    /// population leaves the search bit-identical.
+    ///
+    /// **Off by default since 2026-08-20**, on the measurement in
+    /// `experiments/2026-08-20-ops-weakening/REPORT.md`. Across 720 matched
+    /// runs of two paired campaigns, turning the screen off gained
+    /// `implies_ideal` on 38 of them and lost it on none, on both paths and
+    /// under both mutation grammars. That direction is close to structural
+    /// rather than discovered -- the screen draws nothing from the
+    /// `RandomSource`, so it cannot change the search and can only withhold
+    /// output -- so the counts are the finding and a significance test on them
+    /// would overstate it. It is not a strict superset either: `n_repairs`
+    /// fell on 27 of the 720, the implication filter below running afterwards
+    /// and letting a newly admitted non-weakening dominate several weakenings.
+    /// The earlier 2026-08-19-weakening-arbiter campaign found the same
+    /// direction at 9 of 120 paired repairs.
+    ///
+    /// What it costs when off is the only guarantee that a written repair does
+    /// not forbid behaviour the original allowed. Nothing constrains mutation
+    /// to weaken: it can delete a safety guarantee and add a stronger one,
+    /// reaching realizability while forbidding allowed behaviour. Turn it on
+    /// where that property is wanted over yield.
     ///
     /// Applies on both paths, but the check behind it differs in strength. The
     /// FRETISH spec_implies is an assume-guarantee decomposition that pairs
@@ -123,9 +141,8 @@ struct Config {
     /// together. The TLSF tlsf_spec_implies lowers the whole specification to
     /// one LTL formula and is exact, so a rejection there is a fact about the
     /// two specs. Expect the TLSF screen to reject more, and to be right when
-    /// it does -- mutation can delete a safety guarantee and add a stronger
-    /// one, reaching realizability without weakening anything.
-    bool run_weakening_filter = true;
+    /// it does.
+    bool run_weakening_filter = false;
     bool run_implication_filter = true;
     /// Drop candidates that hold for free rather than because anything was
     /// repaired: ones carrying a requirement whose condition is the literal

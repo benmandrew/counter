@@ -32,7 +32,7 @@ The factor is sweep O at two levels, `opslegacy` (control) and `opsfixed`, paire
 | selection scheme | `nsga2-truncate` | `nsga2-truncate` |
 | seeds | 30 (av2 0–14, av3 15–29) | 20 (av2 0–9, av3 10–19) |
 | runs | 4 × 2 × 30 = 240 | 12 × 2 × 20 = 480 |
-| jobs | 4 | 1 |
+| jobs | 4 | 4 |
 
 The FRETISH operating point is the one `cj-large`, `metric` and `ablate-fret` ran. Both arms of a pair run on the same host at the same seed, so a host difference cancels inside the pair.
 
@@ -64,7 +64,11 @@ The archived figures come from `2026-07-24-ablation`, default cell: TLSF cost 55
 
 That model is stale in four ways at once, all of them upward. MRS status grading became the default on 2026-08-11 at 1.89x cost, `p_remove_guarantee` landed, the accumulator is on in both arms, and the `ltlsynt` budget moves from 500 ms to 10000 ms. Caps are therefore pilot-sized at 4x the slowest run of a pilot over this corpus and operating point with both arms measured, floored at 600 s.
 
-The pilot is campaign `ops-pilot`, a separate declaration on the same branch: the three slowest families `gyro-var1`, `lift` and `humanoid-531`, cheapest first, crossed with both arms over 4 seeds, at `jobs = 1` to match the phase it sizes, under a deliberately non-binding 3600 s cap. Its rows keep their own CSV and never merge into this campaign's, because a timing measurement taken at a non-campaign cap is not an endpoint observation.
+The pilot is campaign `ops-pilot`, a separate declaration on the same branch: the three slowest families `gyro-var1`, `lift` and `humanoid-531` crossed with both arms over 4 seeds, at `jobs = 4` to match the phase it sizes, under a deliberately non-binding 3600 s cap. Its rows keep their own CSV and never merge into this campaign's, because a timing measurement taken at a non-campaign cap is not an endpoint observation.
+
+The TLSF phase runs at `jobs = 4` rather than the `jobs = 1` every other TLSF profile declares, and the pilot matches it. That convention guards RAM, ltlsynt being multi-GB per call against a per-process concurrency cap, and the guard binds on a 30 GB box rather than on av2 and av3 at 125 GB each; the largest tool process observed while piloting was a 9.8 GB `ltl2tgba`, so four concurrent runs peak near 40 GB against 114 GB available. What `jobs = 1` cost was cores: a run there already gets `parallel = 32` and host load still sat near 4, counter being blocked on child processes rather than CPU-bound, which is the same thing the profiler reports as a `proc/read` cpu/wall ratio near 0.01. The runner sets `parallel_k = cpu_count // jobs`, so the thread budget is constant and neither setting oversubscribes.
+
+The concurrency is why the pilot has to run at the campaign's own `jobs`. Each run gets a quarter of the threads, so per-run wall time rises even as throughput improves, and a cap sized at `jobs = 1` would censor — directionally against the treatment arm, which is the failure mode section 8 registers. A first pass of the pilot ran at `jobs = 1` and produced six rows; they were deleted rather than carried forward, because they size a campaign that is no longer the one being run, and because mixing two concurrencies in one cap-sizing dataset would hide exactly the effect the caps exist to bound.
 
 [PILOT NUMBERS PENDING]
 

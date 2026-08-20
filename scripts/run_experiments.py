@@ -1307,9 +1307,12 @@ PROFILES: dict[str, dict] = {
     # landed, the accumulator is on in both arms here, and the ltlsynt budget
     # moves 500 ms to 10000 ms.
     #
-    # jobs = 1, matching the phase it sizes. A pilot run at a different
-    # concurrency measures a different per-run wall time; see the calibration
-    # note in experiments/README.md.
+    # jobs = 4, matching the phase it sizes. A pilot run at a different
+    # concurrency measures a different per-run wall time -- and here the gap is
+    # not contention but an explicit division, the runner giving each counter
+    # parallel = cpu_count // jobs. A first pilot ran at jobs=1 and its rows
+    # were deleted rather than kept: they size a campaign that is no longer the
+    # one being run.
     #
     # Its own CSV and run directory, never ops-tlsf's: these rows are timing
     # measurements at a non-campaign cap and must not merge into the dataset
@@ -1322,9 +1325,11 @@ PROFILES: dict[str, dict] = {
         "repair_modes": None,
         "sweeps": ["O"],
         "levels": {"O": ["opslegacy", "opsfixed"]},
-        # Cheapest first: run_experiments walks this list in order, so a
-        # pilot that turns out unaffordable says so after gyro-var1 and
-        # lift rather than after four humanoid-531 runs.
+        # Order is immaterial: the plan is walked seed-major, so a seed's
+        # specs all run before the next seed's. That is the better property
+        # here anyway -- stopping the pilot early leaves complete (spec, seed)
+        # pairs across both arms rather than a truncated cheapest-first prefix
+        # with the expensive family unmeasured.
         "specs": ["gyro-var1", "lift", "humanoid-531"],
         "seeds": list(range(4)),
         # Deliberately non-binding. A pilot that censors reports its own cap.
@@ -1334,7 +1339,7 @@ PROFILES: dict[str, dict] = {
         "configs_dir": EXPERIMENTS_DIR / "configs-ops-tlsf",
         "results_dir": EXPERIMENTS_DIR / "results-ops-pilot",
         "results_csv": EXPERIMENTS_DIR / "results-ops-pilot.csv",
-        "default_jobs": 1,
+        "default_jobs": 4,
     },
     # ── ops-grammar ─────────────────────────────────────────────────────────
     # The repaired mutation and crossover grammar (sweep O) against the one
@@ -1402,8 +1407,26 @@ PROFILES: dict[str, dict] = {
         "configs_dir": EXPERIMENTS_DIR / "configs-ops-tlsf",
         "results_dir": EXPERIMENTS_DIR / "results-ops-tlsf",
         "results_csv": EXPERIMENTS_DIR / "results-ops-tlsf.csv",
-        # jobs=1 for the same RAM reason as every other TLSF profile.
-        "default_jobs": 1,
+        # jobs=4, breaking with the jobs=1 every other TLSF profile uses, on
+        # measurement rather than on preference. That rule exists because
+        # ltlsynt is multi-GB resident and max_concurrent_realizability is a
+        # per-process cap, so a second counter doubles the ceiling -- which
+        # binds on a 30 GB box and not on av2/av3, which carry 125 GB. The
+        # largest tool process observed during the pilot was a 9.8 GB ltl2tgba,
+        # so four concurrent runs peak near 40 GB against 114 GB available.
+        # The cores are the actual waste: at jobs=1 a run already gets
+        # parallel=32 and host load still sits near 4, because counter blocks on
+        # child processes rather than saturating the CPU -- the same thing the
+        # profiler reports as a proc/read cpu/wall ratio of about 0.01. Nothing
+        # is oversubscribed either way, since the runner sets
+        # parallel_k = cpu_count // jobs, holding the thread budget constant.
+        #
+        # This is why the caps above must come from a pilot run at THIS jobs
+        # value: each run gets a quarter of the threads it had, so per-run wall
+        # time rises even as throughput improves, and a cap sized at jobs=1
+        # would censor -- directionally against the treatment arm, which is the
+        # one failure mode PLAN.md section 8 registers.
+        "default_jobs": 4,
     },
     # FRETISH arm of the same cross, at the gen40/pop1000 operating point the
     # cj-large, metric and ablate-fret campaigns share, so their rows bound what

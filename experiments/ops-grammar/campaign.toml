@@ -37,10 +37,17 @@ jobs = 4
 # run 20.
 hosts = { av2 = "0-14", av3 = "15-29" }
 
-# jobs = 1 for the RAM reason every TLSF profile uses: ltlsynt runs multi-GB per
-# call and max_concurrent_realizability is a per-process cap, so a second
-# concurrent counter would double the ceiling.
+# jobs = 4, against the jobs = 1 every other TLSF profile declares. That rule
+# guards RAM -- ltlsynt is multi-GB per call and max_concurrent_realizability is
+# a per-process cap, so a second counter doubles the ceiling -- and the guard
+# binds on a 30 GB box, not on av2 and av3 with 125 GB each. The largest tool
+# process seen while piloting was a 9.8 GB ltl2tgba, so four concurrent runs peak
+# near 40 GB against 114 GB available. What jobs = 1 was actually costing is
+# cores: a run already gets parallel = 32 there and host load still sat near 4,
+# counter being blocked on child processes rather than CPU-bound. The runner sets
+# parallel_k = cpu_count // jobs, so the thread budget is constant and nothing is
+# oversubscribed.
 [[phases]]
 name = "tlsf"
 profile = "ops-tlsf"
-jobs = 1
+jobs = 4

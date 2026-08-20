@@ -15,9 +15,14 @@ build = "sh -c 'cmake --build build-release && python3 scripts/gen_configs.py --
 # confounded by a host difference.
 hosts = { av2 = "0-1", av3 = "2-3" }
 
-# jobs = 1, matching the phase this sizes. A pilot at a different concurrency
-# measures a different per-run wall time.
+# jobs = 4, matching the phase this sizes, and the match is the whole point: the
+# runner hands each counter parallel = cpu_count // jobs, so a run at jobs=1 gets
+# four times the threads and finishes in a different wall time. A cap sized at
+# the wrong concurrency censors, and PLAN.md section 8 registers that censoring
+# as directional against the treatment arm. An earlier pass of this pilot ran at
+# jobs=1; its rows were deleted rather than kept, since they size a campaign that
+# is no longer the one being run.
 [[phases]]
 name = "pilot"
 profile = "ops-pilot"
-jobs = 1
+jobs = 4

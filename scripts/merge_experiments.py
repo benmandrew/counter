@@ -60,11 +60,16 @@ PROFILE_CSVS: dict[str, str] = {
     # exists -- but the entry stays so the archived CSVs remain mergeable.
     "wellsep-timing": "results-wellsep-timing.csv",
     "arbiter-hp": "results-arbiter-hp.csv",
+    "arbiter-padd": "results-arbiter-padd.csv",
     "ablate-fret": "results-ablate-fret.csv",
     # h2h-tlsf shares ablate-tlsf's CSV (that sharing is its dedup mechanism),
     # so merging under either profile name merges the same rows.
     "ablate-tlsf": "results-ablate-tlsf.csv",
     "h2h-tlsf": "results-ablate-tlsf.csv",
+    # The 2026-08-14 head-to-head, deliberately NOT sharing the above: it runs
+    # 25 families at a 7200s cap where h2h-tlsf ran 12 at 600s, and neither the
+    # corpus nor the cap is in the resume key, so shared rows would collide.
+    "aurus-h2h": "results-aurus-h2h.csv",
     # The 2026-08-20 operator cross; one CSV per path, never shared, since
     # the two paths run different corpora at different operating points. All
     # five profiles are retired -- their sweep varied genetic.repaired_operators,
@@ -91,6 +96,11 @@ PROFILE_CSVS: dict[str, str] = {
     # G's arms are the status grading scale rather than ablate-tlsf's C, and the
     # level names do not overlap.
     "status-grading": "results-status-grading.csv",
+    # Registered here because test_experiment_paths asserts every profile in
+    # run_experiments has both a CSV and a result directory. The profile landed
+    # on main with neither, which `campaign.py collect` would have surfaced as a
+    # KeyError once the campaign finished.
+    "weakening-arbiter": "results-wkarb.csv",
     # The -cm halves share their R half's CSV deliberately: they are the third
     # arm of one design, not a separate campaign, and KEY_FIELDS separates them
     # by sweep and level_name. Merging under either name merges the same file.
@@ -114,9 +124,11 @@ PROFILE_RESULT_DIRS: dict[str, str] = {
     "wellsep": "results-wellsep",
     "wellsep-timing": "results-wellsep-timing",
     "arbiter-hp": "results-arbiter-hp",
+    "arbiter-padd": "results-arbiter-padd",
     "ablate-fret": "results-ablate-fret",
     "ablate-tlsf": "results-ablate-tlsf",
     "h2h-tlsf": "results-ablate-tlsf",
+    "aurus-h2h": "results-aurus-h2h",
     # Retired with their sweep, and kept for the same reason as above.
     "opswk-fret": "results-opswk-fret",
     "opswk-tlsf": "results-opswk-tlsf",
@@ -129,6 +141,7 @@ PROFILE_RESULT_DIRS: dict[str, str] = {
     "replicate-tlsf": "results-replicate-tlsf",
     "arbiter-probe": "results-arbiter-probe",
     "status-grading": "results-status-grading",
+    "weakening-arbiter": "results-wkarb",
     "seldefault-fret": "results-seldefault",
     "seldefault-fret-cm": "results-seldefault",
     "seldefault-tlsf": "results-seldefault-tlsf",

@@ -181,48 +181,140 @@ for field in ("configs_dir", "results_dir", "results_csv"):
 check(P["h2h-tlsf"]["schemes"], ["nsga2-truncate"], "h2h-tlsf control scheme")
 check(P["h2h-tlsf"]["metrics"], ["log"], "h2h-tlsf control metric")
 check(P["h2h-tlsf"]["levels"], {"C": ["default"]}, "h2h-tlsf control level")
-check(P["h2h-tlsf"]["specs"], R.H2H_TLSF_SPECS, "h2h-tlsf corpus")
+check(P["h2h-tlsf"]["specs"], R.H2H_TLSF_SPECS_2026_07, "h2h-tlsf corpus")
+check(P["aurus-h2h"]["specs"], R.H2H_TLSF_READY, "aurus-h2h corpus")
+# The two profiles differ in the two things the resume key does not carry, so
+# they must never share a results CSV: a 600s row and a 7200s row would land
+# under one key and the merge would keep whichever arrived first.
+assert (P["aurus-h2h"]["results_csv"] != P["h2h-tlsf"]["results_csv"]), \
+    "aurus-h2h must not share h2h-tlsf's results CSV"
+check(sorted(set(P["aurus-h2h"]["timeout_caps"].values())), [7200],
+      "aurus-h2h wall cap matches AuRUS's published 2h GATO")
 
-# The head-to-head corpus is the 11 AuRUS-matched ablation families plus the
-# arbiter-aurus import. counter's own arbiter (a different problem from
-# AuRUS's), amba (no AuRUS case study) and takeoff-tlsf (no valid ideals —
-# see EXPERIMENTS.md 2026-07-24) stay out.
-check(len(R.H2H_TLSF_SPECS), 12, "h2h TLSF corpus size")
-# The 2026-07-24 SYNTCOMP promotion grew the ablation corpus to 20, but those
-# ideals are hand-written, not AuRUS-genuine, so the head-to-head must not
-# widen with them.
-for excluded in ("arbiter", "amba", "takeoff-tlsf", "arbiter-handshake",
+# The head-to-head corpus is the AuRUS paper's evaluation set, all 26 rows.
+check(len(R.H2H_TLSF_SPECS), 26, "h2h TLSF corpus size")
+# The July corpus is frozen separately so changing the live list cannot change
+# what the h2h-tlsf profile — that campaign's definition — means.
+check(len(R.H2H_TLSF_SPECS_2026_07), 12, "2026-07 h2h TLSF corpus size")
+# codesample-un1 and codesample-un2 were July rows and are not rows in the
+# paper's tables, so the two corpora differ in both directions. amba is in
+# neither: July excluded it for the path reason, and it is not a paper row
+# either, so it never belonged to the head-to-head under any reading.
+for dropped in ("codesample-un1", "codesample-un2"):
+    assert dropped in R.H2H_TLSF_SPECS_2026_07, \
+        f"{dropped} should be in the 2026-07 corpus"
+    assert dropped not in R.H2H_TLSF_SPECS, \
+        f"{dropped} is not a row in the AuRUS paper's tables"
+assert "amba" not in R.H2H_TLSF_SPECS_2026_07 \
+    and "amba" not in R.H2H_TLSF_SPECS, \
+    "amba is a row in neither head-to-head corpus"
+# counter's own arbiter, detector, full-arbiter and the rest are different
+# parameter instances from AuRUS's, which is why the imports carry an -aurus
+# suffix. The bare names must never appear, or the corpus would assert a
+# correspondence that does not hold.
+for excluded in ("arbiter", "takeoff-tlsf", "arbiter-handshake",
                  "detector", "full-arbiter", "load-balancer",
                  "prioritized-arbiter", "round-robin-arbiter",
                  "simple-arbiter"):
     assert excluded not in R.H2H_TLSF_SPECS, \
         f"{excluded} must not be in the head-to-head corpus"
-assert "arbiter-aurus" in R.H2H_TLSF_SPECS, \
-    "arbiter-aurus missing from the head-to-head corpus"
 
-# aurus_campaign runs AuRUS on exactly the head-to-head corpus, keyed by
-# counter family name so its CSV joins against the h2h-tlsf rows.
+# The declared scope partitions exactly into what counter can run, what is
+# still to be imported, and what is imported but can never be scored. A family
+# imported without being struck off H2H_PENDING_IMPORT fails here rather than
+# silently staying out of the arm, and a holdout dropped from every list fails
+# here rather than vanishing from the corpus.
+check(sorted(R.H2H_TLSF_READY + R.H2H_PENDING_IMPORT + R.H2H_UNSCOREABLE),
+      sorted(R.H2H_TLSF_SPECS),
+      "h2h ready/pending/unscoreable partition the corpus")
+assert not set(R.H2H_TLSF_READY) & set(R.H2H_PENDING_IMPORT), \
+    "a family cannot be both ready and pending import"
+for spec in R.H2H_PENDING_IMPORT:
+    assert spec not in R.TLSF_SPECS, \
+        f"{spec} has a counter family now; strike it off H2H_PENDING_IMPORT"
+
+# aurus_campaign runs AuRUS on the whole declared corpus, keyed by the name
+# each row carries so the eleven with counter families join the h2h rows.
 import aurus_campaign as A  # noqa: E402
 check(sorted(A.SPEC_TLSF), sorted(R.H2H_TLSF_SPECS),
       "aurus_campaign covers the head-to-head corpus")
-check(A.SPEC_TLSF["arbiter-aurus"], "arbiter/arbiter.tlsf",
+check(A.SPEC_TLSF["arbiter-aurus"], "case-studies/arbiter/arbiter.tlsf",
       "arbiter-aurus maps to AuRUS's arbiter case study")
+# The paper files Lily02 under SYNTCOMP, and that copy carries the five
+# references the row is scored against; the top-level case-studies/lily02 is a
+# separate one-reference setup with a byte-identical spec.
+check(A.SPEC_TLSF["lily02"],
+      "case-studies/syntcomp-unreal/lily02/lilydemo02.tlsf",
+      "lily02 maps to the paper's SYNTCOMP row, not the top-level copy")
+# The four SYNTECH15 rows the paper takes from examples/ are the reason
+# SPEC_TLSF paths are rooted at <aurus-root> rather than <aurus-root>/
+# case-studies: the case-studies-relative form could not name them at all.
+assert A.SPEC_TLSF["pcar-v2-888"].startswith("examples/icse2019/"), \
+    "pcar-v2-888 maps into AuRUS's examples/ tree, not case-studies"
 
-# aurus_validate scores implies_genuine against examples/<spec>/fixes for
-# every campaign family, so each must exist and hold .tlsf ideals — a missing
-# or empty fixes dir silently records "unknown" for the whole family. And its
-# compare parsing must stay the shared run_experiments function (imported, not
-# copied), or implies_genuine drifts from implies_ideal.
+# -onlyInputsA is matched per group against the AuRUS authors' own drivers, so
+# a typo in a name would silently drop the flag for that spec rather than fail.
+assert A.ONLY_INPUTS_A <= set(A.SPEC_TLSF), \
+    f"unknown specs in ONLY_INPUTS_A: {A.ONLY_INPUTS_A - set(A.SPEC_TLSF)}"
+check(len(A.ONLY_INPUTS_A), 9, "specs run with -onlyInputsA")
+# -factors takes three values at 3f6f01f (STATUS,SYN,SEMANTIC), and
+# Settings.setFactors halves the semantic weight into LOST_MODELS and
+# WON_MODELS. A four-value spelling belongs to this project's fork, where the
+# semantic weight was split in two, and prints usage and exits against the
+# base -- so it would produce a campaign of zero-solution rows.
+ga_factors = [f for f in A.BASE_FLAGS if f.startswith("-factors=")]
+check(ga_factors, ["-factors=0.7,0.1,0.2"],
+      "uniform GA factors at the base three-value CLI")
+# Guarantee removal appears in none of the drivers and must stay off.
+assert not any("removeG" in f for f in A.flags_for("arbiter-aurus")), \
+    "AuRUS must not be run with -removeGuarantees"
+
+# aurus_validate scores implies_genuine against examples/<spec>/fixes, so every
+# family it scores must exist and hold .tlsf ideals — a missing or empty fixes
+# dir silently records "unknown" for the whole family rather than erroring. The
+# scorable set is H2H_TLSF_READY, not the whole corpus: AuRUS runs all 26 and
+# the pending imports have no counter family to score against yet, which is
+# what H2H_PENDING_IMPORT records. And the compare parsing must stay the shared
+# run_experiments function (imported, not copied), or implies_genuine drifts
+# from implies_ideal.
 import aurus_validate as V  # noqa: E402
-for spec in A.SPEC_TLSF:
+for spec in R.H2H_TLSF_READY:
     fixes = R.EXAMPLES_DIR / spec / "fixes"
     assert any(fixes.glob("*.tlsf")), f"no .tlsf ideals in {fixes}"
+for spec in R.H2H_PENDING_IMPORT:
+    assert not (R.EXAMPLES_DIR / spec).is_dir(), \
+        f"examples/{spec}/ exists; strike it off H2H_PENDING_IMPORT"
+# The unscoreable ones are the opposite shape: imported, so the spec is there,
+# but deliberately without ideals. Asserting the absence of fixes/ is what
+# stops one being quietly authored later and the family staying held out
+# anyway -- if an ideal ever becomes possible, this fails and forces the
+# holdout to be revisited rather than silently outliving its reason.
+for spec in R.H2H_UNSCOREABLE:
+    assert (R.EXAMPLES_DIR / spec / "spec.tlsf").is_file(), \
+        f"examples/{spec}/spec.tlsf missing; H2H_UNSCOREABLE is for " \
+        f"imported families, not pending ones"
+    assert not any((R.EXAMPLES_DIR / spec / "fixes").glob("*.tlsf")), \
+        f"examples/{spec}/fixes/ has ideals; if one is valid, move {spec} " \
+        f"out of H2H_UNSCOREABLE"
+assert not (set(R.H2H_PENDING_IMPORT) & set(R.H2H_UNSCOREABLE)), \
+    "a family cannot be both pending and unscoreable"
+for spec in R.H2H_UNSCOREABLE + R.H2H_PENDING_IMPORT:
+    assert spec in R.H2H_TLSF_SPECS, \
+        f"{spec} is held out of a corpus it is not in"
+    assert spec not in R.H2H_TLSF_READY, f"{spec} is both held out and ready"
 assert V.parse_compare_output is R.parse_compare_output, \
     "aurus_validate must reuse run_experiments.parse_compare_output"
 
-# merge_experiments mirrors the per-profile CSV names; the ablation profiles
-# must be present there, with h2h-tlsf pointing at ablate-tlsf's CSV.
-for name in ("ablate-fret", "ablate-tlsf", "h2h-tlsf"):
+# merge_experiments mirrors the per-profile CSV names and result directories,
+# in two separate tables that nothing but this ties together. Over every profile
+# rather than a named few: aurus-h2h was added to PROFILE_CSVS alone and the
+# omission surfaced as a KeyError from `campaign.py collect`, after the campaign
+# had finished, which is the worst moment to discover it.
+for name in P:
+    assert name in M.PROFILE_CSVS, \
+        f"profile {name} is missing from merge_experiments.PROFILE_CSVS"
+    assert name in M.PROFILE_RESULT_DIRS, \
+        f"profile {name} is missing from merge_experiments.PROFILE_RESULT_DIRS"
     check(M.PROFILE_CSVS[name], P[name]["results_csv"].name,
           f"merge CSV for {name}")
     check(M.PROFILE_RESULT_DIRS[name], P[name]["results_dir"].name,

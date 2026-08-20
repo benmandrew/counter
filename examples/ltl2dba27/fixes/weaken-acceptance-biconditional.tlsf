@@ -1,0 +1,41 @@
+// Hand-written weakening ideal.
+//
+// The specification is unrealizable because the biconditional forces the
+// system to decide `F G !p` — a property of the whole infinite future of an
+// input — at every point at which it chooses `acc`. Emitting `acc` forever
+// loses whenever the environment holds `p` high forever; withholding it
+// forever loses whenever the environment drops `p` forever.
+//
+// AuRUS's own repairs for this example (case-studies/syntcomp-unreal/
+// ltl2dba27/genuine/ltl2dba{22,24}.tlsf) replace `F G !p` with `G p` and
+// `F p` respectively, which are unrelated properties rather than weakenings:
+// take p always true and acc always false, and the original biconditional
+// holds while ltl2dba22's does not. They are other Acacia+ benchmark
+// instances, not repairs of this one.
+//
+// Dropping the right-to-left direction keeps the liveness intent — an
+// eventually-quiet input is still acknowledged infinitely often — and
+// discards only the obligation to withhold `acc` on the strength of an
+// unobservable future.
+INFO {
+  TITLE:       "LTL -> DBA  -  Example 27"
+  DESCRIPTION: "One of the Acacia+ example files"
+  SEMANTICS:   Mealy
+  TARGET:      Mealy
+}
+
+MAIN {
+
+  INPUTS {
+    p;
+  }
+
+  OUTPUTS {
+    acc;
+  }
+
+  GUARANTEES {
+    F G !p -> G F acc;
+  }
+
+}

@@ -138,6 +138,9 @@ Binaries
 ``mucs``
   Extracts a minimal unrealisable core from a TLSF specification.  TLSF only.
 
+``maximal``
+  Reports which specifications in a set are maximal under the implication order, then quotients the survivors by mutual implication.  Takes any directory of TLSF files, so a foreign tool's output can be measured on the definition ``counter`` applies to its own.  TLSF only.
+
 ``signal_tracer`` is an internal helper rather than a user-facing tool: the crash handler runs it out-of-process to symbolise a stack trace, because unwinding in-process from a signal handler is not safe. Run any of the others with ``--help`` for its options, or with ``--version`` for the commit it was built from.
 
 External tools

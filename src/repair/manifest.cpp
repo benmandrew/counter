@@ -76,7 +76,12 @@ namespace {
 // 15 removed genetic.repaired_operators. The repaired grammar is now the only
 // one, so the key no longer selects anything; a manifest at this version or
 // later was written by a binary that has only that grammar.
-constexpr int k_schema_version = 15;
+//
+// 16 added n_ltlsynt_capability_errors. Before it, an ltlsynt run that reported
+// a limit of its own instead of a verdict ended the run and no manifest was
+// written at all; from this version the query resolves as undecided and this
+// field is the only record that it happened.
+constexpr int k_schema_version = 16;
 
 // The inverse of the spellings config_io.cpp parses. It has no table to
 // borrow -- it only ever goes string to enum -- so these must be kept in step
@@ -315,6 +320,10 @@ void write_run_manifest(const std::string& output_dir,
         // repair happened to survive to the last generation, so it is read
         // against the config key rather than on its own.
         {"n_accumulated_repairs", AccumulatorStats::n_contributed},
+        // ltlsynt calls that reported SPOT's acceptance-set ceiling rather than
+        // a verdict, resolved as undecided rather than ending the run.
+        {"n_ltlsynt_capability_errors",
+         RealizabilityChecker::n_capability_errors},
         // Well-separation queries that raised instead of answering, resolved as
         // undecided (the candidate is dropped) rather than propagating.
         {"n_well_separation_errors", WellSeparationStats::n_errors.load()},

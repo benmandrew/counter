@@ -1,0 +1,26 @@
+// Ported from AuRUS's reference repair, case-studies/syntcomp-unreal/
+// detector/genuine/detector_2.tlsf, lowered with `syfco -f basic`.
+//
+// It drops the injected guarantee `G ((r_0 && r_1) -> G !g)`, which locks the
+// grant out forever from the first step at which both requests coincide. That
+// conflicts with the acceptance biconditional, since an environment that pulses
+// both requests forever demands `G F g` and forbids it in the same breath.
+INFO {
+  TITLE:       "Parameterized Input Monitor"
+  DESCRIPTION: "Checks whether all input signals are eventually true"
+  SEMANTICS:   Mealy
+  TARGET:      Mealy
+}
+
+MAIN {
+  INPUTS {
+    r_0;
+    r_1;
+  }
+  OUTPUTS {
+    g;
+  }
+  GUARANTEE {
+    (((G (F (r_0))) && (G (F (r_1)))) <-> (G (F (g))));
+  }
+}

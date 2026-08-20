@@ -104,6 +104,39 @@ TLSF_SPECS: dict[str, dict[str, Path]] = {
     "prioritized-arbiter": _spec("prioritized-arbiter", "tlsf"),
     "round-robin-arbiter": _spec("round-robin-arbiter", "tlsf"),
     "simple-arbiter": _spec("simple-arbiter", "tlsf"),
+    # Imported from AuRUS's case-studies/syntcomp-unreal/ for the 2026-08-14
+    # head-to-head. Its upstream "genuine" repairs are other Acacia+ instances
+    # rather than weakenings of it, so the ideal beside it is hand-written.
+    "ltl2dba27": _spec("ltl2dba27", "tlsf"),
+    # The full-TLSF half of the AuRUS corpus, imported 2026-08-17. counter's
+    # parser rejects the GLOBAL block these carry, so each spec.tlsf is the
+    # `syfco -f basic` lowering of its source rather than a copy of it. Six
+    # took their ideal from the upstream genuine/ directory, where the repair
+    # is the spec with its single injected guarantee deleted; ltl2dba-r-2 and
+    # ltl2dba-theta-2 have no upstream reference at all and their ideals are
+    # hand-written on the ltl2dba27 pattern. The -aurus suffix is load-bearing
+    # throughout: this project already has same-named families at different
+    # SYNTCOMP parameter instances, and they are not these.
+    "detector-aurus": _spec("detector-aurus", "tlsf"),
+    "full-arbiter-aurus": _spec("full-arbiter-aurus", "tlsf"),
+    "load-balancer-aurus": _spec("load-balancer-aurus", "tlsf"),
+    "prioritized-arbiter-aurus": _spec("prioritized-arbiter-aurus", "tlsf"),
+    "round-robin-arbiter-aurus": _spec("round-robin-arbiter-aurus", "tlsf"),
+    "simple-arbiter-aurus": _spec("simple-arbiter-aurus", "tlsf"),
+    "ltl2dba-r-2": _spec("ltl2dba-r-2", "tlsf"),
+    "ltl2dba-theta-2": _spec("ltl2dba-theta-2", "tlsf"),
+    # The basic-TLSF half of the same corpus, imported 2026-08-17 verbatim --
+    # these parse as they stand, so each spec.tlsf is byte-identical to its
+    # AuRUS source. None had an upstream reference repair, so every ideal here
+    # is hand-written. humanoid-741 is imported but absent from this table and
+    # has no fixes/ dir at all: see H2H_UNSCOREABLE for why no valid ideal
+    # exists for it.
+    "lily11": _spec("lily11", "tlsf"),
+    "lily15": _spec("lily15", "tlsf"),
+    "lily16": _spec("lily16", "tlsf"),
+    "humanoid-503": _spec("humanoid-503", "tlsf"),
+    "humanoid-742": _spec("humanoid-742", "tlsf"),
+    "pcar-v2-888": _spec("pcar-v2-888", "tlsf"),
 }
 
 # The original six-family TLSF corpus. The pre-ablation TLSF profiles (tlsf,
@@ -168,19 +201,93 @@ def scaled_wall_caps(factor: float) -> dict[str, int]:
             for spec, cap in TLSF_WALL_CAPS_GEN10.items()}
 
 
-# The 12-family AuRUS head-to-head corpus: the 11 ablation families with an
-# AuRUS case-studies match, plus arbiter-aurus (imported from the AuRUS tree
-# so both tools solve the same spec — counter's own arbiter is a hand-written
-# GR(1) mutex, a different problem from AuRUS's request-response arbiter, and
-# stays in the ablation corpus only). amba has no AuRUS case study.
-# takeoff-tlsf was imported for the head-to-head but is excluded: both of its
-# upstream "genuine" fixes are invalid (one truncated, one unsatisfiable), so
-# the family has no ideals to score implies_ideal against — see EXPERIMENTS.md
-# 2026-07-24. The list is explicit rather than derived from
-# TLSF_ABLATION_SPECS so growing the ablation corpus (e.g. the 2026-07-24
-# SYNTCOMP promotion, whose ideals are hand-written, not AuRUS-genuine) cannot
-# silently widen the head-to-head.
+# The head-to-head corpus IS the AuRUS paper's evaluation set: the 26
+# specifications the paper's tables evaluate. Both arms target all 26, so this
+# is the campaign's declared scope rather than whatever counter happens to be
+# able to run today. The paths live in `SPEC_TLSF` in
+# scripts/aurus_campaign.py and the two are held equal by
+# test_experiment_paths.py; that module imports this one, so the names are
+# written here and the paths there rather than either importing the other.
+#
+# amba, codesample-un1 and codesample-un2 were in the 2026-07 corpus and are
+# not rows in the paper's tables, so they leave the head-to-head. They keep
+# their counter families and ideals for the ablation corpus.
+#
+# takeoff-tlsf never entered, on the older ground that both of its upstream
+# "genuine" fixes are invalid (one truncated, one unsatisfiable) — see
+# EXPERIMENTS.md 2026-07-24.
 H2H_TLSF_SPECS: list[str] = [
+    # Literature (5)
+    "arbiter-aurus", "lift", "minepump", "rg1", "rg2",
+    # SYNTCOMP (13)
+    "detector-aurus", "full-arbiter-aurus", "lily02", "lily11", "lily15",
+    "lily16", "load-balancer-aurus", "ltl2dba-r-2", "ltl2dba-theta-2",
+    "ltl2dba27", "prioritized-arbiter-aurus", "round-robin-arbiter-aurus",
+    "simple-arbiter-aurus",
+    # SYNTECH15 (8)
+    "gyro-var1", "gyro-var2", "humanoid-458", "humanoid-503", "humanoid-531",
+    "humanoid-741", "humanoid-742", "pcar-v2-888",
+]
+
+# The gap between the declared scope above and what counter can currently run,
+# named rather than silently subtracted. A family lands here until it has an
+# `examples/<name>/` with a spec and at least one lint-clean ideal; the counter
+# arm runs `H2H_TLSF_SPECS` minus this list, and `test_experiment_paths.py`
+# asserts the two partition exactly, so importing a family fails that test
+# until it is struck off here.
+#
+# Two obstacles, neither structural. Seven parse today but have no reference
+# repairs upstream, so each needs a hand-written weakening ideal: lily11,
+# lily15, lily16, humanoid-503, humanoid-741, humanoid-742, pcar-v2-888. The
+# other eight are full-format TLSF that counter's parser rejects on the GLOBAL
+# block; `syfco -f basic` lowers them to a form it parses, and AuRUS ships one
+# at lib/syfco. Six of those eight do carry upstream references, though AuRUS
+# references replace rather than weaken as a rule, so each still needs
+# validating with lint-ideals before it can serve as an ideal.
+#
+# Nothing here blocks the AuRUS arm, which runs all 26 regardless and archives
+# every out.txt, so an import re-scores runs that already exist.
+H2H_PENDING_IMPORT: list[str] = []
+
+# Imported, but permanently unscoreable, so held out of the counter arm rather
+# than left pending as though an import would fix it.
+#
+# humanoid-741's own input is ill-separated: both ASSUME conjuncts constrain
+# the environment relative to the robot's own outputs, and the robot can force
+# them false (entering move mode 11 once and never returning defeats
+# `G(nmm=11 -> F(!obstacle && nmm=11))`). That is unreachable for the operators
+# to fix, not merely hard. Well-separation reads the assumption side alone, so
+# removing a guarantee cannot affect it, and the only assumption-side move is
+# appending an ASSUME conjunct -- which strengthens the conjunction and can
+# only make it easier to force false. Every descendant is therefore
+# ill-separated too, the output gate rejects all of them, and the family would
+# contribute a guaranteed zero to the counter arm while costing a full seed
+# sweep to produce it.
+#
+# Note this is not the FRETISH input-screen case in the root CLAUDE.md, where
+# an ill-separated input is warned about rather than rejected because a
+# descendant may fix the property. On the TLSF assumption side no descendant
+# can. A semantically sound repair does exist -- dropping the `G(!next_head)`
+# ASSERT that `mucs` names makes it realizable -- but it is outside the
+# operators' image, so no ideal built on it would be a fair target either.
+#
+# AuRUS produced zero repairs for this family across all 30 repeats, which is
+# consistent with the same obstruction rather than with a budget limit.
+H2H_UNSCOREABLE: list[str] = ["humanoid-741"]
+
+# What the counter arm can run right now.
+H2H_TLSF_READY: list[str] = [
+    s for s in H2H_TLSF_SPECS
+    if s not in H2H_PENDING_IMPORT and s not in H2H_UNSCOREABLE
+]
+
+# The corpus the 2026-07-24 head-to-head actually ran, frozen so that changing
+# the live list above cannot retroactively change what the `h2h-tlsf` profile
+# means. That profile is the July campaign's definition and nothing else runs
+# it; the 2026-08-14 campaign uses `aurus-h2h` instead. Written out rather than
+# derived from H2H_TLSF_SPECS: it was derived once, and moving the live corpus
+# to the paper's 26 rows silently carried this to 25.
+H2H_TLSF_SPECS_2026_07: list[str] = [
     "gyro-var1", "gyro-var2", "humanoid-458", "humanoid-531", "lift",
     "lily02", "minepump", "codesample-un1", "codesample-un2", "rg1", "rg2",
     "arbiter-aurus",
@@ -879,13 +986,53 @@ PROFILES: dict[str, dict] = {
         "repair_modes": None,
         "sweeps": ["C"],
         "levels": {"C": ["default"]},
-        "specs": H2H_TLSF_SPECS,
+        "specs": H2H_TLSF_SPECS_2026_07,
         "seeds": list(range(20)),
-        "timeout_caps": {s: 600 for s in H2H_TLSF_SPECS},
+        "timeout_caps": {s: 600 for s in H2H_TLSF_SPECS_2026_07},
         "baseline_aliases": {},
         "configs_dir": EXPERIMENTS_DIR / "configs-ablate-tlsf",
         "results_dir": EXPERIMENTS_DIR / "results-ablate-tlsf",
         "results_csv": EXPERIMENTS_DIR / "results-ablate-tlsf.csv",
+        "default_jobs": 1,
+    },
+    # The 2026-08-14 head-to-head. Separate from `h2h-tlsf` in every path it
+    # writes, because it differs from that profile in the two things the resume
+    # key does not carry: the corpus is 25 scoreable families rather than 12,
+    # and the wall cap is 7200s rather than 600s. Sharing ablate-tlsf's CSV as
+    # `h2h-tlsf` does would put rows from both caps under one key and let the
+    # merge keep whichever arrived first.
+    #
+    # 7200s matches AuRUS's `--gato 7200`, the published 2 h budget. The July
+    # campaign ran counter at 600s against AuRUS at 3600s and reported the 6x
+    # asymmetry as favouring the baseline; this one removes the asymmetry
+    # instead, so neither tool's figure needs that caveat and neither compares
+    # to July's on cost.
+    "aurus-h2h": {
+        # Both of these track the built-in defaults rather than pinning an
+        # arm, because a head-to-head has to run counter as it ships: a
+        # baseline comparison against a configuration no user gets by
+        # default measures the wrong thing. nsga2-apportion became the
+        # default in c71ecf0 and this profile followed it; `log` has been
+        # the default metric throughout. Re-check both against
+        # include/config.hpp whenever a default moves.
+        "schemes": ["nsga2-apportion"],
+        "weakenings": None,
+        "metrics": ["log"],
+        "repair_modes": None,
+        "sweeps": ["C"],
+        "levels": {"C": ["default"]},
+        # H2H_TLSF_READY, not H2H_TLSF_SPECS: the campaign's declared scope is
+        # all 26, and the counter arm runs the subset already imported. The
+        # remainder is named in H2H_PENDING_IMPORT rather than subtracted
+        # silently, and topping up as families land is a resume rather than a
+        # re-run, (spec, seed) being in the key.
+        "specs": H2H_TLSF_READY,
+        "seeds": list(range(20)),
+        "timeout_caps": {s: 7200 for s in H2H_TLSF_READY},
+        "baseline_aliases": {},
+        "configs_dir": EXPERIMENTS_DIR / "configs-aurus-h2h",
+        "results_dir": EXPERIMENTS_DIR / "results-aurus-h2h",
+        "results_csv": EXPERIMENTS_DIR / "results-aurus-h2h.csv",
         "default_jobs": 1,
     },
     # nsga2 vs nsga2-replicate on FRETISH, at the gen40/pop1000 operating point

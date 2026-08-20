@@ -436,6 +436,7 @@ name = "arbiter-probe"          # must equal the directory name
 branch = "feat/arbiter-probe"   # the branch every host runs from
 profile = "arbiter-probe"       # default profile for phases that omit one
 build = "cmake --build build-release"   # optional; this is the default
+configs = "python3 scripts/gen_configs.py --sweeps C --out-dir experiments/configs-arbiter-probe"   # optional; no default
 hosts = { av2 = "0-99", av3 = "100-199" }
 
 [[phases]]
@@ -447,6 +448,13 @@ profile = "tlsf"
 jobs = 1
 hosts = { av2 = "0-24", av3 = "100-124" }   # this phase alone
 ```
+
+`configs` is the `gen_configs.py` line this campaign needs. `stage` runs it on
+each host after the build and before the version check, and then checks that
+every profile the phases name has a configs directory holding at least one
+`.toml` — that check runs whether or not the key is declared, because
+`run_experiments.py` exits 1 on an empty one and a queued campaign otherwise
+spends its attempts finding out.
 
 A phase takes `profile`, `jobs`, and optionally `name`, `sweeps`, `specs` and
 `hosts`; `[[phases]]` headers mean the same as the inline array. Seed ranges are
@@ -490,8 +498,9 @@ python scripts/campaign.py stage arbiter-probe --force     # asks before it does
 ```
 
 Pushes the branch, then per host fetches it, checks it out at the pushed commit,
-runs the build command and reads `build-release/counter --version` back to
-confirm the binary carries that commit with `dirty=0`.
+runs the build command, runs the `configs` command and checks the configs
+directories, and reads `build-release/counter --version` back to confirm the
+binary carries that commit with `dirty=0`.
 
 It refuses by default on three readings, all three reported at once: a dirty
 checkout, a live `counter` or `run_experiments.py` process, and a checkout on
@@ -643,6 +652,12 @@ commit they did not come from — is flagged with `*` on BINARY.
 An unreachable host prints a row saying so rather than aborting the poll, and
 sets a non-zero exit status, so a wrapper can tell a full poll from a partial
 one.
+
+The tables are coloured on a terminal and plain anywhere else, so a redirected
+poll and the cron tick's log stay readable. `--no-color`, on every verb that
+prints a table, and a non-empty `NO_COLOR` in the environment both turn it off;
+`CLICOLOR_FORCE=1` forces it on down a pipe, which is what `less -R` wants.
+`--json` is never coloured.
 
 ### Collecting a finished one
 

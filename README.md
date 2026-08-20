@@ -38,6 +38,7 @@ The example is a grant arbiter that must answer every request within three ticks
 | `ltl <spec>...` | print the LTL formulae a specification translates to |
 | `compare --repairs <dir> --ideals <dir>` | compare repairs against known-ideal ones |
 | `mucs <spec.tlsf>` | extract a minimal unrealisable core from a TLSF spec |
+| `maximal <dir-or-file>...` | report which TLSF specifications of a set are maximal under the implication order |
 
 A `<spec>` is either a FRETISH `.json` or a `.tlsf` file.
 

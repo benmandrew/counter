@@ -29,6 +29,7 @@ import importlib
 import io
 import json
 import os
+import re
 import shutil
 import signal
 import subprocess
@@ -651,6 +652,52 @@ try:
     check(campaign["phases"][0]["profile"], "tlsf", "the phase profile")
     check(campaign["build"], C.DEFAULT_BUILD_CMD, "the build command defaults")
 
+    # `configs` is optional and has no default: there is no command that is
+    # right for every campaign, and gen_configs.py run with the wrong flags is
+    # worse than not run at all. The check that follows it is not optional,
+    # which is the half that covers the declarations written before the key.
+    check(campaign["configs"], None, "and configs defaults to no command")
+    check(campaign["config_dirs"],
+          [C.profile_configs_dir("tlsf")],
+          "with the phase's own configs directory derived for the check")
+    check_true(not Path(campaign["config_dirs"][0]).is_absolute(),
+               "relative, since the absolute form names this machine's home "
+               "directory and the check runs on somebody else's")
+
+    write_declaration(decl_root, "gen", DECLARATION
+                      .replace("arbiter-probe", "gen")
+                      .replace('profile = "gen"', 'profile = "tlsf"')
+                      + '\nconfigs = "python3 scripts/gen_configs.py --x"\n')
+    check(C.load_campaign("gen", decl_root)["configs"],
+          "python3 scripts/gen_configs.py --x",
+          "a declared configs command is carried through")
+
+    for bad, why in (('configs = ""', "an empty configs command"),
+                     ("configs = 3", "a configs key that is not a string"),
+                     ("configs = true", "a configs key that is a flag")):
+        got = declaration_error(decl_root, "badconfigs", f"""
+name = "badconfigs"
+branch = "feat/x"
+hosts = {{ av2 = "0-1" }}
+phases = [ {{ profile = "full", jobs = 1 }} ]
+{bad}
+""")
+        check_true("configs must be a non-empty string" in got,
+                   f"{why} must be refused ({got!r})")
+
+    # Every profile the phases name, not only the campaign-level default: the
+    # second phase's configs directory is the one nothing else would check.
+    write_declaration(decl_root, "twoprofiles", """
+name = "twoprofiles"
+branch = "feat/x"
+hosts = { av2 = "0-1" }
+phases = [ { profile = "full", jobs = 1 }, { profile = "tlsf", jobs = 1 } ]
+""")
+    two = C.load_campaign("twoprofiles", decl_root)
+    check(two["config_dirs"],
+          sorted({C.profile_configs_dir("full"), C.profile_configs_dir("tlsf")}),
+          "a campaign straddling two profiles checks both configs directories")
+
     # The error worth the most noise. Overlapping ranges cost twice the machine
     # time and yield one row per key, so the campaign is smaller and slower
     # than it says while every table reads normal.
@@ -1183,8 +1230,11 @@ check(len(C.stage_refusals(host_probe(dirty=[" M x"], processes=[
     {"comm": "counter", "profile": None}]), "feat/other")), 3,
     "and all three are reported at once, not one per attempt")
 
-apply_forced = C.stage_apply_script("/r", "feat/x", "s" * 40, "make", True)
-apply_plain = C.stage_apply_script("/r", "feat/x", "s" * 40, "make", False)
+apply_forced = C.stage_apply_script("/r", "feat/x", "s" * 40, "make",
+                                    "gen --out x", ["experiments/configs"],
+                                    True)
+apply_plain = C.stage_apply_script("/r", "feat/x", "s" * 40, "make", None,
+                                   ["experiments/configs"], False)
 check_true("checkout -f" in apply_forced,
            "--force discards tracked modifications")
 check_true("checkout -f" not in apply_plain,
@@ -1193,11 +1243,96 @@ check_true("git clean" not in apply_forced,
            "no git clean, ever: a host's untracked files are its results")
 check_true("rev-list --count" in apply_plain,
            "an unforced stage refuses a checkout ahead of the pushed commit")
+check_true('if [ "1" = "0" ]' in apply_forced,
+           "and a forced one leaves that guard unreachable")
 check_true(" -- -B " not in apply_plain,
            "`git checkout -- -B x` would read -B as a path name")
 check_true("| tail" not in apply_forced.split("@")[0] + apply_forced,
            "a build piped into tail reports tail's exit status, so a failed "
            "build would read as a staged host")
+
+# The configs step: the declared command reaches the script, runs after the
+# build and before the version read, and the check runs either way.
+check_true("( gen --out x )" in apply_forced,
+           "the declared configs command reaches the apply script, in a "
+           "subshell so `! a && b` cannot bind the negation to half a chain")
+check_true("gen --out x" not in apply_plain,
+           "and a campaign declaring none gets no command")
+positions = [apply_forced.index(s)
+             for s in ("make", "gen --out x", "--version")]
+check(positions, sorted(positions),
+      "configs run after the build and before the binary is asked its commit, "
+      "so a generator failure reports as itself")
+check_true("##CONFIGS" in apply_forced and "##CONFIGS" in apply_plain,
+           "and the step has its own marker section on both paths")
+for script, why in ((apply_forced, "with a command"),
+                    (apply_plain, "and without one")):
+    check_true("no config files under" in script,
+               f"the configs check runs {why}: a declaration written before "
+               f"the key existed is exactly the case that broke")
+    check_true("find \"$cfgdir\" -name '*.toml' -print -quit" in script,
+               "the check is a find, stopping at the first hit")
+    check_true("for cfgdir in experiments/configs" in script,
+               "over the profile's own configs directory, named as a path the "
+               "host can resolve under its own checkout")
+    # zsh's default NOMATCH aborts the whole script where a pattern matches
+    # nothing -- which is precisely the state being tested for -- and every
+    # section below it then vanishes with no error anybody reads.
+    check_true("-name '*.toml'" in script,
+               "the glob is quoted, so zsh cannot expand it and abort")
+    for line in script.splitlines():
+        stripped = line.strip()
+        if "*.toml" in stripped:
+            check_true("'*.toml'" in stripped or '"*.toml"' in stripped,
+                       f"every *.toml is quoted, not just the first: {line!r}")
+check_true(C.configs_block(None, ["a b", "c"]).count("'a b'") == 1,
+           "a configs directory with a space in it survives the substitution")
+
+# And functionally, under the shell that would break it. ssh hands the script
+# to the lab login shell, which is zsh, and zsh's default NOMATCH never lets an
+# unquoted `*.toml` mean what it means in sh: with nothing matching it the find
+# is skipped outright and the check reads as a missing configs directory, and
+# with a stray .toml in the working directory it expands to that name and the
+# find searches for the wrong one. Both readings are the same wrong answer.
+if shutil.which("zsh"):
+    nomatch_root = Path(tempfile.mkdtemp(prefix="campaign-nomatch-"))
+    try:
+        block = C.configs_block(None, ["cfg"]).replace("@M@", C.MARK)
+        script = block + 'echo "##END"\n'
+        for made, want_end, why in (
+                ([], False, "an absent directory stops at the error"),
+                (["cfg/notes.txt"], False, "and so does one with no .toml"),
+                (["cfg/a/b.toml"], True, "a .toml anywhere under it passes")):
+            shutil.rmtree(nomatch_root / "cfg", ignore_errors=True)
+            for rel in made:
+                (nomatch_root / rel).parent.mkdir(parents=True, exist_ok=True)
+                (nomatch_root / rel).write_text("x\n")
+            proc = subprocess.run(["zsh", "-c", script], cwd=nomatch_root,
+                                  capture_output=True, text=True)
+            check_true(("##END" in proc.stdout) is want_end,
+                       f"under zsh, {why}: {proc.stdout!r} {proc.stderr!r}")
+            if not want_end:
+                check_true("no config files under" in proc.stdout
+                           and proc.returncode == 10,
+                           f"with the check's own message and status, not a "
+                           f"shell abort: {proc.stdout!r} {proc.stderr!r}")
+
+        # The quoting is load-bearing, and zsh says so: the same block with the
+        # pattern unquoted refuses a directory that does hold configs, because
+        # the stray .toml beside it is what the pattern expanded to.
+        (nomatch_root / "stray.toml").write_text("x\n")
+        broken = script.replace("-name '*.toml'", "-name *.toml")
+        check_true(broken != script, "the unquoted variant differs")
+        for variant, want_end, why in ((script, True, "quoted"),
+                                       (broken, False, "unquoted")):
+            proc = subprocess.run(["zsh", "-c", variant], cwd=nomatch_root,
+                                  capture_output=True, text=True)
+            check_true(("##END" in proc.stdout) is want_end,
+                       f"the {why} pattern reads the directory "
+                       f"{'right' if want_end else 'wrong'} under zsh: "
+                       f"{proc.stdout!r} {proc.stderr!r}")
+    finally:
+        shutil.rmtree(nomatch_root, ignore_errors=True)
 
 
 # ── stage and start, end to end against a throwaway checkout ──────────────────
@@ -1232,6 +1367,10 @@ def make_repo(root: Path, name: str, declaration: str, branch: str) -> None:
     origin = root.with_name(root.name + "-origin.git")
     subprocess.run(["git", "init", "-q", "--bare", str(origin)], check=True)
     git(root, "remote", "add", "origin", str(origin))
+    # Generated configs are untracked on a real host, and have to be untracked
+    # here too: tracked, a `git add -A` on one branch would take them away
+    # again on the next checkout, which is a state no lab machine is ever in.
+    (root / ".gitignore").write_text("experiments/configs*/\n")
     write_declaration(root, name, declaration)
     git(root, "add", "-A")
     # --no-verify: a globally configured core.hooksPath would otherwise run
@@ -1350,6 +1489,25 @@ try:
           "and the checkout is untouched")
     git(repo, "checkout", "-q", "--", ".")
 
+    # A host that is clean, idle and on the campaign's own branch yields no
+    # refusal from the probe, and --force must still take effect on it. The
+    # apply script declines a fourth thing the probe cannot see -- a checkout
+    # ahead of the target commit, which needs the fetch to detect -- so a
+    # --force that only engaged when a probe-level refusal existed was inert
+    # for exactly this host, and skipped the confirmation with it. That is the
+    # state a rebased branch leaves every staged machine in.
+    buffer = io.StringIO()
+    with contextlib.redirect_stdout(buffer):
+        code = C.cmd_stage(stage_args(force=True, dry_run=False))
+    check(code, 1, "--force on an unrefused host still needs confirming")
+    check_true("needs a terminal" in buffer.getvalue(),
+               "so it refuses without a terminal rather than staging quietly")
+    buffer = io.StringIO()
+    with contextlib.redirect_stdout(buffer):
+        code = C.cmd_stage(stage_args(force=True))
+    check_true("(--force)" in buffer.getvalue(),
+               "and a forced dry run says so even with nothing to refuse")
+
     # The whole apply path, against a stub binary that reports the commit its
     # checkout is on: push, fetch, checkout, build, and the version read back.
     # The last step is the one that matters -- a campaign whose binary predates
@@ -1358,6 +1516,73 @@ try:
     binary.parent.mkdir(parents=True, exist_ok=True)
     binary.write_text(FAKE_BINARY)
     binary.chmod(0o755)
+
+    # The failure this exists for. run_experiments.py exits 1 on a configs
+    # directory with nothing in it, and a queued campaign spends its attempts
+    # discovering that one tick at a time; the stage is where it is cheap.
+    configs_dir = repo / C.profile_configs_dir("full")
+    buffer = io.StringIO()
+    with contextlib.redirect_stdout(buffer):
+        code = C.cmd_stage(stage_args(dry_run=False))
+    check(code, 1, "a host whose configs directory does not exist is refused")
+    check_true("no config files under" in buffer.getvalue()
+               and str(configs_dir) in buffer.getvalue(),
+               f"and the directory is named: {buffer.getvalue()!r}")
+    configs_dir.mkdir(parents=True, exist_ok=True)
+    (configs_dir / "notes.txt").write_text("not a config\n")
+    buffer = io.StringIO()
+    with contextlib.redirect_stdout(buffer):
+        code = C.cmd_stage(stage_args(dry_run=False))
+    check(code, 1, "an empty configs directory is refused the same way")
+    (configs_dir / "default" / "x.toml").parent.mkdir(exist_ok=True)
+    (configs_dir / "default" / "x.toml").write_text("generations = 1\n")
+
+    # A declared command runs on the host, after the build. This one writes
+    # the file the check then finds, which is the whole sequence in order.
+    generated = repo / C.profile_configs_dir("full") / "gen" / "made.toml"
+    # Two commands joined with && , which is what a campaign generating for
+    # two profiles writes, and which `! a && b` would mis-bind outside the
+    # subshell the step wraps it in.
+    with_cmd = FIXTURE_DECL + (
+        f'configs = "mkdir -p {generated.parent} && touch {generated}"\n')
+    write_declaration(repo, "fixture", with_cmd)
+    git(repo, "add", "experiments/fixture/campaign.toml")
+    git(repo, "commit", "-q", "--no-verify", "-m", "configs")
+    buffer = io.StringIO()
+    with contextlib.redirect_stdout(buffer):
+        code = C.cmd_stage(stage_args(dry_run=False))
+    check(code, 0, f"the configs command runs and stages: {buffer.getvalue()}")
+    check_true(generated.exists(),
+               "and the command it declared actually ran on the host")
+    generated.unlink()
+
+    # A configs command that fails is its own error, not a build failure and
+    # not a bad binary -- which is why it sits between the two.
+    write_declaration(repo, "fixture", FIXTURE_DECL + 'configs = "false"\n')
+    git(repo, "add", "experiments/fixture/campaign.toml")
+    git(repo, "commit", "-q", "--no-verify", "-m", "bad configs")
+    buffer = io.StringIO()
+    with contextlib.redirect_stdout(buffer):
+        code = C.cmd_stage(stage_args(dry_run=False))
+    check(code, 1, "a failing configs command fails the stage")
+    check_true("configs command failed" in buffer.getvalue(),
+               f"naming itself, not the build: {buffer.getvalue()!r}")
+
+    # `if ! false && true` is true, so an unwrapped chain would stage a host
+    # whose first generator never produced a file.
+    write_declaration(repo, "fixture", FIXTURE_DECL + 'configs = "false && '
+                                                      'true"\n')
+    git(repo, "add", "experiments/fixture/campaign.toml")
+    git(repo, "commit", "-q", "--no-verify", "-m", "bad chain")
+    buffer = io.StringIO()
+    with contextlib.redirect_stdout(buffer):
+        code = C.cmd_stage(stage_args(dry_run=False))
+    check(code, 1, "a chain whose first command fails fails the stage too")
+
+    write_declaration(repo, "fixture", FIXTURE_DECL)
+    git(repo, "add", "experiments/fixture/campaign.toml")
+    git(repo, "commit", "-q", "--no-verify", "-m", "restore")
+
     buffer = io.StringIO()
     with contextlib.redirect_stdout(buffer):
         code = C.cmd_stage(stage_args(dry_run=False))
@@ -1374,7 +1599,8 @@ try:
     with contextlib.redirect_stdout(buffer):
         code = C.cmd_stage(stage_args(dry_run=False))
     check(code, 1, "a stale binary fails the stage")
-    check_true("BINARY MISMATCH" in buffer.getvalue(), "and says which check")
+    check_true("BINARY MISMATCH" in buffer.getvalue(),
+               f"and says which check: {buffer.getvalue()!r}")
     binary.write_text(FAKE_BINARY)
     binary.chmod(0o755)
 
@@ -1532,6 +1758,17 @@ try:
     binary.parent.mkdir(parents=True, exist_ok=True)
     binary.write_text(FAKE_BINARY)
     binary.chmod(0o755)
+    # The configs a staged host already has. A tick checks them before it
+    # runs a phase, so a fixture with none would be testing the empty-configs
+    # refusal on every tick rather than the phase it queued.
+    def put_config(profile: str) -> Path:
+        path = (repo / C.profile_configs_dir(profile) / "default" / "x.toml")
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text("generations = 1\n")
+        return path
+
+    for profile in ("full", "tlsf"):
+        put_config(profile)
     control_dir = queue_root / "stub"
     control_dir.mkdir()
     stub = control_dir / "stub_runner.py"
@@ -1690,6 +1927,33 @@ try:
     check((entry["state"], entry["attempts"]), ("queued", 0),
           "which is the only way out of failed")
 
+    # ── the tick generates the configs its phase needs ────────────────────────
+    #
+    # run_experiments.py exits 1 on a configs directory holding no .toml, and
+    # the attended stage path has checked for that since aurus-h2h spent two of
+    # its three attempts on it. The tick had no such check at all, so the same
+    # failure reached the path with nobody watching.
+    calls.unlink() if calls.exists() else None
+    generated = repo / C.profile_configs_dir("full") / "default" / "x.toml"
+    generated.unlink()
+    entry = only_entry()
+    entry.update({"state": "queued", "phase": 0, "attempts": 0,
+                  "max_attempts": 3})
+    C.write_entry(entry["path"], entry)
+    code, printed = tick()
+    check(code, 1, "a tick whose configs directory is empty runs no phase")
+    check_true("no config files under" in only_entry()["last_error"],
+               "and the entry names the directory, in the stage path's words")
+    check_true("campaign.toml" in only_entry()["last_error"],
+               "and says the declaration is where the command belongs")
+    check_true(not calls.exists(),
+               "with the runner never reached, so the attempts are not spent "
+               "one tick at a time on a directory the tick can see is empty")
+    generated.write_text("generations = 1\n")
+    entry = only_entry()
+    entry.update({"state": "queued", "attempts": 0})
+    C.write_entry(entry["path"], entry)
+
     # ── the tick stages the checkout it needs ─────────────────────────────────
     #
     # An entry whose branch the checkout has left must not run its phase there:
@@ -1698,7 +1962,7 @@ try:
     # hand, which is unusable for a queue holding two campaigns on two
     # branches. It now moves the checkout itself.
     (control_dir / "exit-code").unlink()
-    calls.unlink()
+    calls.unlink() if calls.exists() else None
     git(repo, "checkout", "-q", default_branch)
 
     # Not while somebody's edits are in the tree. This is one of the two
@@ -1831,6 +2095,293 @@ try:
 finally:
     C.run_shell = REAL_RUN_SHELL
     shutil.rmtree(queue_root, ignore_errors=True)
+
+
+# ── The configs check, locally ────────────────────────────────────────────────
+#
+# config_dirs_missing is the local twin of the CONFIGS_CHECK shell snippet the
+# ssh stage path runs on the host, and has to answer the same question the same
+# way. Both halves are load-bearing: gen_configs.py writes a directory per
+# factor level and nothing at the top, so a check that did not recurse would
+# call a full tree empty; and a directory that is not there at all is the state
+# a host is in before anything generated anything, not an error.
+
+configs_root = Path(tempfile.mkdtemp(prefix="campaign-configs-"))
+try:
+    nested = configs_root / "cfg" / "level" / "one.toml"
+    nested.parent.mkdir(parents=True)
+    nested.write_text("generations = 1\n")
+    check(C.config_dirs_missing(configs_root, ["cfg"]), [],
+          "a .toml under a subdirectory counts, as `find` counts it")
+    check(C.config_dirs_missing(configs_root, ["absent"]), ["absent"],
+          "a configs directory that does not exist is missing")
+    empty = configs_root / "empty"
+    empty.mkdir()
+    (empty / "notes.txt").write_text("not a config\n")
+    check(C.config_dirs_missing(configs_root, ["empty", "cfg"]), ["empty"],
+          "and one holding no .toml is missing however much else is in it")
+
+    log = configs_root / "configs.log"
+    marker = configs_root / "ran"
+    check(C.ensure_configs({"config_dirs": ["cfg"],
+                            "configs": f"touch {marker}"},
+                           configs_root, log), None,
+          "configs already on the host need nothing generating")
+    check_true(not marker.exists(),
+               "and the command is not run: the check comes first, so a host "
+               "staged by hand pays one directory scan and no generator")
+
+    made = configs_root / "made" / "gen" / "config.toml"
+    check(C.ensure_configs(
+        {"config_dirs": ["made"],
+         "configs": f"mkdir -p {made.parent} && touch {made} && "
+                    f"touch {marker}"}, configs_root, log), None,
+        "an empty directory is filled by the declared command")
+    check_true(marker.exists() and made.is_file(),
+               "which really ran, in a subshell, so both halves of an && line "
+               "are watched")
+
+    why = C.ensure_configs({"config_dirs": ["empty"], "configs": None},
+                           configs_root, log)
+    check_true(why is not None and "empty" in why and "campaign.toml" in why,
+               "a campaign declaring no configs command fails naming the "
+               "directory, in the words the stage path uses")
+
+    why = C.ensure_configs({"config_dirs": ["nothing"], "configs": "false"},
+                           configs_root, log)
+    check_true(why is not None and "configs command failed" in why,
+               "a generator that fails reports as itself")
+
+    why = C.ensure_configs({"config_dirs": ["nothing"], "configs": "true"},
+                           configs_root, log)
+    check_true(why is not None and "left no config files" in why,
+               "and one that exits 0 without writing a config is caught by "
+               "the re-check, rather than by run_experiments.py an hour later")
+finally:
+    shutil.rmtree(configs_root, ignore_errors=True)
+
+
+# ── Colour ────────────────────────────────────────────────────────────────────
+#
+# Two failures are worth guarding, and only one of them is visible. Escapes in
+# a redirected stream are the loud one: `tick` runs from cron into
+# $HOME/.counter-queue.log and `status` is piped and captured, and the C++ side
+# already carries a note about a status line that logged 59KB of escapes for
+# 1.2KB of content. The silent one is alignment -- column widths come from
+# len(cell), so an escape counted into a width shifts every column right of it
+# and the table still looks like a table. Both are tested against the real
+# rows, since a painter is only wrong on the cells it fires for.
+
+ANSI_RE = re.compile(r"\x1b\[[0-9;]*m")
+
+
+def strip_ansi(text: str) -> str:
+    return ANSI_RE.sub("", text)
+
+
+class FakeStream(io.StringIO):
+    """A stream that answers isatty() however it was told to."""
+
+    def __init__(self, tty: bool):
+        super().__init__()
+        self.tty = tty
+
+    def isatty(self) -> bool:
+        return self.tty
+
+
+TTY, PIPE = FakeStream(True), FakeStream(False)
+
+check(C.colour_enabled(stream=TTY, env={}), True, "a terminal is coloured")
+check(C.colour_enabled(stream=PIPE, env={}), False,
+      "a redirected stream is not: this is what keeps the cron tick's log and "
+      "every captured status readable")
+check(C.colour_enabled(stream=PIPE, env={"CLICOLOR_FORCE": "1"}), True,
+      "CLICOLOR_FORCE forces it back on down a pipe, for `less -R`")
+check(C.colour_enabled(stream=PIPE, env={"CLICOLOR_FORCE": "0"}), False,
+      "and 0 forces nothing")
+check(C.colour_enabled(stream=TTY,
+                       env={"NO_COLOR": "1", "CLICOLOR_FORCE": "1"}), False,
+      "NO_COLOR wins over the terminal and over the force alike")
+check(C.colour_enabled(stream=TTY, env={"NO_COLOR": ""}), True,
+      "an empty NO_COLOR is an unset one, per no-color.org")
+check(C.colour_enabled(no_color=True, stream=TTY,
+                       env={"CLICOLOR_FORCE": "1"}), False,
+      "--no-color beats everything, being the one thing typed on purpose")
+check(C.colour_enabled(env={}), sys.stdout.isatty(),
+      "and the stream defaults to stdout")
+
+closed = open(os.devnull)
+closed.close()
+check(C.colour_enabled(stream=closed, env={}), False,
+      "a closed stream raises rather than answering, and is not a terminal")
+check(C.colour_enabled(stream=object(), env={}), False,
+      "nor is a stream with no isatty at all")
+
+# Fixtures chosen to fire every branch of every painter: a reachable host, an
+# unreachable one, and one campaign per STATE.
+COLOUR_REPORTS = [
+    {"host": "av2", "reachable": True, "hostname": "av2", "branch": "feat/x",
+     "head": "abc1234", "dirty": False, "hidden": 0,
+     "processes": [{"comm": "counter", "profile": "tlsf"}],
+     "campaigns": [dict(done, profile="tlsf", state="running",
+                        branch="feat/x", binary_commit="abc1234")],
+     "queue": [
+         {"file": "001-tlsf.toml", "campaign": "tlsf", "state": "running",
+          "phase": 1, "phases": 2, "attempts": 1, "max_attempts": 3,
+          "seeds": "0-99", "updated": "2026-08-17T10:00:00"},
+         {"file": "002-x.toml", "campaign": "x", "state": "queued", "phase": 0,
+          "phases": 1, "attempts": 0, "max_attempts": 3, "seeds": "0-9",
+          "updated": "2026-08-17T09:00:00"},
+         {"file": "003-y.toml", "campaign": "y", "state": "failed", "phase": 0,
+          "phases": 1, "attempts": 3, "max_attempts": 3, "seeds": "0-9",
+          "updated": "2026-08-17T09:00:00", "last_error": "phase exited 3"},
+         {"file": "004-z.toml", "error": "unknown key `job`"}]},
+    {"host": "av3", "reachable": True, "hostname": "av3", "branch": "main",
+     "head": "deadbee", "dirty": True, "hidden": 0, "processes": [],
+     "campaigns": [
+         dict(done, profile="probe", state="stuck", branch="feat/other",
+              binary_commit="b093374", dirty_binary=True, rows_from_csv=True),
+         dict(done, profile="muc", state="done", branch="main",
+              binary_commit="deadbee"),
+         dict(done, profile="wellsep", state="stalled", branch="main",
+              binary_commit="deadbee")],
+     "queue": []},
+    dict(unreachable, host="av4"),
+    dict(unreachable, host="av5", error="timed out after 45s"),
+]
+
+STAGE_ROWS = [["av2", "feat/x", "abc1234", "abc1234", "staged"],
+              ["av3", "?", "?", "?", "stage failed"],
+              ["av4", "feat/x", "abc1234", "abc1234", "refused"],
+              ["av5", "feat/x", "abc1234", "abc1234", "not confirmed"],
+              ["av6", "feat/x", "abc1234", "abc1234", "BINARY MISMATCH"],
+              ["av7", "main", "deadbee", "deadbee", "would stage (--force)"]]
+START_ROWS = [["av2", "0-99", "12345", "launched"],
+              ["av3", "100-199", "-", "dry run"],
+              ["av4", "200-299", "-", "blocked"],
+              ["av5", "300-399", "-", "failed: no pid returned"]]
+
+COLOUR_TABLES = [
+    ("checkout", C.CHECKOUT_HEADERS, C.checkout_rows(COLOUR_REPORTS),
+     C.checkout_paint),
+    ("campaign", C.HEADERS, C.status_rows(COLOUR_REPORTS), C.status_paint),
+    ("queue", C.QUEUE_HEADERS, C.queue_rows(COLOUR_REPORTS), C.queue_paint),
+    ("stage", C.STAGE_HEADERS, STAGE_ROWS, C.stage_paint),
+    ("start", C.START_HEADERS, START_ROWS, C.start_paint),
+]
+
+try:
+    for name, headers, rows, paint in COLOUR_TABLES:
+        C.set_colour(False)
+        plain = C.render_table(rows, headers, paint)
+        check_true("\x1b" not in plain,
+                   f"the {name} table carries no escape with colour off")
+        C.set_colour(True)
+        painted = C.render_table(rows, headers, paint)
+        check_true("\x1b" in painted,
+                   f"the {name} table is actually coloured with colour on, so "
+                   f"the comparison below is not vacuous")
+        # The property that breaks: colour is decoration over a fixed layout,
+        # so removing it must give back the layout unchanged -- padding,
+        # rstripped line ends and all.
+        check(strip_ansi(painted), plain,
+              f"the {name} table's columns must not move when it is coloured")
+
+    # Every state the two STATE columns can hold is painted, or the colour is
+    # saying nothing about the reading it is meant to make findable.
+    C.set_colour(True)
+    for state in ("done", "running", "stuck", "stalled"):
+        check_true("\x1b" in C.status_paint(0, C.HEADERS.index("STATE"),
+                                            state, C.STYLE),
+                   f"campaign STATE {state} is coloured")
+    for state in C.QUEUE_STATES:
+        check_true("\x1b" in C.queue_paint(0, C.QUEUE_HEADERS.index("STATE"),
+                                           state, C.STYLE),
+                   f"queue STATE {state} is coloured")
+    # The two marks the legend explains are warnings, and only the mark is
+    # painted: the branch name beside it is not the warning.
+    branch = C.status_paint(0, C.HEADERS.index("BRANCH"), "feat/x!", C.STYLE)
+    check(strip_ansi(branch), "feat/x!", "the ! keeps its cell's width")
+    check_true(branch.startswith("feat/x\x1b"), "and only the ! is painted")
+    binary = C.status_paint(0, C.HEADERS.index("BINARY"), "b093374*", C.STYLE)
+    check_true(binary.startswith("b093374\x1b"), "same for the * on BINARY")
+
+    # A painter is not called at all with colour off, so a table pays nothing
+    # for having one.
+    def loud(row, col, cell, style):
+        raise AssertionError("painter called with colour off")
+
+    C.set_colour(False)
+    check(C.render_table([["a", "b"]], ["H1", "H2"], loud), "H1  H2\na   b",
+          "a painter is skipped entirely when colour is off")
+
+    # print_status is the whole of `status`, three tables and the notes, and
+    # the same property has to hold over the lot of it.
+    def status_text() -> str:
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf):
+            C.print_status(COLOUR_REPORTS)
+        return buf.getvalue()
+
+    C.set_colour(False)
+    plain_status = status_text()
+    C.set_colour(True)
+    painted_status = status_text()
+    check_true("\x1b" in painted_status, "print_status colours its tables")
+    check(strip_ansi(painted_status), plain_status,
+          "and the whole of `status` strips back to the uncoloured output")
+finally:
+    C.set_colour(False)
+
+parser = C.build_parser()
+for argv in (["status"], ["queue"], ["collect"], ["stage", "c"],
+             ["start", "c"]):
+    check(parser.parse_args(argv).no_color, False,
+          f"`{argv[0]}` prints a table, so it takes --no-color")
+    check(parser.parse_args(argv + ["--no-color"]).no_color, True,
+          f"`{argv[0]} --no-color` turns it off by hand")
+check_true(not hasattr(parser.parse_args(["tick", "--host", "av2"]),
+                       "no_color"),
+           "a verb that prints no table takes no such flag, and main() reads "
+           "the flag with a default rather than assuming one")
+
+# The wiring itself, through main(), which is the only thing that decides
+# whether a real run is coloured. A stubbed verb reports what main set.
+REAL_CMD_QUEUE = C.cmd_queue
+SEEN: list = []
+
+
+def colour_probe(args) -> int:
+    SEEN.append(C.STYLE.enabled)
+    return 0
+
+
+C.cmd_queue = colour_probe
+SAVED_ENV = {k: os.environ.pop(k) for k in ("NO_COLOR", "CLICOLOR_FORCE")
+             if k in os.environ}
+try:
+    for argv, tty, want, why in [
+            (["queue"], False, False,
+             "a redirected `queue` is never coloured, whatever the terminal "
+             "the run was started from"),
+            (["queue"], True, True, "a terminal is"),
+            (["queue", "--no-color"], True, False, "--no-color reaches main"),
+            (["queue", "--json"], True, False,
+             "and --json is never coloured, being parsed rather than read")]:
+        SEEN.clear()
+        old_argv, sys.argv = sys.argv, ["campaign.py", *argv]
+        try:
+            with contextlib.redirect_stdout(FakeStream(tty)):
+                with contextlib.suppress(SystemExit):
+                    C.main()
+        finally:
+            sys.argv = old_argv
+        check(SEEN, [want], why)
+finally:
+    C.cmd_queue = REAL_CMD_QUEUE
+    os.environ.update(SAVED_ENV)
+    C.set_colour(False)
 
 
 if FAILURES:

@@ -614,6 +614,78 @@ def parse_started(value: str | None) -> float | None:
     return None
 
 
+# -- Colour -------------------------------------------------------------------
+
+# Plain SGR escapes, no colorama and no rich: av2 and av3 run python 3.10.12
+# with no third-party packages at all, which is the same reason TOML is parsed
+# by hand below.
+ANSI = {
+    "bold": "\033[1m",
+    "dim": "\033[2m",
+    "red": "\033[31m",
+    "green": "\033[32m",
+    "yellow": "\033[33m",
+    "cyan": "\033[36m",
+}
+ANSI_RESET = "\033[0m"
+
+
+class Style:
+    """Paints text, or hands it back untouched when colour is off.
+
+    Held as one module-level instance rather than threaded through every
+    caller: the decision is made once from the command line and every table
+    renderer needs it. Colour is decoration over a plain layout, never part of
+    it -- ``render_table`` measures the unpainted text and pads outside the
+    escapes, so stripping the escapes from a coloured table gives back the
+    plain one byte for byte.
+    """
+
+    def __init__(self, enabled: bool = False) -> None:
+        self.enabled = bool(enabled)
+
+    def __call__(self, text: str, *names: str) -> str:
+        if not (self.enabled and text and names):
+            return text
+        return "".join(ANSI[n] for n in names) + text + ANSI_RESET
+
+
+STYLE = Style(False)
+
+
+def colour_enabled(no_color: bool = False, stream=None, env=None) -> bool:
+    """Whether to colour, deciding in the order the conventions are read in.
+
+    Off wherever stdout is not a terminal, which is the case that matters
+    here: `tick` runs from cron into $HOME/.counter-queue.log and `status` is
+    routinely piped or captured, and escapes in either are noise nobody can
+    read through. It is the failure the C++ side already guards with
+    ``stdout_is_tty()`` -- one unguarded status line was 59KB of escapes for
+    1.2KB of content.
+
+    ``--no-color`` beats everything, then NO_COLOR (any non-empty value, per
+    no-color.org), then CLICOLOR_FORCE, which forces colour on down a pipe and
+    is what makes this testable and `less -R` usable.
+    """
+    env = os.environ if env is None else env
+    if no_color:
+        return False
+    if env.get("NO_COLOR", ""):
+        return False
+    force = env.get("CLICOLOR_FORCE", "")
+    if force and force != "0":
+        return True
+    stream = sys.stdout if stream is None else stream
+    try:
+        return bool(stream.isatty())
+    except (AttributeError, ValueError):  # a closed or non-file stream
+        return False
+
+
+def set_colour(enabled: bool) -> None:
+    STYLE.enabled = bool(enabled)
+
+
 # -- Formatting ---------------------------------------------------------------
 
 def human_duration(seconds: float | None) -> str:
@@ -640,19 +712,65 @@ def human_bytes(n: int | None) -> str:
     return "-"
 
 
-def render_table(rows: list[list[str]], headers: list[str]) -> str:
+def render_table(rows: list[list[str]], headers: list[str],
+                 paint=None) -> str:
+    """Left-aligned columns, headers bold, cells optionally coloured.
+
+    ``paint(row, col, cell, style) -> str`` may wrap a cell in escapes. It is
+    called for its cell alone and every width is computed from the unpainted
+    text, with the padding added *outside* whatever it returns -- so an escape
+    can neither widen a column nor survive the trailing ``rstrip``, and a
+    coloured table strips back to exactly the plain one. Passing a painter
+    costs nothing when colour is off, where it is not called at all.
+    """
     widths = [len(h) for h in headers]
     for row in rows:
         for i, cell in enumerate(row):
             widths[i] = max(widths[i], len(cell))
-    out = ["  ".join(h.ljust(w) for h, w in zip(headers, widths)).rstrip()]
-    for row in rows:
-        out.append("  ".join(c.ljust(w) for c, w in zip(row, widths)).rstrip())
+
+    def line(cells: list[str], painter) -> str:
+        return "  ".join(
+            painter(i, cell) + " " * (w - len(cell))
+            for i, (cell, w) in enumerate(zip(cells, widths))).rstrip()
+
+    out = [line(headers, lambda i, cell: STYLE(cell, "bold"))]
+    for r, row in enumerate(rows):
+        if paint and STYLE.enabled:
+            out.append(line(row,
+                            lambda i, c, r=r: paint(r, i, c, STYLE)))
+        else:
+            out.append(line(row, lambda i, cell: cell))
     return "\n".join(out)
 
 
 HEADERS = ["HOST", "CAMPAIGN", "ROWS", "PCT", "STATE", "STALE", "ETA",
            "BRANCH", "BINARY"]
+
+# Only the readings a poll is looking for are coloured: the two that are fine
+# (done, running) and the two that want a person (stuck, stalled). Everything
+# else in the table stays the terminal's own foreground, so colour marks a
+# state rather than decorating a row.
+STATE_COLOURS = {"done": ("green",), "running": ("cyan",),
+                 "stuck": ("red",), "stalled": ("yellow",)}
+
+
+def status_paint(row: int, col: int, cell: str, style: Style) -> str:
+    header = HEADERS[col]
+    if header == "CAMPAIGN":
+        if cell.startswith("(unreachable:") or cell.startswith("(no answer:"):
+            return style(cell, "red")
+        # "(no campaigns)" and the rest are the absence of a reading rather
+        # than a bad one.
+        return style(cell, "dim") if cell.startswith("(") else cell
+    if header == "STATE":
+        return style(cell, *STATE_COLOURS.get(cell, ()))
+    # Both marks qualify the cell they follow, so only the mark is painted:
+    # see the legend print_status closes with.
+    if header == "BRANCH" and cell.endswith("!"):
+        return cell[:-1] + style("!", "red")
+    if header == "BINARY" and cell.endswith("*"):
+        return cell[:-1] + style("*", "yellow")
+    return cell
 
 
 def status_rows(reports: list[dict]) -> list[list[str]]:
@@ -744,6 +862,18 @@ def status_notes(reports: list[dict]) -> list[str]:
 CHECKOUT_HEADERS = ["HOST", "MACHINE", "BRANCH", "HEAD", "TREE", "PROCESSES"]
 
 
+def checkout_paint(row: int, col: int, cell: str, style: Style) -> str:
+    header = CHECKOUT_HEADERS[col]
+    if header == "TREE" and cell != "-":
+        # Dirty is not an error, but it is the first thing `stage` refuses.
+        return style(cell, "green" if cell == "clean" else "yellow")
+    if header == "PROCESSES":
+        if cell == "unreachable":
+            return style(cell, "red")
+        return style(cell, "dim" if cell == "idle" else "cyan")
+    return cell
+
+
 def checkout_rows(reports: list[dict]) -> list[list[str]]:
     """The checkout each host is sitting on, independent of any campaign.
 
@@ -763,16 +893,17 @@ def checkout_rows(reports: list[dict]) -> list[list[str]]:
 
 
 def print_status(reports: list[dict]) -> None:
-    print(render_table(checkout_rows(reports), CHECKOUT_HEADERS))
+    print(render_table(checkout_rows(reports), CHECKOUT_HEADERS,
+                       checkout_paint))
     print()
-    print(render_table(status_rows(reports), HEADERS))
+    print(render_table(status_rows(reports), HEADERS, status_paint))
     # The queue table is printed only where there is a queue: it comes free
     # with the inventory the poll already ran, and an empty one is a row of
     # dashes saying nothing.
     queue = queue_rows(reports)
     if queue:
         print()
-        print(render_table(queue, QUEUE_HEADERS))
+        print(render_table(queue, QUEUE_HEADERS, queue_paint))
     notes = status_notes(reports)
     if notes:
         print()
@@ -1331,7 +1462,7 @@ class CampaignError(Exception):
 
 
 CAMPAIGN_KEYS = {"name", "branch", "profile", "hosts", "phases", "build",
-                 "description"}
+                 "configs", "description"}
 PHASE_KEYS = {"name", "profile", "jobs", "sweeps", "specs", "hosts"}
 
 # `describe` prints a declaration for a campaign that has already closed. It
@@ -1430,6 +1561,28 @@ def known_profiles() -> set:
     return set(run_experiments.PROFILES)
 
 
+def profile_configs_dir(profile: str) -> str:
+    """A profile's configs directory, relative to the repo root.
+
+    ``PROFILES`` holds it as an absolute path, built from the ``REPO_ROOT`` of
+    whichever checkout imported the runner — this one. The stage script runs on
+    a lab machine whose checkout sits under a different home directory, so the
+    absolute form names a path that does not exist over there, and a check
+    against it would pass or fail for a reason that has nothing to do with the
+    campaign. Relative to the runner's own root is the one form that means the
+    same thing on both sides, since the script has already cd'd to the host's
+    checkout before it looks.
+    """
+    import run_experiments  # noqa: PLC0415
+    path = Path(run_experiments.PROFILES[profile]["configs_dir"])
+    try:
+        return str(path.relative_to(run_experiments.REPO_ROOT))
+    except ValueError:
+        raise CampaignError(
+            f"profile {profile!r} puts its configs at {path}, outside the "
+            f"checkout — stage cannot name that path on a host") from None
+
+
 def campaign_path(name: str, root: Path | None = None) -> Path:
     return (root or REPO_ROOT) / "experiments" / name / "campaign.toml"
 
@@ -1519,7 +1672,17 @@ def load_campaign(name: str, root: Path | None = None) -> dict:
     build = raw.get("build", DEFAULT_BUILD_CMD)
     if not isinstance(build, str) or not build:
         raise CampaignError(f"{path}: build must be a non-empty string")
+    configs = raw.get("configs")
+    if configs is not None and (not isinstance(configs, str) or not configs):
+        raise CampaignError(f"{path}: configs must be a non-empty string")
+    # Every profile the phases name, not just the campaign-level one: a
+    # campaign whose phases straddle two profiles reads two configs
+    # directories, and checking only the default leaves the second phase to
+    # fail on the host, hours after the stage said the host was ready.
+    config_dirs = sorted({profile_configs_dir(phase["profile"])
+                          for phase in normalised})
     return {"name": name, "branch": branch, "build": build, "path": path,
+            "configs": configs, "config_dirs": config_dirs,
             "hosts": seeds_by_host, "phases": normalised,
             "description": raw.get("description", "")}
 
@@ -2146,9 +2309,45 @@ if ! @BUILD@ > "$buildlog" 2>&1; then
   echo "@M@ERR build failed"; exit 7
 fi
 tail -5 "$buildlog"; rm -f "$buildlog"
+echo "@M@CONFIGS"
+@CONFIGS@
 echo "@M@BIN"
 ./@BIN@ --version 2>/dev/null || { echo "@M@ERR binary will not report a version"; exit 8; }
 echo "@M@END"
+"""
+
+# Runs after the build and before the version read, so a generator that fails
+# reports as itself rather than as a broken build or a bad binary. The command
+# goes in a subshell, unlike the build's: a campaign generating configs for two
+# profiles writes two gen_configs.py calls joined with `&&`, and `! a && b`
+# binds the negation to the first alone, so the second would run unwatched and
+# a failure in the first would read as a successful stage.
+CONFIGS_STEP = r"""configlog=$(mktemp) || { echo "@M@ERR mktemp failed"; exit 9; }
+if ! ( @CONFIGS_CMD@ ) > "$configlog" 2>&1; then
+  tail -20 "$configlog"; rm -f "$configlog"
+  echo "@M@ERR configs command failed"; exit 9
+fi
+tail -5 "$configlog"; rm -f "$configlog"
+"""
+
+# The half that runs whether or not the campaign declares a command: every
+# declaration written before the key existed still has to fail here rather than
+# on the host three ticks later, which is what run_experiments.py exiting 1 on
+# an empty configs directory cost the aurus-h2h launch.
+#
+# `find` with a quoted pattern rather than a glob: the lab login shell is zsh,
+# whose default NOMATCH never lets `*.toml` — the exact thing being tested for
+# — mean what it means in sh. Unmatched, the find is skipped outright and the
+# check reads as an empty directory; matched against a stray .toml in the
+# working directory, the find searches for that name instead. Both are the same
+# wrong answer, and neither says anything on stdout. -print -quit stops at the
+# first hit rather than walking a directory of thousands.
+CONFIGS_CHECK = r"""for cfgdir in @CONFIG_DIRS@; do
+  if [ -z "$(find "$cfgdir" -name '*.toml' -print -quit 2>/dev/null)" ]; then
+    echo "@M@ERR no config files under $(pwd)/$cfgdir — generate them with scripts/gen_configs.py, and declare that command as configs = ... in campaign.toml"
+    exit 10
+  fi
+done
 """
 # No `git clean`: a host's untracked files are its results, and a campaign
 # staged over them would delete the previous campaign's output. `checkout -f`
@@ -2159,9 +2358,21 @@ echo "@M@END"
 # version check two lines later.
 
 
+def configs_block(configs: str | None, config_dirs: list) -> str:
+    """The configs section: the declared command, then the check, or just the
+    check. The check is never conditional — a campaign that declares no command
+    is the case that broke, not the case to trust."""
+    step = (CONFIGS_STEP.replace("@CONFIGS_CMD@", configs) if configs else "")
+    check = CONFIGS_CHECK.replace(
+        "@CONFIG_DIRS@", " ".join(shlex.quote(d) for d in config_dirs))
+    return step + check
+
+
 def stage_apply_script(root: str, branch: str, sha: str, build: str,
+                       configs: str | None, config_dirs: list,
                        force: bool) -> str:
     return (STAGE_APPLY_SCRIPT
+            .replace("@CONFIGS@", configs_block(configs, config_dirs))
             .replace("@ROOT@", shlex.quote(root))
             .replace("@BRANCH@", shlex.quote(branch))
             .replace("@SHA@", shlex.quote(sha))
@@ -2171,6 +2382,25 @@ def stage_apply_script(root: str, branch: str, sha: str, build: str,
             .replace("@CHECKOUT_FLAGS@", "-f" if force else "")
             .replace("@FORCE@", "1" if force else "0")
             .replace("@M@", MARK))
+
+
+STAGE_HEADERS = ["HOST", "BRANCH", "HEAD", "BINARY", "RESULT"]
+
+
+def stage_paint(row: int, col: int, cell: str, style: Style) -> str:
+    """RESULT is green only for a host that is staged and verified.
+
+    Everything else -- refused, not confirmed, stage failed, BINARY MISMATCH
+    -- is a host that will run nothing, and reads the same, since the whole
+    stage is off if any one of them appears.
+    """
+    if STAGE_HEADERS[col] != "RESULT":
+        return cell
+    if cell == "staged":
+        return style(cell, "green")
+    if cell.startswith("would stage"):
+        return style(cell, "dim")
+    return style(cell, "red")
 
 
 def probe_host(host: str) -> HostProbe:
@@ -2201,6 +2431,7 @@ def confirm_discard(host: str, probe: HostProbe, refusals: list) -> bool:
     for kind, why in refusals:
         print(f"    {kind}: {why}")
     print(f"    checkout: {probe.branch} at {probe.head[:7]}")
+    print("    any commit(s) this checkout holds that the target does not")
     print("  Untracked files, including results, are left alone.")
     if not sys.stdin.isatty():
         print(f"  REFUSED: --force needs a terminal to confirm on; "
@@ -2229,7 +2460,8 @@ def cmd_stage(args: argparse.Namespace) -> int:
           f"{', '.join(hosts)}")
 
     if args.dry_run:
-        print("Dry run: probing only, pushing nothing and building nothing.\n")
+        print("Dry run: probing only — nothing pushed, built, or generated, "
+              "and the configs check is not run.\n")
     else:
         _, err = git_output(["push", "origin", f"{branch}:{branch}"])
         if err:
@@ -2255,19 +2487,28 @@ def cmd_stage(args: argparse.Namespace) -> int:
                   "again and ask)")
             rows.append([host, probe.branch, probe.head[:7], commit, "refused"])
             continue
-        if refusals and not (args.dry_run or confirm_discard(host, probe,
-                                                             refusals)):
+        # Confirm on --force itself, not on whether a refusal was found. The
+        # remote script has a fourth thing it declines to discard, a checkout
+        # ahead of the target commit, and the probe cannot see it: the host may
+        # not hold the target sha until the apply script fetches. So a host
+        # that is clean, idle and on the right branch yields no refusal here
+        # and still refuses over there. Gating on `refusals` made --force inert
+        # for exactly that host and skipped the prompt with it, which is the
+        # state a rebased branch leaves both machines in.
+        if args.force and not (args.dry_run or confirm_discard(host, probe,
+                                                               refusals)):
             ok = False
             rows.append([host, probe.branch, probe.head[:7], commit,
                          "not confirmed"])
             continue
         if args.dry_run:
             rows.append([host, probe.branch, probe.head[:7], commit,
-                         "would stage" + (" (--force)" if refusals else "")])
+                         "would stage" + (" (--force)" if args.force else "")])
             continue
         text, err = run_shell(
             host, stage_apply_script(source_path(host), branch, sha,
-                                     campaign["build"], bool(refusals)),
+                                     campaign["build"], campaign["configs"],
+                                     campaign["config_dirs"], args.force),
             timeout=args.build_timeout)
         result = parse_sections(text or "")
         if err or "err" in result or "end" not in result:
@@ -2284,13 +2525,26 @@ def cmd_stage(args: argparse.Namespace) -> int:
                      version.get("commit_short", "?"),
                      "staged" if fresh else "BINARY MISMATCH"])
     print()
-    print(render_table(rows, ["HOST", "BRANCH", "HEAD", "BINARY", "RESULT"]))
+    print(render_table(rows, STAGE_HEADERS, stage_paint))
     if not ok:
         print("\nOne or more hosts were not staged. Nothing was launched.")
     return 0 if ok else 1
 
 
 # -- start --------------------------------------------------------------------
+
+START_HEADERS = ["HOST", "SEEDS", "PID", "RESULT"]
+
+
+def start_paint(row: int, col: int, cell: str, style: Style) -> str:
+    if START_HEADERS[col] != "RESULT":
+        return cell
+    if cell == "launched":
+        return style(cell, "green")
+    if cell == "dry run":
+        return style(cell, "dim")
+    return style(cell, "red")
+
 
 LAUNCH_SCRIPT = r"""
 cd @ROOT@ 2>/dev/null || { echo "@M@ERR not a directory: @ROOT@"; exit 3; }
@@ -2459,7 +2713,7 @@ def cmd_start(args: argparse.Namespace) -> int:
         })
         rows.append([host, format_seed_range(seeds), pid, "launched"])
     print()
-    print(render_table(rows, ["HOST", "SEEDS", "PID", "RESULT"]))
+    print(render_table(rows, START_HEADERS, start_paint))
     if not args.dry_run:
         print("\nDetached. Poll with `campaign.py status`; do not watch it.")
     return 0 if ok else 1
@@ -2888,6 +3142,55 @@ def ensure_staged(entry: dict, root: Path, args: argparse.Namespace):
     return None
 
 
+def config_dirs_missing(root: Path, config_dirs: list) -> list:
+    """The declared configs directories holding no `.toml`. Empty means ready.
+
+    The local twin of CONFIGS_CHECK, which the attended stage path runs over
+    ssh, and it has to answer the same question the same way: recursive,
+    because gen_configs.py writes a directory per factor level and nothing
+    lands at the top; first hit only, because a generated tree is thousands of
+    files and the question is whether it is empty. A directory that is not
+    there at all is missing rather than an error, since that is the state a
+    host is in before anything generated anything.
+    """
+    missing = []
+    for name in config_dirs:
+        directory = root / name
+        if not directory.is_dir() or next(directory.rglob("*.toml"),
+                                          None) is None:
+            missing.append(name)
+    return missing
+
+
+def ensure_configs(campaign: dict, root: Path, log_path: Path):
+    """Generate the campaign's configs where the host has none. None on ready.
+
+    Checked before it is run, so the common case -- a host staged by hand, or
+    one that generated them for an earlier phase -- costs one directory scan
+    and runs no generator. A campaign declaring no command fails here with the
+    words the stage path uses, rather than three ticks later as
+    run_experiments.py exiting 1 with the attempts already spent.
+    """
+    missing = config_dirs_missing(root, campaign["config_dirs"])
+    if not missing:
+        return None
+    configs = campaign.get("configs")
+    if not configs:
+        return (f"no config files under {', '.join(missing)} — generate them "
+                f"with scripts/gen_configs.py, and declare that command as "
+                f"configs = ... in campaign.toml")
+    if run_step(root, configs, log_path, shell=True):
+        return f"the configs command failed: {configs}"
+    # Re-checked rather than trusted: a generator called with the wrong flags
+    # writes a different directory and exits 0, which is the failure that
+    # reaches the runner rather than the log.
+    still = config_dirs_missing(root, campaign["config_dirs"])
+    if still:
+        return (f"the configs command left no config files under "
+                f"{', '.join(still)}: {configs}")
+    return None
+
+
 def fail_or_requeue(entry: dict, why: str) -> None:
     """One attempt spent. Past the cap the entry stops moving and says why.
 
@@ -2958,6 +3261,22 @@ def cmd_tick(args: argparse.Namespace) -> int:
             write_entry(entry["path"], entry)
             print(f"tick: {entry['file']} {entry['state']}: {exc}")
             return 1
+        # After load_campaign rather than inside stage_checkout: the command
+        # and the directories to check are keys of campaign.toml, which the
+        # comment above is about not being readable any earlier.
+        if args.dry_run:
+            missing = config_dirs_missing(root, campaign["config_dirs"])
+            if missing:
+                print(f"  would generate configs for {', '.join(missing)} "
+                      f"with: {campaign['configs'] or '(none declared)'}")
+        else:
+            why = ensure_configs(campaign, root, entry_log_path(entry, root))
+            if why is not None:
+                fail_or_requeue(entry, why)
+                write_entry(entry["path"], entry)
+                print(f"tick: {entry['file']} {entry['state']}: "
+                      f"{entry['last_error']}")
+                return 1
         return tick_entry(entry, campaign, root, args)
     finally:
         lock.close()
@@ -3034,6 +3353,22 @@ def checkout_branch(root: Path) -> tuple:
 QUEUE_HEADERS = ["HOST", "ENTRY", "CAMPAIGN", "BRANCH", "STATE", "PHASE",
                  "TRIES", "SEEDS", "UPDATED", "NOTE"]
 
+# `running` matches the campaign table's own running, since `status` prints
+# both at once and one word must not mean two colours on one screen.
+QUEUE_STATE_COLOURS = {"queued": ("dim",), "running": ("cyan",),
+                       "done": ("green",), "failed": ("red",),
+                       "unparseable": ("red",)}
+
+
+def queue_paint(row: int, col: int, cell: str, style: Style) -> str:
+    header = QUEUE_HEADERS[col]
+    if header == "STATE":
+        return style(cell, *QUEUE_STATE_COLOURS.get(cell, ()))
+    # NOTE carries last_error, and is empty on every entry that is fine.
+    if header == "NOTE" and cell:
+        return style(cell, "red")
+    return cell
+
 
 def queue_rows(reports: list) -> list:
     rows = []
@@ -3081,7 +3416,7 @@ def cmd_queue(args: argparse.Namespace) -> int:
     for report in reports:
         if not report["reachable"]:
             print(f"note: {report['host']} unreachable: {report['error']}")
-    print(render_table(rows, QUEUE_HEADERS) if rows
+    print(render_table(rows, QUEUE_HEADERS, queue_paint) if rows
           else "No queue entries on any host.")
     if rows:
         print("\nPHASE is the next phase against the total; TRIES is attempts "
@@ -3170,6 +3505,14 @@ def cmd_cron(args: argparse.Namespace) -> int:
 
 # -- Entry point --------------------------------------------------------------
 
+def add_colour_flag(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument(
+        "--no-color", action="store_true",
+        help="Never colour the table. Colour is off already wherever stdout "
+             "is not a terminal, and NO_COLOR in the environment does the "
+             "same; CLICOLOR_FORCE=1 forces it back on, for `less -R`.")
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description=__doc__,
@@ -3190,6 +3533,7 @@ def build_parser() -> argparse.ArgumentParser:
     status.add_argument("--no-plan", action="store_true",
                         help="Skip the per-campaign --dry-run plan query; "
                              "planned totals then read as unknown.")
+    add_colour_flag(status)
     status.set_defaults(func=cmd_status)
 
     collect = sub.add_parser(
@@ -3208,6 +3552,7 @@ def build_parser() -> argparse.ArgumentParser:
                               "this checkout does not define.")
     collect.add_argument("--results-dir", metavar="NAME",
                          help="Per-run directory name, alongside --csv.")
+    add_colour_flag(collect)
     collect.set_defaults(func=cmd_collect)
 
     stage = sub.add_parser(
@@ -3226,6 +3571,7 @@ def build_parser() -> argparse.ArgumentParser:
     stage.add_argument("--build-timeout", type=int, default=3600,
                        metavar="S", help="Seconds allowed for the remote "
                                          "build (default: 3600).")
+    add_colour_flag(stage)
     stage.set_defaults(func=cmd_stage)
 
     start = sub.add_parser(
@@ -3238,6 +3584,7 @@ def build_parser() -> argparse.ArgumentParser:
                        help="Launch even where a queue entry for this "
                             "campaign is still pending on that host. Names "
                             "the entry it is racing.")
+    add_colour_flag(start)
     start.set_defaults(func=cmd_start)
 
     enqueue = sub.add_parser(
@@ -3276,6 +3623,7 @@ def build_parser() -> argparse.ArgumentParser:
     queue = sub.add_parser("queue", help="Every host's queue, read-only.")
     queue.add_argument("--host", choices=[*HOSTS, LOCAL])
     queue.add_argument("--json", action="store_true")
+    add_colour_flag(queue)
     queue.set_defaults(func=cmd_queue)
 
     requeue = sub.add_parser(
@@ -3309,6 +3657,11 @@ def build_parser() -> argparse.ArgumentParser:
 
 def main() -> None:
     args = build_parser().parse_args()
+    # --json is never coloured, whatever the terminal says: it is parsed, not
+    # read, and the guarantee is worth making structural rather than resting
+    # on no --json path happening to call render_table.
+    set_colour(not getattr(args, "json", False)
+               and colour_enabled(getattr(args, "no_color", False)))
     sys.exit(args.func(args))
 
 

@@ -1,0 +1,77 @@
+// Hand-written weakening ideal: the two invariants that pin the car in its
+// idle policy are dropped.
+//
+// PRESET starts `spec_policy` at 000, and the goal is `G F (spec_policy =
+// 101)`. Reaching 101 is a forced march once policy 010 is entered -- the
+// invariants drive 010 -> 110 -> 001 -> 101 and then hold 101 -- so everything
+// turns on leaving 000. Three invariants govern that step and none of them
+// allows it: with side sensing and no park result the policy is held where it
+// is (the formula `mucs` names), with no obstacle and no side sensing it moves
+// to 100 instead, and an obstacle sends 000 and 100 alike back to 000. From
+// 100 the mirror rules hold it there or return it to 000. The one invariant
+// that leaves the {000, 100} pair for 010 is guarded by `parkresult`, and
+// REQUIRE forbids the environment to raise `parkresult` in the step after the
+// policy reads 000 -- and never obliges it to raise it at all. So policies
+// 010, 110, 001 and 101 are simply unreachable.
+//
+// Dropping the two rules that pin 000 gives back the 000 -> 010 step that the
+// policy transition invariant already permits; every other invariant, the
+// obstacle reset included, is untouched. Nothing is assumed: the
+// specification's own assumption `G (throttle = 10 -> F !obstacle)` already
+// bounds obstacle blocking, and the car triggers it by driving.
+INFO {
+  TITLE:       "PCar"
+  DESCRIPTION: "weakened: the idle policy no longer locks itself in"
+  SEMANTICS:   Mealy,Strict
+  TARGET:   Mealy
+}
+
+MAIN {
+  INPUTS {
+    obstacle;sidesense;parkresult;
+  }
+  OUTPUTS {
+    throttle_0;throttle_1;steer_0;steer_1;parkcommand_0;parkcommand_1;spec_policy_0;spec_policy_1;spec_policy_2;
+  }
+
+  INITIALLY {
+    (sidesense && !parkresult);
+  }
+
+  PRESET {
+    (!spec_policy_0 && !spec_policy_1 && !spec_policy_2);
+		(obstacle || !parkresult || !spec_policy_0 || spec_policy_1 || spec_policy_2 || (!throttle_0 && throttle_1 && !steer_0 && !steer_1 && parkcommand_0 && !parkcommand_1 &&  X ((!spec_policy_0 && spec_policy_1 && !spec_policy_2)))); // INITIAL STATE CORRESPONDING TO ASSERT N.15
+  }
+
+  REQUIRE {
+    ( G ((spec_policy_0 || spec_policy_1 || spec_policy_2 ||  X (!parkresult))) &&  G ((throttle_0 || !throttle_1 || (((obstacle &&  X (obstacle)) || (!obstacle &&  X (!obstacle))) && ((sidesense &&  X (sidesense)) || (!sidesense &&  X (!sidesense)))))));
+  }
+
+  ASSERT {
+     G ((spec_policy_0 || spec_policy_1 || spec_policy_2 || ( X (spec_policy_0) &&  X (!spec_policy_1) &&  X (!spec_policy_2)) || ( X (!spec_policy_0) &&  X (spec_policy_1) &&  X (!spec_policy_2)) || ( X (!spec_policy_0) &&  X (!spec_policy_1) &&  X (!spec_policy_2))));
+     G ((!spec_policy_0 || spec_policy_1 || spec_policy_2 || ( X (spec_policy_0) &&  X (!spec_policy_1) &&  X (!spec_policy_2)) || ( X (!spec_policy_0) &&  X (spec_policy_1) &&  X (!spec_policy_2)) || ( X (!spec_policy_0) &&  X (!spec_policy_1) &&  X (!spec_policy_2))));
+     G ((spec_policy_0 || !spec_policy_1 || spec_policy_2 || ( X (spec_policy_0) &&  X (spec_policy_1) &&  X (!spec_policy_2))));
+     G ((!spec_policy_0 || !spec_policy_1 || spec_policy_2 || ( X (!spec_policy_0) &&  X (!spec_policy_1) &&  X (spec_policy_2))));
+     G ((spec_policy_0 || spec_policy_1 || !spec_policy_2 || ( X (spec_policy_0) &&  X (!spec_policy_1) &&  X (spec_policy_2))));
+     G ((!obstacle || throttle_0 || throttle_1));
+     G ((!sidesense || throttle_0 || throttle_1 || steer_0 || steer_1));
+     G ((!obstacle || ((spec_policy_0 || spec_policy_1 || spec_policy_2) && (!spec_policy_0 || spec_policy_1 || spec_policy_2)) || ( X (!spec_policy_0) &&  X (!spec_policy_1) &&  X (!spec_policy_2))));
+     G ((!obstacle || (parkcommand_0 && !parkcommand_1)));
+     G ((parkresult || throttle_0 || !throttle_1 || spec_policy_0 || spec_policy_1 || spec_policy_2));
+     G ((!sidesense || parkresult || !spec_policy_0 || spec_policy_1 || spec_policy_2 || (parkcommand_0 && !parkcommand_1 &&  X (!spec_policy_0) &&  X (!spec_policy_1) &&  X (!spec_policy_2))));
+     G ((obstacle || sidesense || parkresult || !spec_policy_0 || spec_policy_1 || spec_policy_2 || (!throttle_0 && !throttle_1 && !steer_0 && steer_1 && !parkcommand_0 && parkcommand_1 && ((spec_policy_0 &&  X (spec_policy_0)) || (!spec_policy_0 &&  X (!spec_policy_0))) && ((spec_policy_1 &&  X (spec_policy_1)) || (!spec_policy_1 &&  X (!spec_policy_1))) && ((spec_policy_2 &&  X (spec_policy_2)) || (!spec_policy_2 &&  X (!spec_policy_2))))));
+     G (( X (obstacle) ||  X (!parkresult) || ( X ((!throttle_0 && throttle_1)) &&  X ((!steer_0 && !steer_1)) &&  X ((parkcommand_0 && !parkcommand_1)) &&  X ( X (!spec_policy_0)) &&  X ( X (spec_policy_1)) &&  X ( X (!spec_policy_2))) || ( X ((!spec_policy_0 || spec_policy_1 || spec_policy_2)) && (!spec_policy_0 || spec_policy_1 || spec_policy_2 ||  X ((spec_policy_0 || spec_policy_1 || spec_policy_2))))));
+     G ((spec_policy_0 || !spec_policy_1 || spec_policy_2 || (throttle_0 && !throttle_1 && !steer_0 && !steer_1 && parkcommand_0 && !parkcommand_1 &&  X (spec_policy_0) &&  X (spec_policy_1) &&  X (!spec_policy_2))));
+     G ((!spec_policy_0 || !spec_policy_1 || spec_policy_2 || (!throttle_0 && throttle_1 && steer_0 && !steer_1 && parkcommand_0 && !parkcommand_1 &&  X (!spec_policy_0) &&  X (!spec_policy_1) &&  X (spec_policy_2))));
+     G ((spec_policy_0 || spec_policy_1 || !spec_policy_2 || (throttle_0 && !throttle_1 && steer_0 && !steer_1 && parkcommand_0 && !parkcommand_1 &&  X (spec_policy_0) &&  X (!spec_policy_1) &&  X (spec_policy_2))));
+     G ((!spec_policy_0 || spec_policy_1 || !spec_policy_2 || (!throttle_0 && throttle_1 && !steer_0 && steer_1 && parkcommand_0 && !parkcommand_1 && ((spec_policy_0 &&  X (spec_policy_0)) || (!spec_policy_0 &&  X (!spec_policy_0))) && ((spec_policy_1 &&  X (spec_policy_1)) || (!spec_policy_1 &&  X (!spec_policy_1))) && ((spec_policy_2 &&  X (spec_policy_2)) || (!spec_policy_2 &&  X (!spec_policy_2))))));
+  }
+
+  ASSUMPTIONS {
+     G ((!throttle_0 || throttle_1 ||  F (!obstacle)));
+  }
+
+  GUARANTEES {
+     G ( F ((spec_policy_0 && !spec_policy_1 && spec_policy_2)));
+  }
+}

@@ -1,0 +1,34 @@
+// Hand-written weakening ideal. AuRUS ships no reference repair for this
+// benchmark (there is no genuine/ directory beside
+// case-studies/syntcomp-unreal/ltl2dba_R_2/).
+//
+// The single guarantee is a biconditional between an input property and an
+// output one, so the system must decide, at every point at which it chooses
+// `acc`, whether `((G F p_0) || (F G p_1)) && G F p_1` will hold of the whole
+// infinite future of the two inputs. Emitting `acc` forever loses whenever the
+// environment eventually stops pulsing `p_1`; withholding it forever loses
+// whenever the environment pulses both inputs forever.
+//
+// Dropping the right-to-left direction keeps the liveness intent — an input
+// stream that satisfies the trigger is still acknowledged infinitely often —
+// and discards only the obligation to withhold `acc` on the strength of an
+// unobservable future.
+INFO {
+  TITLE:       "LTL -> DBA  -  Formula R From LtlNfBa Paper"
+  DESCRIPTION: "Conversion of LTL to Deterministic Buchi Automaton"
+  SEMANTICS:   Mealy
+  TARGET:      Mealy
+}
+
+MAIN {
+  INPUTS {
+    p_0;
+    p_1;
+  }
+  OUTPUTS {
+    acc;
+  }
+  GUARANTEE {
+    ((((G (F (p_0))) || (F (G (p_1)))) && (G (F (p_1)))) -> (G (F (acc))));
+  }
+}

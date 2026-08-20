@@ -91,8 +91,9 @@ std::vector<Spec> breed_offspring(const Config& cfg,
         Spec offspring = sorted_pop[i].specification;
         if (probability_check(cfg.crossover_rate, random_source)) {
             const std::size_t partner = random_source.next_index(top_n);
-            offspring = ops.crossover(
-                offspring, sorted_pop[partner].specification, random_source);
+            offspring =
+                ops.crossover(offspring, sorted_pop[partner].specification,
+                              random_source, cfg);
         }
         if (probability_check(cfg.mutation_rate, random_source)) {
             offspring = ops.mutate(offspring, random_source, cfg);

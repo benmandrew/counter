@@ -94,7 +94,8 @@ dashboard        = true
     expect(cfg.default_model_counting_bound == 10,
            "config_io: model_counting.default_bound should be parsed");
     expect(cfg.run_weakening_filter,
-           "config_io: filters run_weakening should be true");
+           "config_io: filters run_weakening should be true when the TOML says "
+           "so, the built-in default being false since 2026-08-20");
     expect(!cfg.run_implication_filter,
            "config_io: filters run_implication should be false");
     expect(cfg.run_well_separation_filter,

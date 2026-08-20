@@ -149,9 +149,38 @@ std::optional<Formula> simplify_iff(const Formula& lhs, const Formula& rhs) {
     return std::nullopt;
 }
 
+// G G φ ≡ G φ and F F φ ≡ F φ. Nothing else folded these, so every one the
+// operators built survived into the written repair: the 2026-08-14-aurus-h2h
+// corpus carries 102 `G(G(` nestings and 99 `F(F(` against zero in any of the
+// 25 inputs. They cost size in every n_subformulae-based score, budget against
+// the bloat cap, and states in the automata ltl2tgba and Ganak build.
+std::optional<Formula> simplify_idempotent_unary(const Formula& node) {
+    auto child = node.unary_child();
+    if (!child || child->kind() != node.kind()) {
+        return std::nullopt;
+    }
+    return child;
+}
+
+// φ U φ, φ W φ and φ R φ are all equivalent to φ: each says φ holds now, or
+// holds until itself, which is the same demand. The propositional folder
+// already collapsed the ∧ and ∨ forms of a self-join, which is why the corpus
+// holds 33 W and 23 U self-joins and no ∧ or ∨ ones.
+std::optional<Formula> simplify_self_join(const Formula& lhs,
+                                          const Formula& rhs) {
+    if (lhs == rhs) {
+        return lhs;
+    }
+    return std::nullopt;
+}
+
 std::optional<Formula> simplify_node(const Formula& node) {
     if (node.kind() == Formula::Kind::Not) {
         return simplify_not(node);
+    }
+    if (node.kind() == Formula::Kind::Globally ||
+        node.kind() == Formula::Kind::Eventually) {
+        return simplify_idempotent_unary(node);
     }
     const auto children = node.binary_children();
     if (!children) {
@@ -168,17 +197,18 @@ std::optional<Formula> simplify_node(const Formula& node) {
             return simplify_implies(lhs, rhs);
         case Formula::Kind::Iff:
             return simplify_iff(lhs, rhs);
-        case Formula::Kind::Atom:
-        case Formula::Kind::Not:
-        // Temporal operators are left untouched by propositional
-        // simplification; their subtrees are still simplified by the
-        // post-order walk.
-        case Formula::Kind::Next:
-        case Formula::Kind::Eventually:
-        case Formula::Kind::Globally:
         case Formula::Kind::Until:
         case Formula::Kind::Release:
         case Formula::Kind::WeakUntil:
+            return simplify_self_join(lhs, rhs);
+        case Formula::Kind::Atom:
+        case Formula::Kind::Not:
+        // X has no idempotence to exploit: X X φ is a genuinely different
+        // formula from X φ.
+        case Formula::Kind::Next:
+        // Handled above, before the binary-children guard rejects them.
+        case Formula::Kind::Eventually:
+        case Formula::Kind::Globally:
             break;
     }
     return std::nullopt;

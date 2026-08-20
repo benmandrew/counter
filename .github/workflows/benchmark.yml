@@ -13,40 +13,7 @@ env:
   SCCACHE_GHA_ENABLED: "true"
 
 jobs:
-  # Staleness gate for the nightly schedule. The toolchain is pinned by the Nix
-  # flake, so a scheduled run over a tree that has not moved since the previous
-  # night re-measures the same binary on the same inputs -- adding a
-  # runner-noise datapoint to the history for no signal. Manual dispatch always
-  # runs.
-  gate:
-    runs-on: ubuntu-latest
-    outputs:
-      run: ${{ steps.decide.outputs.run }}
-    steps:
-      - name: Check out repository
-        uses: actions/checkout@v7
-
-      - name: Decide whether this run has anything to do
-        id: decide
-        run: |
-          if [ "${{ github.event_name }}" != "schedule" ]; then
-            echo "run=true" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-          committed=$(git log -1 --format=%ct)
-          age=$(( $(date +%s) - committed ))
-          # 25h of slack over the 24h cron so a slightly-late trigger still runs.
-          if [ "$age" -lt 90000 ]; then
-            echo "run=true" >> "$GITHUB_OUTPUT"
-            echo "HEAD committed ${age}s ago; running the nightly benchmark."
-          else
-            echo "run=false" >> "$GITHUB_OUTPUT"
-            echo "No commits in the last 25h; skipping the nightly benchmark."
-          fi
-
   benchmark:
-    needs: gate
-    if: needs.gate.outputs.run == 'true'
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -57,15 +24,45 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@v7
 
+      # Staleness gate for the nightly schedule. The toolchain is pinned by the
+      # Nix flake, so a scheduled run over a tree that has not moved since the
+      # previous night re-measures the same binary on the same inputs -- adding
+      # a runner-noise datapoint to the history for no signal. Manual dispatch
+      # always runs.
+      #
+      # It is a step guarding the rest of this job rather than a job of its own
+      # because a job bills a whole minute however long it runs, and this
+      # decision takes a second: as a separate job it cost as much as the
+      # benchmark it was deciding about.
+      - name: Decide whether this run has anything to do
+        id: gate
+        run: |
+          if [ "${{ github.event_name }}" != "schedule" ]; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          age=$(( $(date +%s) - $(git log -1 --format=%ct) ))
+          # 25h of slack over the 24h cron so a slightly-late trigger still runs.
+          if [ "$age" -lt 90000 ]; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+            echo "HEAD committed ${age}s ago; running the nightly benchmark."
+          else
+            echo "run=false" >> "$GITHUB_OUTPUT"
+            echo "No commits in the last 25h; skipping the nightly benchmark."
+          fi
+
       - name: Install Nix
+        if: steps.gate.outputs.run == 'true'
         uses: cachix/install-nix-action@v31
         with:
           github_access_token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Set up sccache
+        if: steps.gate.outputs.run == 'true'
         uses: mozilla-actions/sccache-action@v0.0.10
 
       - name: Cache third-party dependencies
+        if: steps.gate.outputs.run == 'true'
         uses: actions/cache@v5
         with:
           path: |
@@ -76,6 +73,7 @@ jobs:
             ${{ runner.os }}-bench-ninja-
 
       - name: Configure and build
+        if: steps.gate.outputs.run == 'true'
         env:
           CMAKE_C_COMPILER_LAUNCHER: sccache
           CMAKE_CXX_COMPILER_LAUNCHER: sccache
@@ -91,9 +89,11 @@ jobs:
           '
 
       - name: Check regression assertions
+        if: steps.gate.outputs.run == 'true'
         run: ./build-bench/bench/counter_bench --check-assertions
 
       - name: Run benchmarks
+        if: steps.gate.outputs.run == 'true'
         run: |
           ./build-bench/bench/counter_bench \
             --benchmark_format=json \
@@ -101,6 +101,7 @@ jobs:
             --benchmark_time_unit=ns
 
       - name: Store benchmark results
+        if: steps.gate.outputs.run == 'true'
         uses: benchmark-action/github-action-benchmark@v1
         with:
           name: counter benchmarks

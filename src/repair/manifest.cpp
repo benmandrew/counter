@@ -68,11 +68,20 @@ namespace {
 // function of the last generation alone; from this version the key can union
 // in the repairs earlier generations found, and only this field says how many
 // of them the run would otherwise have thrown away.
-// 14 added n_ltlsynt_capability_errors. Before it, an ltlsynt run that reported
+//
+// 14 added genetic.repaired_operators. It selected between two mutation and
+// crossover grammars with different RNG draw streams, so two runs of the same
+// seed agreed only when they agreed on this key.
+//
+// 15 removed genetic.repaired_operators. The repaired grammar is now the only
+// one, so the key no longer selects anything; a manifest at this version or
+// later was written by a binary that has only that grammar.
+//
+// 16 added n_ltlsynt_capability_errors. Before it, an ltlsynt run that reported
 // a limit of its own instead of a verdict ended the run and no manifest was
 // written at all; from this version the query resolves as undecided and this
 // field is the only record that it happened.
-constexpr int k_schema_version = 14;
+constexpr int k_schema_version = 16;
 
 // The inverse of the spellings config_io.cpp parses. It has no table to
 // borrow -- it only ever goes string to enum -- so these must be kept in step

@@ -13,6 +13,9 @@
 /// is replaced by one drawn from the second parent's, or the two are joined
 /// under a fresh binary operator. Neither branch copies a field verbatim.
 ///
+/// The graft site is drawn uniformly over the field's nodes, so every node is
+/// as likely to be rewritten as any other.
+///
 /// @param first_parent  First parent requirement
 /// @param second_parent Second parent requirement
 /// @param random_source Random source for branch and selector choices

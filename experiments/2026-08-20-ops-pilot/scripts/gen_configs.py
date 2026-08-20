@@ -89,17 +89,11 @@ REPAIRS: dict[str, list[tuple[str, str]]] = {
 }
 
 # Mirrors the built-in defaults from include/config.hpp, with two deliberate
-# exceptions.
-#
-# run_weakening is pinned True here and the binary has defaulted it False since
-# 2026-08-20, so this is now a real divergence rather than a pending one. The
-# pin does not follow the binary, and must not. run_weakening is a crossed
-# factor (wkon/wkoff) whose flat, non-crossed configs are attributed to
-# LEGACY_WEAKENING ("wkon") by run_experiments.py, and `weakening` is one of
-# merge_experiments.KEY_FIELDS, so the emitted value has to keep matching that
-# recorded CSV column or ~225k archived rows stop joining their own key. Moving
-# the pin would buy nothing and would put every new row at odds with every
-# archived one on a key field. config.hpp also
+# exceptions. config.hpp defaults run_weakening to false, but the experiment
+# baseline stays true: it is a crossed factor (wkon/wkoff) whose flat,
+# non-crossed configs are attributed to LEGACY_WEAKENING ("wkon") by
+# run_experiments.py, so pinning true here keeps the emitted config matching
+# that recorded CSV column and keeps past grids comparable. config.hpp also
 # defaults metric to "logarithmic", but
 # the experiment baseline stays "direct": a flat (non-crossed) config carries no
 # metric directory, so run_experiments.py's metric_of() attributes it to
@@ -155,6 +149,14 @@ DEFAULTS: dict = {
     # is exposed to a later default move -- the crossing "Config vintage" in
     # experiments/README.md records for four other keys.
     "accumulate_repairs": False,
+    # Use the repaired mutation/crossover grammar of the 2026-08-19 operator
+    # fixes rather than the one every campaign before them ran. Off in the
+    # binary, and emitted into [genetic] only when a sweep overrides it (see
+    # make_toml), so every existing grid stays byte-identical; TLSF sweep O
+    # crosses it. Sweep O states it on both arms for the same reason sweep N
+    # states accumulate_repairs on both -- see "Config vintage" in
+    # experiments/README.md.
+    "repaired_operators": False,
     "black_timeout_ms": 1000,
     "repair_mode": "monolithic",
     # Mirrors include/config.hpp, which moved to "mrs" on the 2026-08-11
@@ -229,7 +231,9 @@ def make_toml(overrides: dict, defaults: dict = DEFAULTS) -> str:
     ] + ([f"elitism_rate    = {_fmt(d['elitism_rate'])}"]
          if "elitism_rate" in overrides else []) + (
         [f"accumulate_repairs = {_fmt(d['accumulate_repairs'])}"]
-        if "accumulate_repairs" in overrides else []) + [
+        if "accumulate_repairs" in overrides else []) + (
+        [f"repaired_operators = {_fmt(d['repaired_operators'])}"]
+        if "repaired_operators" in overrides else []) + [
         "",
         "[fitness]",
         f"weight_syntactic = {_fmt(d['weight_syntactic'])}",
@@ -421,13 +425,27 @@ SWEEP_R: list[tuple[str, dict]] = [
     ("elit0.1", {"elitism_rate": 0.1}),   # config.hpp default
 ]
 
-# Sweep O is retired. It crossed [genetic] repaired_operators, the repaired
-# mutation and crossover grammar of 2026-08-19 against the one every campaign
-# before it ran; that grammar is now the only one and the key no longer exists,
-# so neither arm is expressible and the sweep cannot be generated at all. Its
-# archived campaigns are the only record, and they reproduce from their
-# vendored per-campaign scripts/ at the commit their PROVENANCE.json names, as
-# sweep V does after [filters.intervals] went.
+# Sweep O: the repaired mutation and crossover grammar against the one every
+# campaign before 2026-08-19 ran. experiments/2026-08-14-aurus-h2h/REPORT.md
+# audited the operators against that campaign's repair corpus and found seven
+# defects that put whole moves out of reach -- no rule expanded an atom into a
+# binary node, so growing a positive literal in place cost three chained draws
+# through unrealizable intermediates; `Implies` was destroyed wherever a
+# temporal mutation reached one; and 82.5% of appended assumptions never left a
+# hard-wired `G F a` template. Both arms carry `accumulate_repairs = True`
+# rather than crossing it: sweep N measured the accumulator on its own and it is
+# a candidate default, so holding it on asks what the grammar adds *beyond* what
+# accumulation already recovers, which is the question that decides whether to
+# ship the operators, rather than re-measuring their sum. Stating both keys on
+# both arms leaves neither level exposed to a later default move -- the crossing
+# "Config vintage" in experiments/README.md records for four other keys.
+SWEEP_O: list[tuple[str, dict]] = [
+    ("opslegacy", {"repaired_operators": False,   # control
+                   "accumulate_repairs": True}),
+    ("opsfixed",  {"repaired_operators": True,
+                   "accumulate_repairs": True}),
+]
+
 
 # Sweep S: the compute-matched control for sweep R. nsga2-replicate costs more
 # wall time per run than nsga2 (it breeds from a replicated population), so a
@@ -479,6 +497,7 @@ SWEEPS: list[tuple[str, list]] = [
     ("H", SWEEP_H),
     ("I", SWEEP_I),
     ("J", SWEEP_J),
+    ("O", SWEEP_O),
     ("R", SWEEP_R),
     # Placeholder levels at the default operating point and match factor: main()
     # rebuilds this entry from --generations/--compute-match-factor. It is
@@ -605,6 +624,14 @@ TLSF_SWEEP_Q: list[tuple[str, dict]] = [
     for arm_name, arm_overrides in _ARBITER_WSON_ARMS
 ]
 
+# TLSF sweep O: the same operator cross as the FRETISH sweep O, at the TLSF
+# baseline operating point (gen10/pop200) and carrying the TLSF runtime settings
+# --tlsf supplies. Both paths are crossed because the seven repairs split across
+# them: the graft move and the uniform graft site are FRETISH-side, the
+# per-section pools and the assumption template are TLSF-side, and a TLSF-only
+# campaign would ship three of the seven unmeasured.
+TLSF_SWEEP_O: list[tuple[str, dict]] = list(SWEEP_O)
+
 # TLSF sweep R: the elitism cross of the FRETISH sweep R, at the TLSF baseline
 # operating point (gen10/pop200) and carrying the TLSF runtime settings --tlsf
 # supplies. Same letter as the FRETISH sweep because it is the same factor; the
@@ -655,6 +682,7 @@ TLSF_SWEEPS: list[tuple[str, list]] = [
     ("R", TLSF_SWEEP_R),
     ("G", TLSF_SWEEP_G),
     ("N", TLSF_SWEEP_N),
+    ("O", TLSF_SWEEP_O),
     # The compute-matched control, on the same terms as the FRETISH grid's S:
     # TLSF_SWEEP_R is SWEEP_R, so make_sweep_s already emits the right levels
     # and main() rebuilds this entry from --compute-match-factor whichever table

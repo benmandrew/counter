@@ -104,39 +104,6 @@ TLSF_SPECS: dict[str, dict[str, Path]] = {
     "prioritized-arbiter": _spec("prioritized-arbiter", "tlsf"),
     "round-robin-arbiter": _spec("round-robin-arbiter", "tlsf"),
     "simple-arbiter": _spec("simple-arbiter", "tlsf"),
-    # Imported from AuRUS's case-studies/syntcomp-unreal/ for the 2026-08-14
-    # head-to-head. Its upstream "genuine" repairs are other Acacia+ instances
-    # rather than weakenings of it, so the ideal beside it is hand-written.
-    "ltl2dba27": _spec("ltl2dba27", "tlsf"),
-    # The full-TLSF half of the AuRUS corpus, imported 2026-08-17. counter's
-    # parser rejects the GLOBAL block these carry, so each spec.tlsf is the
-    # `syfco -f basic` lowering of its source rather than a copy of it. Six
-    # took their ideal from the upstream genuine/ directory, where the repair
-    # is the spec with its single injected guarantee deleted; ltl2dba-r-2 and
-    # ltl2dba-theta-2 have no upstream reference at all and their ideals are
-    # hand-written on the ltl2dba27 pattern. The -aurus suffix is load-bearing
-    # throughout: this project already has same-named families at different
-    # SYNTCOMP parameter instances, and they are not these.
-    "detector-aurus": _spec("detector-aurus", "tlsf"),
-    "full-arbiter-aurus": _spec("full-arbiter-aurus", "tlsf"),
-    "load-balancer-aurus": _spec("load-balancer-aurus", "tlsf"),
-    "prioritized-arbiter-aurus": _spec("prioritized-arbiter-aurus", "tlsf"),
-    "round-robin-arbiter-aurus": _spec("round-robin-arbiter-aurus", "tlsf"),
-    "simple-arbiter-aurus": _spec("simple-arbiter-aurus", "tlsf"),
-    "ltl2dba-r-2": _spec("ltl2dba-r-2", "tlsf"),
-    "ltl2dba-theta-2": _spec("ltl2dba-theta-2", "tlsf"),
-    # The basic-TLSF half of the same corpus, imported 2026-08-17 verbatim --
-    # these parse as they stand, so each spec.tlsf is byte-identical to its
-    # AuRUS source. None had an upstream reference repair, so every ideal here
-    # is hand-written. humanoid-741 is imported but absent from this table and
-    # has no fixes/ dir at all: see H2H_UNSCOREABLE for why no valid ideal
-    # exists for it.
-    "lily11": _spec("lily11", "tlsf"),
-    "lily15": _spec("lily15", "tlsf"),
-    "lily16": _spec("lily16", "tlsf"),
-    "humanoid-503": _spec("humanoid-503", "tlsf"),
-    "humanoid-742": _spec("humanoid-742", "tlsf"),
-    "pcar-v2-888": _spec("pcar-v2-888", "tlsf"),
 }
 
 # The original six-family TLSF corpus. The pre-ablation TLSF profiles (tlsf,
@@ -201,93 +168,19 @@ def scaled_wall_caps(factor: float) -> dict[str, int]:
             for spec, cap in TLSF_WALL_CAPS_GEN10.items()}
 
 
-# The head-to-head corpus IS the AuRUS paper's evaluation set: the 26
-# specifications the paper's tables evaluate. Both arms target all 26, so this
-# is the campaign's declared scope rather than whatever counter happens to be
-# able to run today. The paths live in `SPEC_TLSF` in
-# scripts/aurus_campaign.py and the two are held equal by
-# test_experiment_paths.py; that module imports this one, so the names are
-# written here and the paths there rather than either importing the other.
-#
-# amba, codesample-un1 and codesample-un2 were in the 2026-07 corpus and are
-# not rows in the paper's tables, so they leave the head-to-head. They keep
-# their counter families and ideals for the ablation corpus.
-#
-# takeoff-tlsf never entered, on the older ground that both of its upstream
-# "genuine" fixes are invalid (one truncated, one unsatisfiable) — see
-# EXPERIMENTS.md 2026-07-24.
+# The 12-family AuRUS head-to-head corpus: the 11 ablation families with an
+# AuRUS case-studies match, plus arbiter-aurus (imported from the AuRUS tree
+# so both tools solve the same spec — counter's own arbiter is a hand-written
+# GR(1) mutex, a different problem from AuRUS's request-response arbiter, and
+# stays in the ablation corpus only). amba has no AuRUS case study.
+# takeoff-tlsf was imported for the head-to-head but is excluded: both of its
+# upstream "genuine" fixes are invalid (one truncated, one unsatisfiable), so
+# the family has no ideals to score implies_ideal against — see EXPERIMENTS.md
+# 2026-07-24. The list is explicit rather than derived from
+# TLSF_ABLATION_SPECS so growing the ablation corpus (e.g. the 2026-07-24
+# SYNTCOMP promotion, whose ideals are hand-written, not AuRUS-genuine) cannot
+# silently widen the head-to-head.
 H2H_TLSF_SPECS: list[str] = [
-    # Literature (5)
-    "arbiter-aurus", "lift", "minepump", "rg1", "rg2",
-    # SYNTCOMP (13)
-    "detector-aurus", "full-arbiter-aurus", "lily02", "lily11", "lily15",
-    "lily16", "load-balancer-aurus", "ltl2dba-r-2", "ltl2dba-theta-2",
-    "ltl2dba27", "prioritized-arbiter-aurus", "round-robin-arbiter-aurus",
-    "simple-arbiter-aurus",
-    # SYNTECH15 (8)
-    "gyro-var1", "gyro-var2", "humanoid-458", "humanoid-503", "humanoid-531",
-    "humanoid-741", "humanoid-742", "pcar-v2-888",
-]
-
-# The gap between the declared scope above and what counter can currently run,
-# named rather than silently subtracted. A family lands here until it has an
-# `examples/<name>/` with a spec and at least one lint-clean ideal; the counter
-# arm runs `H2H_TLSF_SPECS` minus this list, and `test_experiment_paths.py`
-# asserts the two partition exactly, so importing a family fails that test
-# until it is struck off here.
-#
-# Two obstacles, neither structural. Seven parse today but have no reference
-# repairs upstream, so each needs a hand-written weakening ideal: lily11,
-# lily15, lily16, humanoid-503, humanoid-741, humanoid-742, pcar-v2-888. The
-# other eight are full-format TLSF that counter's parser rejects on the GLOBAL
-# block; `syfco -f basic` lowers them to a form it parses, and AuRUS ships one
-# at lib/syfco. Six of those eight do carry upstream references, though AuRUS
-# references replace rather than weaken as a rule, so each still needs
-# validating with lint-ideals before it can serve as an ideal.
-#
-# Nothing here blocks the AuRUS arm, which runs all 26 regardless and archives
-# every out.txt, so an import re-scores runs that already exist.
-H2H_PENDING_IMPORT: list[str] = []
-
-# Imported, but permanently unscoreable, so held out of the counter arm rather
-# than left pending as though an import would fix it.
-#
-# humanoid-741's own input is ill-separated: both ASSUME conjuncts constrain
-# the environment relative to the robot's own outputs, and the robot can force
-# them false (entering move mode 11 once and never returning defeats
-# `G(nmm=11 -> F(!obstacle && nmm=11))`). That is unreachable for the operators
-# to fix, not merely hard. Well-separation reads the assumption side alone, so
-# removing a guarantee cannot affect it, and the only assumption-side move is
-# appending an ASSUME conjunct -- which strengthens the conjunction and can
-# only make it easier to force false. Every descendant is therefore
-# ill-separated too, the output gate rejects all of them, and the family would
-# contribute a guaranteed zero to the counter arm while costing a full seed
-# sweep to produce it.
-#
-# Note this is not the FRETISH input-screen case in the root CLAUDE.md, where
-# an ill-separated input is warned about rather than rejected because a
-# descendant may fix the property. On the TLSF assumption side no descendant
-# can. A semantically sound repair does exist -- dropping the `G(!next_head)`
-# ASSERT that `mucs` names makes it realizable -- but it is outside the
-# operators' image, so no ideal built on it would be a fair target either.
-#
-# AuRUS produced zero repairs for this family across all 30 repeats, which is
-# consistent with the same obstruction rather than with a budget limit.
-H2H_UNSCOREABLE: list[str] = ["humanoid-741"]
-
-# What the counter arm can run right now.
-H2H_TLSF_READY: list[str] = [
-    s for s in H2H_TLSF_SPECS
-    if s not in H2H_PENDING_IMPORT and s not in H2H_UNSCOREABLE
-]
-
-# The corpus the 2026-07-24 head-to-head actually ran, frozen so that changing
-# the live list above cannot retroactively change what the `h2h-tlsf` profile
-# means. That profile is the July campaign's definition and nothing else runs
-# it; the 2026-08-14 campaign uses `aurus-h2h` instead. Written out rather than
-# derived from H2H_TLSF_SPECS: it was derived once, and moving the live corpus
-# to the paper's 26 rows silently carried this to 25.
-H2H_TLSF_SPECS_2026_07: list[str] = [
     "gyro-var1", "gyro-var2", "humanoid-458", "humanoid-531", "lift",
     "lily02", "minepump", "codesample-un1", "codesample-un2", "rg1", "rg2",
     "arbiter-aurus",
@@ -986,53 +879,13 @@ PROFILES: dict[str, dict] = {
         "repair_modes": None,
         "sweeps": ["C"],
         "levels": {"C": ["default"]},
-        "specs": H2H_TLSF_SPECS_2026_07,
+        "specs": H2H_TLSF_SPECS,
         "seeds": list(range(20)),
-        "timeout_caps": {s: 600 for s in H2H_TLSF_SPECS_2026_07},
+        "timeout_caps": {s: 600 for s in H2H_TLSF_SPECS},
         "baseline_aliases": {},
         "configs_dir": EXPERIMENTS_DIR / "configs-ablate-tlsf",
         "results_dir": EXPERIMENTS_DIR / "results-ablate-tlsf",
         "results_csv": EXPERIMENTS_DIR / "results-ablate-tlsf.csv",
-        "default_jobs": 1,
-    },
-    # The 2026-08-14 head-to-head. Separate from `h2h-tlsf` in every path it
-    # writes, because it differs from that profile in the two things the resume
-    # key does not carry: the corpus is 25 scoreable families rather than 12,
-    # and the wall cap is 7200s rather than 600s. Sharing ablate-tlsf's CSV as
-    # `h2h-tlsf` does would put rows from both caps under one key and let the
-    # merge keep whichever arrived first.
-    #
-    # 7200s matches AuRUS's `--gato 7200`, the published 2 h budget. The July
-    # campaign ran counter at 600s against AuRUS at 3600s and reported the 6x
-    # asymmetry as favouring the baseline; this one removes the asymmetry
-    # instead, so neither tool's figure needs that caveat and neither compares
-    # to July's on cost.
-    "aurus-h2h": {
-        # Both of these track the built-in defaults rather than pinning an
-        # arm, because a head-to-head has to run counter as it ships: a
-        # baseline comparison against a configuration no user gets by
-        # default measures the wrong thing. nsga2-apportion became the
-        # default in c71ecf0 and this profile followed it; `log` has been
-        # the default metric throughout. Re-check both against
-        # include/config.hpp whenever a default moves.
-        "schemes": ["nsga2-apportion"],
-        "weakenings": None,
-        "metrics": ["log"],
-        "repair_modes": None,
-        "sweeps": ["C"],
-        "levels": {"C": ["default"]},
-        # H2H_TLSF_READY, not H2H_TLSF_SPECS: the campaign's declared scope is
-        # all 26, and the counter arm runs the subset already imported. The
-        # remainder is named in H2H_PENDING_IMPORT rather than subtracted
-        # silently, and topping up as families land is a resume rather than a
-        # re-run, (spec, seed) being in the key.
-        "specs": H2H_TLSF_READY,
-        "seeds": list(range(20)),
-        "timeout_caps": {s: 7200 for s in H2H_TLSF_READY},
-        "baseline_aliases": {},
-        "configs_dir": EXPERIMENTS_DIR / "configs-aurus-h2h",
-        "results_dir": EXPERIMENTS_DIR / "results-aurus-h2h",
-        "results_csv": EXPERIMENTS_DIR / "results-aurus-h2h.csv",
         "default_jobs": 1,
     },
     # nsga2 vs nsga2-replicate on FRETISH, at the gen40/pop1000 operating point
@@ -1443,12 +1296,188 @@ PROFILES: dict[str, dict] = {
         "results_csv": EXPERIMENTS_DIR / "results-seldefault-tlsf.csv",
         "default_jobs": 1,
     },
-    # The ops-pilot, opswk-fret, opswk-tlsf, ops-tlsf and ops-fret profiles are
-    # retired. All five ran sweep O, the cross of `[genetic]
-    # repaired_operators`; that key is gone and the repaired grammar is the only
-    # one, so the sweep can no longer be generated and neither can a profile that
-    # names it. merge_experiments.py keeps its entries for them, as it does for
-    # wellsep-timing, so the archived CSVs stay mergeable.
+    # Cap-sizing pilot for ops-grammar, and nothing else. The three slowest
+    # H2H_TLSF families in both sweep-O arms at the campaign's own operating
+    # point, under a cap set far above anything expected so the tail is
+    # OBSERVED rather than censored -- which is the whole defect in the number
+    # this replaces. humanoid-531 was already cap-bound at 600 s in the
+    # 2026-07-24 archive (median 377 s), so its true tail has never been seen,
+    # and that archive is stale in four upward directions at once: MRS status
+    # grading became the default on 2026-08-11 (1.89x), p_remove_guarantee
+    # landed, the accumulator is on in both arms here, and the ltlsynt budget
+    # moves 500 ms to 10000 ms.
+    #
+    # jobs = 4, matching the phase it sizes. A pilot run at a different
+    # concurrency measures a different per-run wall time -- and here the gap is
+    # not contention but an explicit division, the runner giving each counter
+    # parallel = cpu_count // jobs. A first pilot ran at jobs=1 and its rows
+    # were deleted rather than kept: they size a campaign that is no longer the
+    # one being run.
+    #
+    # Its own CSV and run directory, never ops-tlsf's: these rows are timing
+    # measurements at a non-campaign cap and must not merge into the dataset
+    # the endpoint is computed over. It shares configs-ops-tlsf, which is
+    # generated by the same build hook and identical for both.
+    "ops-pilot": {
+        "schemes": ["nsga2-truncate"],
+        "weakenings": None,
+        "metrics": None,
+        "repair_modes": None,
+        "sweeps": ["O"],
+        "levels": {"O": ["opslegacy", "opsfixed"]},
+        # Order is immaterial: the plan is walked seed-major, so a seed's
+        # specs all run before the next seed's. That is the better property
+        # here anyway -- stopping the pilot early leaves complete (spec, seed)
+        # pairs across both arms rather than a truncated cheapest-first prefix
+        # with the expensive family unmeasured.
+        "specs": ["gyro-var1", "lift", "humanoid-531"],
+        "seeds": list(range(4)),
+        # Deliberately non-binding. A pilot that censors reports its own cap.
+        "timeout_caps": {s: 3600 for s in ("humanoid-531", "lift", "gyro-var1")},
+        "compare_timeout": 1800,
+        "baseline_aliases": {},
+        "configs_dir": EXPERIMENTS_DIR / "configs-ops-tlsf",
+        "results_dir": EXPERIMENTS_DIR / "results-ops-pilot",
+        "results_csv": EXPERIMENTS_DIR / "results-ops-pilot.csv",
+        "default_jobs": 4,
+    },
+    # ── ops-grammar ─────────────────────────────────────────────────────────
+    # The repaired mutation and crossover grammar (sweep O) against the one
+    # every campaign before 2026-08-19 ran, paired on (spec, seed) within one
+    # binary via `[genetic] repaired_operators`. See
+    # experiments/ops-grammar/PLAN.md for the pre-registered endpoints and
+    # decision rule, and experiments/2026-08-14-aurus-h2h/REPORT.md for the
+    # seven defects the arms differ by.
+    #
+    # Two profiles, one per path, because the seven repairs split across them:
+    # the atom graft, the atom-rename distinctness guard and the uniform graft
+    # site are FRETISH-side, the per-section pools, the fourth temporal arm, the
+    # assumption template and the single-occurrence graft are TLSF-side. A
+    # TLSF-only campaign would ship three of the seven unmeasured.
+    #
+    # `accumulate_repairs` is True on both arms of both profiles rather than
+    # crossed. Sweep N already measured it alone (2026-08-19-accumulator:
+    # McNemar 6-0, p = 0.0312, 1.034x wall) and it is a candidate default, so
+    # holding it on asks what the grammar adds beyond what accumulation already
+    # recovers. That is the question that decides whether to ship the operators.
+    #
+    # Generate with
+    #   python3 scripts/gen_configs.py --tlsf --sweeps O \
+    #       --ltlsynt-timeout 10000 --ltl2tgba-timeout 60000 \
+    #       --max-scoring-failure-rate 0.15 \
+    #       --out-dir experiments/configs-ops-tlsf
+    #
+    # Corpus is H2H_TLSF_SPECS at seeds 0-19, matching the 2026-08-14 head-to-
+    # head exactly, so the AuRUS rows that campaign already produced stay a
+    # reference for both arms without re-running AuRUS. The operating point does
+    # NOT match it: that campaign inherited ablate-tlsf's 500 ms ltlsynt budget,
+    # and a budget that tight censors whichever arm builds larger formulae --
+    # which is the treatment arm by construction, since the graft move grows
+    # them. Censoring the treatment is the one failure mode that would fake a
+    # null here, so the budget is 10000 ms (the status-grading precedent) and
+    # the archived counter rows are therefore NOT a control. The campaign
+    # carries its own, which is what pairing is for.
+    "ops-tlsf": {
+        "schemes": ["nsga2-truncate"],
+        "weakenings": None,
+        "metrics": None,
+        "repair_modes": None,
+        "sweeps": ["O"],
+        "levels": {"O": ["opslegacy", "opsfixed"]},
+        "specs": list(H2H_TLSF_SPECS),
+        # 10 per host, seed-major disjoint across av2/av3.
+        "seeds": list(range(20)),
+        # PILOT-SIZED by campaign ops-pilot at this jobs value: 4x the slowest
+        # run observed over both arms, floored at 600 s and rounded to the
+        # minute. Nothing in the pilot timed out under its non-binding 3600 s
+        # cap, so every one of these maxima is an observation rather than a
+        # censored bound -- which is what the 2026-07-24 archive could not give,
+        # humanoid-531 having been cap-bound at 600 s there.
+        #
+        # humanoid-531 is why the pilot existed. Its treatment arm ran to
+        # 630.4 s against the control's 390.4 s, so the 600 s cap this campaign
+        # would otherwise have inherited fires on opsfixed and not on
+        # opslegacy. That is the directional censoring PLAN.md section 8
+        # registers, and it would have shown up as the treatment losing.
+        #
+        # The nine unpiloted families keep the 600 s floor on archive evidence:
+        # the slowest of them is gyro-var2 at an 85.9 s archived maximum,
+        # against gyro-var1's archived 86.7 s, which piloted at 118.5 s. 600 s
+        # is about 5x that.
+        "timeout_caps": {
+            "arbiter-aurus": 600, "codesample-un1": 600,
+            "codesample-un2": 600, "gyro-var1": 600, "gyro-var2": 600,
+            "humanoid-458": 600, "humanoid-531": 2580, "lift": 960,
+            "lily02": 600, "minepump": 600, "rg1": 600, "rg2": 600,
+        },
+        # Both arms accumulate, so both return more candidates than any archived
+        # TLSF campaign, and compare's cost scales with n_repairs x n_ideals.
+        # The weakening-arbiter precedent: 600 s censored replicate's
+        # comparisons on exactly this asymmetry.
+        "compare_timeout": 1800,
+        "baseline_aliases": {},
+        "configs_dir": EXPERIMENTS_DIR / "configs-ops-tlsf",
+        "results_dir": EXPERIMENTS_DIR / "results-ops-tlsf",
+        "results_csv": EXPERIMENTS_DIR / "results-ops-tlsf.csv",
+        # jobs=4, breaking with the jobs=1 every other TLSF profile uses, on
+        # measurement rather than on preference. That rule exists because
+        # ltlsynt is multi-GB resident and max_concurrent_realizability is a
+        # per-process cap, so a second counter doubles the ceiling -- which
+        # binds on a 30 GB box and not on av2/av3, which carry 125 GB. The
+        # largest tool process observed during the pilot was a 9.8 GB ltl2tgba,
+        # so four concurrent runs peak near 40 GB against 114 GB available.
+        # The cores are the actual waste: at jobs=1 a run already gets
+        # parallel=32 and host load still sits near 4, because counter blocks on
+        # child processes rather than saturating the CPU -- the same thing the
+        # profiler reports as a proc/read cpu/wall ratio of about 0.01. Nothing
+        # is oversubscribed either way, since the runner sets
+        # parallel_k = cpu_count // jobs, holding the thread budget constant.
+        #
+        # This is why the caps above must come from a pilot run at THIS jobs
+        # value: each run gets a quarter of the threads it had, so per-run wall
+        # time rises even as throughput improves, and a cap sized at jobs=1
+        # would censor -- directionally against the treatment arm, which is the
+        # one failure mode PLAN.md section 8 registers.
+        "default_jobs": 4,
+    },
+    # FRETISH arm of the same cross, at the gen40/pop1000 operating point the
+    # cj-large, metric and ablate-fret campaigns share, so their rows bound what
+    # the control arm should look like. 30 seeds rather than 20: the path costs
+    # ~100 s of counter per seed summed over its four families against ~550 s on
+    # TLSF, so the extra pairs are nearly free.
+    #
+    # Power sits on fsm (implies_ideal 0.269 over ablate-fret's 160 default-cell
+    # rows), fsm-combined (0.062) and takeoff (0.506) -- three families off both
+    # bounds, which is where a paired test can move. fsm-timing reads 1.000 and
+    # is the saturation control: it must not fall.
+    #
+    # Generate with
+    #   python3 scripts/gen_configs.py --schemes nsga2-truncate --sweeps O \
+    #       --generations 40 --population-size 1000 \
+    #       --out-dir experiments/configs-ops-fret
+    "ops-fret": {
+        "schemes": ["nsga2-truncate"],
+        "weakenings": None,
+        "metrics": None,
+        "repair_modes": None,
+        "sweeps": ["O"],
+        "levels": {"O": ["opslegacy", "opsfixed"]},
+        "specs": list(FRETISH_SPECS),
+        # 15 per host; the campaign declaration overrides the TLSF split for
+        # this phase alone.
+        "seeds": list(range(30)),
+        # ablate-fret's caps at this operating point, doubled. Its worst
+        # observed run was 120 s (fsm-timing) against a 600 s cap, and both arms
+        # here accumulate, which lengthens the tail rather than the median.
+        "timeout_caps": {"takeoff": 1200, "fsm": 1200, "fsm-timing": 1200,
+                         "fsm-combined": 1800},
+        "compare_timeout": 1800,
+        "baseline_aliases": {},
+        "configs_dir": EXPERIMENTS_DIR / "configs-ops-fret",
+        "results_dir": EXPERIMENTS_DIR / "results-ops-fret",
+        "results_csv": EXPERIMENTS_DIR / "results-ops-fret.csv",
+        "default_jobs": 4,
+    },
 }
 
 

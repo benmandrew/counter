@@ -17,6 +17,11 @@
 /// names are replaced by atoms drawn from @p atoms; if @p atoms is empty,
 /// atom names are left unchanged.
 ///
+/// An atom has three moves: rename, negate, or graft a drawn anchor onto it
+/// under a drawn connective, which is what guards a positive literal in one
+/// draw. A rename prefers a name the atom does not already have. With @p atoms
+/// empty there is no anchor to draw, so the graft is dropped.
+///
 /// @param formula        The formula to mutate
 /// @param atoms          Pool of atom names to draw replacements from
 /// @param random_source  Random source for branch and selector choices

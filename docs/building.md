@@ -83,6 +83,16 @@ cmake --build build --target format        # apply clang-format in-place
 cmake --build build --target format-ci     # dry-run, fails if unformatted
 ```
 
+### Driver tests
+
+`test/drivers/e2e_tests.cpp` holds one *end-to-end* suite per built driver, registered as `counter_tests.driver_counter`, `driver_realize`, `driver_ltl`, `driver_mucs`, `driver_compare`, `driver_lint_ideals` and `driver_signal_tracer`. Each spawns the binary through `execute_and_capture` rather than calling into the library, so these are the only tests that cover `src/main.cpp`, `src/repair/`, `src/crash/` and each standalone tool's own argument handling. `signal_tracer` is the exception, spawned through `spawn_piped_child`: it reads its frames from stdin, which `execute_and_capture` leaves as the test process's own, so under ctest its input would be whatever invoked the run rather than anything this suite chose. They locate the binaries through the `COUNTER_DRIVER_DIR` compile definition (`$<TARGET_FILE_DIR:counter>`), and `test/CMakeLists.txt` declares the seven drivers as dependencies of `counter_tests` so they are built before ctest runs. A new driver needs all three — a suite, the dependency and the ctest registration.
+
+The fixtures are inline in the test file rather than files under `examples/`, so editing an example cannot change what the tests assert. The four are a two-signal unrealizable TLSF specification, its realizable weakening with one added assumption, a two-guarantee FRETISH JSON, and a two-generation config over eight individuals.
+
+What they assert is the driver's contract rather than the search's result: exit status, the stdout markers, and `run.json`'s seed, input, schema version and echoed config, plus the invariant that `n_repairs` equals the number of `repair_N` files written. The `counter` suite runs the same seed twice and requires byte-identical repairs. Which repairs the search finds is pinned by the `determinism` suite instead, since asserting it here would break the driver tests on every deliberate change to the operators.
+
+A TLSF run writes a `repair_N.fitness.json` sidecar beside each `repair_N.tlsf`, so a file filter matching the `repair_` prefix alone counts every repair twice. The seven entries add about 2.5 seconds, against 14.5 seconds for the whole suite under the `coverage` preset and 24 seconds under `debug`, where every binary they spawn is sanitised too.
+
 ### Coverage
 
 The `coverage` preset compiles with clang's *source-based coverage* instrumentation, `-fprofile-instr-generate -fcoverage-mapping`, as a Debug build under `build-coverage/`. It is clang only, since gcc rejects both flags and `--coverage` with gcov would report a different number from a different tool. The preset's test half points `LLVM_PROFILE_FILE` at `build-coverage/profraw/%p.profraw`, so running the suite any other way leaves no profile to measure.
@@ -98,7 +108,7 @@ It configures, builds, runs `ctest --preset coverage`, merges the raw profiles w
 
 The badge is a committed file rather than a call out to a badge service, so the README renders on a fork with no secrets and in an offline clone. That holds only while the file is regenerated when the number moves, which is what `--check` is for. It runs as the tail of the `coverage` entry in the build matrix of [`.github/workflows/ci.yml`](../.github/workflows/ci.yml), on every push and pull request, with `--no-run` so that it reads the profiles that entry's own `ctest` wrote rather than measuring the tree a second time.
 
-The measurement covers every instrumented binary rather than the test binary alone: `counter`, `compare`, `lint-ideals`, `ltl`, `mucs`, `realize`, `signal_tracer` and `test/counter_tests`. Over `counter_tests` by itself the figure is 86.7%, and over all eight it is 71.0%. The difference is the driver code (`src/repair/*.cpp`, `src/compare.cpp`, `src/lint_ideals.cpp`) that no test runs, which is uncovered rather than absent and belongs in the denominator. A new binary goes into `BINARIES` in the script, which fails loudly when a name it holds is not built.
+The measurement covers every instrumented binary rather than the test binary alone: `counter`, `compare`, `lint-ideals`, `ltl`, `mucs`, `realize`, `signal_tracer` and `test/counter_tests`. Over `counter_tests` by itself the figure is 89.3%, and over all eight it is 83.6%. Every file in `src/` and `include/` now has non-zero coverage, and what remains uncovered is error and terminal branches — `include/status_line.hpp` at 54.8% for its tty-only paths, and the per-driver argument-error paths that not every suite exercises. A new binary goes into `BINARIES` in the script, which fails loudly when a name it holds is not built.
 
 `llvm-profdata` and `llvm-cov` must come from the same LLVM release as the clang that built the tree. The profile format is versioned, so an older tool reports a current profile as malformed. The Nix dev shell carries `llvmPackages.llvm` for this; on a host with several LLVMs installed, `LLVM_COV` and `LLVM_PROFDATA` override the lookup.
 
@@ -109,7 +119,7 @@ mkdir -p build-coverage
 ln -s ../build/third_party build-coverage/third_party
 ```
 
-The figure moves by about a tenth of a percentage point between runs of one binary, because the suite spawns real tools and branches on their timings and peak resident set: `src/runner/process.cpp`, `black.cpp` and `spot.cpp` account for all of the movement measured so far. The badge prints a whole number, so that jitter matters only near a rounding boundary, and `--check` carries `CHECK_SLACK` for it — a quarter of a point of tolerance beyond the committed number's rounding band, which passes a run that landed the other side of a boundary and still fails a real drop. Regenerating the badge and committing it is what a genuine move calls for.
+The figure moves by up to two tenths of a percentage point between runs of one binary — 83.60% to 83.80% over five runs — because the suite spawns real tools and branches on their timings and peak resident set. The badge prints a whole number, so that jitter matters only near a rounding boundary, and the current figure sits a tenth of a point above one. `--check` therefore carries `CHECK_SLACK`, a quarter of a point of tolerance beyond the committed number's rounding band: a run that lands the other side of the boundary passes, and a real drop of a third of a point or more still fails. Regenerating the badge and committing it is what a genuine move calls for.
 
 ## Documentation
 

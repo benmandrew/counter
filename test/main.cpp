@@ -102,6 +102,42 @@ bool run_tlsf_suite(std::string_view suite_name) {
     return false;
 }
 
+// Handles the end-to-end suites, one per built driver. Each spawns the binary
+// itself rather than calling into the library, so these are the only suites
+// that cover src/main.cpp, src/repair/ and the standalone tools' own argument
+// handling. Split out of run_suite for the same reason as run_tlsf_suite above.
+bool run_driver_suite(std::string_view suite_name) {
+    if (suite_name == "driver_counter") {
+        run_counter_driver_tests();
+        return true;
+    }
+    if (suite_name == "driver_realize") {
+        run_realize_driver_tests();
+        return true;
+    }
+    if (suite_name == "driver_ltl") {
+        run_ltl_driver_tests();
+        return true;
+    }
+    if (suite_name == "driver_mucs") {
+        run_mucs_driver_tests();
+        return true;
+    }
+    if (suite_name == "driver_compare") {
+        run_compare_driver_tests();
+        return true;
+    }
+    if (suite_name == "driver_lint_ideals") {
+        run_lint_ideals_driver_tests();
+        return true;
+    }
+    if (suite_name == "driver_signal_tracer") {
+        run_signal_tracer_driver_tests();
+        return true;
+    }
+    return false;
+}
+
 // Handles the suites over the process-wide plumbing rather than the repair
 // itself. Split out of run_suite for the same reason as run_tlsf_suite above.
 bool run_infrastructure_suite(std::string_view suite_name) {
@@ -214,6 +250,9 @@ void run_suite(std::string_view suite_name,
     if (run_tlsf_suite(suite_name)) {
         return;
     }
+    if (run_driver_suite(suite_name)) {
+        return;
+    }
     throw std::invalid_argument("Unknown test suite: " +
                                 std::string(suite_name));
 }
@@ -271,6 +310,13 @@ int main(int argc, const char* const argv[]) {
             run_tlsf_guarantee_parts_tests();
             run_tlsf_genetic_tests();
             run_tlsf_pipeline_tests();
+            run_counter_driver_tests();
+            run_realize_driver_tests();
+            run_ltl_driver_tests();
+            run_mucs_driver_tests();
+            run_compare_driver_tests();
+            run_lint_ideals_driver_tests();
+            run_signal_tracer_driver_tests();
             // run_thread_pool_tests() is deliberately absent. It sizes the
             // global pool, which is a function-local static built on first use
             // and never resized, so running it here would pin the width of the

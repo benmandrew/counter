@@ -42,6 +42,7 @@ add_executable(counter_tests
     tlsf/guarantee_parts_tests.cpp
     tlsf/genetic_tests.cpp
     tlsf/pipeline_tests.cpp
+    drivers/e2e_tests.cpp
 )
 
 # src/ as well as test/, so suites can reach the private headers next to the
@@ -51,6 +52,15 @@ target_include_directories(counter_tests PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}
     ${CMAKE_SOURCE_DIR}/src)
 target_link_libraries(counter_tests PRIVATE counter_fitness)
+
+# The end-to-end suites spawn the drivers rather than calling into the library,
+# so the binaries have to exist before ctest runs and the suite has to know
+# where they landed. Every driver is built into the same directory, so one
+# generator expression covers all of them.
+add_dependencies(counter_tests
+    counter compare lint-ideals ltl mucs realize signal_tracer)
+target_compile_definitions(counter_tests PRIVATE
+    COUNTER_DRIVER_DIR="$<TARGET_FILE_DIR:counter>")
 
 if(MSVC)
     target_compile_options(counter_tests PRIVATE /W4 /permissive-)
@@ -114,6 +124,19 @@ add_test(NAME counter_tests.tlsf_fitness COMMAND counter_tests tlsf_fitness)
 add_test(NAME counter_tests.tlsf_mucs COMMAND counter_tests tlsf_mucs)
 add_test(NAME counter_tests.tlsf_genetic COMMAND counter_tests tlsf_genetic)
 add_test(NAME counter_tests.tlsf_pipeline COMMAND counter_tests tlsf_pipeline)
+
+# One end-to-end entry per built driver, each running the binary the way a user
+# would. They are registered separately so a failure names the driver rather
+# than a suite covering seven of them.
+add_test(NAME counter_tests.driver_counter COMMAND counter_tests driver_counter)
+add_test(NAME counter_tests.driver_realize COMMAND counter_tests driver_realize)
+add_test(NAME counter_tests.driver_ltl COMMAND counter_tests driver_ltl)
+add_test(NAME counter_tests.driver_mucs COMMAND counter_tests driver_mucs)
+add_test(NAME counter_tests.driver_compare COMMAND counter_tests driver_compare)
+add_test(NAME counter_tests.driver_lint_ideals
+         COMMAND counter_tests driver_lint_ideals)
+add_test(NAME counter_tests.driver_signal_tracer
+         COMMAND counter_tests driver_signal_tracer)
 
 # The dashboard page ships as one self-contained HTML file, so its script is
 # tested by extracting it from the page and running it under node -- the same

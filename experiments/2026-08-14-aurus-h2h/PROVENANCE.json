@@ -11,12 +11,12 @@
     "commit_date": "2026-08-14 17:31",
     "reachable_from_main": false,
     "must_resolve": false,
-    "note": "Informational, and deliberately not held by a tag. No counter binary ran in this arm, so this sha pins nothing that determines a result; it names the revision the harness came from, and the harness itself is pinned exactly by the content-addressed blob under vendored_scripts. The 2026-08-17 rebase onto main rewrote this sha (the equivalent post-rebase commit is 87ec8db) and left the vendored blob byte-identical, which is why the rebase costs this record nothing. The version that does determine the results is under `aurus` below, and that one is tagged."
+    "note": "Informational, and deliberately not held by a tag. No counter binary ran in this arm, so this sha pins nothing that determines a result; it names the revision the harness came from, and the harness itself is pinned exactly by the content-addressed blob under vendored_scripts. The 2026-08-17 rebase onto main rewrote this sha (the equivalent post-rebase commit is b1db3d2) and left the vendored blob byte-identical, which is why the rebase costs this record nothing. The version that does determine the results is under `aurus` below, and that one is tagged."
   },
   "profile_commit_confidence": "recorded",
   "profile_commit_evidence": "Both hosts were staged to this commit on branch feat/aurus-h2h before launch, and each host's on-disk scripts/aurus_campaign.py still hashes to the blob this commit records (md5 c35d02c0adf2c5ad43fed052004e2b04, checked 2026-08-17). It is the commit that fixed the corpus at the paper's 26 rows and pointed the harness at the pre-fork AuRUS base.",
   "binary_commit": null,
-  "binary_commit_note": "Null for the AuRUS arm by construction rather than by loss: it invokes unreal-repair.sh alone and links no counter binary. The counter arm does have one -- see counter_arm.binary_commit, 1d18cf3 -- so this top-level null describes the AuRUS arm only and must not be read as covering the campaign.",
+  "binary_commit_note": "Null for the AuRUS arm by construction rather than by loss: it invokes unreal-repair.sh alone and links no counter binary. The counter arm does have one -- see counter_arm.binary_commit, 000b2f4 -- so this top-level null describes the AuRUS arm only and must not be read as covering the campaign.",
   "aurus": {
     "repo": "git@github.com:benmandrew/AuRUS.git (fork of the authors' unreal-repair; also pushed to git@ssh.git.benmandrew.com:me/AuRUS.git)",
     "note": "This is the version that determines every result in this file, and it lives in a different repository, so no tag in the counter repo can hold it. The three fields below are the record: `commit` is the upstream base, `deployed_commit` is the exact tree that ran, and `tracked_file_digest` verifies a deployment without needing either repository.",
@@ -139,23 +139,23 @@
         "basis": "recorded: staged to both hosts at launch, and both on-disk copies still hash to this blob (checked 2026-08-17). The branch feat/aurus-h2h is not yet merged, so this commit is not an ancestor of main, and the 2026-08-17 rebase took it off the branch as well; the tag holds it. The blob is unchanged by the rebase, so `git hash-object` still verifies this copy."
       },
       "maximal.cpp": {
-        "source_commit": "ed726d460ea98f0e36e9c28f5e5dce6820c03302",
+        "source_commit": "2d07cd3c15312795a9b0f0d3b920c9d7388e3df0",
         "blob": "159ec1ecf9762eb64e54f4002b1ad5e2d6d9ffe4",
         "reachable_from_main": false,
         "repo_path": "src/maximal.cpp",
         "build": "cmake --build build-release --target maximal",
-        "basis": "recorded: built from this commit on both hosts and locally, and all three binaries answer --version with it.",
+        "basis": "recorded: built from ed726d46 on both hosts and locally, and all three binaries answer --version with that sha. The 2026-08-20 rebase onto main rewrote it to this commit and left the vendored blob byte-identical, so what was compiled is unchanged and only its address moved. ed726d46 is held by backup/aurus-h2h-pre-rebase.",
         "held_by": "branch feat/aurus-h2h (pushed to origin 2026-08-18)",
-        "held_by_note": "Not provenance/aurus-h2h-arm: that tag holds dea51b7, the pre-rebase tip, which no branch reaches. This commit is the branch tip and is reached by the branch itself. If feat/aurus-h2h is ever split into reconstructed pull requests rather than merged -- as feat/replicate-campaign was -- this sha stops resolving and needs a tag of its own before that happens."
+        "held_by_note": "Not provenance/aurus-h2h-arm: that tag holds dea51b7, the pre-rebase tip of the AuRUS arm, which no branch reaches. This commit is reached by feat/aurus-h2h itself. The 2026-08-20 rebase onto main is the rewrite this note warned about: the pre-rebase sha ed726d46 stopped resolving from any branch, and backup/aurus-h2h-pre-rebase holds it. Never delete that tag while any field here names a pre-rebase sha."
       },
       "maximality_sweep.py": {
-        "source_commit": "ed726d460ea98f0e36e9c28f5e5dce6820c03302",
+        "source_commit": "2d07cd3c15312795a9b0f0d3b920c9d7388e3df0",
         "blob": "ab21d4784a8225a550aedddb6d2829653a3dd9dd",
         "reachable_from_main": false,
         "repo_path": "scripts/maximality_sweep.py",
-        "basis": "recorded: drove the sweep on both hosts from this commit.",
+        "basis": "recorded: drove the sweep on both hosts from ed726d46, which the 2026-08-20 rebase onto main rewrote to this commit. The vendored blob is byte-identical across that rewrite; ed726d46 is held by backup/aurus-h2h-pre-rebase.",
         "held_by": "branch feat/aurus-h2h (pushed to origin 2026-08-18)",
-        "held_by_note": "Not provenance/aurus-h2h-arm: that tag holds dea51b7, the pre-rebase tip, which no branch reaches. This commit is the branch tip and is reached by the branch itself. If feat/aurus-h2h is ever split into reconstructed pull requests rather than merged -- as feat/replicate-campaign was -- this sha stops resolving and needs a tag of its own before that happens."
+        "held_by_note": "Not provenance/aurus-h2h-arm: that tag holds dea51b7, the pre-rebase tip of the AuRUS arm, which no branch reaches. This commit is reached by feat/aurus-h2h itself. The 2026-08-20 rebase onto main is the rewrite this note warned about: the pre-rebase sha ed726d46 stopped resolving from any branch, and backup/aurus-h2h-pre-rebase holds it. Never delete that tag while any field here names a pre-rebase sha."
       }
     },
     "tag_note": "provenance/aurus-h2h-arm was named by the aurus_campaign.py entry before it existed; it was created on 2026-08-18, annotated, at dea51b7. Never delete it -- that commit is dangling and git gc would collect it, and the blob this file names would stop resolving."
@@ -164,16 +164,17 @@
     "run_on": "2026-08-17T17:40Z to 2026-08-17T22:37Z",
     "profile": "aurus-h2h",
     "wall_time": "av2 4h12m, av3 4h57m, at jobs = 8. The same campaign at jobs = 1 was measured at about 31 hours per host, two thirds of it humanoid-742 alone.",
-    "binary_commit": "1d18cf3b92cfa42c1154d4d578f5fcc63adf2094",
-    "binary_commit_short": "1d18cf3",
+    "binary_commit": "000b2f445a3d6f5a05743fa50e3754dcbe5bbaca",
+    "binary_commit_short": "000b2f4",
     "dirty": 0,
     "commit_spread": {
       "note": "The results CSV carries three commits rather than one, because `commit` is deliberately absent from the resume key and rows from the calibration and from an earlier partial launch survived the relaunch rather than being re-run. This is a provenance artefact, not a mixed design.",
-      "1d18cf3": 433,
-      "a719a04": 42,
-      "3b74996": 24,
+      "000b2f4": 433,
+      "8c69124": 42,
+      "3e15adc": 24,
       "engine_identical": "Verified: `git diff` over src, include, CMakeLists.txt, cmake and vendor is empty between all three. The differences are Python comments, campaign.toml, docs and tests; the run_experiments.py delta is a comment correcting a family count. All 499 rows are one arm -- sweep C, level default, nsga2-apportion, log, mono, dirty 0."
     },
+    "rebase_note": "The 2026-08-20 rebase onto main rewrote every counter-side sha here: binary_commit 1d18cf3 to 000b2f4, and the commit_spread keys a719a04 to 8c69124 and 3b74996 to 3e15adc. The pre-rebase shas are held by backup/aurus-h2h-pre-rebase. The rebase is not content-neutral for the binary: it carries in main's 9775ff2 (Lemire's bounded-uniform reduction), 37b1f0e (the repair accumulator, accumulate_repairs defaulting false) and b9b251a (the macOS/arm64 port, every hunk guarded by #ifdef __APPLE__), 937 lines over src and include. It is output-neutral for these rows, which is what the repoint rests on, and that was measured: the determinism goldens are byte-identical across the rewrite (draw count 149, trace hash 15108480260493766604, evolved-population hash 14653313935416861205), 9775ff2 having replaced std::uniform_int_distribution without re-pinning any of them; and twelve (family, seed) pairs run under both binaries with this campaign's archived config gave byte-identical artefacts -- 79 repair_N.tlsf and their 79 fitness sidecars by sha256 -- with a run.json differing only in the new accumulate_repairs key reporting its default. Read tool_calls counts, n_spot_decided and n_constant_folded from no manifest as evidence of engine identity: measured over 20 repeat runs they vary between two runs of one binary by as much as they vary between these two.",
     "hosts": {
       "av2": {
         "seeds": "0-9",

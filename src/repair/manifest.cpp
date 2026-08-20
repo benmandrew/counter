@@ -69,11 +69,14 @@ namespace {
 // in the repairs earlier generations found, and only this field says how many
 // of them the run would otherwise have thrown away.
 //
-// 14 added genetic.repaired_operators. It selects between two mutation and
+// 14 added genetic.repaired_operators. It selected between two mutation and
 // crossover grammars with different RNG draw streams, so two runs of the same
-// seed agree only when they agree on this key; nothing else in the manifest
-// distinguishes them.
-constexpr int k_schema_version = 14;
+// seed agreed only when they agreed on this key.
+//
+// 15 removed genetic.repaired_operators. The repaired grammar is now the only
+// one, so the key no longer selects anything; a manifest at this version or
+// later was written by a binary that has only that grammar.
+constexpr int k_schema_version = 15;
 
 // The inverse of the spellings config_io.cpp parses. It has no table to
 // borrow -- it only ever goes string to enum -- so these must be kept in step
@@ -178,8 +181,7 @@ nlohmann::json config_json(const Config& cfg) {
           {"crossover_rate", cfg.crossover_rate},
           {"mutation_rate", cfg.mutation_rate},
           {"selection_scheme", scheme_name(cfg.selection_scheme)},
-          {"accumulate_repairs", cfg.accumulate_repairs},
-          {"repaired_operators", cfg.repaired_operators}}},
+          {"accumulate_repairs", cfg.accumulate_repairs}}},
         {"fitness",
          {{"weight_syntactic", cfg.fitness_weight_syntactic},
           {"weight_semantic", cfg.fitness_weight_semantic},

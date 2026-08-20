@@ -3,7 +3,6 @@
 #include <utility>
 #include <vector>
 
-#include "config.hpp"
 #include "genetic/crossover.hpp"
 #include "prop_formula.hpp"
 #include "requirement.hpp"
@@ -26,39 +25,21 @@ RandomSource make_source(std::vector<std::size_t> values,
         });
 }
 
-// The two grammars genetic.repaired_operators selects between. They draw the
-// graft site differently, so a fixture pinning a draw stream has to name the
-// one it is written against.
-Config legacy_config() {
-    Config cfg;
-    cfg.repaired_operators = false;
-    return cfg;
-}
-
-Config repaired_config() {
-    Config cfg;
-    cfg.repaired_operators = true;
-    return cfg;
-}
-
 // Every crossover grafts: there is no branch that copies a parent's field
-// verbatim, so an all-zeroes source replaces rather than inherits. Both
-// grammars spend the same two draws on a single-atom field here.
+// verbatim, so an all-ones source replaces rather than inherits.
 void test_crossover_always_recombines() {
     const Requirement first_parent{Formula("P"), Formula("Q"),
                                    timing::immediately()};
     const Requirement second_parent{Formula("R"), Formula("S"),
                                     timing::next_timepoint()};
-    for (const Config& cfg : {legacy_config(), repaired_config()}) {
-        const Requirement offspring = crossover_requirements(
-            first_parent, second_parent, make_source({1, 1}, 1U), cfg);
-        expect(offspring.m_condition.to_string() == "R",
-               "crossover: the replace branch grafts the second parent's "
-               "condition");
-        expect(offspring.m_response.to_string() == "S",
-               "crossover: the replace branch grafts the second parent's "
-               "response");
-    }
+    const Requirement offspring = crossover_requirements(
+        first_parent, second_parent, make_source({1, 1}, 1U));
+    expect(offspring.m_condition.to_string() == "R",
+           "crossover: the replace branch grafts the second parent's "
+           "condition");
+    expect(offspring.m_response.to_string() == "S",
+           "crossover: the replace branch grafts the second parent's "
+           "response");
 }
 
 void test_timing_crossover_can_swap_parameters() {
@@ -66,27 +47,17 @@ void test_timing_crossover_can_swap_parameters() {
                                    timing::within_ticks(5)};
     const Requirement second_parent{Formula("P"), Formula("Q"),
                                     timing::for_ticks(10)};
-    // Under the legacy grammar the condition and response spend two draws
-    // each -- branch and the walk's first coin -- so the timing draw is the
-    // fifth.
-    const Requirement offspring = crossover_requirements(
-        first_parent, second_parent, make_source({0, 0, 0, 0, 2}, 0),
-        legacy_config());
+    // A field spends four draws -- branch, site, orientation, connective --
+    // so the timing draw is the ninth.
+    const Requirement offspring =
+        crossover_requirements(first_parent, second_parent,
+                               make_source({0, 0, 0, 0, 0, 0, 0, 0, 2}, 0));
     const auto* within = std::get_if<timing::WithinTicks>(&offspring.m_timing);
     expect(within != nullptr,
            "crossover: parameter crossover should preserve the operator from"
            " the first parent when selected");
     expect(within->m_ticks == 10,
            "crossover: parameter crossover should be able to swap ticks");
-    // The repaired grammar draws four times per field -- branch, site,
-    // orientation, connective -- so the timing draw is the ninth.
-    const Requirement repaired = crossover_requirements(
-        first_parent, second_parent,
-        make_source({0, 0, 0, 0, 0, 0, 0, 0, 2}, 0), repaired_config());
-    const auto* repaired_within =
-        std::get_if<timing::WithinTicks>(&repaired.m_timing);
-    expect(repaired_within != nullptr && repaired_within->m_ticks == 10,
-           "crossover: the repaired grammar swaps ticks on its own stream");
 }
 
 void test_formula_crossover_can_combine_atoms() {
@@ -94,13 +65,10 @@ void test_formula_crossover_can_combine_atoms() {
                                    timing::immediately()};
     const Requirement second_parent{Formula("R"), Formula("S"),
                                     timing::next_timepoint()};
-    for (const Config& cfg : {legacy_config(), repaired_config()}) {
-        const Requirement offspring = crossover_requirements(
-            first_parent, second_parent, make_source({0, 1, 1, 0}, 0), cfg);
-        expect(offspring.m_condition.to_string() == "(P) & (R)",
-               "crossover: condition crossover should be able to combine "
-               "atoms");
-    }
+    const Requirement offspring = crossover_requirements(
+        first_parent, second_parent, make_source({0, 1, 1, 0}, 0));
+    expect(offspring.m_condition.to_string() == "(P) & (R)",
+           "crossover: condition crossover should be able to combine atoms");
 }
 
 void test_crossover_keeps_non_weakenable_from_first_parent() {
@@ -120,8 +88,7 @@ void test_crossover_keeps_non_weakenable_from_first_parent() {
     const Specification first_parent({}, {first_locked, first_weak}, {}, {});
     const Specification second_parent({}, {second_locked, second_weak}, {}, {});
     const Specification offspring = crossover_specifications(
-        first_parent, second_parent, make_source({0, 0, 0, 1, 1, 0}, 0),
-        legacy_config());
+        first_parent, second_parent, make_source({0, 0, 0, 1, 1, 0}, 0));
     expect(offspring.m_guarantees.size() == 2,
            "crossover: guarantee count should be preserved");
     expect(offspring.m_guarantees[0] == first_locked,
@@ -151,8 +118,8 @@ void test_crossover_donor_comes_from_any_slot() {
     std::size_t seed = 0;
     for (; seed < 60; ++seed) {
         const RandomSource rng = make_random_source_from_seed(seed);
-        const Specification offspring = crossover_specifications(
-            first_parent, second_parent, rng, legacy_config());
+        const Specification offspring =
+            crossover_specifications(first_parent, second_parent, rng);
         expect(offspring.m_guarantees.size() == 2,
                "crossover: guarantee count should be preserved");
         std::size_t changed = 0;
@@ -190,8 +157,8 @@ void test_crossover_accepts_unequal_lengths() {
     bool saw_change = false;
     for (std::size_t seed = 0; seed < 20; ++seed) {
         const RandomSource rng = make_random_source_from_seed(seed);
-        const Specification offspring = crossover_specifications(
-            first_parent, second_parent, rng, repaired_config());
+        const Specification offspring =
+            crossover_specifications(first_parent, second_parent, rng);
         expect(offspring.m_guarantees.size() == 1,
                "crossover: the offspring keeps the first parent's shape");
         saw_change = saw_change || !(offspring == first_parent);

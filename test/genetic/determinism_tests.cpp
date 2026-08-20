@@ -103,13 +103,8 @@ Requirement make_req(const std::string& condition, const std::string& response,
 /// the code rather than the config defaults. A default that changes the draw
 /// stream in production is a real event, but it should not surface here as an
 /// unexplained golden break.
-Config golden_config(bool repaired_operators) {
+Config golden_config() {
     Config cfg;
-    // Pinned explicitly rather than left to the struct default. It selects
-    // between two mutation and crossover grammars with different draw streams,
-    // and both are pinned below, so a later change to the default must fail
-    // this suite rather than silently re-record either golden.
-    cfg.repaired_operators = repaired_operators;
     cfg.selection_scheme = SelectionScheme::Nsga2Truncate;
     // Strictly between 0 and 1: probability_check short-circuits without
     // drawing at exactly 0.0 or 1.0, which would leave its own draws untested.
@@ -184,8 +179,8 @@ struct GoldenRun {
     std::vector<ScoredSpecification> population;
 };
 
-GoldenRun run_golden_evolution(bool repaired_operators) {
-    const Config cfg = golden_config(repaired_operators);
+GoldenRun run_golden_evolution() {
+    const Config cfg = golden_config();
     const AggregateWeightedFitnessFunction fns = golden_fitness();
     auto trace = std::make_shared<DrawTrace>();
     const RandomSource source = make_recording_source(k_seed, trace);
@@ -252,16 +247,11 @@ void test_trace_hash_distinguishes_order_and_bounds() {
            "trace hash: should be stable for an unchanged trace");
 }
 
-// The legacy grammar's stream, unchanged since before the 2026-08-19 operator
-// repairs. It is pinned beside the repaired one because genetic
-// .repaired_operators is a campaign arm selector, and an arm whose seeds stop
-// reproducing is an arm that cannot be compared with what it was measured
-// against.
 void test_generation_draw_sequence_is_pinned() {
-    constexpr std::size_t k_expected_draws = 149;
-    constexpr std::uint64_t k_expected_hash = 15108480260493766604ULL;
+    constexpr std::size_t k_expected_draws = 212;
+    constexpr std::uint64_t k_expected_hash = 17684145107458942659ULL;
 
-    const GoldenRun run = run_golden_evolution(false);
+    const GoldenRun run = run_golden_evolution();
     const std::uint64_t hash = fnv1a(render_trace(*run.trace));
 
     expect(run.trace->draws.size() == k_expected_draws,
@@ -277,34 +267,10 @@ void test_generation_draw_sequence_is_pinned() {
                "seed no longer reproduces earlier runs");
 }
 
-// The repaired grammar's stream. It draws more because a graft that always
-// fires draws once per node of the field it rewrites, where a copy branch drew
-// once in total.
-void test_repaired_generation_draw_sequence_is_pinned() {
-    constexpr std::size_t k_expected_draws = 212;
-    constexpr std::uint64_t k_expected_hash = 17684145107458942659ULL;
-
-    const GoldenRun run = run_golden_evolution(true);
-    const std::uint64_t hash = fnv1a(render_trace(*run.trace));
-
-    expect(run.trace->draws.size() == k_expected_draws,
-           "golden draw sequence (repaired): the generation loop drew " +
-               std::to_string(run.trace->draws.size()) + " times, expected " +
-               std::to_string(k_expected_draws) +
-               "; breeding under repaired_operators no longer consumes "
-               "randomness in the same quantity");
-    expect(hash == k_expected_hash,
-           "golden draw sequence (repaired): trace hash " +
-               std::to_string(hash) + " != pinned " +
-               std::to_string(k_expected_hash) +
-               "; the order of RNG draws in breeding under repaired_operators "
-               "has changed");
-}
-
 void test_evolved_population_is_pinned() {
-    constexpr std::uint64_t k_expected_hash = 14653313935416861205ULL;
+    constexpr std::uint64_t k_expected_hash = 4278788104933889616ULL;
 
-    const GoldenRun run = run_golden_evolution(false);
+    const GoldenRun run = run_golden_evolution();
     const std::uint64_t hash = fnv1a(render_population(run.population));
 
     expect(run.population.size() == k_target_size,
@@ -317,26 +283,11 @@ void test_evolved_population_is_pinned() {
                "elitism, padding or selection rather than in breeding");
 }
 
-void test_repaired_evolved_population_is_pinned() {
-    constexpr std::uint64_t k_expected_hash = 4278788104933889616ULL;
-
-    const GoldenRun run = run_golden_evolution(true);
-    const std::uint64_t hash = fnv1a(render_population(run.population));
-
-    expect(run.population.size() == k_target_size,
-           "golden population (repaired): evolution should return target_size "
-           "survivors");
-    expect(hash == k_expected_hash,
-           "golden population (repaired): hash " + std::to_string(hash) +
-               " != pinned " + std::to_string(k_expected_hash) +
-               "; the population evolved under repaired_operators has changed");
-}
-
 void test_same_seed_reproduces_evolution() {
     const std::string first =
-        render_population(run_golden_evolution(false).population);
+        render_population(run_golden_evolution().population);
     const std::string second =
-        render_population(run_golden_evolution(false).population);
+        render_population(run_golden_evolution().population);
     expect(first == second,
            "golden population: two runs from the same seed should produce an "
            "identical population");
@@ -348,8 +299,6 @@ void run_determinism_tests() {
     test_recording_source_matches_production_stream();
     test_trace_hash_distinguishes_order_and_bounds();
     test_generation_draw_sequence_is_pinned();
-    test_repaired_generation_draw_sequence_is_pinned();
     test_evolved_population_is_pinned();
-    test_repaired_evolved_population_is_pinned();
     test_same_seed_reproduces_evolution();
 }

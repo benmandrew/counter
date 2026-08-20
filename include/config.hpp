@@ -297,25 +297,6 @@ struct Config {
     /// `repair_N.tlsf` alone. The directory is created on the first write, so
     /// with the key off nothing is created.
     bool accumulate_repairs = false;
-    /// Use the repaired mutation and crossover grammar of 2026-08-19 rather
-    /// than the one that preceded it. Seven defects measured in
-    /// `experiments/2026-08-14-aurus-h2h/REPORT.md` keep whole moves
-    /// unreachable or degrade them into no-ops: an atom cannot grow in place,
-    /// a rename can pick the name it already has, the FRETISH graft site is a
-    /// per-node coin flip that grafts nowhere at all with probability 2^-n,
-    /// `mutate_temporal` cannot re-emit a binary node's own connective, an
-    /// appended TLSF assumption may oblige an output, a TLSF initial condition
-    /// may acquire a temporal operator or the other side's signals, and a TLSF
-    /// graft replaces every occurrence of its site rather than one.
-    ///
-    /// Off by default because the repairs change the RNG draw stream and what
-    /// a run emits, and an archived campaign config that omits the key would
-    /// otherwise silently mean something it never ran with -- the config
-    /// vintage note in experiments/README.md. A local smoke test over 20 seeds
-    /// and 4 TLSF families favours the repaired grammar, but it is a smoke
-    /// test: the paired campaign that would move this default has not been
-    /// run, which is the same bar `accumulate_repairs` is held to.
-    bool repaired_operators = false;
     double selection_rate = 0.5;
     /// Elitism: the top elitism_rate fraction of the population carries over
     /// into the next generation verbatim, bypassing crossover, mutation, and

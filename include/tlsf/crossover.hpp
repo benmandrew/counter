@@ -3,7 +3,6 @@
 /// @file crossover.hpp
 /// @brief Subformula-grafting crossover operator for tlsf::Specification.
 
-#include "config.hpp"
 #include "genetic/random_source.hpp"
 #include "tlsf/specification.hpp"
 
@@ -19,13 +18,10 @@
 /// ∧, ∨, U, W. Everything else is @p parent_a's, so the offspring keeps its
 /// section shape. Deleted conjuncts take no part on either side.
 ///
-/// `cfg.repaired_operators` narrows both ends of the graft. On, a target in an
-/// initial-condition section (INITIALLY or PRESET) takes a donor from its
-/// counterpart section alone, since basic TLSF requires an initial condition
-/// to be propositional over one side's own signals, and the graft replaces the
-/// first occurrence of its site rather than every one. Off, any live conjunct
-/// on the side may donate into any other and every occurrence gives way.
+/// A target in an initial-condition section (INITIALLY or PRESET) takes a
+/// donor from its counterpart section alone, since basic TLSF requires an
+/// initial condition to be propositional over one side's own signals. The
+/// graft replaces the first occurrence of its site, not every one.
 tlsf::Specification tlsf_crossover(const tlsf::Specification& parent_a,
                                    const tlsf::Specification& parent_b,
-                                   const RandomSource& random_source,
-                                   const Config& cfg);
+                                   const RandomSource& random_source);

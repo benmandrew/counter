@@ -76,18 +76,13 @@ Formula select_subformula(const Formula& formula,
     __builtin_unreachable();
 }
 
-// The graft site under repaired_operators: drawn uniformly over the subject's
-// nodes, as the TLSF path draws over its graft sites.
-//
-// The legacy walk below tosses a fair coin at each node, which reaches the
-// k-th node with probability 2^-k and grafts nowhere at all with probability
-// 2^-n: over half of all grafts land on the leftmost-deepest leaf, and a
-// single-atom condition or response is left untouched every other time,
-// returning the first parent's field verbatim from an operator documented as
-// always recombining. It is kept because repaired_operators is the arm
-// selector of a paired campaign that has not been run yet -- the same standing
-// accumulate_repairs has, where a smoke test does not move a default and the
-// losing arm must stay runnable until the measurement lands.
+// The graft site is drawn uniformly over the subject's nodes, as the TLSF path
+// draws over its graft sites. A fair coin at each node of the walk instead,
+// which is what this did before 2026-08-19, reaches the k-th node with
+// probability 2^-k and grafts nowhere at all with probability 2^-n: over half
+// of all grafts land on the leftmost-deepest leaf, and a single-atom condition
+// or response is returned verbatim every other time by an operator documented
+// as always recombining.
 Formula graft_at_uniform_site(
     const Formula& formula, const RandomSource& random_source,
     const std::function<Formula(const Formula&)>& merge) {
@@ -102,43 +97,19 @@ Formula graft_at_uniform_site(
         });
 }
 
-Formula graft_at_coin_flip_site(
-    const Formula& formula, const RandomSource& random_source,
-    const std::function<Formula(const Formula&)>& merge) {
-    bool grafted = false;
-    return formula.rewrite_post_order(
-        [&](const Formula& subtree) -> std::optional<Formula> {
-            if (grafted || !random_source.next_bool()) {
-                return std::nullopt;
-            }
-            grafted = true;
-            return merge(subtree);
-        });
-}
-
-Formula graft_at_site(const Formula& formula, const RandomSource& random_source,
-                      const Config& cfg,
-                      const std::function<Formula(const Formula&)>& merge) {
-    return cfg.repaired_operators
-               ? graft_at_uniform_site(formula, random_source, merge)
-               : graft_at_coin_flip_site(formula, random_source, merge);
-}
-
 Formula replace_subformula(const Formula& formula, const Formula& donor,
-                           const RandomSource& random_source,
-                           const Config& cfg) {
+                           const RandomSource& random_source) {
     Formula replacement = select_subformula(donor, random_source);
-    return graft_at_site(
-        formula, random_source, cfg,
+    return graft_at_uniform_site(
+        formula, random_source,
         [&replacement](const Formula&) { return replacement; });
 }
 
 Formula combine_subformula(const Formula& formula, const Formula& donor,
-                           const RandomSource& random_source,
-                           const Config& cfg) {
+                           const RandomSource& random_source) {
     const Formula donor_subformula = select_subformula(donor, random_source);
-    return graft_at_site(
-        formula, random_source, cfg, [&](const Formula& subtree) {
+    return graft_at_uniform_site(
+        formula, random_source, [&](const Formula& subtree) {
             if (random_source.next_bool()) {
                 return Formula::make_binary(pick_binary_kind(random_source),
                                             subtree, donor_subformula);
@@ -155,13 +126,11 @@ Formula combine_subformula(const Formula& formula, const Formula& donor,
 // every crossover recombines.
 Formula crossover_formula(const Formula& first_parent,
                           const Formula& second_parent,
-                          const RandomSource& random_source,
-                          const Config& cfg) {
+                          const RandomSource& random_source) {
     if (random_source.next_bool()) {
-        return replace_subformula(first_parent, second_parent, random_source,
-                                  cfg);
+        return replace_subformula(first_parent, second_parent, random_source);
     }
-    return combine_subformula(first_parent, second_parent, random_source, cfg);
+    return combine_subformula(first_parent, second_parent, random_source);
 }
 
 template <typename TimingVariant>
@@ -244,15 +213,13 @@ Timing crossover_timing(const Timing& first_parent, const Timing& second_parent,
 
 Requirement crossover_requirements(const Requirement& first_parent,
                                    const Requirement& second_parent,
-                                   const RandomSource& random_source,
-                                   const Config& cfg) {
+                                   const RandomSource& random_source) {
     assert(random_source);
     Requirement offspring = first_parent;
-    offspring.m_condition =
-        crossover_formula(first_parent.m_condition, second_parent.m_condition,
-                          random_source, cfg);
+    offspring.m_condition = crossover_formula(
+        first_parent.m_condition, second_parent.m_condition, random_source);
     offspring.m_response = crossover_formula(
-        first_parent.m_response, second_parent.m_response, random_source, cfg);
+        first_parent.m_response, second_parent.m_response, random_source);
     offspring.m_timing = crossover_timing(
         first_parent.m_timing, second_parent.m_timing, random_source);
     offspring.m_ltl = requirement_to_ltl(offspring);
@@ -292,8 +259,7 @@ std::vector<std::size_t> crossover_slots(
 // delete a live one.
 std::vector<Requirement> crossover_req_lists(
     const std::vector<Requirement>& first,
-    const std::vector<Requirement>& second, const RandomSource& random_source,
-    const Config& cfg) {
+    const std::vector<Requirement>& second, const RandomSource& random_source) {
     std::vector<Requirement> offspring = first;
     const std::vector<std::size_t> targets = crossover_slots(first);
     const std::vector<std::size_t> donors = crossover_slots(second);
@@ -305,8 +271,8 @@ std::vector<Requirement> crossover_req_lists(
     const std::size_t target =
         targets[random_source.next_index(targets.size())];
     const std::size_t donor = donors[random_source.next_index(donors.size())];
-    offspring[target] = crossover_requirements(first[target], second[donor],
-                                               random_source, cfg);
+    offspring[target] =
+        crossover_requirements(first[target], second[donor], random_source);
     return offspring;
 }
 
@@ -314,8 +280,7 @@ std::vector<Requirement> crossover_req_lists(
 
 Specification crossover_specifications(const Specification& first_parent,
                                        const Specification& second_parent,
-                                       const RandomSource& random_source,
-                                       const Config& cfg) {
+                                       const RandomSource& random_source) {
     assert(random_source);
     // Only the signals have to match. The two sides no longer need equal
     // lengths: the offspring keeps the first parent's shape whatever the
@@ -330,12 +295,10 @@ Specification crossover_specifications(const Specification& first_parent,
     // evaluated is unspecified -- gcc runs them right to left, clang left to
     // right -- so passing them directly hands the two lists each other's draws
     // depending on the compiler. Sequence them to keep a seed reproducible.
-    std::vector<Requirement> assumptions =
-        crossover_req_lists(first_parent.m_assumptions,
-                            second_parent.m_assumptions, random_source, cfg);
-    std::vector<Requirement> guarantees =
-        crossover_req_lists(first_parent.m_guarantees,
-                            second_parent.m_guarantees, random_source, cfg);
+    std::vector<Requirement> assumptions = crossover_req_lists(
+        first_parent.m_assumptions, second_parent.m_assumptions, random_source);
+    std::vector<Requirement> guarantees = crossover_req_lists(
+        first_parent.m_guarantees, second_parent.m_guarantees, random_source);
     Specification offspring(std::move(assumptions), std::move(guarantees),
                             first_parent.m_in_atoms, first_parent.m_out_atoms);
     // Specification constructor deduplicates; if dedup reduced the count the

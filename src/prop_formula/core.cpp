@@ -8,25 +8,19 @@
 #include "hash_combine.hpp"
 #include "internal.hpp"
 
-Formula::Formula() : m_impl(std::make_unique<Impl>("true")) {}
+Formula::Formula() : m_impl(std::make_shared<Impl>("true")) {}
 
 Formula Formula::true_formula = Formula("true");
 Formula Formula::false_formula = Formula("false");
 
 Formula::Formula(const std::string& formula)
-    : m_impl(std::make_unique<Impl>(formula)) {}
+    : m_impl(std::make_shared<Impl>(formula)) {}
 
-Formula::Formula(const Formula& other)
-    : m_impl(std::make_unique<Impl>(*other.m_impl)) {}
+Formula::Formula(const Formula& other) = default;
 
 Formula::Formula(Formula&& other) noexcept = default;
 
-Formula& Formula::operator=(const Formula& other) {
-    if (this != &other) {
-        *m_impl = *other.m_impl;
-    }
-    return *this;
-}
+Formula& Formula::operator=(const Formula& other) = default;
 
 Formula& Formula::operator=(Formula&& other) noexcept = default;
 
@@ -37,7 +31,22 @@ bool Formula::Impl::operator<(const Impl& rhs) const {
 }
 
 bool operator<(const Formula& lhs, const Formula& rhs) {
+    // Copies share an arena, so the identity check fires often and is the
+    // whole reason the arena is shared rather than duplicated.
+    if (lhs.m_impl == rhs.m_impl) {
+        return false;
+    }
     return *lhs.m_impl < *rhs.m_impl;
+}
+
+// One pass with a size early-out, rather than the two lexicographic passes
+// !(a < b) && !(b < a) cost. Node::operator== compares exactly the fields
+// Node::operator< orders by, so the two agree on which arenas are equal.
+bool operator==(const Formula& lhs, const Formula& rhs) {
+    if (lhs.m_impl == rhs.m_impl) {
+        return true;
+    }
+    return lhs.m_impl->m_nodes == rhs.m_impl->m_nodes;
 }
 
 bool Formula::is_propositional() const {

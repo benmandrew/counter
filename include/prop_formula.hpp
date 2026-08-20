@@ -175,7 +175,13 @@ class Formula {
 
    private:
     struct Impl;
-    std::unique_ptr<Impl> m_impl;
+    /// Shared and const, not owned outright: nothing mutates a Formula's node
+    /// arena in place -- simplify() and remove_double_negation() reassign the
+    /// whole value -- so a copy can alias the arena instead of duplicating it.
+    /// That makes Formula an immutable value type whose copies are a refcount
+    /// bump, and lets operator< / operator== short-circuit on pointer
+    /// identity.
+    std::shared_ptr<const Impl> m_impl;
 
     /// Wraps an already-built node arena (root last) in a Formula. Used by the
     /// temporal construction/extraction path in transform.cpp.
@@ -183,11 +189,10 @@ class Formula {
         std::vector<prop_formula_internal::Node> nodes);
 
     friend bool operator<(const Formula& lhs, const Formula& rhs);
+    friend bool operator==(const Formula& lhs, const Formula& rhs);
 };
 
-inline bool operator==(const Formula& lhs, const Formula& rhs) {
-    return !(lhs < rhs) && !(rhs < lhs);
-}
+bool operator==(const Formula& lhs, const Formula& rhs);
 
 /// \cond
 namespace std {  // NOLINT(build/namespaces)

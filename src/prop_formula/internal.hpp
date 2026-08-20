@@ -47,6 +47,11 @@ struct Node {
     std::size_t m_left = 0;
     std::size_t m_right = 0;
 
+    friend bool operator==(const Node& lhs, const Node& rhs) {
+        return lhs.m_type == rhs.m_type && lhs.m_left == rhs.m_left &&
+               lhs.m_right == rhs.m_right && lhs.m_variable == rhs.m_variable;
+    }
+
     friend bool operator<(const Node& lhs, const Node& rhs) {
         if (lhs.m_type != rhs.m_type) {
             return lhs.m_type < rhs.m_type;

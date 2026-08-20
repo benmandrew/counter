@@ -58,7 +58,11 @@ enum class FilterKind : std::uint8_t { Correctness, Preference };
 template <typename Spec>
 class FilterFunctionT {
    public:
-    using Fn = std::function<std::vector<Spec>(const std::vector<Spec>&)>;
+    /// Takes the population by value so a filter can move its survivors out
+    /// of it rather than copying them. The chain runs in series and each
+    /// stage owns what it was handed, so nothing downstream reads the input
+    /// again.
+    using Fn = std::function<std::vector<Spec>(std::vector<Spec>)>;
 
     /// A filter is Correctness unless it says otherwise: a new filter left
     /// untagged is then re-applied by the fallback rather than silently
@@ -77,9 +81,9 @@ class FilterFunctionT {
         Callable&& func)
         : FilterFunctionT("", Fn(std::forward<Callable>(func))) {}
 
-    std::vector<Spec> operator()(const std::vector<Spec>& pop) const {
-        std::vector<Spec> survivors = m_fn(pop);
+    std::vector<Spec> operator()(std::vector<Spec> pop) const {
         m_n_in = pop.size();
+        std::vector<Spec> survivors = m_fn(std::move(pop));
         m_n_out = survivors.size();
         return survivors;
     }
@@ -283,13 +287,12 @@ inline std::vector<ScoredSpecification> score_population(
 /// @return                 Surviving specifications
 template <typename Spec>
 std::vector<Spec> filter_population(
-    const std::vector<Spec>& population,
+    std::vector<Spec> population,
     const std::vector<FilterFunctionT<Spec>>& filter_functions) {
-    std::vector<Spec> current = population;
     for (const FilterFunctionT<Spec>& filter_fn : filter_functions) {
-        current = filter_fn(current);
+        population = filter_fn(std::move(population));
     }
-    return current;
+    return population;
 }
 
 /// Returns the standard set of filter functions used during evolution, in
@@ -351,10 +354,10 @@ std::vector<PipelineStage<Spec>> filter_stages(
     for (const FilterFunctionT<Spec>& filter : filters) {
         // Filters built inline for tests carry no display name.
         std::string name = filter.name().empty() ? "filter" : filter.name();
-        stages.emplace_back(std::move(name),
-                            [&filter](GenerationContext<Spec>& ctx) {
-                                ctx.m_candidates = filter(ctx.m_candidates);
-                            });
+        stages.emplace_back(
+            std::move(name), [&filter](GenerationContext<Spec>& ctx) {
+                ctx.m_candidates = filter(std::move(ctx.m_candidates));
+            });
     }
     return stages;
 }

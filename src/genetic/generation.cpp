@@ -16,7 +16,7 @@ FilterFunction make_predicate_filter(
     std::size_t max_in_flight, FilterKind kind) {
     return {std::move(name),
             [predicate = std::move(predicate),
-             max_in_flight](const std::vector<Specification>& pop) {
+             max_in_flight](std::vector<Specification> pop) {
                 std::vector<Specification> survivors;
                 survivors.reserve(pop.size());
                 // Verdicts are collected by index and the survivors rebuilt in
@@ -42,7 +42,7 @@ FilterFunction make_predicate_filter(
                 }
                 for (std::size_t idx = 0; idx < pop.size(); ++idx) {
                     if (keep[idx] != 0) {
-                        survivors.push_back(pop[idx]);
+                        survivors.push_back(std::move(pop[idx]));
                     }
                 }
                 return survivors;

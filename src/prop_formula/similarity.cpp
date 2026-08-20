@@ -5,6 +5,7 @@
 #include <unordered_map>
 #include <vector>
 
+#include "hash_combine.hpp"
 #include "internal.hpp"
 
 namespace {
@@ -16,11 +17,6 @@ struct SubformulaKey {
     std::size_t m_right = 0;
     std::string_view m_variable;
 };
-
-constexpr std::size_t hash_combine(std::size_t seed, std::size_t value) {
-    // Mixes bits from seed and value to reduce clustering of similar keys.
-    return seed ^ (value + 0x9e3779b97f4a7c15ULL + (seed << 6U) + (seed >> 2U));
-}
 
 struct SubformulaKeyHash {
     std::size_t operator()(const SubformulaKey& key) const {

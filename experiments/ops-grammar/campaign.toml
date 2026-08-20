@@ -1,0 +1,46 @@
+name = "ops-grammar"
+branch = "fix/mutation-operators"
+profile = "ops-tlsf"
+description = "Does the repaired mutation/crossover grammar find better repairs than the one every campaign before 2026-08-19 ran? Sweep O crosses [genetic] repaired_operators on both paths, paired on (spec, seed), with the accumulator held on in both arms."
+
+# gen_configs writes into experiments/, which is ignored by content, so the
+# configs cannot be carried on the branch and have to be regenerated wherever
+# the campaign runs. The build command is the only hook that runs on the host
+# after checkout and before the phases, so it carries all three steps.
+# Wrapped in `sh -c` deliberately, and never left as a bare AND-list:
+# campaign.py embeds this verbatim as `if ! @BUILD@ > "$buildlog"; then`, and
+# `!` binds to the first pipeline of an AND-list, so `a && b` runs `a`,
+# short-circuits `b` away, and still reports the stage a success. That staged
+# both hosts with no configs on 2026-08-19 and both runners exited on the spot.
+build = "sh -c 'cmake --build build-release && python3 scripts/gen_configs.py --schemes nsga2-truncate --sweeps O --generations 40 --population-size 1000 --out-dir experiments/configs-ops-fret && python3 scripts/gen_configs.py --tlsf --sweeps O --ltlsynt-timeout 10000 --ltl2tgba-timeout 60000 --max-scoring-failure-rate 0.15 --out-dir experiments/configs-ops-tlsf'"
+
+# The TLSF split: 12 families x 10 seeds x 2 arms per host. Both arms of a pair
+# run on the same host, so a host difference cancels inside the (spec, seed)
+# pair the endpoint is measured over — which is the whole reason the comparison
+# is paired rather than between-host. See PLAN.md section 4 for the sizing.
+hosts = { av2 = "0-9", av3 = "10-19" }
+
+# FRETISH first, deliberately. It is roughly a quarter of the campaign's cost
+# (~100 s of counter per seed over its four families against ~550 s on TLSF at
+# the 2026-07-24 vintage), and phases stop at the first failure, so a config or
+# binary fault surfaces in the first hour rather than after the expensive half
+# has already burned a night.
+[[phases]]
+name = "fret"
+profile = "ops-fret"
+jobs = 4
+# 30 seeds rather than the campaign's 20: the path is cheap enough that the
+# extra pairs are nearly free, and three of its four families sit off both
+# bounds where a paired test can actually move. A per-phase table is the only
+# way to say that — `run_experiments.py --seeds` replaces a profile's seed list
+# rather than intersecting with it, so the campaign-level split would silently
+# run 20.
+hosts = { av2 = "0-14", av3 = "15-29" }
+
+# jobs = 1 for the RAM reason every TLSF profile uses: ltlsynt runs multi-GB per
+# call and max_concurrent_realizability is a per-process cap, so a second
+# concurrent counter would double the ceiling.
+[[phases]]
+name = "tlsf"
+profile = "ops-tlsf"
+jobs = 1

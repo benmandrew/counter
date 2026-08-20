@@ -9,152 +9,245 @@ on:
   # the changed-file lint on PRs and pushes cannot see: clang-tidy findings are
   # per translation unit, so editing a header can break the TUs that include it
   # without touching a file the diff-scoped lint ever compiles. Scheduled runs
-  # stop at the check job -- build-and-test is skipped, since the push that
-  # produced this commit already ran the same four configurations over the same
-  # Nix-pinned toolchain. Benchmarks live in benchmark.yml.
+  # stop at the check job -- build-and-test is skipped, since this commit was
+  # already built and tested on its way to main. Benchmarks live in
+  # benchmark.yml.
   schedule:
     - cron: "0 3 * * *"
   # Manual trigger for an on-demand full sweep plus the whole build matrix.
   workflow_dispatch:
 
+# A pull request supersedes its own earlier runs: pushing again makes the
+# previous answer worthless, and without this it runs to completion anyway.
+# Every other event takes a group of its own, github.run_id being unique,
+# because sharing one would make consecutive pushes to main queue rather than
+# run -- and a third push then cancels the pending middle commit, leaving a
+# commit on main with no result at all.
+concurrency:
+  group: >-
+    ${{ github.workflow }}-${{ github.event_name == 'pull_request'
+        && github.ref || github.run_id }}
+  cancel-in-progress: true
+
 env:
   SCCACHE_GHA_ENABLED: "true"
 
 jobs:
-  # Staleness gate for the nightly schedule. The toolchain is pinned by the Nix
-  # flake, so a scheduled run over a tree that has not moved since the previous
-  # night re-derives the same lint and docs results from the same inputs --
-  # pure runner minutes for no signal. Pushes, pull requests, and manual
-  # dispatch always run.
-  gate:
+  # The one place that decides what this run has to do, for all three consumers
+  # below. It is a job rather than a step in each of them because
+  # build-and-test's matrix has to be known before that job starts, and because
+  # check and build-and-test would otherwise each need their own deep clone and
+  # their own copy of the base-ref logic.
+  #
+  # A job bills a whole minute however briefly it runs, so this one is held to a
+  # checkout and a diff. The two it replaced -- a staleness gate and a matrix
+  # emitter, 4-6s and 2-4s of work respectively -- cost 15% of this repository's
+  # runner minutes between them, every minute of it the per-job floor.
+  setup:
     runs-on: ubuntu-latest
     outputs:
-      run: ${{ steps.decide.outputs.run }}
-    steps:
-      - name: Check out repository
-        uses: actions/checkout@v7
-
-      - name: Decide whether this run has anything to do
-        id: decide
-        run: |
-          if [ "${{ github.event_name }}" != "schedule" ]; then
-            echo "run=true" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-          committed=$(git log -1 --format=%ct)
-          age=$(( $(date +%s) - committed ))
-          # 25h of slack over the 24h cron so a slightly-late trigger still runs.
-          if [ "$age" -lt 90000 ]; then
-            echo "run=true" >> "$GITHUB_OUTPUT"
-            echo "HEAD committed ${age}s ago; running the nightly sweep."
-          else
-            echo "run=false" >> "$GITHUB_OUTPUT"
-            echo "No commits in the last 25h; skipping the nightly sweep."
-          fi
-
-  check:
-    needs: gate
-    if: needs.gate.outputs.run == 'true'
-    runs-on: ubuntu-latest
-
+      # Anything to do at all (false only for a stale nightly).
+      run: ${{ steps.plan.outputs.run }}
+      # Lint/docs/config work for the check job.
+      heavy: ${{ steps.plan.outputs.heavy }}
+      full: ${{ steps.plan.outputs.full }}
+      files: ${{ steps.plan.outputs.files }}
+      docs: ${{ steps.plan.outputs.docs }}
+      config: ${{ steps.plan.outputs.config }}
+      # A build input moved, so build-and-test has something to re-derive.
+      build: ${{ steps.plan.outputs.build }}
+      matrix: ${{ steps.plan.outputs.matrix }}
     steps:
       - name: Check out repository
         uses: actions/checkout@v7
         with:
           # Full history so pull-request and push runs can diff against the base
-          # commit to lint only the files the change touched (see "Determine
-          # changed files" below).
+          # commit. The pack is about 4MB, so the depth costs nothing.
           fetch-depth: 0
 
-      # Decide up front -- before any Nix work -- whether this run has anything
-      # to do. On pull requests and pushes to main we lint only the C/C++ files
-      # the change touched and build docs only when a docs input changed; when
-      # neither changed there is nothing to check, so every heavy step below is
-      # skipped (via steps.changed.outputs.heavy) and the job finishes in
-      # seconds without installing Nix. The nightly schedule and manual dispatch
-      # skip this step, leaving the allow-list empty so the run lints the whole
-      # tree and always builds docs.
-      - name: Determine changed files
-        id: changed
-        if: github.event_name == 'pull_request' || github.event_name == 'push'
+      - name: Decide what this run has to do
+        id: plan
+        env:
+          EVENT: ${{ github.event_name }}
+          PR_BASE: ${{ github.event.pull_request.base.sha }}
+          PUSH_BASE: ${{ github.event.before }}
         run: |
-          if [ "${{ github.event_name }}" = "pull_request" ]; then
-            base="${{ github.event.pull_request.base.sha }}"
-          else
-            base="${{ github.event.before }}"
+          emit() { echo "$1=$2" >> "$GITHUB_OUTPUT"; }
+
+          # The toolchain is pinned by the Nix flake, so a scheduled run over a
+          # tree that has not moved since the previous night re-derives the same
+          # lint and docs results from the same inputs -- pure runner minutes
+          # for no signal. Pushes, pull requests and manual dispatch always run.
+          if [ "$EVENT" = "schedule" ]; then
+            age=$(( $(date +%s) - $(git log -1 --format=%ct) ))
+            # 25h of slack over the 24h cron so a slightly-late trigger runs.
+            if [ "$age" -ge 90000 ]; then
+              emit run false
+              emit heavy false
+              emit build false
+              # Never read -- every consumer is gated on run -- but a matrix
+              # output that does not parse as JSON is an error rather than a
+              # skip if anything downstream ever evaluates it.
+              emit matrix '{"include":[]}'
+              echo "No commits in the last 25h; skipping the nightly sweep."
+              exit 0
+            fi
+            echo "HEAD committed ${age}s ago; running the nightly sweep."
           fi
-          # Fall back to a full sweep when the base ref is unusable (branch
-          # creation, force-push, or a base commit not in local history): lint
-          # everything and build docs rather than silently linting nothing.
-          if [ -z "$base" ] || ! git cat-file -e "$base^{commit}" 2>/dev/null; then
-            echo "full=true" >> "$GITHUB_OUTPUT"
-            echo "docs=true" >> "$GITHUB_OUTPUT"
-            echo "heavy=true" >> "$GITHUB_OUTPUT"
-            echo "No usable base ref ($base); running a full-tree lint + docs build."
-            exit 0
+          emit run true
+
+          # A full sweep lints the whole tree and always builds docs: the
+          # nightly schedule, manual dispatch, and any run whose base ref is
+          # unusable (branch creation, force-push, or a base commit not in local
+          # history), where the silent alternative is linting nothing.
+          full=false
+          base=""
+          case "$EVENT" in
+            schedule|workflow_dispatch) full=true ;;
+            pull_request) base="$PR_BASE" ;;
+            *) base="$PUSH_BASE" ;;
+          esac
+          if [ "$full" = false ] \
+             && { [ -z "$base" ] || ! git cat-file -e "$base^{commit}" 2>/dev/null; }; then
+            echo "No usable base ref ($base); running a full sweep."
+            full=true
           fi
 
-          files=$(git diff --name-only --diff-filter=ACMR "$base" HEAD -- \
-                    '*.cpp' '*.hpp' '*.h' \
-                  | sed "s|^|$GITHUB_WORKSPACE/|" | tr '\n' ' ')
-          echo "files=$files" >> "$GITHUB_OUTPUT"
+          files=""
+          docs=true
+          config=true
+          build=true
 
-          # Docs are generated from include/ (Doxygen) and docs/ (Sphinx
-          # sources + the Doxyfile template); nothing else affects them.
-          docs_changed=false
-          if git diff --name-only --diff-filter=ACMR "$base" HEAD -- \
-               include docs | grep -q .; then
-            docs_changed=true
-          fi
-          echo "docs=$docs_changed" >> "$GITHUB_OUTPUT"
+          if [ "$full" = false ]; then
+            changed() {
+              git diff --name-only --diff-filter=ACMR "$base" HEAD -- "$@"
+            }
 
-          # The config parity check compares config_io.cpp, the JSON schema,
-          # and the annotated template. Editing the latter two touches no C/C++
-          # file, so they need their own trigger or the check never sees the
-          # change that broke it.
-          config_changed=false
-          if git diff --name-only --diff-filter=ACMR "$base" HEAD -- \
-               src/config_io.cpp schemas example-config.toml | grep -q .; then
-            config_changed=true
-          fi
-          echo "config=$config_changed" >> "$GITHUB_OUTPUT"
+            files=$(changed '*.cpp' '*.hpp' '*.h' \
+                    | sed "s|^|$GITHUB_WORKSPACE/|" | tr '\n' ' ')
 
-          # "heavy" gates the Nix install, the caches, and the configure/lint/
-          # docs step: true when there is a C/C++ file to lint, a docs input to
-          # rebuild, or a config input to check. When none changed, the job
-          # skips straight to success.
-          if [ -n "${files// /}" ] || [ "$docs_changed" = "true" ] \
-             || [ "$config_changed" = "true" ]; then
-            echo "heavy=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "heavy=false" >> "$GITHUB_OUTPUT"
+            # Docs are generated from include/ (Doxygen) and docs/ (Sphinx
+            # sources + the Doxyfile template); nothing else affects them.
+            docs=false
+            if changed include docs | grep -q .; then docs=true; fi
+
+            # The config parity check compares config_io.cpp, the JSON schema,
+            # the annotated template and the checker itself. Editing any but the
+            # first touches no C/C++ file, so they need their own trigger or the
+            # check never sees the change that broke it.
+            config=false
+            if changed src/config_io.cpp schemas example-config.toml \
+                       scripts/check_config_schema.py | grep -q .; then
+              config=true
+            fi
+
+            # A linter's own configuration changes what it says about files the
+            # diff does not touch, so it promotes the run to a full sweep. Left
+            # as a changed-file lint it would lint nothing at all, the list
+            # being empty.
+            if changed .clang-tidy .clang-format .cpplint.cfg \
+                       .cppcheck_suppressions.txt | grep -q .; then
+              echo "A linter configuration moved; running a full sweep."
+              full=true
+              files=""
+            fi
+
+            # What build-and-test actually reads. No ctest entry reads
+            # examples/ or scripts/, and lint-ideals is a binary rather than
+            # part of the lint target, so a campaign archive, a harness edit or
+            # a new ideal rebuilds nothing. coverage_badge.py is the one script
+            # a build job runs, and it needs the instrumented build under it, so
+            # it counts as a build input.
+            build=false
+            if changed src include test web cmake vendor .github \
+                       CMakeLists.txt CMakePresets.json flake.nix flake.lock \
+                       scripts/coverage_badge.py | grep -q .; then
+              build=true
+            fi
           fi
 
-          if [ -z "${files// /}" ]; then
-            echo "No C/C++ files changed; clang-tidy/cpplint/cppcheck will be skipped."
-          else
-            echo "Linting changed files:"
-            printf '  %s\n' $files
+          # "heavy" gates the whole check job -- the Nix install, the caches and
+          # the configure/lint/docs step: true when there is a C/C++ file to
+          # lint, a docs input to rebuild, a config input to check, or a full
+          # sweep to run. When none holds there is nothing to check and the job
+          # is skipped outright.
+          heavy=false
+          if [ "$full" = true ] || [ -n "${files// /}" ] \
+             || [ "$docs" = true ] || [ "$config" = true ]; then
+            heavy=true
           fi
+
+          emit full "$full"
+          emit files "$files"
+          emit docs "$docs"
+          emit config "$config"
+          emit build "$build"
+          emit heavy "$heavy"
+
+          # Pull requests run debug, release, tsan and coverage; a push to main
+          # runs gcc alone.
+          #
+          # tsan is on pull requests because the failures it finds are invisible
+          # to everything else: a data race passes ctest and returns the right
+          # answer, so neither the test suite nor review is likely to see it.
+          # Catching one on the merge commit means catching it after review, on
+          # a branch nobody is looking at any more.
+          #
+          # It costs runner minutes and no wall clock: the matrix runs
+          # concurrently and tsan finishes inside debug's time (167s against
+          # 194s on the last full run), so a pull request waits as long as it
+          # did.
+          #
+          # The coverage entry is here rather than in a job of its own so that
+          # the badge check reuses this one's work: its build is the
+          # instrumented one and its ctest run is what writes the profiles,
+          # leaving the check itself an export and a byte comparison.
+          # Instrumenting the debug preset instead would have cost no CI job at
+          # all, and was rejected because that preset is the one everybody
+          # builds locally -- it would slow the daily loop and drop a .profraw
+          # in whatever directory a binary was run from.
+          #
+          # A push to main runs gcc alone. actions/checkout resolves a
+          # pull_request event to refs/pull/N/merge, so the pull request already
+          # built and tested the other four configurations over this exact
+          # merge result; re-deriving them here was 18% of this repository's
+          # runner minutes. gcc is the one configuration a pull request never
+          # sees, and the goldens are pinned under clang, so it stays.
+          debug='{"preset":"debug","build_dir":"build"}'
+          release='{"preset":"release","build_dir":"build-release"}'
+          gcc='{"preset":"debug","build_dir":"build","compiler":"gcc","cmake_args":"-DCMAKE_C_COMPILER=gcc -DCMAKE_CXX_COMPILER=g++"}'
+          tsan='{"preset":"tsan","build_dir":"build-tsan"}'
+          coverage='{"preset":"coverage","build_dir":"build-coverage"}'
+          case "$EVENT" in
+            push) include="$gcc" ;;
+            # The manual trigger is the escape hatch, so it runs everything.
+            workflow_dispatch) include="$debug,$gcc,$release,$tsan,$coverage" ;;
+            *) include="$debug,$release,$tsan,$coverage" ;;
+          esac
+          emit matrix "{\"include\":[$include]}"
+
+          if [ "$build" != true ]; then
+            echo "No build inputs changed; build-and-test will be skipped."
+          fi
+
+  check:
+    needs: setup
+    if: needs.setup.outputs.run == 'true' && needs.setup.outputs.heavy == 'true'
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
 
       - name: Install Nix
-        if: >-
-          github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
-          || steps.changed.outputs.heavy == 'true'
         uses: cachix/install-nix-action@v31
         with:
           github_access_token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Set up sccache
-        if: >-
-          github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
-          || steps.changed.outputs.heavy == 'true'
         uses: mozilla-actions/sccache-action@v0.0.10
 
       - name: Cache FetchContent dependencies
-        if: >-
-          github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
-          || steps.changed.outputs.heavy == 'true'
         uses: actions/cache@v5
         with:
           path: build/_deps
@@ -172,9 +265,6 @@ jobs:
       # run's results; only changed TUs are re-analysed. This is what keeps the
       # nightly full-tree sweep (and large PRs) cheap.
       - name: Cache clang-tidy results
-        if: >-
-          github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
-          || steps.changed.outputs.heavy == 'true'
         uses: actions/cache@v5
         with:
           path: .ctcache
@@ -186,9 +276,6 @@ jobs:
       # flake is evaluated and the shell instantiated once rather than once per
       # step. GitHub log groups keep the per-phase output readable.
       - name: Configure, lint, format-check, build docs
-        if: >-
-          github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
-          || steps.changed.outputs.heavy == 'true'
         env:
           CMAKE_C_COMPILER_LAUNCHER: sccache
           CMAKE_CXX_COMPILER_LAUNCHER: sccache
@@ -197,35 +284,21 @@ jobs:
           # the build directory is configured fresh each run, so the cache has
           # to sit at a fixed workspace path for actions/cache to restore it.
           CTCACHE_DIR: ${{ github.workspace }}/.ctcache
-          EVENT: ${{ github.event_name }}
-          FORCE_FULL: ${{ steps.changed.outputs.full }}
-          CHANGED_FILES: ${{ steps.changed.outputs.files }}
-          DOCS_CHANGED: ${{ steps.changed.outputs.docs }}
-          CONFIG_CHANGED: ${{ steps.changed.outputs.config }}
+          FULL_SWEEP: ${{ needs.setup.outputs.full }}
+          CHANGED_FILES: ${{ needs.setup.outputs.files }}
+          DOCS_CHANGED: ${{ needs.setup.outputs.docs }}
+          CONFIG_CHANGED: ${{ needs.setup.outputs.config }}
         run: |
           nix develop --command bash -euo pipefail -c '
-            # A full sweep lints the whole tree and always builds docs: the
-            # nightly schedule, manual dispatch, and the unusable-base fallback.
-            full_sweep=false
-            if [ "$EVENT" = "schedule" ] || [ "$EVENT" = "workflow_dispatch" ] \
-               || [ "$FORCE_FULL" = "true" ]; then
-              full_sweep=true
-            fi
-
             args=(--preset debug)
             run_lint=true
-            if [ "$full_sweep" != "true" ]; then
+            if [ "$FULL_SWEEP" != "true" ]; then
               if [ -n "${CHANGED_FILES// /}" ]; then
                 list=$(echo "$CHANGED_FILES" | xargs | tr " " ";")
                 args+=("-DCOUNTER_LINT_FILES_OVERRIDE=$list")
               else
                 run_lint=false
               fi
-            fi
-
-            build_docs=true
-            if [ "$full_sweep" != "true" ] && [ "$DOCS_CHANGED" != "true" ]; then
-              build_docs=false
             fi
 
             echo "::group::Configure"
@@ -251,7 +324,7 @@ jobs:
               fi
             fi
 
-            if [ "$build_docs" = "true" ]; then
+            if [ "$DOCS_CHANGED" = "true" ]; then
               echo "::group::Build docs"
               cmake --build --preset debug --target docs
               echo "::endgroup::"
@@ -260,61 +333,19 @@ jobs:
             fi
           '
 
-  # Emit the build-and-test matrix as JSON so pull requests run debug, release
-  # and tsan while pushes to main and manual dispatch add gcc (portability).
-  #
-  # tsan is on pull requests because the failures it finds are invisible to
-  # everything else: a data race passes ctest and returns the right answer, so
-  # neither the test suite nor review is likely to see it. Catching one on the
-  # merge commit means catching it after review, on a branch nobody is looking
-  # at any more.
-  #
-  # It costs runner minutes and no wall clock: the matrix runs concurrently and
-  # tsan finishes inside debug's time (167s against 194s on the last full run),
-  # so a pull request waits exactly as long as it did.
-  #
-  # The coverage entry is here rather than in a job of its own so that the badge
-  # check reuses this one's work: its build is the instrumented one and its
-  # ctest run is what writes the profiles, leaving the check itself an export
-  # and a byte comparison. Instrumenting the debug preset instead would have
-  # cost no CI job at all, and was rejected because that preset is the one
-  # everybody builds locally -- it would slow the daily loop and drop a .profraw
-  # in whatever directory a binary was run from.
-  #
-  # Not on the schedule: a scheduled run only reaches here over a commit that
-  # was pushed to main, and that push already built and tested all four
-  # configurations against the same Nix-pinned toolchain and the same
-  # seed-pinned tests, so the rebuild re-derives the results it already has.
-  # Gating this job also gates build-and-test, which is skipped when a job it
-  # needs is skipped.
-  build-matrix:
-    needs: gate
-    if: needs.gate.outputs.run == 'true' && github.event_name != 'schedule'
-    runs-on: ubuntu-latest
-    outputs:
-      matrix: ${{ steps.set.outputs.matrix }}
-    steps:
-      - name: Compute matrix
-        id: set
-        run: |
-          debug='{"preset":"debug","build_dir":"build"}'
-          release='{"preset":"release","build_dir":"build-release"}'
-          gcc='{"preset":"debug","build_dir":"build","compiler":"gcc","cmake_args":"-DCMAKE_C_COMPILER=gcc -DCMAKE_CXX_COMPILER=g++"}'
-          tsan='{"preset":"tsan","build_dir":"build-tsan"}'
-          coverage='{"preset":"coverage","build_dir":"build-coverage"}'
-          if [ "${{ github.event_name }}" = "pull_request" ]; then
-            include="$debug,$release,$tsan,$coverage"
-          else
-            include="$debug,$gcc,$release,$tsan,$coverage"
-          fi
-          echo "matrix={\"include\":[$include]}" >> "$GITHUB_OUTPUT"
-
+  # Skipped on the schedule: a scheduled run only reaches here over a commit
+  # already on main, which its pull request built and tested under clang and
+  # its push built and tested under gcc, over the same Nix-pinned toolchain and
+  # the same seed-pinned tests.
   build-and-test:
-    needs: build-matrix
+    needs: setup
+    if: >-
+      needs.setup.outputs.run == 'true' && needs.setup.outputs.build == 'true'
+      && github.event_name != 'schedule'
     runs-on: ubuntu-latest
 
     strategy:
-      matrix: ${{ fromJSON(needs.build-matrix.outputs.matrix) }}
+      matrix: ${{ fromJSON(needs.setup.outputs.matrix) }}
 
     steps:
       - name: Check out repository

@@ -248,8 +248,8 @@ void test_trace_hash_distinguishes_order_and_bounds() {
 }
 
 void test_generation_draw_sequence_is_pinned() {
-    constexpr std::size_t k_expected_draws = 149;
-    constexpr std::uint64_t k_expected_hash = 15108480260493766604ULL;
+    constexpr std::size_t k_expected_draws = 212;
+    constexpr std::uint64_t k_expected_hash = 17684145107458942659ULL;
 
     const GoldenRun run = run_golden_evolution();
     const std::uint64_t hash = fnv1a(render_trace(*run.trace));
@@ -268,7 +268,7 @@ void test_generation_draw_sequence_is_pinned() {
 }
 
 void test_evolved_population_is_pinned() {
-    constexpr std::uint64_t k_expected_hash = 14653313935416861205ULL;
+    constexpr std::uint64_t k_expected_hash = 4278788104933889616ULL;
 
     const GoldenRun run = run_golden_evolution();
     const std::uint64_t hash = fnv1a(render_population(run.population));

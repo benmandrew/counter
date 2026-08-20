@@ -256,8 +256,17 @@ void test_add_assumption_appends_fairness() {
         expect(mutated.m_guarantee == spec.m_guarantee,
                "add-assumption: guarantees are left untouched");
         const std::string text = mutated.m_assume.front().m_formula.to_string();
-        expect(text == "G(F(req))" || text == "G(F(!(req)))",
-               "add-assumption: appended a G F <input> fairness assumption");
+        const bool fairness = text == "G(F(req))" || text == "G(F(!(req)))";
+        // Under p_conditional_assumption the guarded form is drawn instead,
+        // its consequent carrying F, X or no modality at all. With one input
+        // and outputs barred, every literal in either form is `req`.
+        const bool guarded =
+            text.rfind("G((", 0) == 0 && text.find("->") != std::string::npos;
+        expect(fairness || guarded,
+               "add-assumption: appended a fairness or guarded assumption");
+        expect(text.find("grant") == std::string::npos,
+               "add-assumption: no output atom reaches an assumption when "
+               "allow_output_assumptions is off");
         expect(text.find("grant") == std::string::npos,
                "add-assumption: an output signal never enters an assumption");
     }

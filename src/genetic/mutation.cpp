@@ -49,9 +49,26 @@ std::string mutate_atom_name(const std::string& atom,
     if (atoms.empty()) {
         return atom;
     }
-    return atoms[random_source.next_index(atoms.size())];
+    // Prefer a distinct atom, as the TLSF path's flip_or_replace_atom does.
+    // Without this a rename is a no-op one time in the pool size, which on a
+    // two-signal specification is every other draw.
+    std::size_t index = random_source.next_index(atoms.size());
+    if (atoms[index] == atom && atoms.size() > 1) {
+        index = (index + 1) % atoms.size();
+    }
+    return atoms[index];
 }
 
+// Rename the atom, negate it, or graft a drawn anchor onto it under a fresh
+// connective. The graft case is what lets a weakening guard a *positive*
+// literal in one draw. Before it, the only rule that grew a formula in place
+// was mutate_not_subtree's, which fires at a Not node alone, so guarding a
+// negated literal cost one draw and guarding a positive one cost three
+// (rename, negate, graft) through intermediates that had to survive selection
+// to reach the third. experiments/2026-08-14-aurus-h2h/REPORT.md §1 measures
+// the consequence: minepump's ideals guard a positive antecedent, and counter
+// reached one in 1 of 20 seeds while AuRUS, whose add-disjunct rule has no
+// such gate, reached it in 30 of 30.
 Formula mutate_atom_formula(const Formula& formula,
                             const std::vector<std::string>& atoms,
                             const RandomSource& random_source) {
@@ -60,11 +77,35 @@ Formula mutate_atom_formula(const Formula& formula,
         assert(false);
         __builtin_unreachable();
     }
-    if (random_source.next_bool()) {
-        return Formula::make_atom(
-            mutate_atom_name(*atom, atoms, random_source));
+    // Without a pool there is no anchor to draw, so the graft case is dropped
+    // rather than guarded inside it.
+    const std::size_t n_moves = atoms.empty() ? 2 : 3;
+    switch (random_source.next_index(n_moves)) {
+        case 0:
+            return Formula::make_atom(
+                mutate_atom_name(*atom, atoms, random_source));
+        case 1:
+            return Formula::make_unary(Formula::Kind::Not, formula);
+        default: {
+            // Sequenced into locals: each call draws, and the evaluation order
+            // of a call's arguments is unspecified. The anchor's polarity is
+            // drawn as well: a guard is as often negative as positive, and
+            // minepump's ideal wants `high_water & !methane` from an atom
+            // `high_water`, which a positive-only anchor cannot reach without
+            // a second mutation.
+            const Formula atom_formula =
+                Formula::make_atom(random_atom(atoms, random_source));
+            const bool negate_anchor = random_source.next_bool();
+            const Formula anchor =
+                negate_anchor
+                    ? Formula::make_unary(Formula::Kind::Not, atom_formula)
+                    : atom_formula;
+            const Formula::Kind kind = pick_binary_kind(random_source);
+            const bool anchor_first = random_source.next_bool();
+            return anchor_first ? Formula::make_binary(kind, anchor, formula)
+                                : Formula::make_binary(kind, formula, anchor);
+        }
     }
-    return Formula::make_unary(Formula::Kind::Not, formula);
 }
 
 Formula mutate_not_subtree(Formula child, const std::vector<std::string>& atoms,

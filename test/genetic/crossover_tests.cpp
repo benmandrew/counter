@@ -46,8 +46,12 @@ void test_timing_crossover_can_swap_parameters() {
                                    timing::within_ticks(5)};
     const Requirement second_parent{Formula("P"), Formula("Q"),
                                     timing::for_ticks(10)};
-    const Requirement offspring = crossover_requirements(
-        first_parent, second_parent, make_source({0, 0, 0, 0, 2}, 0));
+    // Condition and response each draw four times now that the graft site is
+    // a uniform index rather than a per-node coin flip: branch, site,
+    // orientation, connective. The timing draw is therefore the ninth.
+    const Requirement offspring =
+        crossover_requirements(first_parent, second_parent,
+                               make_source({0, 0, 0, 0, 0, 0, 0, 0, 2}, 0));
     const auto* within = std::get_if<timing::WithinTicks>(&offspring.m_timing);
     expect(within != nullptr,
            "crossover: parameter crossover should preserve the operator from"

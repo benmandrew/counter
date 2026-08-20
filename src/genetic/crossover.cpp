@@ -74,16 +74,24 @@ Formula select_subformula(const Formula& formula,
     __builtin_unreachable();
 }
 
+// The graft site is drawn uniformly over the subject's nodes, as the TLSF path
+// draws over its graft sites. A fair coin at each node of the post-order walk,
+// which is what this did until 2026-08-19, reaches the k-th node with
+// probability 2^-k and grafts nowhere at all with probability 2^-n: over half
+// of all grafts landed on the leftmost-deepest leaf, and a single-atom
+// condition or response was left untouched every other time, returning the
+// first parent's field verbatim from an operator documented as always
+// recombining.
 Formula replace_subformula(const Formula& formula, const Formula& donor,
                            const RandomSource& random_source) {
     const Formula replacement = select_subformula(donor, random_source);
-    bool replaced = false;
+    const std::size_t site = random_source.next_index(formula.n_subformulae());
+    std::size_t visited = 0;
     return formula.rewrite_post_order(
         [&](const Formula&) -> std::optional<Formula> {
-            if (replaced || !random_source.next_bool()) {
+            if (visited++ != site) {
                 return std::nullopt;
             }
-            replaced = true;
             return replacement;
         });
 }
@@ -91,13 +99,13 @@ Formula replace_subformula(const Formula& formula, const Formula& donor,
 Formula combine_subformula(const Formula& formula, const Formula& donor,
                            const RandomSource& random_source) {
     const Formula donor_subformula = select_subformula(donor, random_source);
-    bool combined = false;
+    const std::size_t site = random_source.next_index(formula.n_subformulae());
+    std::size_t visited = 0;
     return formula.rewrite_post_order(
         [&](const Formula& subtree) -> std::optional<Formula> {
-            if (combined || !random_source.next_bool()) {
+            if (visited++ != site) {
                 return std::nullopt;
             }
-            combined = true;
             if (random_source.next_bool()) {
                 return Formula::make_binary(pick_binary_kind(random_source),
                                             subtree, donor_subformula);

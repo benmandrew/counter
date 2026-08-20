@@ -205,7 +205,7 @@ std::vector<uint8_t> compute_subsumed(
 // index and the survivors rebuilt in population order, so the result matches a
 // serial sweep exactly.
 std::vector<tlsf::Specification> filter_in_parallel(
-    const std::vector<tlsf::Specification>& pop, std::size_t max_in_flight,
+    std::vector<tlsf::Specification> pop, std::size_t max_in_flight,
     const std::function<bool(const tlsf::Specification&)>& predicate) {
     std::vector<char> keep(pop.size(), 0);
     if (max_in_flight <= 1) {
@@ -227,7 +227,7 @@ std::vector<tlsf::Specification> filter_in_parallel(
     survivors.reserve(pop.size());
     for (std::size_t idx = 0; idx < pop.size(); ++idx) {
         if (keep[idx] != 0) {
-            survivors.push_back(pop[idx]);
+            survivors.push_back(std::move(pop[idx]));
         }
     }
     return survivors;
@@ -237,14 +237,17 @@ std::vector<tlsf::Specification> filter_in_parallel(
 
 FilterFunctionT<tlsf::Specification> tlsf_make_dedup_filter() {
     return {"dedup",
-            [](const std::vector<tlsf::Specification>& pop) {
+            [](std::vector<tlsf::Specification> pop) {
                 std::unordered_set<tlsf::Specification> seen;
                 seen.reserve(pop.size());
                 std::vector<tlsf::Specification> survivors;
                 survivors.reserve(pop.size());
-                for (const tlsf::Specification& spec : pop) {
+                for (tlsf::Specification& spec : pop) {
+                    // The set has to own a copy to key on; the survivor is
+                    // then moved, so a kept candidate costs one copy rather
+                    // than two.
                     if (seen.insert(spec).second) {
-                        survivors.push_back(spec);
+                        survivors.push_back(std::move(spec));
                     }
                 }
                 return survivors;
@@ -321,12 +324,12 @@ bool tlsf_is_vacuous(const tlsf::Specification& spec,
 
 FilterFunctionT<tlsf::Specification> tlsf_make_vacuity_filter(
     std::size_t max_in_flight) {
-    return {"vacuity",
-            [max_in_flight](const std::vector<tlsf::Specification>& pop) {
-                return filter_in_parallel(
-                    pop, max_in_flight, [](const tlsf::Specification& spec) {
-                        return !tlsf_is_vacuous(spec, global_sat_checker());
-                    });
+    return {"vacuity", [max_in_flight](std::vector<tlsf::Specification> pop) {
+                return filter_in_parallel(std::move(pop), max_in_flight,
+                                          [](const tlsf::Specification& spec) {
+                                              return !tlsf_is_vacuous(
+                                                  spec, global_sat_checker());
+                                          });
             }};
 }
 
@@ -354,15 +357,14 @@ bool tlsf_is_not_well_separated(const tlsf::Specification& spec,
 
 FilterFunctionT<tlsf::Specification> tlsf_make_well_separation_filter(
     RealizabilityChecker& checker, std::size_t max_in_flight) {
-    return {
-        "not-well-separated",
-        [&checker, max_in_flight](const std::vector<tlsf::Specification>& pop) {
-            return filter_in_parallel(
-                pop, max_in_flight,
-                [&checker](const tlsf::Specification& candidate) {
-                    return !tlsf_is_not_well_separated(candidate, checker);
-                });
-        }};
+    return {"not-well-separated",
+            [&checker, max_in_flight](std::vector<tlsf::Specification> pop) {
+                return filter_in_parallel(
+                    std::move(pop), max_in_flight,
+                    [&checker](const tlsf::Specification& candidate) {
+                        return !tlsf_is_not_well_separated(candidate, checker);
+                    });
+            }};
 }
 
 FilterFunctionT<tlsf::Specification> tlsf_make_predicate_filter(
@@ -370,8 +372,9 @@ FilterFunctionT<tlsf::Specification> tlsf_make_predicate_filter(
     std::size_t max_in_flight, FilterKind kind) {
     return {std::move(name),
             [predicate = std::move(predicate),
-             max_in_flight](const std::vector<tlsf::Specification>& pop) {
-                return filter_in_parallel(pop, max_in_flight, predicate);
+             max_in_flight](std::vector<tlsf::Specification> pop) {
+                return filter_in_parallel(std::move(pop), max_in_flight,
+                                          predicate);
             },
             kind};
 }
@@ -410,30 +413,29 @@ std::optional<bool> tlsf_spec_implies(const tlsf::Specification& from,
 FilterFunctionT<tlsf::Specification> tlsf_make_bloat_cap_filter(
     const tlsf::Specification& original, double max_ratio) {
     const std::size_t original_max = max_formula_size(original);
-    return {
-        "bloat-cap",
-        [original_max, max_ratio](const std::vector<tlsf::Specification>& pop) {
-            if (original_max == 0) {
-                return pop;
-            }
-            const auto cap = static_cast<std::size_t>(
-                max_ratio * static_cast<double>(original_max));
-            std::vector<tlsf::Specification> survivors;
-            survivors.reserve(pop.size());
-            for (const tlsf::Specification& spec : pop) {
-                if (!any_formula_exceeds(spec, cap)) {
-                    survivors.push_back(spec);
+    return {"bloat-cap",
+            [original_max, max_ratio](std::vector<tlsf::Specification> pop) {
+                if (original_max == 0) {
+                    return pop;
                 }
-            }
-            return survivors;
-        },
-        FilterKind::Preference};
+                const auto cap = static_cast<std::size_t>(
+                    max_ratio * static_cast<double>(original_max));
+                std::vector<tlsf::Specification> survivors;
+                survivors.reserve(pop.size());
+                for (tlsf::Specification& spec : pop) {
+                    if (!any_formula_exceeds(spec, cap)) {
+                        survivors.push_back(std::move(spec));
+                    }
+                }
+                return survivors;
+            },
+            FilterKind::Preference};
 }
 
 FilterFunctionT<tlsf::Specification> tlsf_make_weakening_filter(
     tlsf::Specification original, SatisfiabilityChecker& checker) {
-    return {"weakening", [original = std::move(original), &checker](
-                             const std::vector<tlsf::Specification>& pop) {
+    return {"weakening", [original = std::move(original),
+                          &checker](std::vector<tlsf::Specification> pop) {
                 const std::size_t pop_size = pop.size();
                 std::vector<std::atomic<uint8_t>> keep(pop_size);
                 for (auto& flag : keep) {
@@ -455,7 +457,7 @@ FilterFunctionT<tlsf::Specification> tlsf_make_weakening_filter(
                 survivors.reserve(pop_size);
                 for (std::size_t i = 0; i < pop_size; ++i) {
                     if (keep[i].load(std::memory_order_relaxed) != 0U) {
-                        survivors.push_back(pop[i]);
+                        survivors.push_back(std::move(pop[i]));
                     }
                 }
                 return survivors;
@@ -465,21 +467,20 @@ FilterFunctionT<tlsf::Specification> tlsf_make_weakening_filter(
 FilterFunctionT<tlsf::Specification> tlsf_make_implication_filter(
     SatisfiabilityChecker& checker,
     const GenerationProgressCallback& on_progress) {
-    return {
-        "implication",
-        [&checker, on_progress](const std::vector<tlsf::Specification>& pop) {
-            if (pop.size() <= 1) {
-                return pop;
-            }
-            const std::vector<uint8_t> subsumed =
-                compute_subsumed(pop, checker, on_progress);
-            std::vector<tlsf::Specification> maximal;
-            for (std::size_t i = 0; i < pop.size(); ++i) {
-                if (subsumed[i] == 0U) {
-                    maximal.push_back(pop[i]);
+    return {"implication",
+            [&checker, on_progress](std::vector<tlsf::Specification> pop) {
+                if (pop.size() <= 1) {
+                    return pop;
                 }
-            }
-            return maximal;
-        },
-        FilterKind::Preference};
+                const std::vector<uint8_t> subsumed =
+                    compute_subsumed(pop, checker, on_progress);
+                std::vector<tlsf::Specification> maximal;
+                for (std::size_t i = 0; i < pop.size(); ++i) {
+                    if (subsumed[i] == 0U) {
+                        maximal.push_back(std::move(pop[i]));
+                    }
+                }
+                return maximal;
+            },
+            FilterKind::Preference};
 }

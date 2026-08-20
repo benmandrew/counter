@@ -119,12 +119,11 @@ std::vector<uint8_t> compute_subsumed(
 }
 
 std::vector<Specification> keep_non_subsumed(
-    const std::vector<Specification>& pop,
-    const std::vector<uint8_t>& subsumed) {
+    std::vector<Specification> pop, const std::vector<uint8_t>& subsumed) {
     std::vector<Specification> maximal;
     for (std::size_t i = 0; i < pop.size(); ++i) {
         if (subsumed[i] == 0U) {
-            maximal.push_back(pop[i]);
+            maximal.push_back(std::move(pop[i]));
         }
     }
     return maximal;
@@ -134,14 +133,17 @@ std::vector<Specification> keep_non_subsumed(
 
 FilterFunction make_dedup_filter() {
     return {"dedup",
-            [](const std::vector<Specification>& pop) {
+            [](std::vector<Specification> pop) {
                 std::unordered_set<Specification> seen;
                 seen.reserve(pop.size());
                 std::vector<Specification> survivors;
                 survivors.reserve(pop.size());
-                for (const Specification& spec : pop) {
+                for (Specification& spec : pop) {
+                    // The set has to own a copy to key on; the survivor is
+                    // then moved, so a kept candidate costs one copy rather
+                    // than two.
                     if (seen.insert(spec).second) {
-                        survivors.push_back(spec);
+                        survivors.push_back(std::move(spec));
                     }
                 }
                 return survivors;
@@ -152,7 +154,7 @@ FilterFunction make_dedup_filter() {
 FilterFunction make_weakening_filter(Specification original,
                                      SatisfiabilityChecker& checker) {
     return {"weakening", [original = std::move(original),
-                          &checker](const std::vector<Specification>& pop) {
+                          &checker](std::vector<Specification> pop) {
                 const std::size_t pop_size = pop.size();
                 std::vector<std::atomic<uint8_t>> keep(pop_size);
                 for (auto& flag : keep) {
@@ -177,7 +179,7 @@ FilterFunction make_weakening_filter(Specification original,
                 survivors.reserve(pop_size);
                 for (std::size_t i = 0; i < pop_size; ++i) {
                     if (keep[i].load(std::memory_order_relaxed) != 0U) {
-                        survivors.push_back(pop[i]);
+                        survivors.push_back(std::move(pop[i]));
                     }
                 }
                 return survivors;
@@ -188,7 +190,7 @@ FilterFunction make_implication_filter(
     SatisfiabilityChecker& checker,
     const GenerationProgressCallback& on_progress) {
     return {"implication",
-            [&checker, on_progress](const std::vector<Specification>& pop) {
+            [&checker, on_progress](std::vector<Specification> pop) {
                 ImplicationFilterStats::n_comparisons.store(
                     0, std::memory_order_relaxed);
                 ImplicationFilterStats::n_skipped.store(
@@ -202,7 +204,7 @@ FilterFunction make_implication_filter(
                 }
                 const std::vector<uint8_t> sub =
                     compute_subsumed(pop, checker, on_progress);
-                return keep_non_subsumed(pop, sub);
+                return keep_non_subsumed(std::move(pop), sub);
             },
             FilterKind::Preference};
 }

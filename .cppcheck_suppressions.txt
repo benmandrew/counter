@@ -21,3 +21,9 @@ identicalConditionAfterEarlyExit
 # benchmark::State must be non-const (its begin()/end() advance internal
 # iteration state). cppcheck doesn't know this and suggests const.
 constParameterCallback
+
+# bounded_uniform draws from the engine, so its std::mt19937& cannot be const:
+# operator() is non-const. cppcheck does not model that for a standard-library
+# type and suggests the reference be tightened. Scoped to the one header that
+# owns a generator, so the check still fires elsewhere.
+constParameterReference:*/genetic/random_source.hpp

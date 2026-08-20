@@ -16,9 +16,11 @@
 //
 // The pinned values are recorded from current behaviour rather than derived
 // independently; their purpose is to detect change, not to be correct in their
-// own right. They depend on libstdc++'s uniform_int_distribution and so would
-// need re-pinning on a standard-library change; each assertion reports the
-// value it actually saw to make that mechanical.
+// own right. They no longer depend on the standard library: bounded_uniform is
+// vendored precisely so that the stream is the same under libstdc++ and
+// libc++, which is what lets a macOS run reproduce a Linux campaign. Each
+// assertion still reports the value it actually saw, so a deliberate change to
+// the breeding order is mechanical to re-pin.
 
 #include <cstddef>
 #include <cstdint>
@@ -74,8 +76,8 @@ RandomSource make_recording_source(std::size_t seed,
                                    const std::shared_ptr<DrawTrace>& trace) {
     std::mt19937 rng(seed);
     auto generator = [rng, trace](std::size_t upper_bound) mutable {
-        std::uniform_int_distribution<std::size_t> dist(0, upper_bound - 1);
-        const std::size_t value = dist(rng);
+        const auto value = static_cast<std::size_t>(
+            bounded_uniform(rng, static_cast<std::uint32_t>(upper_bound)));
         trace->draws.emplace_back(upper_bound, value);
         return value;
     };
@@ -293,9 +295,50 @@ void test_same_seed_reproduces_evolution() {
            "identical population");
 }
 
+// bounded_uniform is the one piece of the draw stream counter owns rather than
+// inherits, and the reason it is owned is that std::uniform_int_distribution
+// gave a different answer under libc++ than under libstdc++ -- so a seed
+// reproduced a run only within one standard library, and a macOS run could not
+// reproduce a Linux campaign at all.
+//
+// These values were recorded from libstdc++'s uniform_int_distribution, which
+// is what every archived campaign was drawn against, so the vendored reduction
+// is a drop-in there and only macOS moves. Pinning them here is what stops a
+// future edit, or a libstdc++ change, drifting the stream back apart in
+// silence. A bound of 1 leads deliberately: it returns the only legal answer
+// but still spends an engine word, and an implementation that skips that draw
+// passes every other case here while shifting the whole stream by one.
+void test_golden_bounded_uniform() {
+    std::mt19937 rng(20260820);
+    const std::vector<std::uint32_t> bounds = {1,  2,  3,    4,      7,
+                                               12, 60, 1000, 1000000};
+    const std::vector<std::uint32_t> expected = {
+        0, 0, 1, 3, 2, 9, 35, 181, 896636, 0, 0, 2, 1, 2, 1, 36, 243, 703569,
+        0, 0, 1, 1, 2, 8, 7,  348, 673845, 0, 1, 2, 0, 3, 1, 25, 736, 972698};
+
+    std::vector<std::uint32_t> actual;
+    for (int round = 0; round < 4; ++round) {
+        for (const std::uint32_t bound : bounds) {
+            actual.push_back(bounded_uniform(rng, bound));
+        }
+    }
+    expect(actual.size() == expected.size(),
+           "golden bounded_uniform: the fixture should draw once per bound");
+    for (std::size_t i = 0; i < expected.size(); ++i) {
+        expect(actual[i] == expected[i],
+               "golden bounded_uniform: draw " + std::to_string(i) +
+                   " for bound " + std::to_string(bounds[i % bounds.size()]) +
+                   " gave " + std::to_string(actual[i]) + ", pinned " +
+                   std::to_string(expected[i]) +
+                   "; the bounded draw no longer matches the stream every "
+                   "archived seed was drawn against");
+    }
+}
+
 }  // namespace
 
 void run_determinism_tests() {
+    test_golden_bounded_uniform();
     test_recording_source_matches_production_stream();
     test_trace_hash_distinguishes_order_and_bounds();
     test_generation_draw_sequence_is_pinned();

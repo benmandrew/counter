@@ -104,6 +104,8 @@ Recorded before the fact, so none of them is discovered afterwards in the shape 
 
 **Cost model vintage.** Section 5 states the four ways the archived figures are stale, and the pilot exists to replace them.
 
+**The weakening screen is held on, and is about to stop being the default.** Added 2026-08-20 after the design was fixed; it changes nothing in section 9 and is recorded as a limit on how far the result carries. Both arms run `run_weakening = true`, which is `include/config.hpp`'s default today and what every archived campaign ran. That default is going to false. Because the screen is common to both arms it cancels inside each pair, so the endpoint stays valid for the configuration measured — but it caps both arms, and the cap is not small: the `fsm-combined` investigation found 10 of 12 ideal-implying candidates dying in `final/weakening`, and the 2026-08-19-weakening-arbiter campaign measured the screen costing 9 of 120 paired repairs at p = 0.002. Removing it therefore raises headroom on both arms, and plausibly not symmetrically, the treatment arm having produced 76% more gate-passing candidates for the screen to discard. This campaign's result must not be read as predicting the comparison under the new default; that is a separate replication, and it is the one that decides what ships.
+
 **Host differences.** Both arms of a pair run on the same host, so a host difference cancels inside the pair.
 
 ## 9. Decision rule

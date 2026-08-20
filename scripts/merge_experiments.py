@@ -67,6 +67,8 @@ PROFILE_CSVS: dict[str, str] = {
     "h2h-tlsf": "results-ablate-tlsf.csv",
     # The 2026-08-20 operator cross; one CSV per path, never shared, since
     # the two paths run different corpora at different operating points.
+    "opswk-fret": "results-opswk-fret.csv",
+    "opswk-tlsf": "results-opswk-tlsf.csv",
     "ops-pilot": "results-ops-pilot.csv",
     "ops-tlsf": "results-ops-tlsf.csv",
     "ops-fret": "results-ops-fret.csv",
@@ -112,6 +114,8 @@ PROFILE_RESULT_DIRS: dict[str, str] = {
     "ablate-fret": "results-ablate-fret",
     "ablate-tlsf": "results-ablate-tlsf",
     "h2h-tlsf": "results-ablate-tlsf",
+    "opswk-fret": "results-opswk-fret",
+    "opswk-tlsf": "results-opswk-tlsf",
     "ops-pilot": "results-ops-pilot",
     "ops-tlsf": "results-ops-tlsf",
     "ops-fret": "results-ops-fret",

@@ -1341,6 +1341,80 @@ PROFILES: dict[str, dict] = {
         "results_csv": EXPERIMENTS_DIR / "results-ops-pilot.csv",
         "default_jobs": 4,
     },
+    # ── ops-weakening ───────────────────────────────────────────────────────
+    # ops-grammar replicated with the weakening screen off, because
+    # `run_weakening` is going to default false and ops-grammar measured the
+    # grammar through a screen that will no longer be in the shipped path.
+    #
+    # These two profiles are an exact mirror of ops-fret and ops-tlsf -- same
+    # corpora, seeds, operating points, caps, jobs and sweep -- differing only in
+    # the wkoff config directory. The mirror is deliberate and load-bearing: with
+    # everything else held, the two campaigns' rows assemble post hoc into a 2x2
+    # of grammar x weakening on identical (spec, seed) pairs, which is a design
+    # neither campaign could buy on its own. Change anything here and that
+    # assembly silently stops being valid.
+    #
+    # ops-grammar's rows are safe from this by construction rather than by care:
+    # `weakening` is one of merge_experiments.KEY_FIELDS, so a wkoff row cannot
+    # collide with a wkon row even in one CSV. The separate CSVs and run
+    # directories below are the belt to that braces -- nothing this campaign does
+    # can touch a file ops-grammar's endpoint is computed from.
+    #
+    # Generate with
+    #   python3 scripts/gen_configs.py --schemes nsga2-truncate --weakening off \
+    #       --sweeps O --generations 40 --population-size 1000 \
+    #       --out-dir experiments/configs-opswk-fret
+    #   python3 scripts/gen_configs.py --tlsf --weakening off --sweeps O \
+    #       --ltlsynt-timeout 10000 --ltl2tgba-timeout 60000 \
+    #       --max-scoring-failure-rate 0.15 \
+    #       --out-dir experiments/configs-opswk-tlsf
+    "opswk-fret": {
+        "schemes": ["nsga2-truncate"],
+        "weakenings": ["wkoff"],
+        "metrics": None,
+        "repair_modes": None,
+        "sweeps": ["O"],
+        "levels": {"O": ["opslegacy", "opsfixed"]},
+        "specs": list(FRETISH_SPECS),
+        "seeds": list(range(30)),
+        "timeout_caps": {"takeoff": 1200, "fsm": 1200, "fsm-timing": 1200,
+                         "fsm-combined": 1800},
+        # wkoff returns strictly more repairs than wkon by construction and
+        # compare's cost scales with them -- the asymmetry that censored
+        # replicate's comparisons at the 600 s default.
+        "compare_timeout": 1800,
+        "baseline_aliases": {},
+        "configs_dir": EXPERIMENTS_DIR / "configs-opswk-fret",
+        "results_dir": EXPERIMENTS_DIR / "results-opswk-fret",
+        "results_csv": EXPERIMENTS_DIR / "results-opswk-fret.csv",
+        "default_jobs": 4,
+    },
+    "opswk-tlsf": {
+        "schemes": ["nsga2-truncate"],
+        "weakenings": ["wkoff"],
+        "metrics": None,
+        "repair_modes": None,
+        "sweeps": ["O"],
+        "levels": {"O": ["opslegacy", "opsfixed"]},
+        "specs": list(H2H_TLSF_SPECS),
+        "seeds": list(range(20)),
+        # ops-tlsf's pilot-sized caps, unchanged. Dropping the weakening screen
+        # removes a final filter rather than search work, so counter's wall time
+        # falls slightly if it moves at all; compare's rises, which is what
+        # compare_timeout above covers.
+        "timeout_caps": {
+            "arbiter-aurus": 600, "codesample-un1": 600,
+            "codesample-un2": 600, "gyro-var1": 600, "gyro-var2": 600,
+            "humanoid-458": 600, "humanoid-531": 2580, "lift": 960,
+            "lily02": 600, "minepump": 600, "rg1": 600, "rg2": 600,
+        },
+        "compare_timeout": 1800,
+        "baseline_aliases": {},
+        "configs_dir": EXPERIMENTS_DIR / "configs-opswk-tlsf",
+        "results_dir": EXPERIMENTS_DIR / "results-opswk-tlsf",
+        "results_csv": EXPERIMENTS_DIR / "results-opswk-tlsf.csv",
+        "default_jobs": 4,
+    },
     # ── ops-grammar ─────────────────────────────────────────────────────────
     # The repaired mutation and crossover grammar (sweep O) against the one
     # every campaign before 2026-08-19 ran, paired on (spec, seed) within one

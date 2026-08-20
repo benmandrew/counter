@@ -86,6 +86,11 @@ PROFILE_CSVS: dict[str, str] = {
     # G's arms are the status grading scale rather than ablate-tlsf's C, and the
     # level names do not overlap.
     "status-grading": "results-status-grading.csv",
+    # Registered here because test_experiment_paths asserts every profile in
+    # run_experiments has both a CSV and a result directory. The profile landed
+    # on main with neither, which `campaign.py collect` would have surfaced as a
+    # KeyError once the campaign finished.
+    "weakening-arbiter": "results-wkarb.csv",
     # The -cm halves share their R half's CSV deliberately: they are the third
     # arm of one design, not a separate campaign, and KEY_FIELDS separates them
     # by sweep and level_name. Merging under either name merges the same file.
@@ -120,6 +125,7 @@ PROFILE_RESULT_DIRS: dict[str, str] = {
     "replicate-tlsf": "results-replicate-tlsf",
     "arbiter-probe": "results-arbiter-probe",
     "status-grading": "results-status-grading",
+    "weakening-arbiter": "results-wkarb",
     "seldefault-fret": "results-seldefault",
     "seldefault-fret-cm": "results-seldefault",
     "seldefault-tlsf": "results-seldefault-tlsf",

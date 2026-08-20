@@ -1367,6 +1367,10 @@ def make_repo(root: Path, name: str, declaration: str, branch: str) -> None:
     origin = root.with_name(root.name + "-origin.git")
     subprocess.run(["git", "init", "-q", "--bare", str(origin)], check=True)
     git(root, "remote", "add", "origin", str(origin))
+    # Generated configs are untracked on a real host, and have to be untracked
+    # here too: tracked, a `git add -A` on one branch would take them away
+    # again on the next checkout, which is a state no lab machine is ever in.
+    (root / ".gitignore").write_text("experiments/configs*/\n")
     write_declaration(root, name, declaration)
     git(root, "add", "-A")
     # --no-verify: a globally configured core.hooksPath would otherwise run
@@ -1754,6 +1758,17 @@ try:
     binary.parent.mkdir(parents=True, exist_ok=True)
     binary.write_text(FAKE_BINARY)
     binary.chmod(0o755)
+    # The configs a staged host already has. A tick checks them before it
+    # runs a phase, so a fixture with none would be testing the empty-configs
+    # refusal on every tick rather than the phase it queued.
+    def put_config(profile: str) -> Path:
+        path = (repo / C.profile_configs_dir(profile) / "default" / "x.toml")
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text("generations = 1\n")
+        return path
+
+    for profile in ("full", "tlsf"):
+        put_config(profile)
     control_dir = queue_root / "stub"
     control_dir.mkdir()
     stub = control_dir / "stub_runner.py"
@@ -1912,6 +1927,33 @@ try:
     check((entry["state"], entry["attempts"]), ("queued", 0),
           "which is the only way out of failed")
 
+    # ── the tick generates the configs its phase needs ────────────────────────
+    #
+    # run_experiments.py exits 1 on a configs directory holding no .toml, and
+    # the attended stage path has checked for that since aurus-h2h spent two of
+    # its three attempts on it. The tick had no such check at all, so the same
+    # failure reached the path with nobody watching.
+    calls.unlink() if calls.exists() else None
+    generated = repo / C.profile_configs_dir("full") / "default" / "x.toml"
+    generated.unlink()
+    entry = only_entry()
+    entry.update({"state": "queued", "phase": 0, "attempts": 0,
+                  "max_attempts": 3})
+    C.write_entry(entry["path"], entry)
+    code, printed = tick()
+    check(code, 1, "a tick whose configs directory is empty runs no phase")
+    check_true("no config files under" in only_entry()["last_error"],
+               "and the entry names the directory, in the stage path's words")
+    check_true("campaign.toml" in only_entry()["last_error"],
+               "and says the declaration is where the command belongs")
+    check_true(not calls.exists(),
+               "with the runner never reached, so the attempts are not spent "
+               "one tick at a time on a directory the tick can see is empty")
+    generated.write_text("generations = 1\n")
+    entry = only_entry()
+    entry.update({"state": "queued", "attempts": 0})
+    C.write_entry(entry["path"], entry)
+
     # ── the tick stages the checkout it needs ─────────────────────────────────
     #
     # An entry whose branch the checkout has left must not run its phase there:
@@ -1920,7 +1962,7 @@ try:
     # hand, which is unusable for a queue holding two campaigns on two
     # branches. It now moves the checkout itself.
     (control_dir / "exit-code").unlink()
-    calls.unlink()
+    calls.unlink() if calls.exists() else None
     git(repo, "checkout", "-q", default_branch)
 
     # Not while somebody's edits are in the tree. This is one of the two
@@ -2053,6 +2095,70 @@ try:
 finally:
     C.run_shell = REAL_RUN_SHELL
     shutil.rmtree(queue_root, ignore_errors=True)
+
+
+# ── The configs check, locally ────────────────────────────────────────────────
+#
+# config_dirs_missing is the local twin of the CONFIGS_CHECK shell snippet the
+# ssh stage path runs on the host, and has to answer the same question the same
+# way. Both halves are load-bearing: gen_configs.py writes a directory per
+# factor level and nothing at the top, so a check that did not recurse would
+# call a full tree empty; and a directory that is not there at all is the state
+# a host is in before anything generated anything, not an error.
+
+configs_root = Path(tempfile.mkdtemp(prefix="campaign-configs-"))
+try:
+    nested = configs_root / "cfg" / "level" / "one.toml"
+    nested.parent.mkdir(parents=True)
+    nested.write_text("generations = 1\n")
+    check(C.config_dirs_missing(configs_root, ["cfg"]), [],
+          "a .toml under a subdirectory counts, as `find` counts it")
+    check(C.config_dirs_missing(configs_root, ["absent"]), ["absent"],
+          "a configs directory that does not exist is missing")
+    empty = configs_root / "empty"
+    empty.mkdir()
+    (empty / "notes.txt").write_text("not a config\n")
+    check(C.config_dirs_missing(configs_root, ["empty", "cfg"]), ["empty"],
+          "and one holding no .toml is missing however much else is in it")
+
+    log = configs_root / "configs.log"
+    marker = configs_root / "ran"
+    check(C.ensure_configs({"config_dirs": ["cfg"],
+                            "configs": f"touch {marker}"},
+                           configs_root, log), None,
+          "configs already on the host need nothing generating")
+    check_true(not marker.exists(),
+               "and the command is not run: the check comes first, so a host "
+               "staged by hand pays one directory scan and no generator")
+
+    made = configs_root / "made" / "gen" / "config.toml"
+    check(C.ensure_configs(
+        {"config_dirs": ["made"],
+         "configs": f"mkdir -p {made.parent} && touch {made} && "
+                    f"touch {marker}"}, configs_root, log), None,
+        "an empty directory is filled by the declared command")
+    check_true(marker.exists() and made.is_file(),
+               "which really ran, in a subshell, so both halves of an && line "
+               "are watched")
+
+    why = C.ensure_configs({"config_dirs": ["empty"], "configs": None},
+                           configs_root, log)
+    check_true(why is not None and "empty" in why and "campaign.toml" in why,
+               "a campaign declaring no configs command fails naming the "
+               "directory, in the words the stage path uses")
+
+    why = C.ensure_configs({"config_dirs": ["nothing"], "configs": "false"},
+                           configs_root, log)
+    check_true(why is not None and "configs command failed" in why,
+               "a generator that fails reports as itself")
+
+    why = C.ensure_configs({"config_dirs": ["nothing"], "configs": "true"},
+                           configs_root, log)
+    check_true(why is not None and "left no config files" in why,
+               "and one that exits 0 without writing a config is caught by "
+               "the re-check, rather than by run_experiments.py an hour later")
+finally:
+    shutil.rmtree(configs_root, ignore_errors=True)
 
 
 # ── Colour ────────────────────────────────────────────────────────────────────

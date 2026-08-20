@@ -116,6 +116,8 @@ It stages for the branch alone. The other two refusals hold, and a tick that mee
 
 Entries are still taken in strict numerical order, which is what keeps the checkout still: an entry requeues at its own number between phases, so it stays the lowest-numbered one until it is `done` and a campaign runs to completion before the next branch is staged. `campaign.py queue` prints the branch and commit each entry needs, beside its state.
 
+A tick also generates the configs its phase needs. `stage` runs the campaign's `configs` command and then checks every directory its phases read; a tick that did neither launched straight into the empty directory `run_experiments.py` exits 1 on, which is the failure the check was written for, on the path with nobody watching. The check comes first and the command runs only where something is missing, so a host already carrying its configs pays one directory scan and runs no generator. It sits after the declaration is loaded rather than inside the checkout, because the command and the directories to check are keys of `campaign.toml`, which nothing can read until the checkout has moved. A campaign that declares no command fails here by name, in the words `stage` uses.
+
 An entry written before this existed names no commit. There is nothing safe to guess — the branch has moved since, or the entry would not be waiting — so it refuses exactly as every entry used to, and the fix is `stage` by hand.
 
 ## Collecting and closing

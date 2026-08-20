@@ -3142,6 +3142,55 @@ def ensure_staged(entry: dict, root: Path, args: argparse.Namespace):
     return None
 
 
+def config_dirs_missing(root: Path, config_dirs: list) -> list:
+    """The declared configs directories holding no `.toml`. Empty means ready.
+
+    The local twin of CONFIGS_CHECK, which the attended stage path runs over
+    ssh, and it has to answer the same question the same way: recursive,
+    because gen_configs.py writes a directory per factor level and nothing
+    lands at the top; first hit only, because a generated tree is thousands of
+    files and the question is whether it is empty. A directory that is not
+    there at all is missing rather than an error, since that is the state a
+    host is in before anything generated anything.
+    """
+    missing = []
+    for name in config_dirs:
+        directory = root / name
+        if not directory.is_dir() or next(directory.rglob("*.toml"),
+                                          None) is None:
+            missing.append(name)
+    return missing
+
+
+def ensure_configs(campaign: dict, root: Path, log_path: Path):
+    """Generate the campaign's configs where the host has none. None on ready.
+
+    Checked before it is run, so the common case -- a host staged by hand, or
+    one that generated them for an earlier phase -- costs one directory scan
+    and runs no generator. A campaign declaring no command fails here with the
+    words the stage path uses, rather than three ticks later as
+    run_experiments.py exiting 1 with the attempts already spent.
+    """
+    missing = config_dirs_missing(root, campaign["config_dirs"])
+    if not missing:
+        return None
+    configs = campaign.get("configs")
+    if not configs:
+        return (f"no config files under {', '.join(missing)} — generate them "
+                f"with scripts/gen_configs.py, and declare that command as "
+                f"configs = ... in campaign.toml")
+    if run_step(root, configs, log_path, shell=True):
+        return f"the configs command failed: {configs}"
+    # Re-checked rather than trusted: a generator called with the wrong flags
+    # writes a different directory and exits 0, which is the failure that
+    # reaches the runner rather than the log.
+    still = config_dirs_missing(root, campaign["config_dirs"])
+    if still:
+        return (f"the configs command left no config files under "
+                f"{', '.join(still)}: {configs}")
+    return None
+
+
 def fail_or_requeue(entry: dict, why: str) -> None:
     """One attempt spent. Past the cap the entry stops moving and says why.
 
@@ -3212,6 +3261,22 @@ def cmd_tick(args: argparse.Namespace) -> int:
             write_entry(entry["path"], entry)
             print(f"tick: {entry['file']} {entry['state']}: {exc}")
             return 1
+        # After load_campaign rather than inside stage_checkout: the command
+        # and the directories to check are keys of campaign.toml, which the
+        # comment above is about not being readable any earlier.
+        if args.dry_run:
+            missing = config_dirs_missing(root, campaign["config_dirs"])
+            if missing:
+                print(f"  would generate configs for {', '.join(missing)} "
+                      f"with: {campaign['configs'] or '(none declared)'}")
+        else:
+            why = ensure_configs(campaign, root, entry_log_path(entry, root))
+            if why is not None:
+                fail_or_requeue(entry, why)
+                write_entry(entry["path"], entry)
+                print(f"tick: {entry['file']} {entry['state']}: "
+                      f"{entry['last_error']}")
+                return 1
         return tick_entry(entry, campaign, root, args)
     finally:
         lock.close()

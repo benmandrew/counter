@@ -152,7 +152,7 @@ Formula Formula::make_atom(const std::string& atom) { return Formula(atom); }
 Formula Formula::from_node_arena(
     std::vector<prop_formula_internal::Node> nodes) {
     Formula result;
-    result.m_impl = std::make_unique<Impl>(std::move(nodes));
+    result.m_impl = std::make_shared<Impl>(std::move(nodes));
     return result;
 }
 

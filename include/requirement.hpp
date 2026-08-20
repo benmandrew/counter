@@ -14,6 +14,7 @@
 #include <variant>
 #include <vector>
 
+#include "hash_combine.hpp"
 #include "prop_formula.hpp"
 
 namespace timing {
@@ -224,16 +225,14 @@ struct hash<Timing> {
     // Timing can never become valueless and the throw is unreachable.
     // NOLINTNEXTLINE(bugprone-exception-escape)
     std::size_t operator()(const Timing& timing) const noexcept {
-        auto combine = [](std::size_t seed, std::size_t val) noexcept {
-            return seed ^ (val + 0x9e3779b9U + (seed << 6) + (seed >> 2));
-        };
         return std::visit(
-            [&combine, idx = timing.index()](const auto& val) -> std::size_t {
+            [idx = timing.index()](const auto& val) -> std::size_t {
                 using T = std::decay_t<decltype(val)>;
                 if constexpr (std::is_same_v<T, timing::WithinTicks> ||
                               std::is_same_v<T, timing::ForTicks> ||
                               std::is_same_v<T, timing::AfterTicks>) {
-                    return combine(idx, std::hash<std::size_t>{}(val.m_ticks));
+                    return hash_combine(idx,
+                                        std::hash<std::size_t>{}(val.m_ticks));
                 } else {
                     return idx;
                 }
@@ -245,20 +244,21 @@ struct hash<Timing> {
 template <>
 struct hash<Requirement> {
     std::size_t operator()(const Requirement& req) const noexcept {
-        auto combine = [](std::size_t seed, std::size_t val) noexcept {
-            return seed ^ (val + 0x9e3779b9U + (seed << 6) + (seed >> 2));
-        };
         std::size_t seed = std::hash<Formula>{}(req.m_condition);
-        seed = combine(seed, std::hash<Formula>{}(req.m_response));
-        seed = combine(seed, std::hash<Timing>{}(req.m_timing));
-        seed = combine(seed, std::hash<bool>{}(req.m_condition_type ==
-                                               ConditionType::Trigger));
-        seed = combine(seed, std::hash<std::string>{}(req.m_ltl));
-        seed = combine(seed, std::hash<bool>{}(req.m_weakenable));
+        seed = hash_combine(seed, std::hash<Formula>{}(req.m_response));
+        seed = hash_combine(seed, std::hash<Timing>{}(req.m_timing));
+        seed = hash_combine(seed, std::hash<bool>{}(req.m_condition_type ==
+                                                    ConditionType::Trigger));
+        // m_ltl is deliberately absent: the constructor derives it from
+        // the four fields above via requirement_to_ltl, so scanning it adds a
+        // string hash the length of a rendered LTL formula and no
+        // discrimination. operator== still compares it, so two requirements
+        // that somehow disagree on it collide rather than compare equal.
+        seed = hash_combine(seed, std::hash<bool>{}(req.m_weakenable));
         // In the hash and in operator== both, because the fitness cache keys on
         // the specification: a removed guarantee must not collide with the live
         // one it replaced and inherit its score.
-        seed = combine(seed, std::hash<bool>{}(req.m_removed));
+        seed = hash_combine(seed, std::hash<bool>{}(req.m_removed));
         return seed;
     }
 };
@@ -266,21 +266,18 @@ struct hash<Requirement> {
 template <>
 struct hash<Specification> {
     std::size_t operator()(const Specification& spec) const noexcept {
-        auto combine = [](std::size_t seed, std::size_t val) noexcept {
-            return seed ^ (val + 0x9e3779b9U + (seed << 6) + (seed >> 2));
-        };
         std::size_t seed = 0;
         for (const Requirement& req : spec.m_assumptions) {
-            seed = combine(seed, std::hash<Requirement>{}(req));
+            seed = hash_combine(seed, std::hash<Requirement>{}(req));
         }
         for (const Requirement& req : spec.m_guarantees) {
-            seed = combine(seed, std::hash<Requirement>{}(req));
+            seed = hash_combine(seed, std::hash<Requirement>{}(req));
         }
         for (const std::string& atom : spec.m_in_atoms) {
-            seed = combine(seed, std::hash<std::string>{}(atom));
+            seed = hash_combine(seed, std::hash<std::string>{}(atom));
         }
         for (const std::string& atom : spec.m_out_atoms) {
-            seed = combine(seed, std::hash<std::string>{}(atom));
+            seed = hash_combine(seed, std::hash<std::string>{}(atom));
         }
         return seed;
     }

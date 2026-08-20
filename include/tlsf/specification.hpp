@@ -12,6 +12,7 @@
 #include <utility>
 #include <vector>
 
+#include "hash_combine.hpp"
 #include "prop_formula.hpp"
 
 namespace tlsf {
@@ -154,27 +155,25 @@ namespace std {  // NOLINT(build/namespaces)
 template <>
 struct hash<tlsf::Specification> {
     std::size_t operator()(const tlsf::Specification& spec) const noexcept {
-        auto combine = [](std::size_t seed, std::size_t val) noexcept {
-            return seed ^ (val + 0x9e3779b9U + (seed << 6) + (seed >> 2));
-        };
         // The removed flag is hashed alongside the formula, and compared in
         // operator==, because the fitness cache keys on the specification: a
         // deleted conjunct must not collide with the live one it replaced and
         // inherit its score.
-        auto fold = [&combine](std::size_t seed,
-                               const tlsf::Section& section) noexcept {
+        auto fold = [](std::size_t seed,
+                       const tlsf::Section& section) noexcept {
             for (const tlsf::SectionEntry& entry : section) {
-                seed = combine(seed, std::hash<Formula>{}(entry.m_formula));
-                seed = combine(seed, std::hash<bool>{}(entry.m_removed));
+                seed =
+                    hash_combine(seed, std::hash<Formula>{}(entry.m_formula));
+                seed = hash_combine(seed, std::hash<bool>{}(entry.m_removed));
             }
             return seed;
         };
         std::size_t seed = 0;
         for (const std::string& atom : spec.m_inputs) {
-            seed = combine(seed, std::hash<std::string>{}(atom));
+            seed = hash_combine(seed, std::hash<std::string>{}(atom));
         }
         for (const std::string& atom : spec.m_outputs) {
-            seed = combine(seed, std::hash<std::string>{}(atom));
+            seed = hash_combine(seed, std::hash<std::string>{}(atom));
         }
         seed = fold(seed, spec.m_initially);
         seed = fold(seed, spec.m_preset);
@@ -182,8 +181,9 @@ struct hash<tlsf::Specification> {
         seed = fold(seed, spec.m_assume);
         seed = fold(seed, spec.m_assert);
         seed = fold(seed, spec.m_guarantee);
-        seed = combine(seed, std::hash<std::uint8_t>{}(
-                                 static_cast<std::uint8_t>(spec.m_semantics)));
+        seed = hash_combine(seed,
+                            std::hash<std::uint8_t>{}(
+                                static_cast<std::uint8_t>(spec.m_semantics)));
         return seed;
     }
 };

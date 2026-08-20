@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cstddef>
+#include <utility>
 #include <vector>
 
 namespace {
@@ -42,7 +43,7 @@ FilterFunction make_bloat_cap_filter(const Specification& original,
                                      double max_ratio) {
     const std::size_t original_max = max_formula_size(original);
     return {"bloat-cap",
-            [original_max, max_ratio](const std::vector<Specification>& pop) {
+            [original_max, max_ratio](std::vector<Specification> pop) {
                 if (original_max == 0) {
                     return pop;
                 }
@@ -50,9 +51,9 @@ FilterFunction make_bloat_cap_filter(const Specification& original,
                     max_ratio * static_cast<double>(original_max));
                 std::vector<Specification> survivors;
                 survivors.reserve(pop.size());
-                for (const Specification& spec : pop) {
+                for (Specification& spec : pop) {
                     if (!any_formula_exceeds(spec, cap)) {
-                        survivors.push_back(spec);
+                        survivors.push_back(std::move(spec));
                     }
                 }
                 return survivors;

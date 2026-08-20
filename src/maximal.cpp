@@ -115,6 +115,71 @@ std::vector<std::string> expand_paths(const std::vector<std::string>& paths) {
     return files;
 }
 
+// The survivors' partition into mutual-implication classes, and how many there
+// are. Separate from `main` because the pairwise sweep is the one part of this
+// tool that is an algorithm rather than plumbing.
+struct Quotient {
+    std::vector<std::size_t> m_class_of;
+    std::size_t m_n_classes = 0;
+};
+
+// Quotient the survivors. They are pairwise non-dominating by construction, so
+// a mutual implication here is an equivalence and nothing else, and the sweep
+// is over the survivors alone rather than the whole input.
+Quotient quotient_by_equivalence(
+    const std::vector<tlsf::Specification>& maximal,
+    SatisfiabilityChecker& checker) {
+    Quotient out;
+    out.m_class_of.assign(maximal.size(), 0);
+    for (std::size_t i = 0; i < maximal.size(); ++i) {
+        bool placed = false;
+        for (std::size_t j = 0; j < i && !placed; ++j) {
+            if (tlsf_spec_implies(maximal[i], maximal[j], checker)
+                    .value_or(false) &&
+                tlsf_spec_implies(maximal[j], maximal[i], checker)
+                    .value_or(false)) {
+                out.m_class_of[i] = out.m_class_of[j];
+                placed = true;
+            }
+        }
+        if (!placed) {
+            out.m_class_of[i] = out.m_n_classes++;
+        }
+    }
+    return out;
+}
+
+// `members` is indexed by position in the distinct corpus, not by position in
+// `maximal`, so every lookup goes through `position_of`.
+void print_report(
+    const std::vector<tlsf::Specification>& maximal, const Quotient& quotient,
+    const std::unordered_map<tlsf::Specification, std::size_t>& position_of,
+    const std::vector<std::vector<std::string>>& members,
+    std::size_t n_distinct, std::size_t parse_failures) {
+    std::size_t n_files = 0;
+    for (const std::vector<std::string>& group : members) {
+        n_files += group.size();
+    }
+    std::cout << "files      " << n_files << "\n"
+              << "distinct   " << n_distinct << "\n"
+              << "maximal    " << maximal.size() << "\n"
+              << "classes    " << quotient.m_n_classes << "\n";
+    if (parse_failures > 0) {
+        std::cout << "unparsed   " << parse_failures << "\n";
+    }
+    std::cout << "\n";
+    for (std::size_t i = 0; i < maximal.size(); ++i) {
+        const std::size_t position = position_of.at(maximal[i]);
+        std::cout << "class " << quotient.m_class_of[i] << "  "
+                  << members[position].front();
+        if (members[position].size() > 1) {
+            std::cout << "  (+" << members[position].size() - 1
+                      << " identical)";
+        }
+        std::cout << "\n";
+    }
+}
+
 }  // namespace
 
 int main(int argc, const char* const argv[]) {
@@ -210,48 +275,8 @@ int main(int argc, const char* const argv[]) {
         std::cerr << "\n";
     }
 
-    // Quotient the survivors. They are pairwise non-dominating by construction,
-    // so a mutual implication here is an equivalence and nothing else, and the
-    // sweep is over the survivors alone rather than the whole input.
-    std::vector<std::size_t> class_of(maximal.size(), 0);
-    std::size_t n_classes = 0;
-    for (std::size_t i = 0; i < maximal.size(); ++i) {
-        bool placed = false;
-        for (std::size_t j = 0; j < i && !placed; ++j) {
-            if (tlsf_spec_implies(maximal[i], maximal[j], checker)
-                    .value_or(false) &&
-                tlsf_spec_implies(maximal[j], maximal[i], checker)
-                    .value_or(false)) {
-                class_of[i] = class_of[j];
-                placed = true;
-            }
-        }
-        if (!placed) {
-            class_of[i] = n_classes++;
-        }
-    }
-
-    std::size_t n_files = 0;
-    for (const std::vector<std::string>& group : members) {
-        n_files += group.size();
-    }
-    std::cout << "files      " << n_files << "\n"
-              << "distinct   " << distinct.size() << "\n"
-              << "maximal    " << maximal.size() << "\n"
-              << "classes    " << n_classes << "\n";
-    if (parse_failures > 0) {
-        std::cout << "unparsed   " << parse_failures << "\n";
-    }
-    std::cout << "\n";
-    for (std::size_t i = 0; i < maximal.size(); ++i) {
-        const std::size_t position = position_of.at(maximal[i]);
-        std::cout << "class " << class_of[i] << "  "
-                  << members[position].front();
-        if (members[position].size() > 1) {
-            std::cout << "  (+" << members[position].size() - 1
-                      << " identical)";
-        }
-        std::cout << "\n";
-    }
+    const Quotient quotient = quotient_by_equivalence(maximal, checker);
+    print_report(maximal, quotient, position_of, members, distinct.size(),
+                 parse_failures);
     return 0;
 }

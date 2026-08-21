@@ -29,9 +29,9 @@ CONFIGS_DIR = Path(__file__).parent.parent / "experiments" / "configs"
 
 # Selection schemes the whole grid is duplicated across. Every generated config
 # pins the scheme explicitly rather than relying on the config.hpp default,
-# which is "nsga2-truncate". nsga2-apportion is appended rather than ordered
-# next to nsga2-truncate so the first two entries keep the positions the earlier
-# grids were generated under.
+# which is "nsga2-apportion" and so is *not* the head of this list.
+# nsga2-apportion is appended rather than ordered next to nsga2-truncate so the
+# first two entries keep the positions the earlier grids were generated under.
 #
 # The two NSGA-II schemes were renamed: "nsga2" -> "nsga2-truncate" and
 # "nsga2-replicate" -> "nsga2-apportion". That is a hard break rather than a
@@ -88,24 +88,44 @@ REPAIRS: dict[str, list[tuple[str, str]]] = {
     "both": [("mono", "monolithic"), ("muc", "muc")],
 }
 
-# Mirrors the built-in defaults from include/config.hpp, with two deliberate
-# exceptions.
+# Mirrors the built-in defaults from include/config.hpp. Every entry tracks the
+# binary except the nine enumerated below, and check_config_schema.py enforces
+# that: it walks this table against config.hpp's in-class initialisers and fails
+# on any key that is neither mapped to a member nor listed there as exempt. A
+# key whose C++ default moves is therefore corrected here rather than noticed
+# later — which matters most for the VINTAGE_KEYS, since --pin-vintage writes
+# *these* values into the generated configs.
 #
-# run_weakening is pinned True here and the binary has defaulted it False since
-# 2026-08-20, so this is now a real divergence rather than a pending one. The
-# pin does not follow the binary, and must not. run_weakening is a crossed
-# factor (wkon/wkoff) whose flat, non-crossed configs are attributed to
-# LEGACY_WEAKENING ("wkon") by run_experiments.py, and `weakening` is one of
-# merge_experiments.KEY_FIELDS, so the emitted value has to keep matching that
-# recorded CSV column or ~225k archived rows stop joining their own key. Moving
-# the pin would buy nothing and would put every new row at odds with every
-# archived one on a key field. config.hpp also
-# defaults metric to "logarithmic", but
-# the experiment baseline stays "direct": a flat (non-crossed) config carries no
-# metric directory, so run_experiments.py's metric_of() attributes it to
-# LEGACY_METRIC ("direct") — pinning "direct" here keeps the emitted config's
-# value matching that recorded CSV column and keeps past grids comparable. Cross
-# the metric explicitly with --metric to exercise "logarithmic".
+# The deliberate divergences, and why each one does not follow the binary:
+#
+#   * run_weakening — pinned True; the binary has defaulted it False since
+#     2026-08-20. It is a crossed factor (wkon/wkoff) whose flat, non-crossed
+#     configs are attributed to LEGACY_WEAKENING ("wkon") by run_experiments.py,
+#     and `weakening` is one of merge_experiments.KEY_FIELDS, so the emitted
+#     value has to keep matching that recorded CSV column or ~225k archived rows
+#     stop joining their own key.
+#   * metric — pinned "direct"; config.hpp defaults it to "logarithmic". Same
+#     argument: a flat config carries no metric directory, so metric_of()
+#     attributes it to LEGACY_METRIC ("direct"), and `metric` is a CSV key
+#     column. Cross the metric explicitly with --metric to exercise
+#     "logarithmic".
+#   * selection_scheme — pinned "nsga2-truncate"; config.hpp defaults it to
+#     "nsga2-apportion". Same argument again: the scheme is the config
+#     *directory* name that scheme_of() reads back into the `selection` CSV key
+#     column, and every generated config pins it explicitly, so the first entry
+#     of SCHEMES has to stay the one past grids were generated under.
+#   * weight_syntactic / weight_semantic / weight_status — pinned 0.33 each;
+#     config.hpp reads 0.2 / 0.5 / 0.5. These three are emitted
+#     *unconditionally* into every config, so every archived config states them
+#     and is self-describing about them. Following the binary would change the
+#     emitted values and break comparability with every past grid, and would buy
+#     nothing, since no archived config was ever silent about them.
+#   * ltlsynt_timeout_ms / ltl2tgba_timeout_ms / max_scoring_failure_rate — 0
+#     and 0.0 are "do not emit" sentinels read by make_toml, not mirrors of
+#     config.hpp's 10000 ms, 60000 ms and 0.15. A campaign that needs a cap sets
+#     one; everything else inherits the binary's.
+#   * dashboard — False is the same kind of sentinel (emitted only when true).
+#     It coincides with config.hpp today, and must stay False if that moves.
 DEFAULTS: dict = {
     "generations": 10,
     "population_size": 200,
@@ -137,15 +157,26 @@ DEFAULTS: dict = {
     "metric": "direct",
     "run_weakening": True,
     "run_implication": True,
-    # Well-separation filter and output-atom assumptions (PR #34). Both now
-    # default on in the binary, and both are emitted into the TOML only when a
-    # sweep overrides them (see make_toml), so every existing grid stays
-    # byte-identical; the wellsep sweep (W) crosses them as a 2x2. These entries
-    # mirror the binary rather than drive it -- a grid that does not override
-    # them emits no key and takes whatever the binary defaults to at run time,
-    # which is why re-running an archived config does not reproduce it. See
-    # "Config vintage" in experiments/README.md.
-    "run_well_separation": True,
+    # Well-separation filter and output-atom assumptions (PR #34). These two
+    # track the binary and do not agree with each other:
+    # allow_output_assumptions defaults true, and run_well_separation defaults
+    # *false* -- config.hpp's run_well_separation_filter has been false since
+    # b101ada (2026-08-10), the status objective having absorbed the property,
+    # so the filter now only costs the search its gradient off ill-separation.
+    # Both are emitted into the TOML only when a sweep overrides them (see
+    # make_toml), so every existing grid stays byte-identical; the wellsep
+    # sweep (W) crosses them as a 2x2. Neither entry drives the binary: a grid
+    # that does not override them emits no key and takes whatever the binary
+    # defaults to at run time, which is why re-running an archived config does
+    # not reproduce it. See "Config vintage" in experiments/README.md.
+    #
+    # These are exactly the entries that must follow config.hpp rather than be
+    # pinned, and both are in VINTAGE_KEYS, which sources its written-out values
+    # from this table -- a stale entry here is a wrong value written into every
+    # config generated with --pin-vintage, by the mechanism that exists to stop
+    # a moved default going unrecorded. check_config_schema.py enforces the
+    # agreement for every key of this table that is not deliberately exempt.
+    "run_well_separation": False,
     "allow_output_assumptions": True,
     # Report every gate-passing candidate of every generation rather than only
     # the final population's. Off in the binary, and emitted into [genetic] only

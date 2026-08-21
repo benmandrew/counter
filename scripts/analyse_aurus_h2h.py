@@ -136,6 +136,25 @@ def wilcoxon_p(diffs):
     return p, w, n
 
 
+# PLAN §5's power bound, reported at every n rather than only where it decides
+# the outcome. Below 6 separating units no two-sided p under 0.05 exists, so the
+# outcome is 3 by construction rather than by evidence; above it the floor still
+# says how much of the alpha a small unit count leaves reachable, and a reader
+# restricting the corpus has no other way to see that. A cross-campaign read
+# over the 10 families the sweep-O corpus shares with this one lands on 7
+# clusters, where the floor is 0.0156 and every cluster has to point one way.
+def power_floor(n, unit):
+    floor = 2 / 2 ** n if n else 1.0
+    # .4f reads 0.0000 past n = 14, which says nothing; a floor is only worth
+    # printing where its magnitude is legible.
+    shown = f"{floor:.4f}" if floor >= 1e-4 else f"{floor:.1e}"
+    line = (f"  n = {n} non-tied {unit}: exact two-sided p floor "
+            f"2/2^{n} = {shown}")
+    if n < 6:
+        return line + "; no p below 0.05 is reachable, outcome 3 by construction"
+    return line + ", reachable only with every one pointing the same way"
+
+
 # -- load ----------------------------------------------------------------------
 
 counter_rows = list(csv.DictReader(open(DIR / "results-aurus-h2h.csv")))
@@ -221,11 +240,7 @@ print(f"  families: counter higher {wins}, AuRUS higher {losses}, tied {ties}")
 print(f"  Wilcoxon signed-rank over {n} non-tied families: W+ = {w:g}, "
       f"p = {p:.4f}")
 
-# PLAN §5: with fewer than 6 separating families no two-sided p under 0.05
-# exists, so the outcome is 3 by construction rather than by evidence.
-if n < 6:
-    print(f"  n = {n} < 6: no two-sided p below 0.05 is reachable "
-          f"(2/2^{n} = {2 / 2 ** n:.3f}); outcome 3 by construction")
+print(power_floor(n, "families"))
 
 print()
 print("=" * 78)
@@ -257,9 +272,7 @@ print(f"  clusters: counter higher {cwins}, AuRUS higher {closses}, "
       f"tied {len(cl_diffs) - cwins - closses}")
 print(f"  Wilcoxon signed-rank over {cn} non-tied clusters: W+ = {cw:g}, "
       f"p = {cp:.4f}")
-if cn < 6:
-    print(f"  n = {cn} < 6: no two-sided p below 0.05 is reachable "
-          f"(2/2^{cn} = {2 / 2 ** cn:.3f}); outcome 3 by construction")
+print(power_floor(cn, "clusters"))
 
 print()
 print("=" * 78)

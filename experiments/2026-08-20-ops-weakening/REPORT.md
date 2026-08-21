@@ -57,3 +57,42 @@ The screen evidence is the largest the project has: 38 of 720 matched runs gain 
 Sweep O retires with the key, as do the `ops-*` and `opswk-*` runner profiles. Every config in both archives sets `repaired_operators`, on both arms, so a current binary rejects all of them; both campaigns reproduce only at the commits their `PROVENANCE.json` files name, through the vendored `scripts/` beside them.
 
 A repair the search cannot reach and a repair the final screen discards look identical in a yield count, and the 2×2 is the only view assembled here in which the two come apart. Both archives keep their rows against the same frozen ideals, which is what a later reading of this decision will need.
+
+## Against the AuRUS reference
+
+A cross-campaign comparison ran on 2026-08-21, reading both sweep-O campaigns' TLSF rows against the AuRUS arm archived by `experiments/2026-08-14-aurus-h2h`. `scripts/analyse_aurus_h2h.py` computes it unchanged, one run per arm. No new code was needed. That script scores over the intersection of the two corpora, so restricting the family set is automatic, and its cluster loop skips a cluster no scored family belongs to, so it drops to 7 clusters unprompted. The test is the head-to-head plan's own rule — an exact *Wilcoxon signed-rank test* over families and over clusters, two-sided at alpha 0.05, AuRUS scored on `implies_genuine` over well-separated repairs per §10.1 and counter on `implies_ideal`.
+
+Every row of the table below reproduces the same way. For each arm, filter the campaign's results CSV on `level_name` — `opsfixed` or `opslegacy` — write it into a scratch directory under the name `results-aurus-h2h.csv`, copy `validation-av2.csv` and `validation-av3.csv` from the head-to-head archive in beside it, and run `python3 scripts/analyse_aurus_h2h.py <that directory>`. The archived arm's own restricted row comes from the same recipe with `results-aurus-h2h.csv` filtered to the 10 shared families instead. The script warns that the cluster map covers families the scored set does not, which is the restriction reporting itself rather than a fault.
+
+Every row now sits under `experiments/`. `results-aurus-h2h.csv` holds 499 rows, `results-ops-tlsf.csv` 480, `results-opswk-tlsf.csv` 480, `results-ops-fret.csv` 240 and `results-opswk-fret.csv` 240, each merged from av2 and av3 and verified as a union with no duplicate keys. The AuRUS arm's own files sit in the head-to-head archive, `validation-av2.csv` and `validation-av3.csv` carrying 780 repeat rows beside `aurus_results-av2.csv`, `aurus_results-av3.csv`, `wellsep-av2.csv` and `wellsep-av3.csv`. Running `analyse_aurus_h2h.py` over the collected files reproduces the archived decision exactly, at W+ = 34.5 and p = 0.0127 over 25 families, W+ = 3 and p = 0.0195 over 10 clusters, and mean rates of 0.281 for counter against 0.504 for AuRUS. The FRETISH rows are collected for completeness and take no part here, AuRUS being TLSF-only.
+
+The sweep-O corpus is 12 families, and 10 of them have AuRUS rows. `codesample-un1` and `codesample-un2` are counter-only and drop out, and 16 AuRUS families have no sweep-O rows. The 10 that remain fall in 7 of the head-to-head's 10 clusters — arbiter, lily, humanoid, gyro, rg, lift and minepump — each represented by one or two members rather than all of them. At 7 clusters the exact two-sided p floor is 0.0156, reachable only with all 7 pointing one way. `analyse_aurus_h2h.py` now prints that floor at every unit count rather than only below 6, where it had been reporting outcome 3 by construction, so the bound is visible in any restricted read rather than left to be worked out. A null at this scope is not evidence of parity.
+
+The restriction alone dissolves the archived verdict. Over the same 10 families, the archived head-to-head counter arm reads p = 0.1562 per family, with 2 families counter-higher, 5 AuRUS-higher and 3 tied, and p = 0.1562 clustered, at 2 against 4 with 1 tied. The 25-family verdict does not survive restriction to these 10, and none of that loss is attributable to the newer arms.
+
+Per-family mean `implies_ideal` rate over the 10 runs from 0.265 on the archived arm to 0.400 on `opslegacy` with the screen off, against AuRUS at 0.487 on the same 10.
+
+| arm | mean rate | p (family) | p (cluster) |
+|---|---|---|---|
+| AuRUS | 0.487 | — | — |
+| `aurus-h2h` archived | 0.265 | 0.1562 | 0.1562 |
+| `opslegacy`, screen on | 0.320 | 0.1953 | 0.1562 |
+| `opsfixed`, screen on | 0.365 | 0.2109 | 0.2969 |
+| `opslegacy`, screen off | 0.400 | 0.5469 | 0.6094 |
+| `opsfixed`, screen off | 0.395 | 0.4844 | 0.5781 |
+
+Per-family sign counts read 2 counter-higher, 5 AuRUS-higher and 3 tied on the archived arm, and 4, 4 and 2 in both screen-off arms; clustered, they move from 2, 4 and 1 to 4, 3 and 0. Every arm reads no difference.
+
+**`minepump` carries the largest move.** Per family at 20 seeds each, rates read in the order archived, `opslegacy` on, `opsfixed` on, `opslegacy` off, `opsfixed` off. `minepump` runs 0.050, 0.000, 0.600, 0.350 and 0.650 against AuRUS at 1.000, the family named above as unreachable under the legacy grammar. `arbiter-aurus` goes from 0.500 to 0.950 and passes AuRUS's 0.933, and `lily02` reaches 1.000 in both screen-off arms against 0.867. `humanoid-531` moves the other way under the repairs, 0.550 to 0.300 with the screen on and 0.600 to 0.300 with it off, against AuRUS at 0.000. `gyro-var2` and `lift` read 0.000 in every counter arm against 0.700 and 0.300, and carry most of what remains of the gap. `gyro-var1` reads 0.000 against 0.067, `humanoid-458` and `rg1` are ties near zero, and `rg2` is 1.000 everywhere.
+
+Four things separate the sweep-O arms from the archived counter arm beyond the three changes under test, none of them a choice either campaign made. All four are `gen_configs` baselines that deliberately do not track the binary default. `selection_scheme` is `nsga2-apportion` on the head-to-head and `nsga2-truncate` on the sweep-O arms, where the binary default is `Nsga2Apportion` at `config.hpp:290` and `2026-08-11-selection-default` measured the pair. `metric` is `logarithmic` against `direct`, where the default is `Logarithmic` at `config.hpp:109` and `2026-07-16-metric` crossed the two. `run_well_separation` is true against false, the default having gone false in `b101ada` on 2026-08-10 when the status score absorbed the property. The wall cap is 7200 s, matched to AuRUS, against 600 s, or 2580 s for `humanoid-531` and 960 s for `lift`.
+
+AuRUS ran at 7200 s in both comparisons, so the cap difference reinstates the asymmetry the 2026-08-14 campaign existed to remove, in the direction that favours AuRUS. That asymmetry and the well-separation difference both push in directions this comparison cannot separate from the three changes under test.
+
+Two corrections to the record follow from reading the configs. `ops-grammar/PLAN.md` §4 excludes the archived counter rows as a control, on the grounds that the head-to-head inherited a 500 ms `ltlsynt` budget from `ablate-tlsf`. The head-to-head config sets no such key. Its `gen_configs` invocation carried no `--tlsf`, so there was no generator default to inherit, and it ran at the binary default, which `74beaea` raised to 10000 ms on 2026-08-11 — the same value the sweep-O configs set explicitly. The synthesis budgets match, so that barrier is not real.
+
+The `aurus-h2h` profile states that it tracks the shipping defaults, a head-to-head having to run counter as it ships. `--pin-vintage` takes its values from `gen_configs.DEFAULTS`, whose `run_well_separation` entry still reads true and has been stale since 2026-08-10. The head-to-head arm therefore ran the per-generation well-separation filter where the shipping binary does not, against that profile's stated intent.
+
+The comparison supports two statements. The gap to AuRUS narrows across the arms on these 10 families and the direction is consistent, and it reaches significance in neither direction at this scope with these confounds. Settling it needs the sweep-O configuration re-run at `nsga2-apportion`, the logarithmic metric, well-separation off and the 7200 s cap, over the full 25-family head-to-head corpus.
+
+Ten of 25 families is what the two corpora share on 2026-08-21, and the restriction moves the verdict before any arm does. The rows are archived beside the campaigns they read and the analysis is the head-to-head's own script, so the wider re-run has one configuration to change and nothing to reconstruct.

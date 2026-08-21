@@ -15,17 +15,17 @@
 generations     = 10
 population_size = 200
 selection_rate  = 0.5
-elitism_rate    = 0.1  # elites are a subset of the parents, so this must stay < selection_rate.
-                       # Redundant on paper under NSGA-II, and kept at 0.1 for wall time
-                       # alone: 0 costs 16.2% more on TLSF, where it also finds more
-                       # repairs -- see include/config.hpp.
+elitism_rate    = 0.0  # off. Elites are a subset of the parents, so any non-zero
+                       # value must stay < selection_rate. Redundant on paper under
+                       # NSGA-II and measurably worse for TLSF yield; 0.1 costs less
+                       # wall time, which no longer binds -- see include/config.hpp.
 crossover_rate  = 0.1
 mutation_rate   = 1.0  # per offspring, unlike the per-requirement rates in [mutation]
 # "nsga2-truncate" | "nsga2-apportion" | "weighted". Under either NSGA-II scheme
 # the [fitness] weights only select which components are active (weight > 0);
 # they no longer bias selection, and the (mu+lambda) survivor pooling is already
-# elitist, so elitism_rate = 0 is the natural companion on paper -- though it
-# measured slower on both paths, which is why the default stays at 0.1.
+# elitist, so elitism_rate = 0 is the natural companion on paper, and is the
+# default since 2026-08-21.
 # The two NSGA-II schemes rank identically and differ only in the survivor step.
 # "nsga2-truncate" was the default until 2026-08-14; it costs about 26% less
 # wall time on FRETISH and 13% less on TLSF, and is the arm to reach for when

@@ -321,23 +321,27 @@ struct Config {
     /// stochastic operator. Must be strictly less than selection_rate (the
     /// elites are a subset of the selected parents).
     ///
-    /// Under either NSGA-II scheme this is redundant on paper -- the
-    /// (mu+lambda) survivor step already pools parents with offspring and keeps
-    /// the best -- and it costs something, because elites bypass the offspring
-    /// filter chain, so this fraction of every generation skips the correctness
-    /// stages. That costs search pressure rather than output correctness, the
-    /// gate in step 5 screening what elites carried in either way (d7733fc).
-    /// Both arguments point at 0, and the A/B that
-    /// tested them (2026-08-07, 600 paired FRETISH runs and 796 paired TLSF
-    /// runs) does not contradict them: quality is non-inferior at 0, with
-    /// implies_ideal moving by -0.023 and -0.008 against a +0.05 margin fixed
-    /// before launch, and TLSF yield is better at 0 -- 0.746 against 0.714,
-    /// McNemar p = 0.0002.
+    /// Defaults to 0, which turns it off. Under either NSGA-II scheme it is
+    /// redundant on paper -- the (mu+lambda) survivor step already pools
+    /// parents with offspring and keeps the best -- and it is not free,
+    /// because elites bypass the offspring filter chain, so this fraction of
+    /// every generation skips the correctness stages. That costs search
+    /// pressure rather than output correctness, the gate in step 5 screening
+    /// what elites carried in either way (d7733fc).
     ///
-    /// What keeps it at 0.1 is wall-clock time alone: 0 costs 16.2% more on
-    /// TLSF and 8.2% more on FRETISH, against a 10% bound. So the shipped
-    /// default trades TLSF yield for speed. Set 0 when finding a repair at all
-    /// matters more than finishing quickly.
+    /// The A/B that tested those two arguments agrees with them. Over 600
+    /// paired FRETISH runs and 796 paired TLSF runs (2026-08-07), quality is
+    /// non-inferior at 0 -- implies_ideal moves by -0.023 and -0.008 against a
+    /// +0.05 margin fixed before launch -- and TLSF yield is better at 0,
+    /// 0.746 against 0.714, McNemar p = 0.0002.
+    ///
+    /// What kept the default at 0.1 until 2026-08-21 was wall-clock time
+    /// alone: 0 costs 16.2% more on TLSF and 8.2% more on FRETISH. That cost
+    /// does not bind on the corpus counter is now measured against. Runs over
+    /// the AuRUS corpus use 0.3% to 2% of the 7200s cap, so a sixth again of
+    /// nothing is still nothing, and paying TLSF yield for it was the wrong
+    /// trade. Set 0.1 when a run is up against its wall-clock cap; nothing
+    /// between 0 and 0.1 was ever measured.
     ///
     /// The lily02 anecdote this comment used to cite is retired. That campaign
     /// audited every written repair for a guarantee that reduces to `true` and
@@ -345,7 +349,7 @@ struct Config {
     /// elitism: each one is `black` answering SAT on the negation of a valid
     /// weak-until formula, which fb4c3ed fixed by rewriting `W` away before
     /// querying it.
-    double elitism_rate = 0.1;
+    double elitism_rate = 0.0;
     double crossover_rate = 0.1;
     double mutation_rate = 1.0;
     double p_trigger = 0.5;

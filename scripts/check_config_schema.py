@@ -225,6 +225,7 @@ DEFAULT_FIELDS = {
     "tlsf.mutation.p_assumption": "tlsf_p_assumption",
     "tlsf.mutation.p_temporal": "tlsf_p_temporal",
     "tlsf.mutation.p_monotone": "tlsf_p_monotone",
+    "tlsf.mutation.p_clone_assumption": "tlsf_p_clone_assumption",
     "model_counting.default_bound": "default_model_counting_bound",
     "filters.run_weakening": "run_weakening_filter",
     "filters.run_implication": "run_implication_filter",

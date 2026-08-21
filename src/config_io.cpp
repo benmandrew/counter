@@ -118,8 +118,9 @@ const KeySpec& config_key_spec() {
                    "p_remove_guarantee", "p_conditional_assumption",
                    "strengthen_assumptions", "allow_output_assumptions"})},
          {"tlsf", section({"repair_mode", "muc_max_iterations"},
-                          {{"mutation", section({"p_assumption", "p_temporal",
-                                                 "p_monotone"})}})},
+                          {{"mutation",
+                            section({"p_assumption", "p_temporal", "p_monotone",
+                                     "p_clone_assumption"})}})},
          {"model_counting", section({"default_bound", "metric"})},
          {"filters", section({"run_weakening", "run_implication", "run_vacuity",
                               "run_well_separation"})},
@@ -298,6 +299,10 @@ void apply_tlsf(const toml::table& tbl, Config& cfg) {
         if (auto val = (*mutation)["p_monotone"].value<double>()) {
             require_probability(*val, "tlsf.mutation.p_monotone");
             cfg.tlsf_p_monotone = *val;
+        }
+        if (auto val = (*mutation)["p_clone_assumption"].value<double>()) {
+            require_probability(*val, "tlsf.mutation.p_clone_assumption");
+            cfg.tlsf_p_clone_assumption = *val;
         }
     }
     if (auto val = tbl["repair_mode"].value<std::string>()) {

@@ -181,6 +181,14 @@ The direction is a fair coin rather than aligned with the side, and `Config::str
 
 It is TLSF-only for now, so the FRETISH determinism goldens do not move. The probability is read before the RNG is drawn, so at 0 the arm costs no draw and the breeding stream is byte-identical to what it was before it existed — the `p_remove_guarantee` discipline, and the reason this key is in the "Config vintage" note in `experiments/README.md`. `test_zero_probability_costs_no_draw` in `test/tlsf/monotone_tests.cpp` pins that count, the FRETISH goldens not covering this path.
 
+## Cloned assumptions
+
+`tlsf_add_assumption` emits at most 7 nodes — `G F ℓ`, or `G(guard -> modality(ℓ))` — and the assumption-shaped ideals are far larger. `gyro-var2`'s single ideal is roughly a 29-node assumption, the polarity mirror of the specification's own third assumption, and over 112 emitted `gyro-var2` repairs counter appended only 6 assumptions, every one template-shaped. Under `[tlsf.mutation] p_clone_assumption` (default 0.25) the operator instead appends a **copy of a live ASSUME conjunct**, which ordinary mutation edits on later generations. AuRUS reaches a near-duplicate assumption through its level-1 crossover, which unions conjunct subsets; counter's crossover draws exactly one conjunct per side and cannot, so the move belongs to mutation here.
+
+Only ASSUME is drawn from, not the whole assumption side: an INITIALLY entry is an initial condition and a REQUIRE entry is lowered under an implicit `G`, so copying either into ASSUME changes what it says rather than duplicating it. Tombstones are skipped, and with nothing live to copy the template stands in rather than the operator becoming a no-op. The template keeps the majority of the draw because it is the only form that can introduce a fairness property no existing assumption carries — the repair `p_add_assumption` was added for.
+
+Like `p_remove_guarantee` and `p_monotone`, the probability is read before the `RandomSource` is touched, so at 0 the clone costs no draw and the breeding stream is what it was before the arm existed; the key is in the "Config vintage" note in `experiments/README.md` for the same reason.
+
 ## Removable guarantees
 
 `p_remove_guarantee` deletes one guarantee, the mirror of `p_add_assumption` appending an assumption. Both paths have it: a FRETISH guarantee requirement, or a TLSF guarantee-side conjunct drawn from PRESET, ASSERT and GUARANTEE together. It exists because some repairs are reachable no other way — every `drop-*` ideal in `examples/` deletes a guarantee, and for amba, full-arbiter, load-balancer, prioritized-arbiter and round-robin-arbiter that is the only ideal there is, so PR #114's `lint-ideals` reported their `implies_ideal` as zero by construction. That PR's `reachable` check asserted the opposite bound and was inverted here: a guarantee side may now shrink, never grow, down to a floor of one.

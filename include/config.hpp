@@ -439,6 +439,29 @@ struct Config {
     /// existed -- the probability is read before the RNG is drawn, so a zero
     /// never costs a draw.
     double tlsf_p_monotone = 0.25;
+    /// TLSF-mode mutation: of the assumptions p_add_assumption appends, the
+    /// fraction that are a copy of an existing live ASSUME conjunct rather
+    /// than a fresh one built from the template. Ordinary mutation then edits
+    /// the copy on later generations.
+    ///
+    /// The template emits at most seven nodes -- `G F l` or
+    /// `G(guard -> o l)` -- and the assumption-shaped ideals are far larger:
+    /// gyro-var2's single ideal is roughly a 29-node assumption, the polarity
+    /// mirror of the specification's own third assumption, and over 112
+    /// emitted gyro-var2 repairs counter appended only 6 assumptions, every
+    /// one template-shaped. AuRUS reaches a near-duplicate assumption through
+    /// its level-1 crossover, which unions conjunct subsets; counter's
+    /// crossover draws one conjunct per side and cannot, so the move belongs
+    /// to mutation here.
+    ///
+    /// The default is 0.25, matching p_conditional_assumption: the template
+    /// keeps the majority because it is the only form that can introduce a
+    /// fairness property no existing assumption carries, which is the repair
+    /// the operator was added for. Setting it to 0 restores the search
+    /// exactly as it ran before -- the probability is read before the RNG is
+    /// drawn, so a zero never costs a draw. Falls back to the template when
+    /// the ASSUME section holds nothing live to copy.
+    double tlsf_p_clone_assumption = 0.25;
     /// TLSF repair strategy (see RepairMode). Muc mode caps its outer
     /// extract-repair-reintegrate loop at muc_max_iterations, so a spec whose
     /// core never becomes realizable ends the run without a repair rather than

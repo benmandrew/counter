@@ -596,6 +596,40 @@ Formula apply_consequent_modality(const Formula& body,
 tlsf::Specification tlsf_add_assumption(const tlsf::Specification& spec,
                                         const RandomSource& random_source,
                                         const Config& cfg) {
+    // Clone-and-perturb, ahead of the template. The template emits at most
+    // seven nodes and the assumption-shaped ideals are far larger: gyro-var2's
+    // single ideal is roughly a 29-node assumption, the polarity mirror of the
+    // specification's own third assumption, and over 112 emitted gyro-var2
+    // repairs counter appended only 6 assumptions, every one template-shaped.
+    // Appending a copy puts a formula of the right size and vocabulary in the
+    // population for ordinary mutation to edit on later generations, which is
+    // how AuRUS reaches a near-duplicate assumption -- through its level-1
+    // crossover, which unions conjunct subsets. counter's crossover draws one
+    // conjunct per side and cannot, so the move is mutation's here.
+    //
+    // Only ASSUME is drawn from, not the whole assumption side: an INITIALLY
+    // entry is an initial condition and a REQUIRE entry is lowered under an
+    // implicit G, so copying either into ASSUME would change what it says
+    // rather than duplicate it. Tombstones are skipped, a deleted conjunct
+    // not being part of what the specification asserts.
+    //
+    // The probability is read before the RandomSource is touched, so at 0 the
+    // clone costs no draw and the stream is what it was before it existed.
+    if (cfg.tlsf_p_clone_assumption > 0.0) {
+        std::vector<std::size_t> live;
+        for (std::size_t index = 0; index < spec.m_assume.size(); ++index) {
+            if (!spec.m_assume[index].m_removed) {
+                live.push_back(index);
+            }
+        }
+        if (!live.empty() &&
+            random_source.next_real() < cfg.tlsf_p_clone_assumption) {
+            tlsf::Specification cloned = spec;
+            const std::size_t choice = random_source.next_index(live.size());
+            cloned.m_assume.push_back(spec.m_assume[live[choice]]);
+            return cloned;
+        }
+    }
     if (spec.m_inputs.empty()) {
         // With no input there is nothing the environment alone can be obliged
         // to do, and every assumption expressible here would be one the system

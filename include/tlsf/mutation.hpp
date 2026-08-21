@@ -67,7 +67,10 @@ Formula tlsf_monotone_rewrite(const Formula& formula,
 /// environment assumption to the ASSUME section (a conditional `G(c -> F r)`
 /// over inputs ∪ outputs when `cfg.allow_output_assumptions` is set, which is
 /// the default; an unconditional `G F <input>` fairness property with it off —
-/// see tlsf_add_assumption in the .cpp).
+/// see tlsf_add_assumption in the .cpp). With probability
+/// `cfg.tlsf_p_clone_assumption` that appended assumption is instead a copy of
+/// an existing live ASSUME conjunct, which later generations mutate; the
+/// template stands in when there is nothing live to copy.
 tlsf::Specification tlsf_mutate(const tlsf::Specification& spec,
                                 const RandomSource& random_source,
                                 const Config& cfg);

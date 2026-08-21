@@ -92,6 +92,8 @@ three in as `0`, `0` and `0.05` to reproduce one.
 
 `tlsf.mutation.p_monotone` crossed the line on 2026-08-21, from the same standing start: the key did not exist before that date, and it arrives defaulting to `0.25` rather than to the `0` that describes every TLSF campaign archived here. It adds a third rewrite arm, offered ahead of the temporal and propositional ones, whose result is comparable to the formula it replaces under implication — a move none of these campaigns could make — so reproducing one means writing `p_monotone = 0.0` into the `[tlsf.mutation]` table by hand. As with `p_remove_guarantee`, that value is exact rather than approximate: the probability is read before the RNG is drawn, so at zero the arm costs no draw and the breeding stream is byte-identical to what it was before it existed. FRETISH campaigns are unaffected, the arm being TLSF-only.
 
+`tlsf.mutation.p_clone_assumption` crossed the line in the same commit range, on 2026-08-21, and from the same standing start: it defaults to `0.25` where every campaign archived here ran the equivalent of `0`. It changes what `p_add_assumption` appends — a copy of a live ASSUME conjunct rather than a formula built from the template — so a campaign that measured the template alone no longer measures it. Write `p_clone_assumption = 0.0` into the `[tlsf.mutation]` table to reproduce one; the probability is read before the RNG is drawn, so at zero it costs no draw and the stream is exact. FRETISH campaigns are unaffected.
+
 A third change is sharper than a shifted default, because it stops an archived
 config from running at all. On 2026-08-06 the two NSGA-II selection schemes were
 renamed: `nsga2` became `nsga2-truncate` and `nsga2-replicate` became

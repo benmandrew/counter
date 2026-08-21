@@ -346,6 +346,57 @@ void test_add_assumption_never_obliges_an_output() {
     }
 }
 
+// Clone-and-perturb: rather than the template's at-most-seven nodes, the
+// appended assumption may be a copy of one the specification already holds,
+// which ordinary mutation then edits. gyro-var2's single ideal is roughly a
+// 29-node assumption mirroring the specification's own third one, and no
+// template reaches that.
+void test_add_assumption_can_clone_an_existing_one() {
+    const tlsf::Specification spec = parse(
+        "INPUTS { req; } OUTPUTS { grant; } "
+        "ASSUME { G (req -> F (!(req))); } "
+        "GUARANTEE { G (req -> F grant); }");
+    Config cfg;
+    cfg.p_add_assumption = 1.0;
+    cfg.tlsf_p_clone_assumption = 1.0;
+    for (std::size_t seed = 0; seed < 20; ++seed) {
+        const RandomSource rng = make_random_source_from_seed(seed);
+        const tlsf::Specification mutated = tlsf_mutate(spec, rng, cfg);
+        expect(mutated.m_assume.size() == 2,
+               "clone-assumption: exactly one assumption is appended");
+        expect(mutated.m_assume[1] == spec.m_assume[0],
+               "clone-assumption: the appended assumption copies a live one");
+        expect(mutated.m_guarantee == spec.m_guarantee,
+               "clone-assumption: guarantees are left untouched");
+    }
+}
+
+// Nothing live to copy, so the template stands in rather than the operator
+// becoming a no-op.
+void test_clone_assumption_falls_back_to_the_template() {
+    tlsf::Specification spec;
+    spec.m_inputs = {"req"};
+    spec.m_outputs = {"grant"};
+    spec.m_guarantee = {parse("INPUTS { req; } OUTPUTS { grant; } "
+                              "GUARANTEE { G (req -> F grant); }")
+                            .m_guarantee.front()};
+    spec.m_assume = {tlsf::SectionEntry(Formula("req"), /*removed=*/true)};
+    Config cfg;
+    cfg.p_add_assumption = 1.0;
+    cfg.tlsf_p_clone_assumption = 1.0;
+    for (std::size_t seed = 0; seed < 20; ++seed) {
+        const RandomSource rng = make_random_source_from_seed(seed);
+        const tlsf::Specification mutated = tlsf_mutate(spec, rng, cfg);
+        expect(mutated.m_assume.size() == 2,
+               "clone-assumption: the template appends when nothing is live");
+        expect(!mutated.m_assume[1].m_removed,
+               "clone-assumption: a tombstone is never resurrected as a copy");
+        expect(mutated.m_assume[1].m_formula.to_string() != "req",
+               "clone-assumption: the appended assumption is the template's, "
+               "not the tombstoned conjunct");
+    }
+}
+
 // The mirror of add-assumption, and what makes the eight drop-* ideals
 // reachable. The deleted conjunct keeps its slot: the similarity objectives
 // pair conjuncts by position, so erasing it would start comparing the
@@ -648,6 +699,8 @@ void run_tlsf_genetic_tests() {
     test_temporal_mutation_atoms_from_inputs_only();
     test_add_assumption_forms();
     test_add_assumption_never_obliges_an_output();
+    test_add_assumption_can_clone_an_existing_one();
+    test_clone_assumption_falls_back_to_the_template();
     test_remove_guarantee_tombstones_in_place();
     test_remove_guarantee_keeps_the_last_live_conjunct();
     test_add_assumption_can_reference_output_when_allowed();

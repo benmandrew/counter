@@ -78,6 +78,10 @@ p_temporal   = 0.2
 # offered ahead of the other two. Set to 0 to reproduce a run from before the
 # arm existed.
 p_monotone   = 0.25
+# Of the assumptions [mutation] p_add_assumption appends, the fraction that copy
+# an existing one instead of building from the template, which emits at most
+# seven nodes where the assumption-shaped ideals run to thirty.
+p_clone_assumption = 0.25
 
 [model_counting]
 default_bound = 20

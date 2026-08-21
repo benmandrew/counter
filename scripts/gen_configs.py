@@ -178,6 +178,16 @@ DEFAULTS: dict = {
     # (assumption) and guarantee sides.
     "p_assumption": 0.3,
     "p_temporal": 0.2,
+    # The 2026-08-21 monotone arm and the clone-an-assumption branch of
+    # p_add_assumption (see config.hpp). Both default on in the binary, and both
+    # are emitted only when a sweep overrides one of the four [tlsf.mutation]
+    # keys (see make_toml), so every grid generated before they existed stays
+    # byte-identical; TLSF sweep T crosses them. Every campaign archived before
+    # 2026-08-21 ran without either operator and cannot state so, which makes
+    # this a "Config vintage" entry in experiments/README.md rather than a
+    # silent one -- reproducing such a campaign means writing both keys to 0.
+    "p_monotone": 0.25,
+    "p_clone_assumption": 0.25,
     # 0 = unlimited, matching config.hpp. Emitted into [runtime] only when
     # positive (see make_toml), so the standard grids stay byte-identical to the
     # pre-cap output; the TLSF campaign sets it to bound ltlsynt's peak RAM.
@@ -282,7 +292,12 @@ def make_toml(overrides: dict, defaults: dict = DEFAULTS) -> str:
         "[tlsf.mutation]",
         f"p_assumption = {_fmt(d['p_assumption'])}",
         f"p_temporal   = {_fmt(d['p_temporal'])}",
-    ] if overrides.keys() & {"p_assumption", "p_temporal"}
+    ] + ([f"p_monotone   = {_fmt(d['p_monotone'])}"]
+         if "p_monotone" in overrides else []) + (
+        [f"p_clone_assumption = {_fmt(d['p_clone_assumption'])}"]
+        if "p_clone_assumption" in overrides else [])
+        if overrides.keys() & {"p_assumption", "p_temporal",
+                               "p_monotone", "p_clone_assumption"}
         else []) + [
         "",
     ])
@@ -644,6 +659,44 @@ TLSF_SWEEP_N: list[tuple[str, dict]] = [
     ("accon",  {"accumulate_repairs": True}),
 ]
 
+# TLSF sweep T: attribute the three changes on feat/monotone-operators, one
+# contrast at a time, against the archived 2026-08-21-aurus-h2h-ship rows as the
+# outer control. That campaign is main at the shipping configuration plus the
+# accumulator over this same corpus, cap and seed split, so every arm below is
+# paired with it on (spec, seed).
+#
+# The branch carries three independent changes and their keys do not separate
+# them evenly. Widening the TLSF binary grammar to draw Implies is unconditional
+# -- there is no key for it -- so it rides in every arm here and is attributable
+# only against the archived rows. The monotone rewrite and the cloned assumption
+# have keys, and both cost no RNG draw at 0 (the branch's
+# test_zero_probability_costs_no_draw pins that), so monooff reproduces the
+# grammar widening alone rather than approximating it. Elitism has a key too.
+#
+#   archived -> monooff   the Implies widening
+#   monooff  -> monoon    the monotone rewrite + the cloned assumption
+#   monoon   -> monoship  elitism_rate 0.1 -> 0, the branch's other default move
+#   archived -> monoship  the branch as it ships
+#
+# elitism_rate is stated on all three arms rather than left to the default, for
+# sweep N's reason: the branch moves that default, so an arm inheriting silence
+# would mean one thing here and another after the next default move. 0.1 on the
+# first two matches what the archived control ran, which is what makes the first
+# two contrasts read as the code change alone.
+#
+# accumulate_repairs is stated on every arm for a second reason: the control ran
+# it on, through sweep N's accon level, and it is off in the binary. An arm that
+# left it silent would answer a different question from the one it is paired
+# with, and the endpoint is per-run implies_ideal over everything emitted.
+TLSF_SWEEP_T: list[tuple[str, dict]] = [
+    ("monooff",  {"p_monotone": 0.0,  "p_clone_assumption": 0.0,
+                  "elitism_rate": 0.1, "accumulate_repairs": True}),
+    ("monoon",   {"p_monotone": 0.25, "p_clone_assumption": 0.25,
+                  "elitism_rate": 0.1, "accumulate_repairs": True}),
+    ("monoship", {"p_monotone": 0.25, "p_clone_assumption": 0.25,
+                  "elitism_rate": 0.0, "accumulate_repairs": True}),
+]
+
 TLSF_SWEEPS: list[tuple[str, list]] = [
     ("A", TLSF_SWEEP_A),
     ("B", TLSF_SWEEP_B),
@@ -655,6 +708,7 @@ TLSF_SWEEPS: list[tuple[str, list]] = [
     ("R", TLSF_SWEEP_R),
     ("G", TLSF_SWEEP_G),
     ("N", TLSF_SWEEP_N),
+    ("T", TLSF_SWEEP_T),
     # The compute-matched control, on the same terms as the FRETISH grid's S:
     # TLSF_SWEEP_R is SWEEP_R, so make_sweep_s already emits the right levels
     # and main() rebuilds this entry from --compute-match-factor whichever table

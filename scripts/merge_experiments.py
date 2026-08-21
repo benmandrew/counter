@@ -76,6 +76,7 @@ PROFILE_CSVS: dict[str, str] = {
     # resume key, so a shared CSV would let the merge keep whichever row of a
     # pair arrived first.
     "aurus-h2h-ship": "results-aurus-h2h-ship.csv",
+    "monotone": "results-monotone.csv",
     # The 2026-08-20 operator cross; one CSV per path, never shared, since
     # the two paths run different corpora at different operating points. All
     # five profiles are retired -- their sweep varied genetic.repaired_operators,
@@ -136,6 +137,7 @@ PROFILE_RESULT_DIRS: dict[str, str] = {
     "h2h-tlsf": "results-ablate-tlsf",
     "aurus-h2h": "results-aurus-h2h",
     "aurus-h2h-ship": "results-aurus-h2h-ship",
+    "monotone": "results-monotone",
     # Retired with their sweep, and kept for the same reason as above.
     "opswk-fret": "results-opswk-fret",
     "opswk-tlsf": "results-opswk-tlsf",

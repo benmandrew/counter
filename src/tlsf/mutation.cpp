@@ -30,12 +30,21 @@ Formula::Kind pick_unary_kind(const RandomSource& random_source) {
     }
 }
 
-// Replacement binary operator for case (3), o2' ∈ {∨, ∧, U, R, W}. Implies/Iff
-// are deliberately excluded (as in Brizzio's fragment): a mutated binary node
-// re-emerges as one of these five, which is what lets the operator move a
-// formula between purely propositional and genuinely temporal shapes.
+// Replacement binary operator for case (3), o2' ∈ {∨, ∧, →, U, R, W}. Brizzio's
+// fragment is Owl's negation normal form, where `a -> b` is stored as a
+// disjunction and there is no implication to re-emit; counter keeps Implies as
+// a first-class node, so excluding it here made a biconditional reachable only
+// to be destroyed. Three subjects are the whole ideal for that one
+// substitution: ltl2dba-r-2's sole ideal is its input with the root `<->`
+// replaced by `->`, and ltl2dba-theta-2 and ltl2dba27 are the same shape. The
+// FRETISH twins in genetic/mutation.cpp and genetic/crossover.cpp already draw
+// Implies, so the gap was TLSF-only.
+//
+// Iff stays out. The defect is that a biconditional could not be weakened, not
+// that one could not be built, and the paper's fragment has no biconditional
+// for the same reason it has no implication.
 Formula::Kind pick_binary_kind(const RandomSource& random_source) {
-    switch (random_source.next_index(5)) {
+    switch (random_source.next_index(6)) {
         case 0:
             return Formula::Kind::And;
         case 1:
@@ -46,6 +55,8 @@ Formula::Kind pick_binary_kind(const RandomSource& random_source) {
             return Formula::Kind::Release;
         case 4:
             return Formula::Kind::WeakUntil;
+        case 5:
+            return Formula::Kind::Implies;
         default:
             assert(false);
             __builtin_unreachable();
@@ -153,18 +164,16 @@ Formula mutate_temporal(const Formula& formula,
             }
         }
         default: {
-            // Case (3): φ = φ1 o2 φ2 (any binary node, temporal or boolean).
-            // Case (d) is counter's own, not Brizzio's. pick_binary_kind
-            // excludes Implies and Iff, following the paper's fragment, and
-            // that fragment is Owl's negation normal form where `a -> b` is
-            // stored as a disjunction and there is no implication node to
-            // re-emit. counter keeps Implies as a first-class node, so without
-            // a branch that preserves the node's own connective an implication
-            // was reachable only to be destroyed, and a guarded implication —
-            // the shape of every minimal guarantee weakening — was unreachable.
-            // Preserving the kind also gives this path its only
-            // structure-preserving move; every other arm regenerates the
-            // conjunct.
+            // Case (3): φ = φ1 o2 φ2 (any binary node, temporal or boolean),
+            // Iff included, which is what makes `<->` → `->` reachable now
+            // that pick_binary_kind draws Implies.
+            //
+            // Case (d) is counter's own, not Brizzio's. It preserves the
+            // node's own connective, and without it an implication was
+            // reachable only to be destroyed: a guarded implication — the
+            // shape of every minimal guarantee weakening — survived no arm.
+            // It is also this path's only structure-preserving move; every
+            // other arm regenerates the conjunct.
             const auto children = formula.binary_children();
             if (!children.has_value()) {
                 return formula;

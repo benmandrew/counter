@@ -77,6 +77,20 @@ std::multiset<int> temporal_kinds(const Formula& formula) {
     return kinds;
 }
 
+bool contains_kind(const Formula& formula, Formula::Kind kind) {
+    if (formula.kind() == kind) {
+        return true;
+    }
+    if (const auto child = formula.unary_child(); child.has_value()) {
+        return contains_kind(*child, kind);
+    }
+    if (const auto children = formula.binary_children(); children.has_value()) {
+        return contains_kind(children->first, kind) ||
+               contains_kind(children->second, kind);
+    }
+    return false;
+}
+
 void test_mutation_preserves_temporal_skeleton() {
     Config cfg;
     cfg.tlsf_p_temporal = 0.0;  // isolate the skeleton-preserving rewrite path
@@ -207,6 +221,35 @@ void test_temporal_mutation_changes_skeleton() {
     expect(skeleton_changed,
            "temporal mutation: the temporal skeleton is altered for at least "
            "one seed");
+}
+
+void test_temporal_mutation_can_emit_an_implication() {
+    // pick_binary_kind draws Implies since 2026-08-21. Case (3) of
+    // mutate_temporal is the default branch over any binary node, Iff
+    // included, so widening that draw is what puts `<->` → `->` in reach —
+    // the sole ideal for ltl2dba-r-2, ltl2dba-theta-2 and ltl2dba27. Starting
+    // from a biconditional with no implication anywhere in it, some seed must
+    // produce one.
+    Config cfg;
+    cfg.tlsf_p_temporal = 1.0;
+    cfg.p_add_assumption = 0.0;
+    cfg.p_remove_guarantee = 0.0;
+    const tlsf::Specification original =
+        parse("INPUTS { r; } OUTPUTS { g; } GUARANTEE { G(g <-> X r); }");
+    expect(!contains_kind(original.m_guarantee.front().m_formula,
+                          Formula::Kind::Implies),
+           "implication draw: the input carries no implication to start with");
+
+    bool emitted = false;
+    for (std::size_t seed = 0; seed < 40 && !emitted; ++seed) {
+        const RandomSource rng = make_random_source_from_seed(seed);
+        const tlsf::Specification mutated = tlsf_mutate(original, rng, cfg);
+        emitted = contains_kind(mutated.m_guarantee.front().m_formula,
+                                Formula::Kind::Implies);
+    }
+    expect(emitted,
+           "implication draw: the temporal mutation emits an implication for "
+           "at least one seed");
 }
 
 void test_temporal_mutation_atoms_from_inputs_only() {
@@ -595,6 +638,7 @@ void run_tlsf_genetic_tests() {
     test_mutation_assumption_atoms_from_inputs_only();
     test_mutation_side_probability_selects_side();
     test_temporal_mutation_changes_skeleton();
+    test_temporal_mutation_can_emit_an_implication();
     test_temporal_mutation_atoms_from_inputs_only();
     test_add_assumption_forms();
     test_add_assumption_never_obliges_an_output();

@@ -24,11 +24,13 @@ driver copy -- it ran nothing.
 
     python3 scripts/analyse_aurus_h2h.py [campaign-dir]
 """
-import csv
 import statistics
 import sys
 from collections import defaultdict
 from pathlib import Path
+
+from analysis_lib import (load_rows, med, num_or_nan, num_or_zero, pct,
+                          signed_ranks)
 
 DIR = Path(sys.argv[1] if len(sys.argv) > 1
            else "experiments/2026-08-14-aurus-h2h")
@@ -57,56 +59,14 @@ def truth(s):
     return str(s).strip().lower() in ("1", "true", "yes")
 
 
-def num(s, default=float("nan")):
-    try:
-        return float(s)
-    except (TypeError, ValueError):
-        return default
-
-
-# An empty arm is a real state -- a corpus where nothing was repaired, or a
-# filter that kept nothing -- and it reaches here as an empty list rather than
-# as an error. Printing "n/a" says that; dividing by zero loses the whole
-# secondary block, including the figures that are defined.
-def pct(numerator, denominator, places=1):
-    if not denominator:
-        return "n/a"
-    return f"{100 * numerator / denominator:.{places}f}%"
-
-
-def med(values, places=0):
-    if not values:
-        return "n/a"
-    return f"{statistics.median(values):.{places}f}"
-
-
 # -- Wilcoxon signed-rank ------------------------------------------------------
-
-def signed_rank(diffs):
-    """``(w_plus, ranks)`` over the non-zero differences, ties averaged.
-
-    Zero differences are dropped, which is the standard Wilcoxon treatment and
-    the one PLAN.md §5's power bound assumes ("the test reads only the families
-    whose two rates differ").
-    """
-    nz = [d for d in diffs if d != 0]
-    order = sorted(range(len(nz)), key=lambda i: abs(nz[i]))
-    ranks = [0.0] * len(nz)
-    i = 0
-    while i < len(order):
-        j = i
-        while j + 1 < len(order) and abs(nz[order[j + 1]]) == abs(nz[order[i]]):
-            j += 1
-        avg = (i + j) / 2 + 1          # average of ranks i+1 .. j+1
-        for k in range(i, j + 1):
-            ranks[order[k]] = avg
-        i = j + 1
-    w_plus = sum(r for r, d in zip(ranks, nz) if d > 0)
-    return w_plus, ranks
-
 
 def wilcoxon_p(diffs):
     """Two-sided exact p for the signed-rank statistic.
+
+    Zero differences are dropped by `signed_ranks`, which is the standard
+    Wilcoxon treatment and the one PLAN.md §5's power bound assumes ("the test
+    reads only the families whose two rates differ").
 
     The null distribution is built by enumerating every sign assignment of the
     observed ranks, which is a randomisation test conditional on those ranks.
@@ -115,7 +75,7 @@ def wilcoxon_p(diffs):
     built on distinct integer ranks, no longer applies. Rates here are k/20 and
     k/30, so tied |differences| are the common case rather than the exception.
     """
-    w, ranks = signed_rank(diffs)
+    w, ranks, _ = signed_ranks(diffs)
     n = len(ranks)
     if n == 0:
         return 1.0, 0.0, 0
@@ -157,14 +117,14 @@ def power_floor(n, unit):
 
 # -- load ----------------------------------------------------------------------
 
-counter_rows = list(csv.DictReader(open(DIR / "results-aurus-h2h.csv")))
+counter_rows = load_rows(DIR / "results-aurus-h2h.csv")
 
 aurus_rows = []
 for host in ("av2", "av3"):
     path = DIR / f"validation-{host}.csv"
     if not path.exists():
         sys.exit(f"missing {path} -- run aurus_validate.py first")
-    for r in csv.DictReader(open(path)):
+    for r in load_rows(path):
         r["host"] = host
         aurus_rows.append(r)
 
@@ -309,9 +269,9 @@ c_yield = sum(truth(r["found_repair"]) for r in counter_rows)
 print(f"counter yield              {c_yield}/{len(counter_rows)} "
       f"({pct(c_yield, len(counter_rows))})")
 
-c_reps = [num(r["n_repairs"]) for r in counter_rows if truth(r["found_repair"])]
-a_claimed = [num(r["n_claimed"]) for r in aurus_rows]
-a_scored = [num(r["n_scored"]) for r in aurus_rows]
+c_reps = [num_or_nan(r["n_repairs"]) for r in counter_rows if truth(r["found_repair"])]
+a_claimed = [num_or_nan(r["n_claimed"]) for r in aurus_rows]
+a_scored = [num_or_nan(r["n_scored"]) for r in aurus_rows]
 print(f"solutions per run          counter median "
       f"{med(c_reps)} maximal repairs, "
       f"AuRUS median {med(a_claimed)} claimed "
@@ -321,11 +281,11 @@ c_to = sum(truth(r["timed_out"]) for r in counter_rows)
 print(f"counter timeout rate       {c_to}/{len(counter_rows)} "
       f"({pct(c_to, len(counter_rows))}) at the 7200 s cap")
 
-tot_claimed = sum(int(num(r["n_claimed"], 0)) for r in aurus_rows)
-tot_ok = sum(int(num(r["n_realize_ok"], 0)) for r in aurus_rows)
-tot_dis = sum(int(num(r["n_disagree"], 0)) for r in aurus_rows)
-tot_ill = sum(int(num(r["n_ill_separated"], 0)) for r in aurus_rows)
-tot_und = sum(int(num(r["n_sep_undecided"], 0)) for r in aurus_rows)
+tot_claimed = sum(int(num_or_zero(r["n_claimed"])) for r in aurus_rows)
+tot_ok = sum(int(num_or_zero(r["n_realize_ok"])) for r in aurus_rows)
+tot_dis = sum(int(num_or_zero(r["n_disagree"])) for r in aurus_rows)
+tot_ill = sum(int(num_or_zero(r["n_ill_separated"])) for r in aurus_rows)
+tot_und = sum(int(num_or_zero(r["n_sep_undecided"])) for r in aurus_rows)
 print(f"AuRUS re-validation        {tot_ok}/{tot_claimed} claimed repairs "
       f"REALIZABLE under ltlsynt, {tot_dis} disagreements")
 print(f"AuRUS ill-separated        {tot_ill}/{tot_claimed} "

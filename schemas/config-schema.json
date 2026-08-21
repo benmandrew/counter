@@ -53,7 +53,8 @@
           "additionalProperties": false,
           "properties": {
             "p_assumption": { "type": "number", "minimum": 0, "maximum": 1, "description": "Probability of mutating an assumption-side section (INITIALLY/REQUIRE/ASSUME); the guarantee side (PRESET/ASSERT/GUARANTEE) takes the complement." },
-            "p_temporal":   { "type": "number", "minimum": 0, "maximum": 1, "description": "Probability that a chosen section formula is rewritten by the temporal-structure mutation (may insert/drop/swap X/F/G/U/R/W) rather than the skeleton-preserving propositional rewrite." }
+            "p_temporal":   { "type": "number", "minimum": 0, "maximum": 1, "description": "Probability that a chosen section formula is rewritten by the temporal-structure mutation (may insert/drop/swap X/F/G/U/R/W) rather than the skeleton-preserving propositional rewrite." },
+            "p_monotone":   { "type": "number", "minimum": 0, "maximum": 1, "description": "Probability that a chosen section formula takes a monotone rewrite instead, whose result is comparable to it under implication (weaker or stronger, by a fair coin), rather than the temporal or propositional rewrite. Set to 0 to reproduce a run from before the arm existed." }
           }
         },
         "repair_mode": { "type": "string", "enum": ["monolithic", "muc"], "default": "monolithic", "description": "Repair strategy: 'monolithic' (default) evolves the whole specification at once; 'muc' extracts a minimal unrealizable core, evolves only that sub-specification, reintegrates it with the untouched non-core guarantees, and repeats." },

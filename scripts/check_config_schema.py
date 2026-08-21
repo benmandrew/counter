@@ -224,6 +224,7 @@ DEFAULT_FIELDS = {
     "tlsf.muc_max_iterations": "muc_max_iterations",
     "tlsf.mutation.p_assumption": "tlsf_p_assumption",
     "tlsf.mutation.p_temporal": "tlsf_p_temporal",
+    "tlsf.mutation.p_monotone": "tlsf_p_monotone",
     "model_counting.default_bound": "default_model_counting_bound",
     "filters.run_weakening": "run_weakening_filter",
     "filters.run_implication": "run_implication_filter",

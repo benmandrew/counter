@@ -93,7 +93,9 @@ bool contains_kind(const Formula& formula, Formula::Kind kind) {
 
 void test_mutation_preserves_temporal_skeleton() {
     Config cfg;
-    cfg.tlsf_p_temporal = 0.0;  // isolate the skeleton-preserving rewrite path
+    cfg.tlsf_p_temporal = 0.0;  // isolate the skeleton-preserving rewrite
+    cfg.tlsf_p_monotone =
+        0.0;  // ... which the monotone arm is offered ahead of
     const tlsf::Specification original = parse(
         "INPUTS { req; } OUTPUTS { grant; } GUARANTEE { G(req -> F "
         "grant); }");
@@ -196,6 +198,7 @@ void test_temporal_mutation_changes_skeleton() {
     // change at least once, and every result must stay well-formed.
     Config cfg;
     cfg.tlsf_p_temporal = 1.0;
+    cfg.tlsf_p_monotone = 0.0;   // the monotone arm is offered ahead of it
     cfg.p_add_assumption = 0.0;  // isolate the rewrite path
     cfg.p_remove_guarantee = 0.0;
     const tlsf::Specification original = parse(
@@ -232,6 +235,7 @@ void test_temporal_mutation_can_emit_an_implication() {
     // produce one.
     Config cfg;
     cfg.tlsf_p_temporal = 1.0;
+    cfg.tlsf_p_monotone = 0.0;  // the monotone arm is offered ahead of it
     cfg.p_add_assumption = 0.0;
     cfg.p_remove_guarantee = 0.0;
     const tlsf::Specification original =
@@ -257,6 +261,7 @@ void test_temporal_mutation_atoms_from_inputs_only() {
     // recursion, so an assumption-side rewrite must never draw an output atom.
     Config cfg;
     cfg.tlsf_p_temporal = 1.0;
+    cfg.tlsf_p_monotone = 0.0;  // the monotone arm is offered ahead of it
     cfg.p_add_assumption = 0.0;
     cfg.p_remove_guarantee = 0.0;
     cfg.allow_output_assumptions = false;
@@ -434,6 +439,7 @@ void test_weak_until_over_output_is_reachable() {
     cfg.p_remove_guarantee = 0.0;
     cfg.tlsf_p_assumption = 1.0;  // always mutate the assumption side
     cfg.tlsf_p_temporal = 1.0;    // always the temporal (skeleton) rewrite
+    cfg.tlsf_p_monotone = 0.0;    // which the monotone arm is offered ahead of
     cfg.allow_output_assumptions = true;
     tlsf::Specification seed_spec;
     seed_spec.m_inputs = {"r"};

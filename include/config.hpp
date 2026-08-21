@@ -417,6 +417,28 @@ struct Config {
     /// rewrite. At 0 the temporal skeleton of existing formulae is never
     /// altered.
     double tlsf_p_temporal = 0.2;
+    /// TLSF-mode mutation: once a section formula has been chosen for
+    /// rewriting, the probability of applying a *monotone* rewrite -- one
+    /// whose result is comparable to the formula it replaces under implication
+    /// -- rather than either the temporal or the propositional rewrite. The
+    /// direction (weaker or stronger) is a fair coin; see
+    /// tlsf_monotone_rewrite.
+    ///
+    /// This exists because the general rewriters leave the implication order.
+    /// The 2026-08-14 head-to-head audit read `best_relation` as incomparable
+    /// on 238 of counter's 499 runs (47.7%) against 20 of AuRUS's 780 (2.6%),
+    /// and REPORT.md section 5 measures the general rewriter as changing the
+    /// AST shape 93.6% of the time. AuRUS draws uniformly among three mutation
+    /// visitors, two of which are monotone by construction, so its monotone
+    /// share is 2 in 3.
+    ///
+    /// The default is 0.25: a quarter is a conservative first value against
+    /// that 2-in-3, the general rewriter being the operator every measured
+    /// result so far was obtained with. The campaign that tunes it is owed.
+    /// Setting it to 0 restores the search exactly as it ran before the arm
+    /// existed -- the probability is read before the RNG is drawn, so a zero
+    /// never costs a draw.
+    double tlsf_p_monotone = 0.25;
     /// TLSF repair strategy (see RepairMode). Muc mode caps its outer
     /// extract-repair-reintegrate loop at muc_max_iterations, so a spec whose
     /// core never becomes realizable ends the run without a repair rather than

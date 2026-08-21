@@ -74,6 +74,10 @@ muc_max_iterations = 32            # muc mode only
 [tlsf.mutation]
 p_assumption = 0.3
 p_temporal   = 0.2
+# A rewrite whose result is comparable to what it replaces under implication,
+# offered ahead of the other two. Set to 0 to reproduce a run from before the
+# arm existed.
+p_monotone   = 0.25
 
 [model_counting]
 default_bound = 20

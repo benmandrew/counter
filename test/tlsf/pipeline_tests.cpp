@@ -1,9 +1,11 @@
+#include <algorithm>
 #include <cstddef>
 #include <filesystem>
 #include <fstream>
 #include <sstream>
 #include <string>
 #include <system_error>
+#include <vector>
 
 #include <nlohmann/json.hpp>
 
@@ -200,19 +202,43 @@ void test_muc_repair_end_to_end() {
     std::filesystem::remove_all(dir, err_code);
 }
 
-// Realizable is not the same as repaired. At seed 1 the MUC repair of the
-// arbiter above reaches realizability by forbidding behaviour the original
-// allowed, so the original does not imply it. The final weakening screen must
-// reject it, leaving nothing written.
+// Reads back every repair a run wrote, ignoring the input specification when
+// the run was pointed at the directory holding it.
+std::vector<tlsf::Specification> read_repairs(
+    const std::filesystem::path& dir) {
+    std::vector<tlsf::Specification> repairs;
+    for (const auto& entry : std::filesystem::directory_iterator(dir)) {
+        if (entry.path().extension() != ".tlsf" ||
+            entry.path().filename() == "spec.tlsf") {
+            continue;
+        }
+        std::ifstream repair(entry.path());
+        std::ostringstream contents;
+        contents << repair.rdbuf();
+        repairs.push_back(tlsf::parse(contents.str()));
+    }
+    return repairs;
+}
+
+// The screen runs after the search, over whatever realizable survivors it
+// reached (`keep_weakenings` in src/tlsf/pipeline.cpp), so the same fixture at
+// the same seed run with the screen off and then on differs only in which of
+// those survivors reach disk. The pair is a direct oracle for the screen's
+// decision on every candidate the search actually produced: kept must mean
+// implied by the original, dropped must mean not implied. Neither half depends
+// on *which* candidates those are.
 //
-// The seed is load-bearing and has to be re-chosen whenever breeding changes:
-// roughly half of the first 24 seeds reach a genuine weakening instead, which
-// the screen rightly keeps, leaving the assertion below testing nothing.
+// That independence is the point. This test asserted `n_repairs == 0` until
+// issue #139 -- that the seed reaches a repair the screen will reject, which is
+// a fact about the search rather than about the screen. Ten of the first 24
+// seeds reach a genuine weakening on x86-64, and seed 1 reaches one on arm64,
+// where `Count` is binary64 rather than 80-bit x87. The screen was correct in
+// every one of those cases and the assertion failed anyway.
 //
 // Unlike the FRETISH assume-guarantee decomposition, tlsf_spec_implies is an
-// exact whole-formula query, so a rejection here is a fact about the two specs
+// exact whole-formula query, so a verdict here is a fact about the two specs
 // rather than an artefact of how the check decomposes them.
-void test_weakening_screen_rejects_non_weakening() {
+void test_weakening_screen_keeps_exactly_the_weakenings() {
     const std::filesystem::path dir =
         std::filesystem::temp_directory_path() /
         ("tlsf_weakening_test_" +
@@ -228,48 +254,63 @@ void test_weakening_screen_rejects_non_weakening() {
         input << k_unrealizable;
     }
 
-    Config cfg;
-    cfg.generations = 5;
-    cfg.population_size = 50;
-    cfg.parallel = 1;
-    cfg.default_model_counting_bound = 3;
-    cfg.repair_mode = RepairMode::Muc;
-    cfg.run_weakening_filter = true;
-    // Pinned rather than left at the default, for the same reason as the seed:
-    // which repair the search reaches depends on the survivor step, and this
-    // test is about the screen rather than about whichever scheme is current.
-    cfg.selection_scheme = SelectionScheme::Nsga2Truncate;
-    // This fixture is chosen so that the repair the search reaches is *not* a
-    // weakening, and which repair that is depends on the mutation and
-    // crossover grammar: a change there can stop the fixture exercising the
-    // screen at all.
+    const auto run_with_screen =
+        [&](bool screen) -> std::vector<tlsf::Specification> {
+        const std::filesystem::path out = dir / (screen ? "on" : "off");
+        expect(std::filesystem::create_directories(out, err_code),
+               "weakening: run output directory is created");
 
-    const RandomSource random_source = make_random_source_from_seed(1);
-    const int status =
-        tlsf::run_repair(input_path.string(), dir.string(), cfg, random_source);
-    expect(status == 0, "weakening: run_repair returns 0");
+        Config cfg;
+        cfg.generations = 5;
+        cfg.population_size = 50;
+        cfg.parallel = 1;
+        cfg.default_model_counting_bound = 3;
+        cfg.repair_mode = RepairMode::Muc;
+        cfg.run_weakening_filter = screen;
+        // Pinned rather than left at the default so both runs agree on the
+        // survivor step, which is what makes them comparable at all.
+        cfg.selection_scheme = SelectionScheme::Nsga2Truncate;
+
+        const RandomSource random_source = make_random_source_from_seed(1);
+        const int status = tlsf::run_repair(input_path.string(), out.string(),
+                                            cfg, random_source);
+        expect(status == 0, "weakening: run_repair returns 0");
+        return read_repairs(out);
+    };
+
+    const std::vector<tlsf::Specification> unscreened = run_with_screen(false);
+    const std::vector<tlsf::Specification> screened = run_with_screen(true);
+
+    // Without this the loop below is vacuously true. It asserts only that the
+    // search reaches something, which is far weaker than asserting what.
+    expect(!unscreened.empty(),
+           "weakening: the fixture reaches at least one realizable repair");
+    expect(screened.size() <= unscreened.size(),
+           "weakening: the screen only removes repairs");
 
     const tlsf::Specification original = tlsf::parse(k_unrealizable);
-    std::size_t n_repairs = 0;
-    for (const auto& entry : std::filesystem::directory_iterator(dir)) {
-        if (entry.path().extension() != ".tlsf" ||
-            entry.path().filename() == "spec.tlsf") {
-            continue;
+    SatisfiabilityChecker& checker = global_sat_checker();
+    const auto was_kept = [&screened](const tlsf::Specification& spec) {
+        return std::any_of(
+            screened.begin(), screened.end(),
+            [&spec](const tlsf::Specification& kept) { return kept == spec; });
+    };
+    for (const tlsf::Specification& spec : unscreened) {
+        // The screen keeps an undecided candidate, so value_or(true) reproduces
+        // its own policy rather than being a convenience: kept means implied or
+        // undecided, dropped means decided and not implied.
+        const bool weakening =
+            tlsf_spec_implies(original, spec, checker).value_or(true);
+        if (was_kept(spec)) {
+            expect(weakening,
+                   "weakening: every repair the screen kept is implied by the "
+                   "original");
+        } else {
+            expect(!weakening,
+                   "weakening: every repair the screen dropped is not implied "
+                   "by the original");
         }
-        std::ifstream repair(entry.path());
-        std::ostringstream contents;
-        contents << repair.rdbuf();
-        const tlsf::Specification spec = tlsf::parse(contents.str());
-        // Whatever survives the screen must be a genuine weakening. A timed-out
-        // check keeps the candidate, so accept nullopt as well.
-        expect(
-            tlsf_spec_implies(original, spec, global_sat_checker())
-                .value_or(true),
-            "weakening: every written TLSF repair is implied by the original");
-        ++n_repairs;
     }
-    expect(n_repairs == 0,
-           "weakening: the screen rejects this fixture's non-weakening repair");
 
     std::filesystem::remove_all(dir, err_code);
 }
@@ -279,6 +320,6 @@ void test_weakening_screen_rejects_non_weakening() {
 void run_tlsf_pipeline_tests() {
     test_arbiter_realizability();
     test_muc_repair_end_to_end();
-    test_weakening_screen_rejects_non_weakening();
+    test_weakening_screen_keeps_exactly_the_weakenings();
     test_run_repair_end_to_end();
 }

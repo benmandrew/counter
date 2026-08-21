@@ -70,6 +70,12 @@ PROFILE_CSVS: dict[str, str] = {
     # 25 families at a 7200s cap where h2h-tlsf ran 12 at 600s, and neither the
     # corpus nor the cap is in the resume key, so shared rows would collide.
     "aurus-h2h": "results-aurus-h2h.csv",
+    # The 2026-08-21 re-run of that corpus at the shipping configuration plus
+    # the accumulator. Its own CSV for the same reason `aurus-h2h` has one: the
+    # arm differs from that campaign's in four keys and none of them is in the
+    # resume key, so a shared CSV would let the merge keep whichever row of a
+    # pair arrived first.
+    "aurus-h2h-ship": "results-aurus-h2h-ship.csv",
     # The 2026-08-20 operator cross; one CSV per path, never shared, since
     # the two paths run different corpora at different operating points. All
     # five profiles are retired -- their sweep varied genetic.repaired_operators,
@@ -129,6 +135,7 @@ PROFILE_RESULT_DIRS: dict[str, str] = {
     "ablate-tlsf": "results-ablate-tlsf",
     "h2h-tlsf": "results-ablate-tlsf",
     "aurus-h2h": "results-aurus-h2h",
+    "aurus-h2h-ship": "results-aurus-h2h-ship",
     # Retired with their sweep, and kept for the same reason as above.
     "opswk-fret": "results-opswk-fret",
     "opswk-tlsf": "results-opswk-tlsf",

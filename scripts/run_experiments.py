@@ -1035,6 +1035,58 @@ PROFILES: dict[str, dict] = {
         "results_csv": EXPERIMENTS_DIR / "results-aurus-h2h.csv",
         "default_jobs": 1,
     },
+    # The same corpus and cap at the configuration counter ships on 2026-08-21,
+    # plus the accumulator. `experiments/2026-08-14-aurus-h2h` measured a counter
+    # that had none of the three changes since made permanent, and
+    # `experiments/2026-08-20-ops-weakening/REPORT.md` could only read them
+    # against the 10 families that campaign's corpus shares with this one --
+    # where the test drops to 7 clusters and detects nothing. This runs the
+    # arm over all 25 so the archived AuRUS rows are answered at full power.
+    #
+    # There is no control arm. The 499 archived `aurus-h2h` rows are it: same
+    # corpus, same seeds, same 7200 s cap, same two hosts. The two configs
+    # differ in exactly four keys -- `accumulate_repairs`, `run_weakening`,
+    # `run_well_separation` and the operator grammar, which is unconditional in
+    # the binary rather than a key -- so the comparison is a bundle test and
+    # PLAN.md says so rather than attributing anything to one of them.
+    #
+    # Sweep N at `accon` alone, rather than crossing it: the accumulator was
+    # measured on its own by `2026-08-19-accumulator` and this campaign holds it
+    # on, so the level is a way to state the key in the archived config rather
+    # than a factor. `--weakening off` does the same job for `run_weakening`.
+    # `run_well_separation` and `allow_output_assumptions` are the two keys
+    # nothing states: they ride the binary defaults (false since b101ada, true)
+    # and PLAN.md records the values, since `--pin-vintage` would write
+    # `run_well_separation = true` from a `gen_configs.DEFAULTS` entry stale
+    # since 2026-08-10 -- the same defect that put that filter into the
+    # archived arm against the `aurus-h2h` profile's own stated intent.
+    "aurus-h2h-ship": {
+        "schemes": ["nsga2-apportion"],
+        "weakenings": ["wkoff"],
+        "metrics": ["log"],
+        "repair_modes": None,
+        "sweeps": ["N"],
+        "levels": {"N": ["accon"]},
+        "specs": H2H_TLSF_READY,
+        "seeds": list(range(20)),
+        "timeout_caps": {s: 7200 for s in H2H_TLSF_READY},
+        # 1800 s, against the 600 s default `aurus-h2h` took. Both changes this
+        # arm carries push repairs into compare: over the sweep-O corpus the
+        # accumulator with the screen off ran a median of 7 repairs per scoring
+        # run against 4 with the screen on, and compare is n_repairs x n_ideals
+        # x 2 implication checks. The archived arm timed out once in 499 at
+        # 600 s with half the load, and a compare timeout costs the row's
+        # implies_ideal silently, which is the endpoint.
+        "compare_timeout": 1800,
+        "baseline_aliases": {},
+        "configs_dir": EXPERIMENTS_DIR / "configs-aurus-h2h-ship",
+        "results_dir": EXPERIMENTS_DIR / "results-aurus-h2h-ship",
+        "results_csv": EXPERIMENTS_DIR / "results-aurus-h2h-ship.csv",
+        # jobs = 8, as `aurus-h2h` runs it and for the reason its declaration
+        # records: the 24-run calibration peaked at 18.7 GB of 125 GB, and at
+        # jobs = 1 this campaign is about 31 hours per host against roughly 4.
+        "default_jobs": 8,
+    },
     # nsga2 vs nsga2-replicate on FRETISH, at the gen40/pop1000 operating point
     # the cj-large and metric campaigns used — so the control arm is checkable
     # against their rows rather than being taken on trust. Three arms:

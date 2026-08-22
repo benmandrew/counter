@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1787284623275,
+  "lastUpdate": 1787370588805,
   "repoUrl": "https://github.com/benmandrew/counter",
   "entries": {
     "counter benchmarks": [
@@ -5674,6 +5674,100 @@ window.BENCHMARK_DATA = {
             "value": 3109.8746875056145,
             "unit": "ns/iter",
             "extra": "iterations: 225604\ncpu: 3109.788780340779 ns\nthreads: 1"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "name": "benmandrew",
+            "username": "benmandrew",
+            "email": "benmandrew@gmail.com"
+          },
+          "committer": {
+            "name": "benmandrew",
+            "username": "benmandrew",
+            "email": "benmandrew@gmail.com"
+          },
+          "id": "adfb3803fc77d1b8ce4d068603d1d1c3a93c2d5c",
+          "message": "docs(experiments): compare sweep-O arms against the AuRUS reference\n\nBoth sweep-O TLSF campaigns had never been read against the 2026-08-14\nhead-to-head, though PLAN §4 and §10 committed to using its archived\nAuRUS rows as the reference rather than re-running AuRUS. Restricting\nto the 10 families the two corpora share drops the cluster count to 7,\nwhere `analyse_aurus_h2h.py` computes the comparison unchanged -- it\nscores over the corpus intersection on its own -- but the restricted\nverdict is illegible without the power floor at that unit count, which\nthe script only printed below 6, where it decides outcome 3 by\nconstruction. `power_floor()` replaces both inlined blocks and prints\nthe bound at every non-tied count instead.\n\nThe comparison itself: the archived arm restricted to the same 10\nfamilies reads p = 0.1562 against its own p = 0.0127 over 25, so\nrestriction dissolves the archived verdict before any arm change does.\nMean `implies_ideal` runs 0.265 archived to 0.400/0.395 on the two\nscreen-off sweep-O arms against AuRUS's 0.487, with every arm null.\nFour confounds separate the sweep-O arms from the archived one --\nselection scheme, model-counting metric, `run_well_separation`, and a\n600s wall cap against AuRUS's 7200s -- none of them a choice either\ncampaign made, all four `gen_configs` baselines that do not track the\nbinary default.\n\nTwo corrections fall out of reading the configs: `ops-grammar/PLAN.md`\n§4's reason for discarding the archived counter rows as a control does\nnot hold, both campaigns having run a 10000ms `ltlsynt` budget; and\n`--pin-vintage` reads `gen_configs.DEFAULTS`, whose `run_well_separation`\nentry has been stale since `b101ada`, so the head-to-head ran the\nper-generation filter the shipping binary does not.",
+          "timestamp": "2026-08-21T17:39:22Z",
+          "url": "https://github.com/benmandrew/counter/commit/adfb3803fc77d1b8ce4d068603d1d1c3a93c2d5c"
+        },
+        "date": 1787370587616,
+        "tool": "googlecpp",
+        "benches": [
+          {
+            "name": "Copy formula - 8 variables",
+            "value": 9.386076489359343,
+            "unit": "ns/iter",
+            "extra": "iterations: 74813517\ncpu: 9.384842006558788 ns\nthreads: 1"
+          },
+          {
+            "name": "Copy specification - 3-guarantee takeoff spec",
+            "value": 123.13389249355079,
+            "unit": "ns/iter",
+            "extra": "iterations: 5611868\ncpu: 123.12148984972559 ns\nthreads: 1"
+          },
+          {
+            "name": "Hash specification - 3-guarantee takeoff spec",
+            "value": 108.72303520212945,
+            "unit": "ns/iter",
+            "extra": "iterations: 6452394\ncpu: 108.71593287700657 ns\nthreads: 1"
+          },
+          {
+            "name": "Compare specifications - equal, distinct arenas",
+            "value": 74.6755303426177,
+            "unit": "ns/iter",
+            "extra": "iterations: 9093744\ncpu: 74.66589943591987 ns\nthreads: 1"
+          },
+          {
+            "name": "Syntactic similarity - small formulas (3 variables)",
+            "value": 543.2756561017125,
+            "unit": "ns/iter",
+            "extra": "iterations: 1290463\ncpu: 543.2366220496054 ns\nthreads: 1"
+          },
+          {
+            "name": "Syntactic similarity - large formulas (11 variables, O(n*m) shared_subformulae)",
+            "value": 2244.912711503388,
+            "unit": "ns/iter",
+            "extra": "iterations: 312229\ncpu: 2244.211697183798 ns\nthreads: 1"
+          },
+          {
+            "name": "Spec implication check - warm black cache",
+            "value": 515.8974267103948,
+            "unit": "ns/iter",
+            "extra": "iterations: 1367588\ncpu: 515.7023686958358 ns\nthreads: 1"
+          },
+          {
+            "name": "Trace model counting - matrix exponentiation/steps:5",
+            "value": 198.0948615144635,
+            "unit": "ns/iter",
+            "extra": "iterations: 3447183\ncpu: 198.03101372918118 ns\nthreads: 1"
+          },
+          {
+            "name": "Trace model counting - matrix exponentiation/steps:10",
+            "value": 226.11790472008292,
+            "unit": "ns/iter",
+            "extra": "iterations: 3079054\ncpu: 226.02423374192196 ns\nthreads: 1"
+          },
+          {
+            "name": "Trace model counting - matrix exponentiation/steps:20",
+            "value": 252.22973989284833,
+            "unit": "ns/iter",
+            "extra": "iterations: 2745753\ncpu: 252.164246019216 ns\nthreads: 1"
+          },
+          {
+            "name": "Trace model counting - matrix exponentiation/steps:50",
+            "value": 300.54049844838545,
+            "unit": "ns/iter",
+            "extra": "iterations: 2330151\ncpu: 300.46884901450636 ns\nthreads: 1"
+          },
+          {
+            "name": "Mutate specification - 3-guarantee takeoff spec",
+            "value": 3144.5688004799717,
+            "unit": "ns/iter",
+            "extra": "iterations: 223356\ncpu: 3144.147065670946 ns\nthreads: 1"
           }
         ]
       }

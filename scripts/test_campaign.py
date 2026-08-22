@@ -2,8 +2,10 @@
 """Tests for campaign.py: parsing, process detection, collect, stage and queue.
 
 No pytest dependency, matching test_experiment_paths.py: run it directly
-(``python scripts/test_campaign.py``) and it exits non-zero on the first
-failure. Nothing here touches a lab machine — the remote protocol is exercised
+(``python scripts/test_campaign.py``). Unlike that suite, this one records
+every failure and reports them together at the end, exiting non-zero once the
+whole run is done — see ``fail`` for why. Read the closing summary rather than
+the first FAIL line. Nothing here touches a lab machine — the remote protocol is exercised
 against captured marker output, and ``collect`` is exercised against two
 throwaway checkouts under a temporary directory, so the merge, the natural key
 and the verification all run for real without a 29GB transfer.

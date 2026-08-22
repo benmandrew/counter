@@ -921,13 +921,6 @@ PROFILES: dict[str, dict] = {
         "levels": {"G": ["tiered", "mrs"]},
         "specs": list(TLSF_ABLATION_SPECS),
         "seeds": list(range(24)),
-        # A frozen byte-for-byte copy of TLSF_WALL_CAPS_GEN10, which was
-        # extracted from this table and deliberately left duplicated here.
-        # status-grading is a closed campaign, so this table is a record of
-        # the caps its archived rows actually ran under; replacing it with a
-        # reference to the constant would let a future recalibration of the
-        # constant silently restate what that archive means. The two agreeing
-        # today is not a reason to couple them. Do not deduplicate.
         "timeout_caps": {
             "amba": 4320, "humanoid-531": 1560, "lift": 840,
             "simple-arbiter": 720, "round-robin-arbiter": 660,
@@ -1736,37 +1729,36 @@ def binary_version(bin_path: Path) -> dict[str, str]:
     return {**unknown, **fields}
 
 
-def git_output(*args: str) -> str | None:
-    """Stripped stdout of `git -C REPO_ROOT <args>`, or None if there is none.
-
-    One None covers every way the answer can be absent — git missing from
-    PATH, a non-zero exit, a timeout, empty output — because each caller
-    substitutes the same fallback for all of them. The except stays this wide
-    on purpose: narrowing it to CalledProcessError turns a box without git
-    into a crash at campaign launch rather than an unknown commit.
-    """
+def working_tree_head() -> str | None:
+    """HEAD of the checkout this script lives in, or None outside a work tree."""
     try:
         proc = subprocess.run(
-            ["git", "-C", str(REPO_ROOT), *args],
+            ["git", "-C", str(REPO_ROOT), "rev-parse", "HEAD"],
             check=True, timeout=60, capture_output=True, text=True)
     except (OSError, subprocess.SubprocessError):
         return None
     return proc.stdout.strip() or None
 
 
-def working_tree_head() -> str | None:
-    """HEAD of the checkout this script lives in, or None outside a work tree."""
-    return git_output("rev-parse", "HEAD")
-
-
 def git_describe() -> str:
-    described = git_output("describe", "--always", "--dirty", "--tags")
-    return described or LEGACY_COMMIT
+    try:
+        proc = subprocess.run(
+            ["git", "-C", str(REPO_ROOT), "describe", "--always", "--dirty",
+             "--tags"],
+            check=True, timeout=60, capture_output=True, text=True)
+    except (OSError, subprocess.SubprocessError):
+        return LEGACY_COMMIT
+    return proc.stdout.strip() or LEGACY_COMMIT
 
 
 def git_branch() -> str:
-    branch = git_output("rev-parse", "--abbrev-ref", "HEAD")
-    return branch or LEGACY_COMMIT
+    try:
+        proc = subprocess.run(
+            ["git", "-C", str(REPO_ROOT), "rev-parse", "--abbrev-ref", "HEAD"],
+            check=True, timeout=60, capture_output=True, text=True)
+    except (OSError, subprocess.SubprocessError):
+        return LEGACY_COMMIT
+    return proc.stdout.strip() or LEGACY_COMMIT
 
 
 def staleness_problems(versions: dict[str, dict[str, str]],

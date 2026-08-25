@@ -321,27 +321,41 @@ struct Config {
     /// stochastic operator. Must be strictly less than selection_rate (the
     /// elites are a subset of the selected parents).
     ///
-    /// Defaults to 0, which turns it off. Under either NSGA-II scheme it is
-    /// redundant on paper -- the (mu+lambda) survivor step already pools
-    /// parents with offspring and keeps the best -- and it is not free,
-    /// because elites bypass the offspring filter chain, so this fraction of
-    /// every generation skips the correctness stages. That costs search
-    /// pressure rather than output correctness, the gate in step 5 screening
-    /// what elites carried in either way (d7733fc).
+    /// Under either NSGA-II scheme this is redundant on paper -- the
+    /// (mu+lambda) survivor step already pools parents with offspring and keeps
+    /// the best -- and it costs something, because elites bypass the offspring
+    /// filter chain, so this fraction of every generation skips the correctness
+    /// stages. That costs search pressure rather than output correctness, the
+    /// gate in step 5 screening what elites carried in either way (d7733fc).
+    /// Both arguments point at 0. Two campaigns have measured the setting, and
+    /// they do not agree.
     ///
-    /// The A/B that tested those two arguments agrees with them. Over 600
-    /// paired FRETISH runs and 796 paired TLSF runs (2026-08-07), quality is
-    /// non-inferior at 0 -- implies_ideal moves by -0.023 and -0.008 against a
-    /// +0.05 margin fixed before launch -- and TLSF yield is better at 0,
-    /// 0.746 against 0.714, McNemar p = 0.0002.
+    /// The first ran on 2026-08-07 at nsga2-truncate, over 600 paired FRETISH
+    /// runs and 796 paired TLSF runs. Quality was non-inferior at 0, with
+    /// implies_ideal moving -0.023 on FRETISH and -0.008 on TLSF against a
+    /// +0.05 margin fixed before launch, and TLSF yield was better at 0: 0.746
+    /// against 0.714, on 37 discordant pairs against 11, McNemar p = 0.0002.
+    /// Running at 0 cost 16.2% more wall time on TLSF and 8.2% more on FRETISH,
+    /// against a bound of 10%.
     ///
-    /// What kept the default at 0.1 until 2026-08-21 was wall-clock time
-    /// alone: 0 costs 16.2% more on TLSF and 8.2% more on FRETISH. That cost
-    /// does not bind on the corpus counter is now measured against. Runs over
-    /// the AuRUS corpus use 0.3% to 2% of the 7200s cap, so a sixth again of
-    /// nothing is still nothing, and paying TLSF yield for it was the wrong
-    /// trade. Set 0.1 when a run is up against its wall-clock cap; nothing
-    /// between 0 and 0.1 was ever measured.
+    /// That TLSF yield advantage did not replicate. The 2026-08-23 monotone
+    /// campaign (TLSF sweep T) asked the same question
+    /// at nsga2-apportion over the 25-family AuRUS TLSF corpus, 500 paired
+    /// (spec, seed) runs, with accumulate_repairs on in both arms and under the
+    /// monotone operator grammar. Yield is 472 of 500 at 0.1 against 470 at 0,
+    /// per-family implies_ideal 0.510 against 0.508 at exact Wilcoxon
+    /// p = 0.7188 over 9 non-tied families, and the run-level exact McNemar
+    /// reads p = 1.0000 on 28 gains against 29 losses. The wall-time cost did
+    /// replicate, four times smaller: 0 costs 4.0% more, 101.1 h against 97.1 h
+    /// over the same 500 runs, median 49.0 s against 42.2 s, exact Wilcoxon
+    /// p = 2.9e-15 over 491 non-tied pairs.
+    ///
+    /// The cost narrowed because accumulate_repairs is on in both arms, so a
+    /// repair found in an early generation is kept whether or not an elite
+    /// carried it forward. The only measured difference between the two
+    /// settings on the corpus counter is now benchmarked against is that 0
+    /// costs 4.0% more wall time, so the default stays at 0.1. Only 0 and 0.1
+    /// have ever been measured, so nothing speaks to intermediate rates.
     ///
     /// The lily02 anecdote this comment used to cite is retired. That campaign
     /// audited every written repair for a guarantee that reduces to `true` and
@@ -349,7 +363,7 @@ struct Config {
     /// elitism: each one is `black` answering SAT on the negation of a valid
     /// weak-until formula, which fb4c3ed fixed by rewriting `W` away before
     /// querying it.
-    double elitism_rate = 0.0;
+    double elitism_rate = 0.1;
     double crossover_rate = 0.1;
     double mutation_rate = 1.0;
     double p_trigger = 0.5;

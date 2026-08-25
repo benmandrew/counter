@@ -294,13 +294,28 @@ struct Config {
     /// otherwise discarded, even though repair quality is judged existentially
     /// over what the run emits, so a larger pool can only help it.
     ///
-    /// Off by default because it changes what a run emits, and an archived
-    /// campaign config that omits the key would otherwise silently mean
-    /// something it did not (see the config vintage note in
-    /// experiments/README.md). It costs nothing to switch on for the FRETISH
-    /// path, whose per-generation "real" counter already asks the gate; on the
-    /// TLSF path, which asks it once after evolution, it buys the extra repairs
-    /// with one gate sweep per generation.
+    /// On by default since 2026-08-25, on the `2026-08-19-accumulator`
+    /// campaign: over 200 paired TLSF runs, 100 (spec, seed) pairs per arm, it
+    /// gained `implies_ideal` on 6 pairs and lost it on none, at exact McNemar
+    /// p = 0.0312, and yield moved from 79 to 81 of 100. The median paired wall
+    /// ratio was 1.034 (mean 1.055, max 1.51), under the bound of 1.25 fixed
+    /// before launch, and both arms timed out on 16 runs. It costs nothing on
+    /// the FRETISH path, whose per-generation "real" counter already asks the
+    /// gate; on the TLSF path, which asks it once after evolution, it buys the
+    /// extra repairs with one gate sweep per generation.
+    ///
+    /// That campaign recorded the key as a *candidate* default, subject to the
+    /// FRETISH replication its plan names, and that replication has not been
+    /// run. The default is flipped on TLSF evidence alone, as a departure from
+    /// the campaign's own pre-registered condition, and the replication remains
+    /// owed. Two further limits sit on the same evidence. Its 240s per-spec cap
+    /// falls between the aurus-h2h corpus's p75 of 161s and its p90 of 684s, so
+    /// it cannot say whether the advantage grows with the budget; and four
+    /// seeds per family carry no per-family claim, the primary drawing its
+    /// power from the 200 paired runs instead.
+    ///
+    /// An archived campaign config that omits the key therefore means something
+    /// it did not; see the config vintage note in experiments/README.md.
     ///
     /// Inert under `[tlsf] repair_mode = "muc"`, which evolves cores rather
     /// than whole specifications.
@@ -313,7 +328,7 @@ struct Config {
     /// the run's filtered output, which stays `repair_N.json` /
     /// `repair_N.tlsf` alone. The directory is created on the first write, so
     /// with the key off nothing is created.
-    bool accumulate_repairs = false;
+    bool accumulate_repairs = true;
     double selection_rate = 0.5;
     /// Elitism: the top elitism_rate fraction of the population carries over
     /// into the next generation verbatim, bypassing crossover, mutation, and
@@ -327,17 +342,35 @@ struct Config {
     /// filter chain, so this fraction of every generation skips the correctness
     /// stages. That costs search pressure rather than output correctness, the
     /// gate in step 5 screening what elites carried in either way (d7733fc).
-    /// Both arguments point at 0, and the A/B that
-    /// tested them (2026-08-07, 600 paired FRETISH runs and 796 paired TLSF
-    /// runs) does not contradict them: quality is non-inferior at 0, with
-    /// implies_ideal moving by -0.023 and -0.008 against a +0.05 margin fixed
-    /// before launch, and TLSF yield is better at 0 -- 0.746 against 0.714,
-    /// McNemar p = 0.0002.
+    /// Both arguments point at 0. Two campaigns have measured the setting, and
+    /// they do not agree.
     ///
-    /// What keeps it at 0.1 is wall-clock time alone: 0 costs 16.2% more on
-    /// TLSF and 8.2% more on FRETISH, against a 10% bound. So the shipped
-    /// default trades TLSF yield for speed. Set 0 when finding a repair at all
-    /// matters more than finishing quickly.
+    /// The first ran on 2026-08-07 at nsga2-truncate, over 600 paired FRETISH
+    /// runs and 796 paired TLSF runs. Quality was non-inferior at 0, with
+    /// implies_ideal moving -0.023 on FRETISH and -0.008 on TLSF against a
+    /// +0.05 margin fixed before launch, and TLSF yield was better at 0: 0.746
+    /// against 0.714, on 37 discordant pairs against 11, McNemar p = 0.0002.
+    /// Running at 0 cost 16.2% more wall time on TLSF and 8.2% more on FRETISH,
+    /// against a bound of 10%.
+    ///
+    /// That TLSF yield advantage did not replicate. The 2026-08-23 monotone
+    /// campaign (TLSF sweep T) asked the same question
+    /// at nsga2-apportion over the 25-family AuRUS TLSF corpus, 500 paired
+    /// (spec, seed) runs, with accumulate_repairs on in both arms and under the
+    /// monotone operator grammar. Yield is 472 of 500 at 0.1 against 470 at 0,
+    /// per-family implies_ideal 0.510 against 0.508 at exact Wilcoxon
+    /// p = 0.7188 over 9 non-tied families, and the run-level exact McNemar
+    /// reads p = 1.0000 on 28 gains against 29 losses. The wall-time cost did
+    /// replicate, four times smaller: 0 costs 4.0% more, 101.1 h against 97.1 h
+    /// over the same 500 runs, median 49.0 s against 42.2 s, exact Wilcoxon
+    /// p = 2.9e-15 over 491 non-tied pairs.
+    ///
+    /// The cost narrowed because accumulate_repairs is on in both arms, so a
+    /// repair found in an early generation is kept whether or not an elite
+    /// carried it forward. The only measured difference between the two
+    /// settings on the corpus counter is now benchmarked against is that 0
+    /// costs 4.0% more wall time, so the default stays at 0.1. Only 0 and 0.1
+    /// have ever been measured, so nothing speaks to intermediate rates.
     ///
     /// The lily02 anecdote this comment used to cite is retired. That campaign
     /// audited every written repair for a guarantee that reduces to `true` and
@@ -417,6 +450,51 @@ struct Config {
     /// rewrite. At 0 the temporal skeleton of existing formulae is never
     /// altered.
     double tlsf_p_temporal = 0.2;
+    /// TLSF-mode mutation: once a section formula has been chosen for
+    /// rewriting, the probability of applying a *monotone* rewrite -- one
+    /// whose result is comparable to the formula it replaces under implication
+    /// -- rather than either the temporal or the propositional rewrite. The
+    /// direction (weaker or stronger) is a fair coin; see
+    /// tlsf_monotone_rewrite.
+    ///
+    /// This exists because the general rewriters leave the implication order.
+    /// The 2026-08-14 head-to-head audit read `best_relation` as incomparable
+    /// on 238 of counter's 499 runs (47.7%) against 20 of AuRUS's 780 (2.6%),
+    /// and REPORT.md section 5 measures the general rewriter as changing the
+    /// AST shape 93.6% of the time. AuRUS draws uniformly among three mutation
+    /// visitors, two of which are monotone by construction, so its monotone
+    /// share is 2 in 3.
+    ///
+    /// The default is 0.25: a quarter is a conservative first value against
+    /// that 2-in-3, the general rewriter being the operator every measured
+    /// result so far was obtained with. The campaign that tunes it is owed.
+    /// Setting it to 0 restores the search exactly as it ran before the arm
+    /// existed -- the probability is read before the RNG is drawn, so a zero
+    /// never costs a draw.
+    double tlsf_p_monotone = 0.25;
+    /// TLSF-mode mutation: of the assumptions p_add_assumption appends, the
+    /// fraction that are a copy of an existing live ASSUME conjunct rather
+    /// than a fresh one built from the template. Ordinary mutation then edits
+    /// the copy on later generations.
+    ///
+    /// The template emits at most seven nodes -- `G F l` or
+    /// `G(guard -> o l)` -- and the assumption-shaped ideals are far larger:
+    /// gyro-var2's single ideal is roughly a 29-node assumption, the polarity
+    /// mirror of the specification's own third assumption, and over 112
+    /// emitted gyro-var2 repairs counter appended only 6 assumptions, every
+    /// one template-shaped. AuRUS reaches a near-duplicate assumption through
+    /// its level-1 crossover, which unions conjunct subsets; counter's
+    /// crossover draws one conjunct per side and cannot, so the move belongs
+    /// to mutation here.
+    ///
+    /// The default is 0.25, matching p_conditional_assumption: the template
+    /// keeps the majority because it is the only form that can introduce a
+    /// fairness property no existing assumption carries, which is the repair
+    /// the operator was added for. Setting it to 0 restores the search
+    /// exactly as it ran before -- the probability is read before the RNG is
+    /// drawn, so a zero never costs a draw. Falls back to the template when
+    /// the ASSUME section holds nothing live to copy.
+    double tlsf_p_clone_assumption = 0.25;
     /// TLSF repair strategy (see RepairMode). Muc mode caps its outer
     /// extract-repair-reintegrate loop at muc_max_iterations, so a spec whose
     /// core never becomes realizable ends the run without a repair rather than

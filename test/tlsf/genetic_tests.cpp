@@ -77,9 +77,25 @@ std::multiset<int> temporal_kinds(const Formula& formula) {
     return kinds;
 }
 
+bool contains_kind(const Formula& formula, Formula::Kind kind) {
+    if (formula.kind() == kind) {
+        return true;
+    }
+    if (const auto child = formula.unary_child(); child.has_value()) {
+        return contains_kind(*child, kind);
+    }
+    if (const auto children = formula.binary_children(); children.has_value()) {
+        return contains_kind(children->first, kind) ||
+               contains_kind(children->second, kind);
+    }
+    return false;
+}
+
 void test_mutation_preserves_temporal_skeleton() {
     Config cfg;
-    cfg.tlsf_p_temporal = 0.0;  // isolate the skeleton-preserving rewrite path
+    cfg.tlsf_p_temporal = 0.0;  // isolate the skeleton-preserving rewrite
+    cfg.tlsf_p_monotone =
+        0.0;  // ... which the monotone arm is offered ahead of
     const tlsf::Specification original = parse(
         "INPUTS { req; } OUTPUTS { grant; } GUARANTEE { G(req -> F "
         "grant); }");
@@ -182,6 +198,7 @@ void test_temporal_mutation_changes_skeleton() {
     // change at least once, and every result must stay well-formed.
     Config cfg;
     cfg.tlsf_p_temporal = 1.0;
+    cfg.tlsf_p_monotone = 0.0;   // the monotone arm is offered ahead of it
     cfg.p_add_assumption = 0.0;  // isolate the rewrite path
     cfg.p_remove_guarantee = 0.0;
     const tlsf::Specification original = parse(
@@ -209,11 +226,42 @@ void test_temporal_mutation_changes_skeleton() {
            "one seed");
 }
 
+void test_temporal_mutation_can_emit_an_implication() {
+    // pick_binary_kind draws Implies since 2026-08-21. Case (3) of
+    // mutate_temporal is the default branch over any binary node, Iff
+    // included, so widening that draw is what puts `<->` → `->` in reach —
+    // the sole ideal for ltl2dba-r-2, ltl2dba-theta-2 and ltl2dba27. Starting
+    // from a biconditional with no implication anywhere in it, some seed must
+    // produce one.
+    Config cfg;
+    cfg.tlsf_p_temporal = 1.0;
+    cfg.tlsf_p_monotone = 0.0;  // the monotone arm is offered ahead of it
+    cfg.p_add_assumption = 0.0;
+    cfg.p_remove_guarantee = 0.0;
+    const tlsf::Specification original =
+        parse("INPUTS { r; } OUTPUTS { g; } GUARANTEE { G(g <-> X r); }");
+    expect(!contains_kind(original.m_guarantee.front().m_formula,
+                          Formula::Kind::Implies),
+           "implication draw: the input carries no implication to start with");
+
+    bool emitted = false;
+    for (std::size_t seed = 0; seed < 40 && !emitted; ++seed) {
+        const RandomSource rng = make_random_source_from_seed(seed);
+        const tlsf::Specification mutated = tlsf_mutate(original, rng, cfg);
+        emitted = contains_kind(mutated.m_guarantee.front().m_formula,
+                                Formula::Kind::Implies);
+    }
+    expect(emitted,
+           "implication draw: the temporal mutation emits an implication for "
+           "at least one seed");
+}
+
 void test_temporal_mutation_atoms_from_inputs_only() {
     // The temporal operator threads the side-appropriate atom pool through its
     // recursion, so an assumption-side rewrite must never draw an output atom.
     Config cfg;
     cfg.tlsf_p_temporal = 1.0;
+    cfg.tlsf_p_monotone = 0.0;  // the monotone arm is offered ahead of it
     cfg.p_add_assumption = 0.0;
     cfg.p_remove_guarantee = 0.0;
     cfg.allow_output_assumptions = false;
@@ -295,6 +343,57 @@ void test_add_assumption_never_obliges_an_output() {
         expect(text.substr(arrow).find("grant") == std::string::npos,
                "add-assumption: the consequent is drawn from the inputs even "
                "with allow_output_assumptions on");
+    }
+}
+
+// Clone-and-perturb: rather than the template's at-most-seven nodes, the
+// appended assumption may be a copy of one the specification already holds,
+// which ordinary mutation then edits. gyro-var2's single ideal is roughly a
+// 29-node assumption mirroring the specification's own third one, and no
+// template reaches that.
+void test_add_assumption_can_clone_an_existing_one() {
+    const tlsf::Specification spec = parse(
+        "INPUTS { req; } OUTPUTS { grant; } "
+        "ASSUME { G (req -> F (!(req))); } "
+        "GUARANTEE { G (req -> F grant); }");
+    Config cfg;
+    cfg.p_add_assumption = 1.0;
+    cfg.tlsf_p_clone_assumption = 1.0;
+    for (std::size_t seed = 0; seed < 20; ++seed) {
+        const RandomSource rng = make_random_source_from_seed(seed);
+        const tlsf::Specification mutated = tlsf_mutate(spec, rng, cfg);
+        expect(mutated.m_assume.size() == 2,
+               "clone-assumption: exactly one assumption is appended");
+        expect(mutated.m_assume[1] == spec.m_assume[0],
+               "clone-assumption: the appended assumption copies a live one");
+        expect(mutated.m_guarantee == spec.m_guarantee,
+               "clone-assumption: guarantees are left untouched");
+    }
+}
+
+// Nothing live to copy, so the template stands in rather than the operator
+// becoming a no-op.
+void test_clone_assumption_falls_back_to_the_template() {
+    tlsf::Specification spec;
+    spec.m_inputs = {"req"};
+    spec.m_outputs = {"grant"};
+    spec.m_guarantee = {parse("INPUTS { req; } OUTPUTS { grant; } "
+                              "GUARANTEE { G (req -> F grant); }")
+                            .m_guarantee.front()};
+    spec.m_assume = {tlsf::SectionEntry(Formula("req"), /*removed=*/true)};
+    Config cfg;
+    cfg.p_add_assumption = 1.0;
+    cfg.tlsf_p_clone_assumption = 1.0;
+    for (std::size_t seed = 0; seed < 20; ++seed) {
+        const RandomSource rng = make_random_source_from_seed(seed);
+        const tlsf::Specification mutated = tlsf_mutate(spec, rng, cfg);
+        expect(mutated.m_assume.size() == 2,
+               "clone-assumption: the template appends when nothing is live");
+        expect(!mutated.m_assume[1].m_removed,
+               "clone-assumption: a tombstone is never resurrected as a copy");
+        expect(mutated.m_assume[1].m_formula.to_string() != "req",
+               "clone-assumption: the appended assumption is the template's, "
+               "not the tombstoned conjunct");
     }
 }
 
@@ -391,6 +490,7 @@ void test_weak_until_over_output_is_reachable() {
     cfg.p_remove_guarantee = 0.0;
     cfg.tlsf_p_assumption = 1.0;  // always mutate the assumption side
     cfg.tlsf_p_temporal = 1.0;    // always the temporal (skeleton) rewrite
+    cfg.tlsf_p_monotone = 0.0;    // which the monotone arm is offered ahead of
     cfg.allow_output_assumptions = true;
     tlsf::Specification seed_spec;
     seed_spec.m_inputs = {"r"};
@@ -595,9 +695,12 @@ void run_tlsf_genetic_tests() {
     test_mutation_assumption_atoms_from_inputs_only();
     test_mutation_side_probability_selects_side();
     test_temporal_mutation_changes_skeleton();
+    test_temporal_mutation_can_emit_an_implication();
     test_temporal_mutation_atoms_from_inputs_only();
     test_add_assumption_forms();
     test_add_assumption_never_obliges_an_output();
+    test_add_assumption_can_clone_an_existing_one();
+    test_clone_assumption_falls_back_to_the_template();
     test_remove_guarantee_tombstones_in_place();
     test_remove_guarantee_keeps_the_last_live_conjunct();
     test_add_assumption_can_reference_output_when_allowed();

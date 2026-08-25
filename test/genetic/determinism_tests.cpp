@@ -108,6 +108,11 @@ Requirement make_req(const std::string& condition, const std::string& response,
 Config golden_config() {
     Config cfg;
     cfg.selection_scheme = SelectionScheme::Nsga2Truncate;
+    // Pinned rather than left to the default, the same discipline
+    // p_remove_guarantee follows below: this is the one Config field the
+    // breeding path reads whose default has moved before, and a later move
+    // must fail this suite rather than re-record itself silently.
+    cfg.elitism_rate = 0.1;
     // Strictly between 0 and 1: probability_check short-circuits without
     // drawing at exactly 0.0 or 1.0, which would leave its own draws untested.
     cfg.crossover_rate = 0.75;

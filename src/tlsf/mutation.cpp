@@ -2,6 +2,7 @@
 
 #include <cassert>
 #include <cstddef>
+#include <cstdint>
 #include <string>
 #include <utility>
 #include <vector>
@@ -30,12 +31,21 @@ Formula::Kind pick_unary_kind(const RandomSource& random_source) {
     }
 }
 
-// Replacement binary operator for case (3), o2' ∈ {∨, ∧, U, R, W}. Implies/Iff
-// are deliberately excluded (as in Brizzio's fragment): a mutated binary node
-// re-emerges as one of these five, which is what lets the operator move a
-// formula between purely propositional and genuinely temporal shapes.
+// Replacement binary operator for case (3), o2' ∈ {∨, ∧, →, U, R, W}. Brizzio's
+// fragment is Owl's negation normal form, where `a -> b` is stored as a
+// disjunction and there is no implication to re-emit; counter keeps Implies as
+// a first-class node, so excluding it here made a biconditional reachable only
+// to be destroyed. Three subjects are the whole ideal for that one
+// substitution: ltl2dba-r-2's sole ideal is its input with the root `<->`
+// replaced by `->`, and ltl2dba-theta-2 and ltl2dba27 are the same shape. The
+// FRETISH twins in genetic/mutation.cpp and genetic/crossover.cpp already draw
+// Implies, so the gap was TLSF-only.
+//
+// Iff stays out. The defect is that a biconditional could not be weakened, not
+// that one could not be built, and the paper's fragment has no biconditional
+// for the same reason it has no implication.
 Formula::Kind pick_binary_kind(const RandomSource& random_source) {
-    switch (random_source.next_index(5)) {
+    switch (random_source.next_index(6)) {
         case 0:
             return Formula::Kind::And;
         case 1:
@@ -46,6 +56,8 @@ Formula::Kind pick_binary_kind(const RandomSource& random_source) {
             return Formula::Kind::Release;
         case 4:
             return Formula::Kind::WeakUntil;
+        case 5:
+            return Formula::Kind::Implies;
         default:
             assert(false);
             __builtin_unreachable();
@@ -153,18 +165,16 @@ Formula mutate_temporal(const Formula& formula,
             }
         }
         default: {
-            // Case (3): φ = φ1 o2 φ2 (any binary node, temporal or boolean).
-            // Case (d) is counter's own, not Brizzio's. pick_binary_kind
-            // excludes Implies and Iff, following the paper's fragment, and
-            // that fragment is Owl's negation normal form where `a -> b` is
-            // stored as a disjunction and there is no implication node to
-            // re-emit. counter keeps Implies as a first-class node, so without
-            // a branch that preserves the node's own connective an implication
-            // was reachable only to be destroyed, and a guarded implication —
-            // the shape of every minimal guarantee weakening — was unreachable.
-            // Preserving the kind also gives this path its only
-            // structure-preserving move; every other arm regenerates the
-            // conjunct.
+            // Case (3): φ = φ1 o2 φ2 (any binary node, temporal or boolean),
+            // Iff included, which is what makes `<->` → `->` reachable now
+            // that pick_binary_kind draws Implies.
+            //
+            // Case (d) is counter's own, not Brizzio's. It preserves the
+            // node's own connective, and without it an implication was
+            // reachable only to be destroyed: a guarded implication — the
+            // shape of every minimal guarantee weakening — survived no arm.
+            // It is also this path's only structure-preserving move; every
+            // other arm regenerates the conjunct.
             const auto children = formula.binary_children();
             if (!children.has_value()) {
                 return formula;
@@ -318,6 +328,227 @@ Formula draw_literal(const std::vector<std::string>& pool,
                : atom;
 }
 
+// Whether replacing a subformula by a logically weaker one weakens the whole
+// formula (Positive) or strengthens it (Negative). Not flips the polarity, so
+// does the antecedent of an Implies, and a child of an Iff has neither: a
+// biconditional is monotone in nothing, so nothing can be said about which way
+// the whole formula moves.
+enum class Polarity : std::uint8_t { Positive, Negative, Indeterminate };
+
+Polarity flip(Polarity polarity) {
+    switch (polarity) {
+        case Polarity::Positive:
+            return Polarity::Negative;
+        case Polarity::Negative:
+            return Polarity::Positive;
+        default:
+            return Polarity::Indeterminate;
+    }
+}
+
+// The polarity each child of @p formula occurs under, given the parent's.
+std::pair<Polarity, Polarity> child_polarities(const Formula& formula,
+                                               Polarity polarity) {
+    switch (formula.kind()) {
+        case Formula::Kind::Not:
+            return {flip(polarity), flip(polarity)};
+        case Formula::Kind::Implies:
+            return {flip(polarity), polarity};
+        case Formula::Kind::Iff:
+            return {Polarity::Indeterminate, Polarity::Indeterminate};
+        default:
+            // And, Or, X, F, G, U, R and W are all monotone increasing in
+            // every argument, so a child keeps its parent's polarity.
+            return {polarity, polarity};
+    }
+}
+
+// One monotone rewrite. Named for what it does to the node it fires at, which
+// is the weakening direction under Positive polarity and the strengthening one
+// under Negative; the caller resolves that before choosing.
+enum class MonotoneRule : std::uint8_t {
+    // φ → true, or φ → false.
+    Constant,
+    // a ∧ b → a, or a ∨ b → a.
+    DropOperand,
+    // a ∨ b → (a ∨ b) ∨ ℓ, or a ∧ b → (a ∧ b) ∧ ℓ.
+    AddOperand,
+    // G φ → F φ.
+    GloballyToEventually,
+    // G φ → G F φ.
+    GloballyToInfinitelyOften,
+    // F φ → G φ.
+    EventuallyToGlobally,
+    // φ U ψ → φ W ψ.
+    UntilToWeakUntil,
+    // φ W ψ → φ U ψ.
+    WeakUntilToUntil,
+    // a ↔ b → a → b, or b → a.
+    IffToImplies,
+};
+
+// The rules that fire at @p formula's own kind. Constant is always one of
+// them, so the list is never empty and every node is a site.
+std::vector<MonotoneRule> rules_at(const Formula& formula, bool weaken) {
+    std::vector<MonotoneRule> rules = {MonotoneRule::Constant};
+    switch (formula.kind()) {
+        case Formula::Kind::And:
+            rules.push_back(weaken ? MonotoneRule::DropOperand
+                                   : MonotoneRule::AddOperand);
+            break;
+        case Formula::Kind::Or:
+            rules.push_back(weaken ? MonotoneRule::AddOperand
+                                   : MonotoneRule::DropOperand);
+            break;
+        case Formula::Kind::Globally:
+            if (weaken) {
+                rules.push_back(MonotoneRule::GloballyToEventually);
+                rules.push_back(MonotoneRule::GloballyToInfinitelyOften);
+            }
+            break;
+        case Formula::Kind::Eventually:
+            if (!weaken) {
+                rules.push_back(MonotoneRule::EventuallyToGlobally);
+            }
+            break;
+        case Formula::Kind::Until:
+            if (weaken) {
+                rules.push_back(MonotoneRule::UntilToWeakUntil);
+            }
+            break;
+        case Formula::Kind::WeakUntil:
+            if (!weaken) {
+                rules.push_back(MonotoneRule::WeakUntilToUntil);
+            }
+            break;
+        case Formula::Kind::Iff:
+            if (weaken) {
+                rules.push_back(MonotoneRule::IffToImplies);
+            }
+            break;
+        default:
+            break;
+    }
+    return rules;
+}
+
+Formula apply_monotone_rule(const Formula& formula, MonotoneRule rule,
+                            bool weaken, const std::vector<std::string>& atoms,
+                            const RandomSource& random_source) {
+    switch (rule) {
+        case MonotoneRule::Constant:
+            return Formula::make_atom(weaken ? "true" : "false");
+        case MonotoneRule::DropOperand: {
+            const auto children = formula.binary_children();
+            assert(children.has_value());
+            return random_source.next_bool() ? children->first
+                                             : children->second;
+        }
+        case MonotoneRule::AddOperand: {
+            const Formula literal = draw_literal(atoms, random_source);
+            return Formula::make_binary(formula.kind(), formula, literal);
+        }
+        case MonotoneRule::GloballyToEventually: {
+            const auto child = formula.unary_child();
+            assert(child.has_value());
+            return Formula::make_unary(Formula::Kind::Eventually, *child);
+        }
+        case MonotoneRule::GloballyToInfinitelyOften:
+            return Formula::make_unary(Formula::Kind::Globally, formula);
+        case MonotoneRule::EventuallyToGlobally: {
+            const auto child = formula.unary_child();
+            assert(child.has_value());
+            return Formula::make_unary(Formula::Kind::Globally, *child);
+        }
+        case MonotoneRule::UntilToWeakUntil: {
+            const auto children = formula.binary_children();
+            assert(children.has_value());
+            return Formula::make_binary(Formula::Kind::WeakUntil,
+                                        children->first, children->second);
+        }
+        case MonotoneRule::WeakUntilToUntil: {
+            const auto children = formula.binary_children();
+            assert(children.has_value());
+            return Formula::make_binary(Formula::Kind::Until, children->first,
+                                        children->second);
+        }
+        case MonotoneRule::IffToImplies: {
+            const auto children = formula.binary_children();
+            assert(children.has_value());
+            // Both directions of a biconditional are weakenings of it, so
+            // which one is a further draw rather than a fixed choice.
+            return random_source.next_bool()
+                       ? Formula::make_binary(Formula::Kind::Implies,
+                                              children->first, children->second)
+                       : Formula::make_binary(Formula::Kind::Implies,
+                                              children->second,
+                                              children->first);
+        }
+        default:
+            assert(false);
+            __builtin_unreachable();
+    }
+}
+
+// Numbers every node of @p formula in pre-order and records the polarity each
+// occurs under. Both walks here number in the same order, which is what lets a
+// site be drawn in one pass and rewritten in the next.
+void collect_polarities(const Formula& formula, Polarity polarity,
+                        std::vector<Polarity>& out) {
+    out.push_back(polarity);
+    if (const auto child = formula.unary_child(); child.has_value()) {
+        const auto polarities = child_polarities(formula, polarity);
+        collect_polarities(*child, polarities.first, out);
+        return;
+    }
+    if (const auto children = formula.binary_children(); children.has_value()) {
+        const auto polarities = child_polarities(formula, polarity);
+        collect_polarities(children->first, polarities.first, out);
+        collect_polarities(children->second, polarities.second, out);
+    }
+}
+
+// Rebuilds @p formula with one rule applied at the node numbered @p target.
+// The walk stops descending there, so every node numbered afterwards takes a
+// strictly larger index and no second node can match.
+Formula rewrite_at_site(const Formula& formula, Polarity polarity,
+                        std::size_t target, std::size_t& next, bool want_weaker,
+                        const std::vector<std::string>& atoms,
+                        const RandomSource& random_source) {
+    const std::size_t index = next++;
+    if (index == target) {
+        // A weaker subformula weakens the whole only where it occurs
+        // positively; under a negation the dual rule is what moves the whole
+        // formula the way the caller asked for.
+        const bool weaken_here =
+            (polarity == Polarity::Positive) == want_weaker;
+        const std::vector<MonotoneRule> rules = rules_at(formula, weaken_here);
+        const std::size_t choice = random_source.next_index(rules.size());
+        return apply_monotone_rule(formula, rules[choice], weaken_here, atoms,
+                                   random_source);
+    }
+    if (const auto child = formula.unary_child(); child.has_value()) {
+        const auto polarities = child_polarities(formula, polarity);
+        return Formula::make_unary(
+            formula.kind(),
+            rewrite_at_site(*child, polarities.first, target, next, want_weaker,
+                            atoms, random_source));
+    }
+    if (const auto children = formula.binary_children(); children.has_value()) {
+        const auto polarities = child_polarities(formula, polarity);
+        // Sequenced into locals: the target's branch draws, and argument
+        // evaluation order is unspecified.
+        const Formula left =
+            rewrite_at_site(children->first, polarities.first, target, next,
+                            want_weaker, atoms, random_source);
+        const Formula right =
+            rewrite_at_site(children->second, polarities.second, target, next,
+                            want_weaker, atoms, random_source);
+        return Formula::make_binary(formula.kind(), left, right);
+    }
+    return formula;
+}
+
 // Modality of a conditional assumption's consequent, o ∈ {F, X, nothing}.
 // `F` was hard-wired here until 2026-08-19, which put two whole families of
 // ideal beyond the operator: rg1's `G(!valid -> X !cancel)` and minepump's
@@ -365,6 +596,40 @@ Formula apply_consequent_modality(const Formula& body,
 tlsf::Specification tlsf_add_assumption(const tlsf::Specification& spec,
                                         const RandomSource& random_source,
                                         const Config& cfg) {
+    // Clone-and-perturb, ahead of the template. The template emits at most
+    // seven nodes and the assumption-shaped ideals are far larger: gyro-var2's
+    // single ideal is roughly a 29-node assumption, the polarity mirror of the
+    // specification's own third assumption, and over 112 emitted gyro-var2
+    // repairs counter appended only 6 assumptions, every one template-shaped.
+    // Appending a copy puts a formula of the right size and vocabulary in the
+    // population for ordinary mutation to edit on later generations, which is
+    // how AuRUS reaches a near-duplicate assumption -- through its level-1
+    // crossover, which unions conjunct subsets. counter's crossover draws one
+    // conjunct per side and cannot, so the move is mutation's here.
+    //
+    // Only ASSUME is drawn from, not the whole assumption side: an INITIALLY
+    // entry is an initial condition and a REQUIRE entry is lowered under an
+    // implicit G, so copying either into ASSUME would change what it says
+    // rather than duplicate it. Tombstones are skipped, a deleted conjunct
+    // not being part of what the specification asserts.
+    //
+    // The probability is read before the RandomSource is touched, so at 0 the
+    // clone costs no draw and the stream is what it was before it existed.
+    if (cfg.tlsf_p_clone_assumption > 0.0) {
+        std::vector<std::size_t> live;
+        for (std::size_t index = 0; index < spec.m_assume.size(); ++index) {
+            if (!spec.m_assume[index].m_removed) {
+                live.push_back(index);
+            }
+        }
+        if (!live.empty() &&
+            random_source.next_real() < cfg.tlsf_p_clone_assumption) {
+            tlsf::Specification cloned = spec;
+            const std::size_t choice = random_source.next_index(live.size());
+            cloned.m_assume.push_back(spec.m_assume[live[choice]]);
+            return cloned;
+        }
+    }
     if (spec.m_inputs.empty()) {
         // With no input there is nothing the environment alone can be obliged
         // to do, and every assumption expressible here would be one the system
@@ -453,6 +718,32 @@ std::vector<std::string> section_atom_pool(const tlsf::Specification& spec,
 
 }  // namespace
 
+Formula tlsf_monotone_rewrite(const Formula& formula,
+                              MonotoneDirection direction,
+                              const std::vector<std::string>& atoms,
+                              const RandomSource& random_source) {
+    assert(!atoms.empty());
+    std::vector<Polarity> polarities;
+    collect_polarities(formula, Polarity::Positive, polarities);
+    std::vector<std::size_t> sites;
+    for (std::size_t index = 0; index < polarities.size(); ++index) {
+        if (polarities[index] != Polarity::Indeterminate) {
+            sites.push_back(index);
+        }
+    }
+    if (sites.empty()) {
+        // Only reachable when the root itself is indeterminate, which it never
+        // is; a formula whose every node sits under a biconditional has no
+        // monotone move and is returned as it stands.
+        return formula;
+    }
+    const std::size_t site = random_source.next_index(sites.size());
+    std::size_t next = 0;
+    return rewrite_at_site(formula, Polarity::Positive, sites[site], next,
+                           direction == MonotoneDirection::Weaken, atoms,
+                           random_source);
+}
+
 tlsf::Specification tlsf_mutate(const tlsf::Specification& spec,
                                 const RandomSource& random_source,
                                 const Config& cfg) {
@@ -510,6 +801,35 @@ tlsf::Specification tlsf_mutate(const tlsf::Specification& spec,
     const Slot& slot = slots[slot_index];
 
     tlsf::SectionEntry& entry = (*slot.m_section)[slot.m_index];
+    // The monotone arm is offered before the temporal draw and short-circuits
+    // past it, so at p = 0 it costs no draw at all and the breeding stream is
+    // byte-identical to what it was before the arm existed -- the same
+    // discipline p_remove_guarantee follows above.
+    //
+    // It is safe in an initial condition without a special case: the rules
+    // that introduce a temporal operator fire only at a node that already
+    // carries one, and an initial condition has none.
+    if (cfg.tlsf_p_monotone > 0.0 &&
+        random_source.next_real() < cfg.tlsf_p_monotone) {
+        // A fair coin rather than a side-aligned direction. Repairing
+        // unrealizability does mean weakening the guarantee side and
+        // strengthening the assumption side, but a search that can only move
+        // that way cannot recover from an ancestor that weakened past the
+        // ideal, and implies_ideal is lost by overshooting as surely as by
+        // never arriving. What this arm is for is comparability -- the
+        // 2026-08-14 audit read best_relation as incomparable on 47.7% of
+        // counter's runs against AuRUS's 2.6% -- and both directions deliver
+        // that equally, leaving the fitness function to pick between them.
+        // AuRUS draws its two monotone visitors with equal probability for
+        // the same reason, which is why cfg.strengthen_assumptions is
+        // deliberately not read here.
+        const bool weaken = random_source.next_bool();
+        entry.m_formula = tlsf_monotone_rewrite(
+            entry.m_formula,
+            weaken ? MonotoneDirection::Weaken : MonotoneDirection::Strengthen,
+            pool, random_source);
+        return mutated;
+    }
     // An initial condition must stay propositional, so it takes the rewrite
     // that preserves the temporal skeleton — of which it has none — rather
     // than the one that introduces operators. The short circuit is deliberate:

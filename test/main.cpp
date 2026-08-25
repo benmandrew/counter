@@ -91,6 +91,10 @@ bool run_tlsf_suite(std::string_view suite_name) {
         run_tlsf_genetic_tests();
         return true;
     }
+    if (suite_name == "tlsf_monotone") {
+        run_tlsf_monotone_tests();
+        return true;
+    }
     if (suite_name == "tlsf_pipeline") {
         run_tlsf_pipeline_tests();
         return true;
@@ -309,6 +313,7 @@ int main(int argc, const char* const argv[]) {
             run_tlsf_mucs_tests();
             run_tlsf_guarantee_parts_tests();
             run_tlsf_genetic_tests();
+            run_tlsf_monotone_tests();
             run_tlsf_pipeline_tests();
             run_counter_driver_tests();
             run_realize_driver_tests();

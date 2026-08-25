@@ -1,7 +1,9 @@
 #include "config_io.hpp"
 
+#include <array>
 #include <chrono>
 #include <cstddef>
+#include <cstdint>
 #include <iostream>
 #include <map>
 #include <set>
@@ -116,10 +118,13 @@ const KeySpec& config_key_spec() {
                                    "p_add_assumption", "p_remove_guarantee",
                                    "p_conditional_assumption",
                                    "allow_output_assumptions"})},
-             {"tlsf", section({"repair_mode", "muc_max_iterations"},
-                              {{"mutation", section({"p_assumption",
-                                                     "p_temporal", "p_monotone",
-                                                     "p_clone_assumption"})}})},
+             {"tlsf",
+              section({"repair_mode", "muc_max_iterations"},
+                      {{"mutation",
+                        section({"p_assumption", "p_temporal", "p_monotone",
+                                 "p_clone_assumption", "max_assumption_width",
+                                 "p_union_assumption", "p_bare_assumption",
+                                 "p_remove_assumption", "p_burst_continue"})}})},
              {"model_counting", section({"default_bound", "metric"})},
              {"filters", section({"run_weakening", "run_implication",
                                   "run_vacuity", "run_well_separation"})},
@@ -286,24 +291,44 @@ void apply_mutation(const toml::table& tbl, Config& cfg) {
     }
 }
 
+// The [tlsf.mutation] probabilities differ only in their key and the member
+// they land on, so they are driven from a table rather than a branch each. Nine
+// near-identical branches read as complexity to clang-tidy, and each was
+// another chance to paste the wrong member name beside a key -- a mistake
+// nothing else here would catch, the types being identical.
+constexpr std::array<std::pair<const char*, double Config::*>, 8>
+    k_tlsf_mutation_probabilities{{
+        {"p_assumption", &Config::tlsf_p_assumption},
+        {"p_temporal", &Config::tlsf_p_temporal},
+        {"p_monotone", &Config::tlsf_p_monotone},
+        {"p_clone_assumption", &Config::tlsf_p_clone_assumption},
+        {"p_union_assumption", &Config::tlsf_p_union_assumption},
+        {"p_bare_assumption", &Config::tlsf_p_bare_assumption},
+        {"p_remove_assumption", &Config::tlsf_p_remove_assumption},
+        {"p_burst_continue", &Config::tlsf_p_burst_continue},
+    }};
+
+void apply_tlsf_mutation(const toml::table& mutation, Config& cfg) {
+    for (const auto& [key, member] : k_tlsf_mutation_probabilities) {
+        if (auto val = mutation[key].value<double>()) {
+            const std::string qualified = std::string("tlsf.mutation.") + key;
+            require_probability(*val, qualified.c_str());
+            cfg.*member = *val;
+        }
+    }
+    // The one key here that is a count rather than a probability.
+    if (auto val = mutation["max_assumption_width"].value<std::int64_t>()) {
+        if (*val < 1) {
+            throw std::runtime_error(
+                "tlsf.mutation.max_assumption_width must be at least 1");
+        }
+        cfg.tlsf_max_assumption_width = static_cast<std::size_t>(*val);
+    }
+}
+
 void apply_tlsf(const toml::table& tbl, Config& cfg) {
     if (const auto* mutation = tbl["mutation"].as_table()) {
-        if (auto val = (*mutation)["p_assumption"].value<double>()) {
-            require_probability(*val, "tlsf.mutation.p_assumption");
-            cfg.tlsf_p_assumption = *val;
-        }
-        if (auto val = (*mutation)["p_temporal"].value<double>()) {
-            require_probability(*val, "tlsf.mutation.p_temporal");
-            cfg.tlsf_p_temporal = *val;
-        }
-        if (auto val = (*mutation)["p_monotone"].value<double>()) {
-            require_probability(*val, "tlsf.mutation.p_monotone");
-            cfg.tlsf_p_monotone = *val;
-        }
-        if (auto val = (*mutation)["p_clone_assumption"].value<double>()) {
-            require_probability(*val, "tlsf.mutation.p_clone_assumption");
-            cfg.tlsf_p_clone_assumption = *val;
-        }
+        apply_tlsf_mutation(*mutation, cfg);
     }
     if (auto val = tbl["repair_mode"].value<std::string>()) {
         if (*val == "monolithic") {

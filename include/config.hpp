@@ -490,6 +490,137 @@ struct Config {
     /// drawn, so a zero never costs a draw. Falls back to the template when
     /// the ASSUME section holds nothing live to copy.
     double tlsf_p_clone_assumption = 0.25;
+
+    /// Widest disjunction `tlsf_add_assumption` may draw for the body of an
+    /// appended assumption: the body is a disjunction of between 1 and this
+    /// many *distinct* input literals, the width drawn uniformly.
+    ///
+    /// A single literal was all it could draw until 2026-08-25, which put a
+    /// class of ideal off the grammar rather than merely far from it. `lift`'s
+    /// ideal is `G F (b1 | b2 | b3)` over its three inputs and counter reached
+    /// it in 0 of 60 runs across the three arms of the 2026-08-23 campaign;
+    /// the atom-growth move in `mutate_atom_formula` widens an *existing*
+    /// atom, so it can only act after an assumption is in the population, and
+    /// an assumption that is wrong when appended is dominated before it can be
+    /// widened.
+    ///
+    /// At 1 no width is drawn, so the `RandomSource` stream is exactly what it
+    /// was before this existed and an archived campaign reproduces byte for
+    /// byte by writing `max_assumption_width = 1`. Values above the input
+    /// count are clamped to it, there being no fourth distinct literal to draw
+    /// from three inputs.
+    ///
+    /// It defaults to 1, its no-op value, and so does each of the four keys
+    /// below it. Every one of the five is argued from the corpus rather than
+    /// measured. Here the argument is that 3 is the width `lift` needs and
+    /// the widest the corpus's ideals reach in plain literals, and that is
+    /// the whole case for it. tlsf_p_monotone and tlsf_p_clone_assumption
+    /// shipped on exactly that footing in August 2026. The campaign that
+    /// tested them, `experiments/2026-08-23-monotone`, came back null, and
+    /// its pre-registered rule had to be overridden to keep them, which that
+    /// archive's `REPORT.md` records. Shipping five more the same way would
+    /// repeat that knowingly, so all five stay off until a campaign decides
+    /// them.
+    ///
+    /// Two consequences follow, both of them gains. No "Config vintage" entry
+    /// is owed for any of the five: every archived config omits all five keys
+    /// and, at these defaults, still means exactly what it meant. And each
+    /// key costs no `RandomSource` draw at its no-op value, so the shipped
+    /// binary's breeding stream is byte-identical to what it was before the
+    /// keys existed; `test/tlsf/assumption_tests.cpp` asserts that each of
+    /// the five draws only above that value.
+    ///
+    /// `experiments/assumption-reach` is the campaign that decides them, a
+    /// 3x2 cross whose arms state all five explicitly. Until it closes, the
+    /// defaults here are what the search does.
+    std::size_t tlsf_max_assumption_width = 1;
+
+    /// Probability that TLSF crossover unions a whole ASSUME conjunct from the
+    /// second parent into the offspring, instead of grafting a subformula.
+    ///
+    /// This is AuRUS's level-1 move, whose crossover unions conjunct subsets.
+    /// counter's graft draws one conjunct per side and writes the merge back
+    /// into the slot it came from, so a whole conjunct never crosses and an
+    /// assumption one parent has built stays with that parent. It is confined
+    /// to the assumption side: the guarantee side pairs by position with the
+    /// original, which is why deletion is tombstoned rather than erased, while
+    /// the assumption side already grows and `tlsf_syntactic_similarity` pairs
+    /// on the shorter side and divides by the longer.
+    ///
+    /// It propagates rather than constructs, so it earns its place beside
+    /// tlsf_max_assumption_width and not instead of it: a conjunct no
+    /// individual holds cannot be unioned from anywhere. On `lift`, whose
+    /// whole ASSUME section is `true`, it can do nothing at all.
+    ///
+    /// The probability is read before the `RandomSource` is touched, so at 0
+    /// it costs no draw. It defaults to 0, off, on the argument recorded at
+    /// tlsf_max_assumption_width.
+    double tlsf_p_union_assumption = 0.0;
+
+    /// Probability that an appended unconditional assumption is left as
+    /// `F body` rather than wrapped as `G F body`.
+    ///
+    /// Every appended assumption was G-wrapped until 2026-08-25, which made a
+    /// bare eventuality unreachable rather than unlikely. `examples/lily11`'s
+    /// whole ideal is `F req`, and `G F req` is strictly stronger, so no
+    /// rewriting of a G-wrapped assumption arrives at it; counter repairs that
+    /// family in 19 of 60 runs against AuRUS's 50.
+    ///
+    /// Drawn rather than substituted, the bare form being the weaker of the
+    /// two and so the harder to repair with. Read before the `RandomSource` is
+    /// touched, so at 0 it costs no draw. It defaults to 0, off, on the
+    /// argument recorded at tlsf_max_assumption_width.
+    double tlsf_p_bare_assumption = 0.0;
+
+    /// Probability that TLSF mutation deletes one live ASSUME conjunct, the
+    /// mirror of p_add_assumption.
+    ///
+    /// counter could append an assumption and clone one and never delete one,
+    /// while `p_remove_guarantee` has done the mirror job on the other side
+    /// since 2026-08-13; the asymmetry looks unintended rather than argued.
+    /// Five of the corpus's ideals replace an assumption rather than adding
+    /// beside it.
+    ///
+    /// Deleting an assumption strengthens what the system must achieve, so
+    /// this is the one assumption-side operator that can make a candidate less
+    /// realizable, and the value argued for it is the lowest of the five.
+    /// The conjunct is tombstoned rather than erased (see "Removable
+    /// guarantees"), and unlike the guarantee side there is no floor of one: a
+    /// specification that assumes nothing of its environment is meaningful.
+    ///
+    /// Read before the `RandomSource` is touched, so at 0 it costs no draw. It
+    /// defaults to 0, off, on the argument recorded at
+    /// tlsf_max_assumption_width.
+    double tlsf_p_remove_assumption = 0.0;
+
+    /// Continuation probability of a mutation burst: `tlsf_mutate` applies
+    /// `1 + Geometric(tlsf_p_burst_continue)` single mutations, capped at 8.
+    ///
+    /// A single mutation edits one slot, so an ideal needing several
+    /// coordinated edits is reachable only across as many generations with
+    /// every intermediate surviving selection, and where the intermediates are
+    /// worse than the parent the search cannot cross at all.
+    /// `examples/lily02/fixes/lilydemo05.tlsf` is two added assumptions and
+    /// four rewritten guarantees, six slots at once.
+    ///
+    /// Geometric rather than the power law of the fast-GA literature, which is
+    /// the right choice when the width a jump must cross is unknown; here it
+    /// is measured. Over the 40 ideals under `examples/` whose delta parses,
+    /// the edit width runs 0.475 at one slot, 0.200 at two, 0.200 at three and
+    /// 0.125 at four or more. `1 + Geometric(0.5)` puts 0.125 at four or more
+    /// and fits that at a KL of 0.066, against 0.163 for a power law at
+    /// \f$\beta = 1.5\f$, which would spend 0.245 of every mutation on a tail
+    /// the corpus needs half that much of -- and each surplus candidate costs
+    /// a scoring pass carrying a model count and a realizability query.
+    ///
+    /// At 0 no draw is taken and every mutation is single, which is what an
+    /// archived campaign reproduces at and what this key defaults to, off, on
+    /// the argument recorded at tlsf_max_assumption_width. The fit above
+    /// argues the value a campaign should cross the key at, and leaves the
+    /// operator off until one does. The cap of 8 is a backstop rather than a
+    /// parameter: it sits above the widest ideal the corpus holds, and
+    /// without it a continuation probability near 1 is an unbounded loop.
+    double tlsf_p_burst_continue = 0.0;
     /// TLSF repair strategy (see RepairMode). Muc mode caps its outer
     /// extract-repair-reintegrate loop at muc_max_iterations, so a spec whose
     /// core never becomes realizable ends the run without a repair rather than

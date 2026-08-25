@@ -1134,7 +1134,9 @@ PROFILES: dict[str, dict] = {
         # budget decision and is recorded in PLAN.md as one, not a quiet
         # narrowing of the corpus.
         "specs": ASSUMPTION_REACH_SPECS,
-        "seeds": list(range(8)),
+        # Twelve since the 2026-08-25 blind top-up; the campaign's first phase
+        # ran 0-7 and its second runs 8-11. See PLAN.md section 5.
+        "seeds": list(range(12)),
         "timeout_caps": {s: 7200 for s in ASSUMPTION_REACH_SPECS},
         "compare_timeout": 1800,
         "baseline_aliases": {},

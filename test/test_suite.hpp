@@ -51,4 +51,5 @@ void run_tlsf_mucs_tests();
 void run_tlsf_guarantee_parts_tests();
 void run_tlsf_genetic_tests();
 void run_tlsf_monotone_tests();
+void run_tlsf_assumption_tests();
 void run_tlsf_pipeline_tests();

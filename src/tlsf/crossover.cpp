@@ -1,5 +1,6 @@
 #include "tlsf/crossover.hpp"
 
+#include <algorithm>
 #include <array>
 #include <cstddef>
 #include <optional>
@@ -218,11 +219,69 @@ void cross_side(const std::vector<Slot>& targets, const DonorPools& pools,
     }
 }
 
+// Appends a live ASSUME conjunct of parent B that the offspring does not
+// already hold, and reports whether it did.
+//
+// This is AuRUS's level-1 move -- its crossover unions conjunct subsets -- and
+// counter's graft cannot express it. The graft draws one conjunct per side and
+// writes the merge back into the slot it came from, so a whole conjunct never
+// crosses and an assumption one parent has built stays with that parent. On
+// the guarantee side that restriction is load-bearing: slot i of a candidate
+// must keep descending from slot i of the original, which is why deletion is
+// tombstoned rather than erased. The assumption side carries no such
+// invariant. It already grows, by tlsf_add_assumption and by the clone, and
+// tlsf_syntactic_similarity pairs on min(size, size) and divides by max, so a
+// surplus conjunct scores zero rather than shifting what any other conjunct is
+// compared against.
+//
+// It propagates rather than constructs. The ideal assumption of a family is
+// reachable only if some individual has already built it, so this earns its
+// place beside the width draw in tlsf_add_assumption and not instead of it.
+//
+// A conjunct parent A already holds is not a donor: appending it would
+// duplicate rather than union, which is what the clone operator does and pays
+// for separately. Only ASSUME is drawn from, for the reason the clone gives --
+// an INITIALLY entry is an initial condition and a REQUIRE entry is lowered
+// under an implicit G, so moving either into ASSUME changes what it says.
+//
+// The probability is read before the RandomSource is touched, so at 0 this
+// costs no draw and the stream is what it was before it existed.
+bool union_assumption(tlsf::Specification& result,
+                      const tlsf::Specification& parent_b,
+                      const RandomSource& random_source, const Config& cfg) {
+    if (cfg.tlsf_p_union_assumption <= 0.0) {
+        return false;
+    }
+    std::vector<std::size_t> donors;
+    for (std::size_t index = 0; index < parent_b.m_assume.size(); ++index) {
+        const tlsf::SectionEntry& entry = parent_b.m_assume[index];
+        if (entry.m_removed) {
+            continue;
+        }
+        const bool held = std::any_of(
+            result.m_assume.begin(), result.m_assume.end(),
+            [&entry](const tlsf::SectionEntry& mine) {
+                return !mine.m_removed && mine.m_formula == entry.m_formula;
+            });
+        if (!held) {
+            donors.push_back(index);
+        }
+    }
+    if (donors.empty() ||
+        random_source.next_real() >= cfg.tlsf_p_union_assumption) {
+        return false;
+    }
+    const std::size_t choice = random_source.next_index(donors.size());
+    result.m_assume.push_back(parent_b.m_assume[donors[choice]]);
+    return true;
+}
+
 }  // namespace
 
 tlsf::Specification tlsf_crossover(const tlsf::Specification& parent_a,
                                    const tlsf::Specification& parent_b,
-                                   const RandomSource& random_source) {
+                                   const RandomSource& random_source,
+                                   const Config& cfg) {
     // Only the signals have to match. Section sizes need not: the offspring
     // keeps parent A's shape whatever parent B's is, since the merge is
     // written back into a slot of A. Requiring equal sizes, as index-for-index
@@ -233,9 +292,14 @@ tlsf::Specification tlsf_crossover(const tlsf::Specification& parent_a,
         return parent_a;
     }
     tlsf::Specification result = parent_a;
-    cross_side(live_slots(tlsf::mutable_assumption_sections_of(result)),
-               live_donors(tlsf::assumption_sections_of(parent_b)),
-               random_source);
+    // The union and the graft are alternatives on this side, not a pair: each
+    // is one recombination of the assumption side, and firing both would make
+    // a crossover that recombines it twice where every other side gets one.
+    if (!union_assumption(result, parent_b, random_source, cfg)) {
+        cross_side(live_slots(tlsf::mutable_assumption_sections_of(result)),
+                   live_donors(tlsf::assumption_sections_of(parent_b)),
+                   random_source);
+    }
     cross_side(live_slots(tlsf::mutable_guarantee_sections_of(result)),
                live_donors(tlsf::guarantee_sections_of(parent_b)),
                random_source);

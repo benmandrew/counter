@@ -17,8 +17,11 @@
 # MacOS Finder files.
 .DS_Store
 
-# Python compile output.
+# Python compile output. The directory as well as the files: running either
+# suite under scripts/ creates it, and *.pyc alone leaves it showing as
+# untracked in every subsequent git status.
 *.pyc
+__pycache__/
 
 # See Utilities/Sphinx/tutorial_archive.cmake
 /Help/_generated

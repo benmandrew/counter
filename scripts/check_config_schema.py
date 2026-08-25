@@ -11,6 +11,11 @@ ties them together:
     ``additionalProperties: false``, so a key missing here is flagged as an
     error in the editor even though the binary accepts it.
   * ``example-config.toml`` -- the annotated template users copy from.
+  * ``DEFAULTS`` in ``scripts/gen_configs.py`` -- the harness's own Python
+    mirror of the built-in defaults, which ``--pin-vintage`` writes verbatim
+    into generated configs. A stale entry there is a wrong value baked into a
+    campaign archive by the very mechanism that exists to record a moved
+    default.
 
 Drift between them is silent and has happened: ``nsga2-replicate`` was added to
 the parser and the docs but not to the schema enum. This compares all three and
@@ -22,6 +27,7 @@ mean such a key cannot reach the schema or the template unnoticed.
 """
 
 import argparse
+import importlib.util
 import json
 import re
 import sys
@@ -292,6 +298,105 @@ def as_comparable(value):
         return text
 
 
+# --- scripts/gen_configs.py --------------------------------------------------
+
+# gen_configs.DEFAULTS key -> the Config member it mirrors. The harness's own
+# spelling is not always the TOML path's last component (default_bound,
+# p_assumption), so the table is written out rather than derived. A key in
+# DEFAULTS that is in neither this table nor GEN_CONFIGS_EXEMPT fails the check:
+# that is what stops the next drift, and it is also where a harness-only knob
+# with no C++ counterpart has to be declared rather than silently skipped.
+GEN_CONFIGS_FIELDS = {
+    "generations": "generations",
+    "population_size": "population_size",
+    "crossover_rate": "crossover_rate",
+    "mutation_rate": "mutation_rate",
+    "elitism_rate": "elitism_rate",
+    "p_trigger": "p_trigger",
+    "p_response": "p_response",
+    "p_timing": "p_timing",
+    "p_add_assumption": "p_add_assumption",
+    "p_remove_guarantee": "p_remove_guarantee",
+    "default_bound": "default_model_counting_bound",
+    "run_implication": "run_implication_filter",
+    "run_well_separation": "run_well_separation_filter",
+    "allow_output_assumptions": "allow_output_assumptions",
+    "accumulate_repairs": "accumulate_repairs",
+    "black_timeout_ms": "black_timeout",
+    "status_grading": "status_grading",
+    "mrs_admission_order": "mrs_admission_order",
+    "repair_mode": "repair_mode",
+    "p_assumption": "tlsf_p_assumption",
+    "p_temporal": "tlsf_p_temporal",
+    "max_concurrent_realizability": "max_concurrent_realizability",
+}
+
+# Entries that deliberately do not track config.hpp, each with the reason it
+# must not be "corrected" into agreement. The first three are results-CSV key
+# columns and the next three are emitted unconditionally, so following the
+# binary would put every new row at odds with roughly 225k archived ones; the
+# last four are sentinels make_toml reads as "emit nothing", not mirrors of a
+# C++ value at all.
+GEN_CONFIGS_EXEMPT = {
+    "run_weakening":
+        "pinned True: `weakening` is a merge_experiments.KEY_FIELDS column and "
+        "flat configs are attributed to wkon",
+    "metric":
+        "pinned 'direct': `metric` is a KEY_FIELDS column and flat configs are "
+        "attributed to LEGACY_METRIC",
+    "selection_scheme":
+        "pinned 'nsga2-truncate': the scheme is the config directory name read "
+        "back into the `selection` KEY_FIELDS column",
+    "weight_syntactic":
+        "pinned 0.33 and emitted unconditionally, so every archived config "
+        "states it; moving it breaks comparability with every past grid",
+    "weight_semantic": "pinned 0.33 and emitted unconditionally (see "
+                       "weight_syntactic)",
+    "weight_status": "pinned 0.33 and emitted unconditionally (see "
+                     "weight_syntactic)",
+    "ltlsynt_timeout_ms":
+        "0 is make_toml's 'emit only when positive' sentinel, not a mirror of "
+        "config.hpp's 10000 ms",
+    "ltl2tgba_timeout_ms":
+        "0 is make_toml's 'emit only when positive' sentinel, not a mirror of "
+        "config.hpp's 60000 ms",
+    "max_scoring_failure_rate":
+        "0.0 is make_toml's 'emit only when positive' sentinel, not a mirror of "
+        "config.hpp's 0.15",
+    "dashboard":
+        "False is make_toml's 'emit only when true' sentinel; it coincides with "
+        "config.hpp rather than tracking it",
+}
+
+
+def gen_configs_defaults(root):
+    """Import gen_configs.py for its DEFAULTS table alone.
+
+    Loaded by path rather than by name, so --root selects the checkout being
+    checked. The module's top level is nothing but tables and function
+    definitions -- main() sits behind the ``__main__`` guard -- so importing it
+    runs no campaign logic and writes no files.
+    """
+    path = root / "scripts" / "gen_configs.py"
+    spec = importlib.util.spec_from_file_location("_gen_configs_for_check", path)
+    if spec is None or spec.loader is None:
+        raise ValueError(f"{path}: cannot be loaded as a module")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return dict(module.DEFAULTS)
+
+
+def as_enum(value):
+    """Normalise an enum spelling so 'Nsga2Truncate' compares to 'nsga2-truncate'.
+
+    The C++ initialiser reads back as ``Scope::Value`` while the harness spells
+    the same value the way the TOML parser accepts it. Case and separators are
+    the whole difference, so both sides collapse to lowercase alphanumerics.
+    """
+    text = str(value).rsplit("::", 1)[-1]
+    return re.sub(r"[^a-z0-9]", "", text.lower())
+
+
 # --- checks ------------------------------------------------------------------
 
 
@@ -332,9 +437,16 @@ def main():
         except ValueError as exc:
             spec_error = f"{cpp}: could not read config_key_spec(): {exc}"
 
+    gen_defaults, gen_error = (None, None)
+    try:
+        gen_defaults = gen_configs_defaults(root)
+    except (OSError, ValueError, AttributeError, ImportError) as exc:
+        gen_error = f"{root / 'scripts' / 'gen_configs.py'}: {exc}"
+
     fatal = [
         e
-        for e in (cpp_error, hpp_error, schema_error, example_error, spec_error)
+        for e in (cpp_error, hpp_error, schema_error, example_error, spec_error,
+                  gen_error)
         if e
     ]
     if fatal:
@@ -345,6 +457,7 @@ def main():
 
     assert cpp_source is not None and schema is not None and example is not None
     assert from_parser is not None and hpp_source is not None
+    assert gen_defaults is not None
 
     from_schema = schema_keys(schema["properties"])
     from_example = toml_keys(example)
@@ -398,6 +511,54 @@ def main():
                 f"defaults {field} to {want!r}. The template must show the "
                 f"built-in default."
             )
+
+    # gen_configs.DEFAULTS is the fourth description, and the one whose drift is
+    # least visible: a generated config states a key only where a sweep
+    # overrides it, so a stale entry shows up neither in the config nor in the
+    # run. --pin-vintage is the exception -- it writes these values out
+    # verbatim, which is how a stale mirror reaches an archive through the
+    # mechanism meant to protect it. Every entry must equal the config.hpp
+    # initialiser behind it unless it is listed as a deliberate divergence.
+    for key in sorted(gen_defaults):
+        if key in GEN_CONFIGS_EXEMPT:
+            continue
+        field = GEN_CONFIGS_FIELDS.get(key)
+        if field is None:
+            errors.append(
+                f"check_config_schema.py: gen_configs.DEFAULTS['{key}'] is in "
+                f"neither GEN_CONFIGS_FIELDS nor GEN_CONFIGS_EXEMPT, so its "
+                f"value goes unchecked. Map it to the Config member it mirrors, "
+                f"or add it to GEN_CONFIGS_EXEMPT with the reason it must not "
+                f"track config.hpp."
+            )
+            continue
+        if field not in defaults:
+            errors.append(
+                f"config.hpp: no initialiser found for '{field}', which backs "
+                f"gen_configs.DEFAULTS['{key}']."
+            )
+            continue
+        raw = defaults[field]
+        want, got = as_comparable(raw), as_comparable(gen_defaults[key])
+        if isinstance(want, str) or isinstance(got, str):
+            want, got = as_enum(raw), as_enum(gen_defaults[key])
+        if want != got:
+            errors.append(
+                f"gen_configs.py: DEFAULTS['{key}'] is "
+                f"{gen_defaults[key]!r}, but config.hpp defaults {field} to "
+                f"{raw!r}. DEFAULTS mirrors the binary; correct it, or add "
+                f"'{key}' to GEN_CONFIGS_EXEMPT with the reason it diverges."
+            )
+
+    # Keys named by GEN_CONFIGS_FIELDS or GEN_CONFIGS_EXEMPT that DEFAULTS no
+    # longer holds: a stale exemption reads as a live one and would let a real
+    # divergence in under an old key's name.
+    for key in sorted((set(GEN_CONFIGS_FIELDS) | set(GEN_CONFIGS_EXEMPT))
+                      - set(gen_defaults)):
+        errors.append(
+            f"check_config_schema.py: '{key}' is mapped or exempted here but is "
+            f"not in gen_configs.DEFAULTS any more. Drop the stale entry."
+        )
 
     # An open object defeats the point of the schema: it would validate any key.
     for offender in open_objects(schema):
@@ -461,7 +622,9 @@ def main():
         return 1
 
     print(f"Config key parity: {len(from_parser)} keys agree across "
-          f"config_io.cpp, {schema_path.name}, and {example_path.name}.")
+          f"config_io.cpp, {schema_path.name}, and {example_path.name}; "
+          f"{len(GEN_CONFIGS_FIELDS)} gen_configs.DEFAULTS entries match "
+          f"config.hpp ({len(GEN_CONFIGS_EXEMPT)} exempt).")
     return 0
 
 

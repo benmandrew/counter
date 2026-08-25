@@ -50,11 +50,13 @@ Usage:
 """
 
 import argparse
-import csv
 import math
 import random
 import statistics
 from pathlib import Path
+
+from analysis_lib import (load_rows, mcnemar_exact, num_or_zero, pair_up,
+                          signed_ranks)
 
 # PLAN.md section 7.
 QUALITY_MARGIN = -0.05          # criterion 1, pooled CI lower bound must exceed
@@ -98,42 +100,20 @@ def arm_of(row) -> str:
 
 
 def load(path) -> list:
-    rows = list(csv.DictReader(path.open()))
+    rows = load_rows(path)
     for row in rows:
         row["arm"] = arm_of(row)
     return rows
 
 
-def number(value) -> float:
-    try:
-        return float(value)
-    except (TypeError, ValueError):
-        return 0.0
-
-
-def pair_up(rows, left, right):
-    """Pair (spec, seed) across two arms, and say what was dropped.
-
-    Returns the complete pairs plus counts of the two symmetric exclusions:
-    a pair missing a side entirely, and a pair with a timed-out comparison on
-    either side.
-    """
-    by_key = {}
-    for row in rows:
-        if row["arm"] not in (left, right):
-            continue
-        by_key.setdefault((row["spec"], int(row["seed"])), {})[row["arm"]] = row
-    complete = {k: v for k, v in by_key.items() if len(v) == 2}
-    missing = len(by_key) - len(complete)
-    kept = {k: v for k, v in complete.items()
-            if all(v[a]["compare_timed_out"] != "1" for a in (left, right))}
-    return ([(k, kept[k]) for k in sorted(kept)],
-            missing, len(complete) - len(kept))
-
-
 def paired(pairs, left, right, column):
-    """Paired differences, candidate minus comparator, in file order."""
-    return [number(p[left][column]) - number(p[right][column])
+    """Paired differences, candidate minus comparator, in file order.
+
+    A blank or unparseable cell reads as 0.0, not nan: every column paired here
+    is a count or a score whose absence on a completed run means "none", and a
+    nan would take the arm's whole mean with it.
+    """
+    return [num_or_zero(p[left][column]) - num_or_zero(p[right][column])
             for _, p in pairs]
 
 
@@ -156,20 +136,6 @@ def bootstrap_ci(values, seed=BOOTSTRAP_SEED, resamples=BOOTSTRAP_RESAMPLES):
     lo = means[int(0.025 * resamples)]
     hi = means[min(resamples - 1, int(0.975 * resamples))]
     return (lo, hi)
-
-
-def binom_cdf(k, n, p=0.5) -> float:
-    return sum(math.comb(n, i) * p ** i * (1 - p) ** (n - i)
-               for i in range(0, k + 1))
-
-
-def mcnemar_exact(b, c) -> float:
-    """Two-sided exact McNemar on the discordant counts."""
-    n = b + c
-    if n == 0:
-        return 1.0
-    lower = min(b, c)
-    return min(1.0, 2.0 * binom_cdf(lower, n))
 
 
 def holm(pvalues) -> list:
@@ -217,25 +183,10 @@ def wilcoxon_signed_rank(differences) -> float:
     share a mid-rank and the variance carries the tie correction. n here is in
     the hundreds, so the approximation is not the loose part of the analysis.
     """
-    values = [d for d in differences if d != 0.0]
-    n = len(values)
+    w_plus, ranks, tie_term = signed_ranks(differences)
+    n = len(ranks)
     if n == 0:
         return 1.0
-    order = sorted(range(n), key=lambda i: abs(values[i]))
-    ranks = [0.0] * n
-    tie_term = 0.0
-    i = 0
-    while i < n:
-        j = i
-        while j + 1 < n and abs(values[order[j + 1]]) == abs(values[order[i]]):
-            j += 1
-        mid = (i + j) / 2.0 + 1.0
-        for k in range(i, j + 1):
-            ranks[order[k]] = mid
-        size = j - i + 1
-        tie_term += size ** 3 - size
-        i = j + 1
-    w_plus = sum(r for r, v in zip(ranks, values) if v > 0)
     mean = n * (n + 1) / 4.0
     var = n * (n + 1) * (2 * n + 1) / 24.0 - tie_term / 48.0
     if var <= 0.0:
@@ -268,8 +219,8 @@ class Contrast:
         self.per_spec = {}
         for spec in self.specs:
             subset = [p for k, p in self.pairs if k[0] == spec]
-            diffs = [number(p[candidate]["implies_ideal"])
-                     - number(p[comparator]["implies_ideal"]) for p in subset]
+            diffs = [num_or_zero(p[candidate]["implies_ideal"])
+                     - num_or_zero(p[comparator]["implies_ideal"]) for p in subset]
             mean = statistics.fmean(diffs) if diffs else 0.0
             lo, hi = bootstrap_ci(diffs, BOOTSTRAP_SEED + seed_offset)
             b = sum(1 for p in subset
@@ -298,10 +249,10 @@ class Contrast:
                            sum(c for _, c in strata))
         self.odds, self.odds_lo, self.odds_hi = cmh_odds_ratio(strata)
 
-        ratios = [number(p[candidate]["wall_time_s"])
-                  / number(p[comparator]["wall_time_s"])
+        ratios = [num_or_zero(p[candidate]["wall_time_s"])
+                  / num_or_zero(p[comparator]["wall_time_s"])
                   for _, p in self.pairs
-                  if number(p[comparator]["wall_time_s"]) > 0]
+                  if num_or_zero(p[comparator]["wall_time_s"]) > 0]
         self.wall_ratios = ratios
         self.wall_median = statistics.median(ratios) if ratios else float("nan")
         self.wall_p = wilcoxon_signed_rank([math.log(r) for r in ratios if r > 0])
@@ -337,9 +288,9 @@ def report_arms(rows, label) -> None:
             continue
         print(f"  {arm:3s} {len(subset):5d} "
               f"{statistics.fmean([float(r['found_repair'] == '1') for r in subset]):13.3f} "
-              f"{statistics.fmean([number(r['implies_ideal']) for r in subset]):14.4f} "
-              f"{statistics.fmean([number(r['n_repairs']) for r in subset]):10.3f} "
-              f"{statistics.fmean([number(r['wall_time_s']) for r in subset]):9.1f}"
+              f"{statistics.fmean([num_or_zero(r['implies_ideal']) for r in subset]):14.4f} "
+              f"{statistics.fmean([num_or_zero(r['n_repairs']) for r in subset]):10.3f} "
+              f"{statistics.fmean([num_or_zero(r['wall_time_s']) for r in subset]):9.1f}"
               f"   {ARM_LABEL[arm]}")
 
 

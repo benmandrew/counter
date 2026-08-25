@@ -2,9 +2,36 @@
 
 Scripts for running parameter sweep experiments and analysing the results.
 
+## What is in here
+
+The sections below cover the harness in depth. This table is the index, so that a script with no section is still findable and its absence from one is not read as disuse.
+
+| Script | Role |
+|---|---|
+| `campaign.py` | The operating surface for a campaign: `stage`, `start`, `enqueue`, `tick`, `status`, `queue`, `collect`, `describe`. Everything that acts on a campaign goes through it. See `CLAUDE.md` for the state each verb leaves behind. |
+| `run_experiments.py` | Runs one phase of a sweep on one host and appends rows to the results CSV. Vendored into every campaign archive. |
+| `gen_configs.py` | Writes the config tree a sweep runs over. Vendored likewise. |
+| `merge_experiments.py` | Joins per-host CSVs on `KEY_FIELDS`, keeping one row per key. Vendored likewise. |
+| `check_config_schema.py` | Lint, wired into CI and the pre-commit hook. Holds `config_io.cpp`, `config-schema.json`, `example-config.toml` and `gen_configs.DEFAULTS` against `include/config.hpp`. |
+| `coverage_badge.py` | Measures coverage and writes `docs/coverage.svg`. `--check` re-measures and fails on drift; CI runs it. |
+| `recompare.py` | Re-runs `compare` over repairs already on disk and rewrites the relation columns. The standing pass whenever an ideal changes. |
+| `check_well_separated.py` | Standalone `ltlsynt` well-separation check that bypasses counter's cached verdict. Also imported as a library by `aurus_validate.py`. |
+| `aurus_campaign.py` | Drives the AuRUS baseline arm of a head-to-head. |
+| `aurus_validate.py` | Re-checks AuRUS's claimed repairs with `realize` and scores them with `compare`. Run it before any AuRUS analysis. |
+| `analysis_lib.py` | Statistics and CSV helpers shared by the analysers. Read its header before vendoring an analyser — importing it means the analyser is no longer standalone. |
+| `analyse_aurus_h2h.py` | Scores a counter-versus-AuRUS head-to-head, and reads other campaigns against that archived reference. |
+| `analyse_selection_default.py` | Scores the selection-default campaign. Carries a `--self-test` over synthetic rows. |
+| `analyse.ipynb` | Generic notebook over a sweep's `results.csv`; `RESULTS_CSV` overrides the path. |
+| `drop_censored_rows.py` | Deletes timeout-censored rows and their run directories so a resume re-runs them under a looser cap. Used once, on the replicate recap. |
+| `maximality_sweep.py` | Runs the `maximal` binary over both arms of a head-to-head. Hard-wired to two directory layouts. |
+| `test_campaign.py` | Covers `campaign.py`. No pytest; run it directly. |
+| `test_experiment_paths.py` | Covers the factor-path parsers and the resume-key invariants in `run_experiments.py` and `gen_configs.py`. |
+
+A campaign's own `experiments/<campaign>/scripts/` holds verbatim copies of the scripts that ran it, so the archive reproduces without the git history. Those copies are frozen at the commit named in the campaign's `PROVENANCE.json`; the versions here are the maintained ones, and the two are expected to diverge.
+
 ## Prerequisites
 
-- Python 3.11+ (3.10 works but requires the `tomli` backport, installed automatically)
+- Python 3.11+, because `check_config_schema.py` imports stdlib `tomllib` with no fallback. `campaign.py` itself runs on 3.10, having its own TOML parser for the lab hosts (see below).
 - The `counter` and `compare` binaries built in release mode (see below)
 
 ## 1. Build the project
@@ -34,8 +61,8 @@ Dependencies installed:
 | `scipy` | Kruskal-Wallis and chi-square tests |
 | `matplotlib` / `seaborn` | Plotting |
 | `scikit-posthocs` | Post-hoc Dunn test |
+| `numpy` | Array arithmetic in `analyse.ipynb` |
 | `notebook` / `ipykernel` | Running `analyse.ipynb` |
-| `tomli` | TOML parsing on Python < 3.11 |
 
 ## 3. Generate experiment configs
 
@@ -735,8 +762,13 @@ at the commit its `PROVENANCE.json` names.
 python scripts/test_campaign.py
 ```
 
-A plain script that exits non-zero on the first failure, the same convention
-as `test_experiment_paths.py`. It runs against temporary fixture checkouts and
+A plain script with no pytest dependency, like `test_experiment_paths.py`. It
+diverges from that suite in one way: it records every failure and prints them
+together at the end, exiting non-zero after the whole run rather than at the
+first one, so read the closing summary rather than the first `FAIL` line.
+Exiting early hid 79 of its 227 assertions behind a single ambient-state
+failure, which is the reason for the difference. It runs against temporary
+fixture checkouts and
 never touches a lab machine: the remote protocol is exercised against captured
 marker output, `collect` against two throwaway checkouts, and the stage and
 queue paths against temporary git repositories with `COUNTER_RUNNER_CMD`

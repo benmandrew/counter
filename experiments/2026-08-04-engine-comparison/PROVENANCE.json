@@ -77,7 +77,7 @@
         "source_commit": null,
         "blob": "1d808b5b3707444533677840519fea2d56b03d1a",
         "reachable_from_main": true,
-        "basis": "recorded: written on 2026-08-05 to read this campaign, and landing at scripts/analyse_engines.py in the same commit that adds this directory, so the vendored copy and the maintained one start identical. Every figure under results was produced by it, from the CSVs in this directory. Reproduce with `python3 scripts/analyse_engines.py --dir experiments/2026-08-04-engine-comparison/av2 --dir experiments/2026-08-04-engine-comparison/av3`.",
+        "basis": "recorded: written on 2026-08-05 to read this campaign, and landing at scripts/analyse_engines.py in the same commit that adds this directory, so the vendored copy and the maintained one start identical. Every figure under results was produced by it, from the CSVs in this directory. The top-level scripts/analyse_engines.py was deleted on 2026-08-22 as an unreferenced byte-identical duplicate of this vendored copy, which is now the only one; reproduce with `python3 experiments/2026-08-04-engine-comparison/scripts/analyse_engines.py --dir experiments/2026-08-04-engine-comparison/av2 --dir experiments/2026-08-04-engine-comparison/av3`.",
         "held_by_tag": null
       }
     }

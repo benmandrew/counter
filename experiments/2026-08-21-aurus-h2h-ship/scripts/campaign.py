@@ -115,35 +115,6 @@ REMOTE_PYTHON = "python3"
 # need quoting through ssh and would hide its own parse errors as empty output.
 MARK = "##"
 
-# A remote script's fillable slots, which is also what render_script checks a
-# template against. Deliberately narrow -- upper case, digits and underscores
-# between two @ -- so it cannot match an address or a path a value happens to
-# carry; only the template is ever scanned, never a substituted value.
-PLACEHOLDER_RE = re.compile(r"@[A-Z0-9_]+@")
-
-
-def render_script(template: str, **subs: str) -> str:
-    """Fill a remote script template's ``@NAME@`` slots.
-
-    ``@M@`` is the marker, is implicit, and goes last: a value spliced in --
-    the stage script's configs block -- carries markers of its own, and
-    substituting the marker first would leave those literal.
-
-    A slot the caller does not name raises rather than shipping. The remote
-    side is a shell script, so an unsubstituted ``@ROOT@`` is not an obvious
-    placeholder over there but a bare word, and `cd @ROOT@` on a lab machine
-    fails somewhere other than where the mistake is.
-    """
-    named = {f"@{key}@" for key in subs} | {"@M@"}
-    unfilled = sorted(set(PLACEHOLDER_RE.findall(template)) - named)
-    if unfilled:
-        raise ValueError(f"unsubstituted placeholder(s) {' '.join(unfilled)} "
-                         f"in remote script template")
-    for key, value in subs.items():
-        template = template.replace(f"@{key}@", value)
-    return template.replace("@M@", MARK)
-
-
 # The runner, as a command line rather than an import: tick shells it in the
 # checkout it is standing in, and COUNTER_RUNNER_CMD points it at a stub so the
 # launch paths can be tested without launching a campaign. REMOTE_PYTHON for
@@ -186,21 +157,6 @@ def source_path(host: str) -> str:
 
 # -- Remote inventory ---------------------------------------------------------
 
-# The queue dump, shared verbatim by the inventory and the stage probe. Both
-# want the same thing -- every entry's name and its whole body -- and both put
-# it last, so an entry's own text cannot be read as one of the sections above
-# it. That means it also carries the closing ``@M@END``, and a template ending
-# in it needs nothing after.
-QUEUE_BLOCK = r"""echo "@M@QUEUE"
-find @QUEUE@ -maxdepth 1 -type f -name '*.toml' 2>/dev/null | sort |
-while IFS= read -r q; do
-  echo "@M@QFILE $q"
-  cat "$q"
-  echo "@M@ENDQFILE"
-done
-echo "@M@END"
-"""
-
 INVENTORY_SCRIPT = r"""
 cd @ROOT@ 2>/dev/null || { echo "@M@ERR not a directory: @ROOT@"; exit 3; }
 echo "@M@PS"
@@ -219,7 +175,15 @@ while IFS= read -r m; do
   cat "$m"
   echo "@M@ENDFILE"
 done
-""" + QUEUE_BLOCK
+echo "@M@QUEUE"
+find @QUEUE@ -maxdepth 1 -type f -name '*.toml' 2>/dev/null | sort |
+while IFS= read -r q; do
+  echo "@M@QFILE $q"
+  cat "$q"
+  echo "@M@ENDQFILE"
+done
+echo "@M@END"
+"""
 # The manifest sweep goes through `find`, not a glob, because the lab login
 # shell is zsh: its default NOMATCH aborts the whole script where a glob matches
 # nothing, so on a host with no manifest every section after the loop vanishes.
@@ -228,9 +192,10 @@ done
 
 
 def inventory_script(root: str) -> str:
-    return render_script(INVENTORY_SCRIPT,
-                         ROOT=shlex.quote(root),
-                         QUEUE=shlex.quote(QUEUE_DIR))
+    return (INVENTORY_SCRIPT
+            .replace("@ROOT@", shlex.quote(root))
+            .replace("@QUEUE@", shlex.quote(QUEUE_DIR))
+            .replace("@M@", MARK))
 
 
 def plan_args(campaign: dict) -> str:
@@ -1023,10 +988,11 @@ def measure_source(host: str, csv_name: str, result_dir: str | None) -> dict:
     """Size of what sits on a host, without transferring any of it."""
     csv_path = f"experiments/{csv_name}"
     dir_path = f"experiments/{result_dir}" if result_dir else "/nonexistent"
-    script = render_script(MEASURE_SCRIPT,
-                           ROOT=shlex.quote(source_path(host)),
-                           CSV=shlex.quote(csv_path),
-                           DIR=shlex.quote(dir_path))
+    script = (MEASURE_SCRIPT
+              .replace("@ROOT@", shlex.quote(source_path(host)))
+              .replace("@CSV@", shlex.quote(csv_path))
+              .replace("@DIR@", shlex.quote(dir_path))
+              .replace("@M@", MARK))
     text, err = run_shell(host, script, timeout=MEASURE_TIMEOUT_S)
     out: dict = {"host": host, "error": err, "timed_out": is_timeout(err)}
     for line in (text or "").splitlines():
@@ -2175,17 +2141,26 @@ echo "@M@PS"
 ps -o comm=,args= -u "$(id -un)" 2>/dev/null
 echo "@M@BIN"
 if [ -x @BIN@ ]; then @BIN@ --version 2>/dev/null; fi
-""" + QUEUE_BLOCK
+echo "@M@QUEUE"
+find @QUEUE@ -maxdepth 1 -type f -name '*.toml' 2>/dev/null | sort |
+while IFS= read -r q; do
+  echo "@M@QFILE $q"
+  cat "$q"
+  echo "@M@ENDQFILE"
+done
+echo "@M@END"
+"""
 # The queue block goes last, so an entry's own text cannot be read as one of
 # the sections above it. It is here rather than in a second round trip because
 # start has to know whether a tick is about to run the same campaign.
 
 
 def stage_probe_script(root: str) -> str:
-    return render_script(STAGE_PROBE_SCRIPT,
-                         ROOT=shlex.quote(root),
-                         BIN=shlex.quote("./" + COUNTER_BINARY),
-                         QUEUE=shlex.quote(QUEUE_DIR))
+    return (STAGE_PROBE_SCRIPT
+            .replace("@ROOT@", shlex.quote(root))
+            .replace("@BIN@", shlex.quote("./" + COUNTER_BINARY))
+            .replace("@QUEUE@", shlex.quote(QUEUE_DIR))
+            .replace("@M@", MARK))
 
 
 def parse_sections(text: str) -> dict:
@@ -2396,21 +2371,17 @@ def configs_block(configs: str | None, config_dirs: list) -> str:
 def stage_apply_script(root: str, branch: str, sha: str, build: str,
                        configs: str | None, config_dirs: list,
                        force: bool) -> str:
-    # CONFIGS first, and the marker last inside render_script: the configs
-    # block is itself a script fragment carrying markers of its own.
-    # BUILD and BIN go in unquoted -- the first is a command line, the second
-    # is spliced into `./@BIN@`.
-    return render_script(
-        STAGE_APPLY_SCRIPT,
-        CONFIGS=configs_block(configs, config_dirs),
-        ROOT=shlex.quote(root),
-        BRANCH=shlex.quote(branch),
-        SHA=shlex.quote(sha),
-        BUILD=build,
-        BIN=COUNTER_BINARY,
-        # Never `--` here: `git checkout -- -B x` reads -B as a path.
-        CHECKOUT_FLAGS="-f" if force else "",
-        FORCE="1" if force else "0")
+    return (STAGE_APPLY_SCRIPT
+            .replace("@CONFIGS@", configs_block(configs, config_dirs))
+            .replace("@ROOT@", shlex.quote(root))
+            .replace("@BRANCH@", shlex.quote(branch))
+            .replace("@SHA@", shlex.quote(sha))
+            .replace("@BUILD@", build)
+            .replace("@BIN@", COUNTER_BINARY)
+            # Never `--` here: `git checkout -- -B x` reads -B as a path.
+            .replace("@CHECKOUT_FLAGS@", "-f" if force else "")
+            .replace("@FORCE@", "1" if force else "0")
+            .replace("@M@", MARK))
 
 
 STAGE_HEADERS = ["HOST", "BRANCH", "HEAD", "BINARY", "RESULT"]
@@ -2588,11 +2559,12 @@ echo "@M@END"
 
 
 def launch_script(root: str, chain: str, log: str) -> str:
-    return render_script(LAUNCH_SCRIPT,
-                         ROOT=shlex.quote(root),
-                         LOGDIR=shlex.quote(str(Path(log).parent)),
-                         CHAIN=shlex.quote(chain),
-                         LOG=shlex.quote(log))
+    return (LAUNCH_SCRIPT
+            .replace("@ROOT@", shlex.quote(root))
+            .replace("@LOGDIR@", shlex.quote(str(Path(log).parent)))
+            .replace("@CHAIN@", shlex.quote(chain))
+            .replace("@LOG@", shlex.quote(log))
+            .replace("@M@", MARK))
 
 
 def pending_queue_entries(probe: HostProbe, name: str) -> list:
@@ -2907,10 +2879,10 @@ def cmd_enqueue(args: argparse.Namespace) -> int:
     rows, ok = [], True
     for host in hosts:
         root = source_path(host) if host != LOCAL else str(REPO_ROOT)
-        text, err = run_shell(host, render_script(
-            ENQUEUE_SCRIPT,
-            ROOT=shlex.quote(root),
-            QUEUE=shlex.quote(QUEUE_DIR)))
+        text, err = run_shell(host, ENQUEUE_SCRIPT
+                              .replace("@ROOT@", shlex.quote(root))
+                              .replace("@QUEUE@", shlex.quote(QUEUE_DIR))
+                              .replace("@M@", MARK))
         sections = parse_sections(text or "")
         if err or "err" in sections or "end" not in sections:
             ok = False
@@ -2934,12 +2906,12 @@ def cmd_enqueue(args: argparse.Namespace) -> int:
             continue
         path = f"{QUEUE_DIR}/{name}"
         encoded = base64.b64encode(body.encode()).decode()
-        text, err = run_shell(host, render_script(
-            WRITE_ENTRY_SCRIPT,
-            ROOT=shlex.quote(root),
-            QUEUE=shlex.quote(QUEUE_DIR),
-            PATH=shlex.quote(path),
-            B64=shlex.quote(encoded)))
+        text, err = run_shell(host, WRITE_ENTRY_SCRIPT
+                              .replace("@ROOT@", shlex.quote(root))
+                              .replace("@QUEUE@", shlex.quote(QUEUE_DIR))
+                              .replace("@PATH@", shlex.quote(path))
+                              .replace("@B64@", shlex.quote(encoded))
+                              .replace("@M@", MARK))
         sections = parse_sections(text or "")
         if err or "err" in sections or "end" not in sections:
             ok = False
@@ -3487,11 +3459,12 @@ def cmd_requeue(args: argparse.Namespace) -> int:
     entry["last_error"] = ""
     log_line(entry, "requeued by hand")
     encoded = base64.b64encode(dump_toml(entry).encode()).decode()
-    text, err = run_shell(host, render_script(
-        REQUEUE_SCRIPT,
-        ROOT=shlex.quote(root),
-        PATH=shlex.quote(f"{QUEUE_DIR}/{args.entry}"),
-        B64=shlex.quote(encoded)))
+    text, err = run_shell(host, REQUEUE_SCRIPT
+                          .replace("@ROOT@", shlex.quote(root))
+                          .replace("@PATH@", shlex.quote(
+                              f"{QUEUE_DIR}/{args.entry}"))
+                          .replace("@B64@", shlex.quote(encoded))
+                          .replace("@M@", MARK))
     sections = parse_sections(text or "")
     if err or "err" in sections or "end" not in sections:
         print(f"error: {' '.join(sections.get('err', [])) or err}")
@@ -3675,11 +3648,6 @@ def build_parser() -> argparse.ArgumentParser:
 
     cron = sub.add_parser("cron", help="Print the crontab line for a host.")
     cron.add_argument("--host", choices=[*HOSTS, LOCAL], required=True)
-    # Deliberately a no-op: cmd_cron prints whether or not it is passed, and
-    # nothing reads print_only. It stays accepted because `cron --print` is the
-    # invocation this module's own docstring, scripts/CLAUDE.md and
-    # scripts/README.md all document, and dropping the flag would make the
-    # documented line -- and anybody's shell history -- exit 2 instead.
     cron.add_argument("--print", dest="print_only", action="store_true",
                       help="Print the line. Printing is all this verb does; "
                            "nothing is installed anywhere.")

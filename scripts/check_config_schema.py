@@ -328,6 +328,8 @@ GEN_CONFIGS_FIELDS = {
     "repair_mode": "repair_mode",
     "p_assumption": "tlsf_p_assumption",
     "p_temporal": "tlsf_p_temporal",
+    "p_monotone": "tlsf_p_monotone",
+    "p_clone_assumption": "tlsf_p_clone_assumption",
     "max_concurrent_realizability": "max_concurrent_realizability",
 }
 

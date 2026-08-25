@@ -1094,6 +1094,34 @@ PROFILES: dict[str, dict] = {
         # jobs = 1 this campaign is about 31 hours per host against roughly 4.
         "default_jobs": 8,
     },
+    # The follow-up to `aurus-h2h-ship`, on feat/monotone-operators. Same
+    # corpus, same seeds, same 7200 s caps, same jobs count: that campaign's
+    # archived rows are this one's outer control, and a paired (spec, seed) read
+    # needs every one of those to match. Three arms rather than one because the
+    # branch carries three independent changes -- see TLSF_SWEEP_T in
+    # gen_configs.py for which contrast attributes which.
+    "monotone": {
+        "schemes": ["nsga2-apportion"],
+        "weakenings": ["wkoff"],
+        "metrics": ["log"],
+        "repair_modes": None,
+        "sweeps": ["T"],
+        "levels": {"T": ["monooff", "monoon", "monoship"]},
+        "specs": H2H_TLSF_READY,
+        "seeds": list(range(20)),
+        "timeout_caps": {s: 7200 for s in H2H_TLSF_READY},
+        # 1800 s, matching `aurus-h2h-ship`. The accumulator is on here too, and
+        # a compare timeout costs the row's implies_ideal silently.
+        "compare_timeout": 1800,
+        # No aliasing. None of the three arms is the grid baseline, and aliasing
+        # one onto the archived control would import rows from a different
+        # binary under this campaign's key.
+        "baseline_aliases": {},
+        "configs_dir": EXPERIMENTS_DIR / "configs-monotone",
+        "results_dir": EXPERIMENTS_DIR / "results-monotone",
+        "results_csv": EXPERIMENTS_DIR / "results-monotone.csv",
+        "default_jobs": 8,
+    },
     # nsga2 vs nsga2-replicate on FRETISH, at the gen40/pop1000 operating point
     # the cj-large and metric campaigns used — so the control arm is checkable
     # against their rows rather than being taken on trust. Three arms:

@@ -49,6 +49,14 @@ This is a budget decision taken in advance and recorded as one. Anything that re
 
 ## 5. Endpoint and decision rule
 
+**Amended 2026-08-25, before any result was read.** The seed count rises from eight to twelve. The campaign was already running when the decision was taken, at 27 of 552 rows on av2 and 29 of 552 on av3, and no `implies_ideal` value from this campaign had been read by anyone at that moment. That ordering is the whole justification. Extending a design after seeing its result is *optional stopping*, which inflates the false-positive rate a pre-registration exists to hold down. Extending it blind is a design amendment and costs nothing. The amendment is recorded here, before any result exists, so a later reader can check the claim rather than take it on trust.
+
+The endpoint, the primary contrast, the three outcomes and the regression gate are unchanged, and only the counts move. Twelve seeds over the three target families give 36 paired cases rather than 24. The six-discordant-pair floor stays where it was, being a property of the exact test (2/2^6 = 0.031) rather than of the sample size. A smaller true effect now suffices to produce six of them. The operators must repair a sixth of target runs to register, 6 of 36, where eight seeds required a quarter. The regression gate over the other 20 families grows from 160 paired runs to 240.
+
+The top-up is a second phase in `campaign.toml` carrying its own `hosts` table (av2 takes seeds 8 to 9, av3 takes 10 to 11), rather than a change to the campaign-level split, which would repoint seeds already written against the old one. Seeds 8 to 11 are new, so the phase resumes rather than re-runs, `(spec, seed)` being in the resume key. A queued second entry waits on its own, since a tick refuses to stage a host with a live `counter` process.
+
+*The two paragraphs below are the original registration, unedited. Their seed count and paired-case count are superseded by the amendment above; everything else in them stands.*
+
 **The primary contrast is `reachoff-s` to `reach-s`, confined to `gyro-var1`, `gyro-var2` and `lift`.** That is 24 paired cases at eight seeds. The endpoint is per-run `implies_ideal`, scored by `compare` against `examples/<spec>/fixes`, read with an exact two-sided *McNemar test* over the discordant pairs at alpha 0.05.
 
 The power arithmetic is stated here rather than derived afterwards. Exact McNemar needs six discordant pairs all pointing one way before any p under 0.05 exists at all: 2/2^6 = 0.031, where five discordant pairs put the floor at 2/2^5 = 0.0625. The control arm sits at zero on two of the three target families and at 8 of 60 on the third, so a discordant pair is close to being a `reach` success counted on its own. Eight seeds over three families therefore require the operators to repair a quarter of target runs before the test can register anything. Six seeds would require a third and four seeds a half. That is why the pilot is eight seeds and not fewer.
@@ -93,6 +101,8 @@ Yield, as the count of runs emitting at least one repair. The timeout rate at th
 ## 9. Cost
 
 One phase, six arms inside it, 23 families at eight seeds is 1,104 runs, 552 per host. The estimate is 14.9 hours per host, taken from the 2026-08-23 campaign's per-family mean wall times with the three large arms costing eight times the three small ones and the two saturating families removed. The campaign fits a 36-hour window with margin rather than filling it.
+
+**Amended 2026-08-25.** The twelve-seed design is 1,656 runs, 828 per host. The top-up phase carries the four added seeds alone, 552 runs at 276 per host, and adds roughly 7.5 hours to each host on the same per-family means. The two figures are 14.9 hours per host for the original eight seeds and 22.4 hours per host for all twelve, against a budget of 36 hours of exclusive access to both machines. The margin narrows and holds.
 
 ## 10. Provenance
 

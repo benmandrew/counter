@@ -32,4 +32,21 @@ configs = "python3 scripts/gen_configs.py --tlsf --schemes nsga2-apportion --met
 # large arms costing eight times the three small ones and the two families that
 # saturate the cap excluded. The estimate is the reason the campaign fits 36
 # hours with margin rather than filling it.
-phases = [ { profile = "assumption-reach", jobs = 8 } ]
+# Two phases, and the second is a seed top-up decided on 2026-08-25 while the
+# first was running, at 27 and 29 rows of 552 per host and before any
+# implies_ideal value had been read by anyone. That order is the whole point:
+# extending a design after seeing its result is optional stopping and inflates
+# the false-positive rate the pre-registration exists to hold down, whereas a
+# blind extension is a design amendment and costs nothing. PLAN.md section 5
+# records the amendment, its timing, and the power arithmetic it replaces.
+#
+# The second phase carries its own hosts table rather than moving the
+# campaign-level split, which the harness allows for exactly this: the two
+# phases are the same paths at different sample sizes, and a phase that moved
+# the top-level range would repoint seeds already written against the old one.
+# Seeds 8 to 11 are new, so the phase resumes rather than re-runs -- (spec,
+# seed) is in the resume key.
+phases = [
+  { profile = "assumption-reach", jobs = 8 },
+  { profile = "assumption-reach", jobs = 8, hosts = { av2 = "8-9", av3 = "10-11" } },
+]

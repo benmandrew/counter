@@ -33,10 +33,13 @@ mutation_rate   = 1.0  # per offspring, unlike the per-requirement rates in [mut
 # throughput matters more than how many repairs come back.
 selection_scheme = "nsga2-apportion"
 # Report every candidate that passed the output gate in any generation, not only
-# the ones the final population still holds. Off by default: it changes what a
-# run emits, and it costs a gate sweep per generation on the TLSF path (free on
-# the FRETISH one, which already asks). Inert under [tlsf] repair_mode = "muc".
-accumulate_repairs = false
+# the ones the final population still holds. On since 2026-08-25, on 200 paired
+# TLSF runs: implies_ideal gained on 6 pairs and lost on none (McNemar
+# p = 0.0312) for a median paired wall ratio of 1.034. That campaign made it a
+# candidate default subject to a FRETISH replication that has not been run.
+# Free on the FRETISH path, one gate sweep per generation on the TLSF one;
+# inert under [tlsf] repair_mode = "muc".
+accumulate_repairs = true
 
 [fitness]
 weight_syntactic = 0.2

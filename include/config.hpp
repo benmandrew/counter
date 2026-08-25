@@ -294,13 +294,28 @@ struct Config {
     /// otherwise discarded, even though repair quality is judged existentially
     /// over what the run emits, so a larger pool can only help it.
     ///
-    /// Off by default because it changes what a run emits, and an archived
-    /// campaign config that omits the key would otherwise silently mean
-    /// something it did not (see the config vintage note in
-    /// experiments/README.md). It costs nothing to switch on for the FRETISH
-    /// path, whose per-generation "real" counter already asks the gate; on the
-    /// TLSF path, which asks it once after evolution, it buys the extra repairs
-    /// with one gate sweep per generation.
+    /// On by default since 2026-08-25, on the `2026-08-19-accumulator`
+    /// campaign: over 200 paired TLSF runs, 100 (spec, seed) pairs per arm, it
+    /// gained `implies_ideal` on 6 pairs and lost it on none, at exact McNemar
+    /// p = 0.0312, and yield moved from 79 to 81 of 100. The median paired wall
+    /// ratio was 1.034 (mean 1.055, max 1.51), under the bound of 1.25 fixed
+    /// before launch, and both arms timed out on 16 runs. It costs nothing on
+    /// the FRETISH path, whose per-generation "real" counter already asks the
+    /// gate; on the TLSF path, which asks it once after evolution, it buys the
+    /// extra repairs with one gate sweep per generation.
+    ///
+    /// That campaign recorded the key as a *candidate* default, subject to the
+    /// FRETISH replication its plan names, and that replication has not been
+    /// run. The default is flipped on TLSF evidence alone, as a departure from
+    /// the campaign's own pre-registered condition, and the replication remains
+    /// owed. Two further limits sit on the same evidence. Its 240s per-spec cap
+    /// falls between the aurus-h2h corpus's p75 of 161s and its p90 of 684s, so
+    /// it cannot say whether the advantage grows with the budget; and four
+    /// seeds per family carry no per-family claim, the primary drawing its
+    /// power from the 200 paired runs instead.
+    ///
+    /// An archived campaign config that omits the key therefore means something
+    /// it did not; see the config vintage note in experiments/README.md.
     ///
     /// Inert under `[tlsf] repair_mode = "muc"`, which evolves cores rather
     /// than whole specifications.
@@ -313,7 +328,7 @@ struct Config {
     /// the run's filtered output, which stays `repair_N.json` /
     /// `repair_N.tlsf` alone. The directory is created on the first write, so
     /// with the key off nothing is created.
-    bool accumulate_repairs = false;
+    bool accumulate_repairs = true;
     double selection_rate = 0.5;
     /// Elitism: the top elitism_rate fraction of the population carries over
     /// into the next generation verbatim, bypassing crossover, mutation, and

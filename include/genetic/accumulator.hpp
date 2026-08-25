@@ -20,9 +20,9 @@
 /// Process-wide record of what the accumulator added to a run's output.
 struct AccumulatorStats {
     /// Specifications the accumulator contributed that the final population's
-    /// own collection did not already hold. Zero when
-    /// `Config::accumulate_repairs` is off, and also when every accumulated
-    /// repair happened to survive into the last generation.
+    /// own collection did not already hold. Zero when every accumulated repair
+    /// happened to survive into the last generation, and zero whenever
+    /// `Config::accumulate_repairs` is turned off.
     inline static std::size_t n_contributed{0};
 };
 
@@ -45,8 +45,9 @@ struct AccumulatorStats {
 /// accumulated files as repairs is reading candidates the final filters may
 /// well have rejected.
 ///
-/// Nothing touches the filesystem before the first write, so a run with
-/// `Config::accumulate_repairs` off creates neither the directory nor a file.
+/// Nothing touches the filesystem before the first write, so neither the
+/// directory nor a file exists until a candidate is accumulated, and a run with
+/// `Config::accumulate_repairs` turned off creates neither at all.
 template <typename Spec>
 class AccumulatedRepairWriter {
    public:

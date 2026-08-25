@@ -179,13 +179,14 @@ DEFAULTS: dict = {
     "run_well_separation": False,
     "allow_output_assumptions": True,
     # Report every gate-passing candidate of every generation rather than only
-    # the final population's. Off in the binary, and emitted into [genetic] only
-    # when a sweep overrides it (see make_toml), so every existing grid stays
-    # byte-identical; TLSF sweep N crosses it. Sweep N states it on both arms
-    # rather than letting the control inherit silence, so neither of its levels
-    # is exposed to a later default move -- the crossing "Config vintage" in
-    # experiments/README.md records for four other keys.
-    "accumulate_repairs": False,
+    # the final population's. On in the binary since 2026-08-25, and emitted
+    # into [genetic] only when a sweep overrides it (see make_toml), so every
+    # existing grid stays byte-identical; TLSF sweep N crosses it. Sweep N
+    # states it on both arms rather than letting the control inherit silence,
+    # which is why that campaign is the one archive the move did not reinterpret
+    # -- the exposure "Config vintage" in experiments/README.md records for
+    # every other archive here.
+    "accumulate_repairs": True,
     "black_timeout_ms": 1000,
     "repair_mode": "monolithic",
     # Mirrors include/config.hpp, which moved to "mrs" on the 2026-08-11

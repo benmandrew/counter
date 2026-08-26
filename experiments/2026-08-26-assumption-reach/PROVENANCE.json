@@ -35,8 +35,16 @@
     "short": "2f2e260",
     "branch": "feat/assumption-construction",
     "subject": "feat(tlsf): five operators for assumption reach and coordinated edits",
-    "reachable_from_main": true,
-    "reachable_from_main_note": "Reachable once the branch's pull request merges. The branch merges rather than being split into reconstructed pull requests, so no provenance/* tag is needed; see provenance/replicate-campaign for the case where one is."
+    "reachable_from_main": false,
+    "reachable_from_main_note": "The branch was rebased onto main on 2026-08-26, after PR #145 closed the manifest gap, so 2f2e260 was rewritten and the same content reached main as 3a10401. 2f2e260 is therefore not an ancestor of main and never will be, the position 2026-07-31-replicate sits in for a different reason.",
+    "held_by_tag": "provenance/assumption-reach",
+    "held_by_tag_note": "The annotated tag points at 8b3cb23, the pre-rebase branch tip, which holds 2f2e260, 0510b31 and 8b3cb23 all reachable. Never delete it: without it they are dangling objects that git gc collects and every sha this file names stops resolving.",
+    "post_rebase_equivalents": {
+      "2f2e260": "3a10401",
+      "0510b31": "62af3ab",
+      "8b3cb23": "1593957",
+      "note": "Same content, fresh shas. The pre-rebase shas are kept throughout this file because they are facts about the run: the results CSV stamps 0510b31 and 8b3cb23 into its own commit column, and repointing them would falsify that record."
+    }
   },
   "binary_commit": {
     "sha": "0510b313306eafbc91c884d608b342366857107d",
@@ -45,7 +53,7 @@
     "second_short": "8b3cb23",
     "dirty": "0 on every row",
     "source": "counter --version, read by run_experiments.py at startup and stamped onto every row",
-    "rows_agree": "Rows carry two commit values: 0510b31 for seeds 0-7 and 8b3cb23 for the top-up seeds 8-11. The diff between them touches PLAN.md, campaign.toml and scripts/run_experiments.py and no file under src/, include/ or test/, so both halves came from an identical binary and the seeds pair across the split.",
+    "rows_agree": "Rows carry two commit values: 0510b31 for seeds 0-7 and 8b3cb23 for the top-up seeds 8-11. The diff between them touches PLAN.md, campaign.toml and scripts/run_experiments.py and no file under src/, include/ or test/, so both halves came from an identical binary and the seeds pair across the split. Both shas were rewritten by the 2026-08-26 rebase and are held by provenance/assumption-reach; they are not repointed, the CSV's own commit column naming them.",
     "rescored_at": null
   },
   "hosts": {
@@ -411,7 +419,7 @@
   "reproduce": "Check out 2f2e260 (or 0510b31 for the registered profile), build the release preset, and drive experiments/2026-08-26-assumption-reach/scripts/run_experiments.py --profile assumption-reach with the seed range campaign.toml gives each host. The sweep is TLSF_SWEEP_U in the vendored gen_configs.py. The vendored copies are the only route: p_union_assumption, TLSF_SWEEP_U and the assumption-reach profile were all removed from the tree in the same pull request that closed this campaign, so the checkout's own scripts/ can no longer generate these arms and a current binary rejects the key.",
   "vendored_scripts": {
     "source_commit": "8b3cb235010ba8c744031a58c5cd9a54e42025e2",
-    "note": "Verbatim copies, verified byte-identical against the source commit with git hash-object. analyse_assumption_reach.py was written after the campaign to read the merged CSV and ran nothing, so it is not a driver copy.",
+    "note": "Verbatim copies, verified byte-identical against the source commit with git hash-object. analyse_assumption_reach.py was written after the campaign to read the merged CSV and ran nothing, so it is not a driver copy. The source commit 8b3cb23 was rewritten by the 2026-08-26 rebase to 1593957. The blob shas verify against either, blobs being content-addressed and the files unchanged, but the commit resolves only through provenance/assumption-reach.",
     "gen_configs.py": {
       "blob": "05a21ccd29bda973ed63d1312a0e2b96e4058a8f"
     },

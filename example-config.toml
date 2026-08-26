@@ -85,6 +85,27 @@ p_monotone   = 0.25
 # an existing one instead of building from the template, which emits at most
 # seven nodes where the assumption-shaped ideals run to thirty.
 p_clone_assumption = 0.25
+# The four keys below stand at their no-op values. The campaign that measured
+# them (experiments/2026-08-26-assumption-reach) read null on its registered
+# primary, so each stays off. At these values the RNG stream is what it was
+# before the keys existed, and no archived config changes meaning.
+#
+# Widest disjunction an appended assumption's body may be: between 1 and this
+# many distinct input literals. 1 draws no width, which is the no-op. Clamped
+# to the input count.
+max_assumption_width = 1
+# Probability of leaving an appended assumption as `F body` rather than
+# `G F body`. lily11's whole ideal is a bare `F req`, which no G-wrapped
+# assumption rewrites into. 0 is the no-op.
+p_bare_assumption = 0.0
+# Probability of deleting one live ASSUME conjunct -- the mirror of
+# p_add_assumption, and the one assumption-side move that can make a candidate
+# less realizable. 0 is the no-op.
+p_remove_assumption = 0.0
+# Mutation applies 1 + Geometric(p) edits, capped at 8, so an ideal needing
+# several coordinated slots is reachable without crossing a fitness valley one
+# slot at a time. 0 makes every mutation single, which is the no-op.
+p_burst_continue = 0.0
 
 [model_counting]
 default_bound = 20

@@ -220,15 +220,16 @@ DEFAULTS: dict = {
     # silent one -- reproducing such a campaign means writing both keys to 0.
     "p_monotone": 0.25,
     "p_clone_assumption": 0.25,
-    # The 2026-08-25 assumption-reach keys (see config.hpp): a width for the
-    # disjunctive body tlsf_add_assumption draws, a bare-F form for an appended
-    # assumption, an assumption removal and a mutation burst. All four default
-    # to their no-op value in the binary, so a campaign archived before
-    # 2026-08-25 that omits them means exactly what it always meant and no
-    # "Config vintage" entry is owed. A fifth key, p_union_assumption, was
-    # removed rather than kept at its no-op; a config that still sets it is
-    # rejected, so reproduce such a campaign from its vendored scripts/.
+    # The 2026-08-25 assumption-reach pair (see config.hpp): a width for the
+    # disjunctive body tlsf_add_assumption draws, and the probability that
+    # crossover unions a whole ASSUME conjunct from the second parent. Both
+    # default on in the binary, so every campaign archived before 2026-08-25
+    # ran without either and cannot state so -- another "Config vintage" entry
+    # in experiments/README.md. Reproducing one means writing
+    # max_assumption_width = 1 and p_union_assumption = 0.0 by hand; at those
+    # values neither costs an RNG draw and the stream is exact.
     "max_assumption_width": 1,
+    "p_union_assumption": 0.0,
     "p_bare_assumption": 0.0,
     "p_remove_assumption": 0.0,
     "p_burst_continue": 0.0,
@@ -342,6 +343,8 @@ def make_toml(overrides: dict, defaults: dict = DEFAULTS) -> str:
         if "p_clone_assumption" in overrides else []) + (
         [f"max_assumption_width = {d['max_assumption_width']}"]
         if "max_assumption_width" in overrides else []) + (
+        [f"p_union_assumption = {_fmt(d['p_union_assumption'])}"]
+        if "p_union_assumption" in overrides else []) + (
         [f"p_bare_assumption = {_fmt(d['p_bare_assumption'])}"]
         if "p_bare_assumption" in overrides else []) + (
         [f"p_remove_assumption = {_fmt(d['p_remove_assumption'])}"]
@@ -350,7 +353,7 @@ def make_toml(overrides: dict, defaults: dict = DEFAULTS) -> str:
         if "p_burst_continue" in overrides else [])
         if overrides.keys() & {"p_assumption", "p_temporal",
                                "p_monotone", "p_clone_assumption",
-                               "max_assumption_width",
+                               "max_assumption_width", "p_union_assumption",
                                "p_bare_assumption", "p_remove_assumption",
                                "p_burst_continue"}
         else []) + [
@@ -752,14 +755,48 @@ TLSF_SWEEP_T: list[tuple[str, dict]] = [
                   "elitism_rate": 0.0, "accumulate_repairs": True}),
 ]
 
-# Sweep U is retired. It crossed the 2026-08-25 assumption-reach operators
-# against search size, and two of its three operator levels set
-# [tlsf.mutation] p_union_assumption; that key is gone -- the union crossover
-# it armed cannot reach what it was written for -- so neither `reach` nor
-# `reachburst` is expressible and the sweep cannot be generated at all.
-# `experiments/2026-08-26-assumption-reach` is the only record of what ran, and
-# it reproduces from its vendored per-campaign scripts/ at the commit its
-# PROVENANCE.json names, as sweeps C, O and V do.
+# Sweep U: the 2026-08-25 assumption-reach operators against search size.
+#
+# Six levels enumerating a 3x2 cross explicitly, rather than two sweeps the
+# harness would have to cross for us. Every level states every key it depends
+# on, including the two it shares with the search-size factor, so no arm
+# inherits a value from whatever the binary defaults to when the campaign runs
+# -- the failure mode "Config vintage" in experiments/README.md exists for.
+#
+# The operator factor has three levels rather than two because the burst is a
+# different kind of change from the other four: those widen what a single
+# mutation can build, the burst changes how many mutations one step applies.
+# Separating them makes the burst attributable against `reach` rather than
+# bundled into one on/off arm.
+#
+# `off` pins all five at their no-op values. At those values none of them draws
+# from the RandomSource, so that arm's stream is exactly a binary without any
+# of the keys -- which is what makes it a control rather than an approximation.
+#
+# The four operator keys of `reach` are still bundled with each other, and
+# nothing here attributes anything to one of them alone; the 2^4 is owed. That
+# is sweep T's defect repeated knowingly, and it is tolerable here for a reason
+# it was not there: the corpus separates them for free. lily11's ideal is a
+# bare `F req`, reachable only through p_bare_assumption; lift's is a
+# disjunction of three inputs, reachable only through max_assumption_width;
+# and lily02's lilydemo05 is six coordinated slots, reachable only through the
+# burst. A per-family read is informative even though the sweep is not.
+_REACH_OFF = {"max_assumption_width": 1, "p_bare_assumption": 0.0,
+              "p_remove_assumption": 0.0, "p_union_assumption": 0.0,
+              "p_burst_continue": 0.0}
+_REACH_ON = {"max_assumption_width": 3, "p_bare_assumption": 0.25,
+             "p_remove_assumption": 0.05, "p_union_assumption": 0.25,
+             "p_burst_continue": 0.0}
+_REACH_BURST = dict(_REACH_ON, p_burst_continue=0.5)
+_SMALL = {"generations": 10, "population_size": 200}
+_LARGE = {"generations": 40, "population_size": 400}
+
+TLSF_SWEEP_U: list[tuple[str, dict]] = [
+    (f"{name}-{size_name}", {**ops, **size, "accumulate_repairs": True})
+    for size_name, size in (("s", _SMALL), ("l", _LARGE))
+    for name, ops in (("reachoff", _REACH_OFF), ("reach", _REACH_ON),
+                      ("reachburst", _REACH_BURST))
+]
 
 TLSF_SWEEPS: list[tuple[str, list]] = [
     ("A", TLSF_SWEEP_A),
@@ -773,6 +810,7 @@ TLSF_SWEEPS: list[tuple[str, list]] = [
     ("G", TLSF_SWEEP_G),
     ("N", TLSF_SWEEP_N),
     ("T", TLSF_SWEEP_T),
+    ("U", TLSF_SWEEP_U),
     # The compute-matched control, on the same terms as the FRETISH grid's S:
     # TLSF_SWEEP_R is SWEEP_R, so make_sweep_s already emits the right levels
     # and main() rebuilds this entry from --compute-match-factor whichever table

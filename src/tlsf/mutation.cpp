@@ -1,5 +1,6 @@
 #include "tlsf/mutation.hpp"
 
+#include <algorithm>
 #include <cassert>
 #include <cstddef>
 #include <cstdint>
@@ -328,6 +329,72 @@ Formula draw_literal(const std::vector<std::string>& pool,
                : atom;
 }
 
+// The body of an appended assumption, drawn from a small grammar rather than
+// emitted from one template:
+//
+//     term := [F] (literal & ... & literal)      1..w literals
+//     body := term | ... | term                  1..w terms
+//
+// A single literal was all this could draw until 2026-08-25, which put a class
+// of ideal off the grammar rather than merely far from it. The corpus wants
+// both connectives and wants them nested. examples/lift needs
+// `G F (b1 | b2 | b3)`, a disjunction of literals. examples/humanoid-503 needs
+// `G F (!m0 & !m1 & m2 & !button)`, a conjunction of four. examples/gyro-var2
+// needs a disjunction of five terms, three of them conjunctive triples and two
+// of those under F. No sequence of draws reached any of them: the atom-growth
+// move in mutate_atom_formula grafts onto an *existing* atom, so it can widen a
+// body only once the assumption is in the population, and an assumption that is
+// wrong when appended is dominated before it can be widened.
+//
+// Distinct atoms within a term, drawn without replacement, so a term cannot
+// contradict itself into `false` or repeat a literal into a no-op. Across terms
+// the pool is redrawn, gyro's ideal disjoining two conjunctions over the same
+// three signals.
+//
+// At width 1 no width is drawn and no F is drawn, so the RandomSource stream is
+// exactly what it was before this existed and an archived campaign reproduces
+// byte for byte by writing max_assumption_width = 1.
+Formula draw_assumption_term(const std::vector<std::string>& inputs,
+                             const RandomSource& random_source,
+                             std::size_t ceiling) {
+    const std::size_t width = 1 + random_source.next_index(ceiling);
+    std::vector<std::string> pool = inputs;
+    Formula term = Formula::make_atom("true");
+    for (std::size_t drawn = 0; drawn < width; ++drawn) {
+        const std::size_t choice = random_source.next_index(pool.size());
+        const Formula atom = Formula::make_atom(pool[choice]);
+        const Formula literal =
+            random_source.next_bool()
+                ? Formula::make_unary(Formula::Kind::Not, atom)
+                : atom;
+        pool.erase(pool.begin() + static_cast<std::ptrdiff_t>(choice));
+        term = drawn == 0
+                   ? literal
+                   : Formula::make_binary(Formula::Kind::And, term, literal);
+    }
+    return random_source.next_bool()
+               ? Formula::make_unary(Formula::Kind::Eventually, term)
+               : term;
+}
+
+Formula draw_assumption_body(const std::vector<std::string>& inputs,
+                             const RandomSource& random_source,
+                             const Config& cfg) {
+    const std::size_t ceiling =
+        std::min(cfg.tlsf_max_assumption_width, inputs.size());
+    if (ceiling <= 1) {
+        return draw_literal(inputs, random_source);
+    }
+    const std::size_t terms = 1 + random_source.next_index(ceiling);
+    Formula body = draw_assumption_term(inputs, random_source, ceiling);
+    for (std::size_t drawn = 1; drawn < terms; ++drawn) {
+        const Formula next =
+            draw_assumption_term(inputs, random_source, ceiling);
+        body = Formula::make_binary(Formula::Kind::Or, body, next);
+    }
+    return body;
+}
+
 // Whether replacing a subformula by a logically weaker one weakens the whole
 // formula (Positive) or strengthens it (Negative). Not flips the polarity, so
 // does the antecedent of an Implies, and a child of an Iff has neither: a
@@ -637,11 +704,27 @@ tlsf::Specification tlsf_add_assumption(const tlsf::Specification& spec,
         return spec;
     }
     tlsf::Specification mutated = spec;
-    const Formula body = draw_literal(spec.m_inputs, random_source);
+    const Formula body =
+        draw_assumption_body(spec.m_inputs, random_source, cfg);
     if (random_source.next_real() >= cfg.p_conditional_assumption) {
-        mutated.m_assume.emplace_back(Formula::make_unary(
-            Formula::Kind::Globally,
-            Formula::make_unary(Formula::Kind::Eventually, body)));
+        // `F body` as well as `G F body`. Every appended assumption was
+        // wrapped in G until 2026-08-25, which made a bare eventuality
+        // unreachable rather than unlikely: examples/lily11's whole ideal is
+        // `F req`, and `G F req` is strictly stronger, so no amount of
+        // rewriting a G-wrapped assumption arrives at it. The bare form is the
+        // weaker assumption of the two, so it constrains the environment less
+        // and is the harder of the pair to repair with -- which is why it is
+        // drawn rather than substituted.
+        //
+        // Read before the RandomSource is touched, so at 0 it costs no draw.
+        const Formula fairness =
+            Formula::make_unary(Formula::Kind::Eventually, body);
+        const bool bare =
+            cfg.tlsf_p_bare_assumption > 0.0 &&
+            random_source.next_real() < cfg.tlsf_p_bare_assumption;
+        mutated.m_assume.emplace_back(
+            bare ? fairness
+                 : Formula::make_unary(Formula::Kind::Globally, fairness));
         return mutated;
     }
     std::vector<std::string> guard_pool = spec.m_inputs;
@@ -663,6 +746,42 @@ tlsf::Specification tlsf_add_assumption(const tlsf::Specification& spec,
     mutated.m_assume.emplace_back(Formula::make_unary(
         Formula::Kind::Globally,
         Formula::make_binary(Formula::Kind::Implies, guard, consequent)));
+    return mutated;
+}
+
+// Deletes one live ASSUME conjunct, the mirror of tlsf_add_assumption.
+//
+// counter could append an assumption and clone one and never delete one, while
+// p_remove_guarantee has done the mirror job on the other side since
+// 2026-08-13. The asymmetry looks unintended rather than argued: five of the
+// corpus's ideals replace an assumption rather than adding beside it, and a
+// specification whose ASSUME section is wrong cannot be repaired by growing it.
+//
+// Deleting an assumption *strengthens* what the system must achieve, so this
+// is the one assumption-side operator that can make a candidate less
+// realizable. That is the point of having it -- an assumption the search added
+// and then needs gone is otherwise permanent -- but it is why the probability
+// defaults low.
+//
+// Tombstoned rather than erased, for the reason "Removable guarantees" gives:
+// every comparison pairs specifications by position, so a shifted section
+// would score slot i against the original's slot i+1. Unlike the guarantee
+// side there is no floor of one: a specification with no assumptions at all is
+// meaningful, being one that assumes nothing of its environment.
+tlsf::Specification tlsf_remove_assumption(const tlsf::Specification& spec,
+                                           const RandomSource& random_source) {
+    std::vector<std::size_t> live;
+    for (std::size_t index = 0; index < spec.m_assume.size(); ++index) {
+        if (!spec.m_assume[index].m_removed) {
+            live.push_back(index);
+        }
+    }
+    if (live.empty()) {
+        return spec;
+    }
+    tlsf::Specification mutated = spec;
+    const std::size_t choice = random_source.next_index(live.size());
+    mutated.m_assume[live[choice]].m_removed = true;
     return mutated;
 }
 
@@ -744,9 +863,10 @@ Formula tlsf_monotone_rewrite(const Formula& formula,
                            random_source);
 }
 
-tlsf::Specification tlsf_mutate(const tlsf::Specification& spec,
-                                const RandomSource& random_source,
-                                const Config& cfg) {
+// One mutation. tlsf_mutate below applies a burst of these.
+tlsf::Specification tlsf_mutate_once(const tlsf::Specification& spec,
+                                     const RandomSource& random_source,
+                                     const Config& cfg) {
     // Low-probability structural action: add a new environment assumption.
     // Available whenever the assumption atom pool is non-empty: inputs, plus
     // outputs when allow_output_assumptions is set (so a spec with outputs but
@@ -757,6 +877,12 @@ tlsf::Specification tlsf_mutate(const tlsf::Specification& spec,
     if (have_assumption_pool &&
         random_source.next_real() < cfg.p_add_assumption) {
         return tlsf_add_assumption(spec, random_source, cfg);
+    }
+    // And its own mirror: delete one. Read before the draw so a zero costs no
+    // draw, which is what lets a config reproduce a run from before it existed.
+    if (cfg.tlsf_p_remove_assumption > 0.0 &&
+        random_source.next_real() < cfg.tlsf_p_remove_assumption) {
+        return tlsf_remove_assumption(spec, random_source);
     }
     // The mirror action: delete a guarantee-side conjunct. Never the last live
     // one, since a specification with nothing left to guarantee is realizable
@@ -842,5 +968,49 @@ tlsf::Specification tlsf_mutate(const tlsf::Specification& spec,
         temporal ? mutate_temporal(entry.m_formula, pool, random_source, cfg)
                  : mutate_propositional_parts(entry.m_formula, pool,
                                               random_source, cfg);
+    return mutated;
+}
+
+// A burst of mutations rather than one, the count drawn as 1 + Geometric.
+//
+// A single mutation edits one slot, so an ideal needing several coordinated
+// edits is reachable only through as many generations, each intermediate
+// having to survive selection. Where the intermediates are worse than the
+// parent the search cannot cross at all, and the corpus has such ideals:
+// examples/lily02/fixes/lilydemo05.tlsf is two added assumptions and four
+// rewritten guarantees, six slots at once.
+//
+// Geometric rather than the power law of the fast-GA literature (Doerr et al.,
+// GECCO 2017), which is the right choice when the width a jump must cross is
+// unknown. Here it is measured. Over the 40 ideals under examples/ whose delta
+// parses, the edit width runs 0.475 at one slot, 0.200 at two, 0.200 at three
+// and 0.125 at four or more; 1 + Geometric(0.5) puts 0.125 at four or more and
+// fits that target at a KL of 0.066, against 0.163 for a power law at beta =
+// 1.5, which would spend 0.245 of every mutation on a tail the corpus needs a
+// half of. The overspend is the expensive kind, each surplus candidate costing
+// a scoring pass with a model count and a realizability query in it.
+//
+// tlsf_p_burst_continue is the continuation probability, so the width is
+// 1 + Geometric and never 0: a mutation always mutates. At 0 no draw is taken
+// and the stream is what it was before this existed, the discipline
+// p_remove_guarantee and p_monotone follow.
+//
+// The cap is a backstop and not a parameter. Eight is above the widest ideal
+// the corpus holds, and without it a continuation probability set near 1 is an
+// unbounded loop rather than a slow one.
+tlsf::Specification tlsf_mutate(const tlsf::Specification& spec,
+                                const RandomSource& random_source,
+                                const Config& cfg) {
+    constexpr std::size_t k_max_burst = 8;
+    tlsf::Specification mutated = tlsf_mutate_once(spec, random_source, cfg);
+    if (cfg.tlsf_p_burst_continue <= 0.0) {
+        return mutated;
+    }
+    for (std::size_t applied = 1; applied < k_max_burst; ++applied) {
+        if (random_source.next_real() >= cfg.tlsf_p_burst_continue) {
+            break;
+        }
+        mutated = tlsf_mutate_once(mutated, random_source, cfg);
+    }
     return mutated;
 }

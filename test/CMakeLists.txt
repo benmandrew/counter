@@ -41,6 +41,7 @@ add_executable(counter_tests
     tlsf/mucs_tests.cpp
     tlsf/guarantee_parts_tests.cpp
     tlsf/genetic_tests.cpp
+    tlsf/assumption_tests.cpp
     tlsf/monotone_tests.cpp
     tlsf/pipeline_tests.cpp
     drivers/e2e_tests.cpp
@@ -125,6 +126,7 @@ add_test(NAME counter_tests.tlsf_fitness COMMAND counter_tests tlsf_fitness)
 add_test(NAME counter_tests.tlsf_mucs COMMAND counter_tests tlsf_mucs)
 add_test(NAME counter_tests.tlsf_genetic COMMAND counter_tests tlsf_genetic)
 add_test(NAME counter_tests.tlsf_monotone COMMAND counter_tests tlsf_monotone)
+add_test(NAME counter_tests.tlsf_assumption COMMAND counter_tests tlsf_assumption)
 add_test(NAME counter_tests.tlsf_pipeline COMMAND counter_tests tlsf_pipeline)
 
 # One end-to-end entry per built driver, each running the binary the way a user

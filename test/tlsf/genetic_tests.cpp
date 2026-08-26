@@ -161,6 +161,10 @@ void test_mutation_side_probability_selects_side() {
         Config cfg;
         cfg.p_add_assumption = 0.0;  // isolate the rewrite path
         cfg.p_remove_guarantee = 0.0;
+        // The other structural operator that reaches the assumption side.
+        // Without this the rewrite path is not isolated and the zero below
+        // reads as a leak rather than as the exclusion it is testing.
+        cfg.tlsf_p_remove_assumption = 0.0;
         cfg.tlsf_p_assumption = p_assumption;
         std::pair<std::size_t, std::size_t> counts{0, 0};
         for (std::size_t seed = 0; seed < k_seeds; ++seed) {

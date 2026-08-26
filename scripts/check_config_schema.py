@@ -301,6 +301,10 @@ DEFAULT_FIELDS = {
     "tlsf.mutation.p_temporal": "tlsf_p_temporal",
     "tlsf.mutation.p_monotone": "tlsf_p_monotone",
     "tlsf.mutation.p_clone_assumption": "tlsf_p_clone_assumption",
+    "tlsf.mutation.max_assumption_width": "tlsf_max_assumption_width",
+    "tlsf.mutation.p_bare_assumption": "tlsf_p_bare_assumption",
+    "tlsf.mutation.p_remove_assumption": "tlsf_p_remove_assumption",
+    "tlsf.mutation.p_burst_continue": "tlsf_p_burst_continue",
     "model_counting.default_bound": "default_model_counting_bound",
     "filters.run_weakening": "run_weakening_filter",
     "filters.run_implication": "run_implication_filter",
@@ -399,6 +403,10 @@ GEN_CONFIGS_FIELDS = {
     "p_temporal": "tlsf_p_temporal",
     "p_monotone": "tlsf_p_monotone",
     "p_clone_assumption": "tlsf_p_clone_assumption",
+    "max_assumption_width": "tlsf_max_assumption_width",
+    "p_bare_assumption": "tlsf_p_bare_assumption",
+    "p_remove_assumption": "tlsf_p_remove_assumption",
+    "p_burst_continue": "tlsf_p_burst_continue",
     "max_concurrent_realizability": "max_concurrent_realizability",
 }
 

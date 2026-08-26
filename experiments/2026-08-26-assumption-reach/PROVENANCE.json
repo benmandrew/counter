@@ -27,8 +27,7 @@
   },
   "owed": [
     "The 2^4 separating max_assumption_width, p_bare_assumption, p_remove_assumption and p_union_assumption. PLAN.md section 6 registered the bundling knowingly; the per-family reads on lift and lily11 carry information the sweep does not, and cannot rescue the primary.",
-    "The p_monotone tuning campaign, already owed before this one and now with a measurement behind it: counter's best_relation reads equivalent on 1.1% of runs against AuRUS's 33.8%, and rules_at in src/tlsf/mutation.cpp gives an Atom only the Constant weakening, where AuRUS's FormulaWeakening applies a -> a|b at a literal.",
-    "Why 9x the search budget buys nothing. reachoff-s to reachoff-l is 40 generations against 10 and 400 population against 200, 357 s median wall against 39 s, and moves implies_ideal from 150 to 154 of 271 at p = 0.6358. Every grammar change runs into this before it runs into anything else."
+    "The p_monotone tuning campaign, already owed before this one and now with a measurement behind it: counter's best_relation reads equivalent on 1.1% of runs against AuRUS's 33.8%, and rules_at in src/tlsf/mutation.cpp gives an Atom only the Constant weakening, where AuRUS's FormulaWeakening applies a -> a|b at a literal."
   ],
   "config_vintage": "No entry is owed in the 'Config vintage' note of experiments/README.md, which supersedes PLAN.md section 10's expectation of five. All five keys are new and all five default to a no-op value, so an archived config that omits them means exactly what it meant before they existed. A vintage entry is for a default that moved, not for a key that arrived.",
   "profile_commit": {
@@ -428,5 +427,13 @@
     "analyse_assumption_reach.py": {
       "blob": "54e5aa9059ea3206b1e5ba460acc62d6b18c9444"
     }
+  },
+  "post_hoc_findings": {
+    "note": "Found on this campaign's rows after close, neither registered nor gating. Recorded because the question it answers was in the owed list.",
+    "search_budget_converts_where_it_finishes": "The null secondary (reachoff-s to reachoff-l, 150 to 154 of 271, p = 0.6358) is two large opposite effects cancelling. Splitting the 23 families by whether the -l arm finishes inside the 7200 s cap: the 19 that do read 131 to 153, 22 gained and 0 lost, exact McNemar p = 4.8e-7; the 4 that do not (full-arbiter-aurus, humanoid-503, pcar-v2-888, prioritized-arbiter-aurus) read 19 to 1, 0 gained and 18 lost, p = 7.6e-6, with 43 of their 44 large runs emitting no repair. The -s arm times out on 0 of those 44, so the losses are censored runs rather than degraded searches.",
+    "caveat": "Post hoc, and it conditions on timed_out, which the treatment causes. It wants confirming on a design that varies the wall cap rather than the search size.",
+    "mechanism": "compute_subsumed (src/filter/implication.cpp) sweeps pairs over the accumulated pool, so accumulate_repairs makes the final implication filter quadratic in the search budget. Solo on arbiter-aurus seed 3 the large configuration spends 42 s in generations and 258 s after them, 86% of wall clock, ltlfilt CPU rising 17x against 8x more breeding.",
+    "population_diversity_ruled_out": "distinct/population at the select stage reads 1.000 from generation 3 through 40 on every spec measured, at both budgets, so there is no diversity collapse behind the null.",
+    "candidate_count_correction": "A generation breeds selection_size - elitism_size candidates, not population_size: 800 over the whole -s run and 6,400 over the -l one, against generations x population of 2,000 and 16,000. The AuRUS head-to-head ran at gen10/pop200, so that comparison is roughly 730 AuRUS candidates against 800 of counter's."
   }
 }

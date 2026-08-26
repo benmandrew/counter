@@ -1,12 +1,16 @@
 #!/usr/bin/env python3
-"""Check that the three hand-maintained descriptions of the TOML config agree.
+"""Check that the hand-maintained descriptions of the TOML config agree.
 
-The config surface is spelled out in three places, and nothing in the compiler
+The config surface is spelled out in five places, and nothing in the compiler
 ties them together:
 
   * ``config_key_spec()`` in ``src/config_io.cpp`` -- the keys the parser
     recognises. A key missing here is reported as "unknown key" at run time
     even though the parser reads it.
+  * ``config_json()`` in ``src/repair/manifest.cpp`` -- the effective config
+    written to ``run.json``, which is what a campaign reads back. A key missing
+    here is silent: the run behaves as configured and records nothing about it.
+    Two of the four ``[tlsf.mutation]`` keys were missing this way.
   * ``schemas/config-schema.json`` -- what an editor validates against. It sets
     ``additionalProperties: false``, so a key missing here is flagged as an
     error in the editor even though the binary accepts it.
@@ -18,8 +22,8 @@ ties them together:
     default.
 
 Drift between them is silent and has happened: ``nsga2-replicate`` was added to
-the parser and the docs but not to the schema enum. This compares all three and
-exits non-zero on any disagreement.
+the parser and the docs but not to the schema enum. This compares all four
+key sets and exits non-zero on any disagreement.
 
 It does not, and cannot cheaply, catch a key added to an ``apply_*`` function
 and nowhere else -- that needs reflection the language does not offer. It does
@@ -137,6 +141,72 @@ def parser_enums(source):
     return found
 
 
+# --- src/repair/manifest.cpp -------------------------------------------------
+
+
+def manifest_paths(source):
+    """Dotted paths of the effective config `config_json()` writes to run.json.
+
+    The literal is pure data too -- nested {"name", value} pairs, where a value
+    that opens with a brace is a section -- so the same recursive-descent trick
+    works. A leaf's value is skipped rather than read: what this check is for is
+    which keys reach the manifest, not what they hold.
+    """
+    start = source.find("nlohmann::json config_json(const Config& cfg)")
+    if start < 0:
+        raise ValueError("config_json() not found")
+    open_brace = source.index("return {", start) + len("return ")
+    depth = 0
+    end = -1
+    for i in range(open_brace, len(source)):
+        if source[i] == "{":
+            depth += 1
+        elif source[i] == "}":
+            depth -= 1
+            if depth == 0:
+                end = i
+                break
+    if end < 0:
+        raise ValueError("config_json(): unbalanced braces")
+    body = re.sub(r"//[^\n]*", "", source[open_brace : end + 1])
+    toks = re.findall(r'"(?:[^"\\]|\\.)*"|[{},]|[^"{}, \t\r\n]+', body)
+
+    pos = 0
+
+    def want(tok):
+        nonlocal pos
+        if pos >= len(toks) or toks[pos] != tok:
+            got = toks[pos] if pos < len(toks) else "end of literal"
+            raise ValueError(f"expected {tok!r} at token {pos}, got {got!r}")
+        pos += 1
+
+    def parse_object(prefix):
+        nonlocal pos
+        want("{")
+        paths = set()
+        while toks[pos] != "}":
+            if toks[pos] == ",":
+                pos += 1
+                continue
+            want("{")
+            if not toks[pos].startswith('"'):
+                raise ValueError(f"expected a key name at token {pos}")
+            path = prefix + toks[pos].strip('"')
+            pos += 1
+            want(",")
+            paths.add(path)
+            if toks[pos] == "{":
+                paths |= parse_object(path + ".")
+            else:
+                while toks[pos] != "}":
+                    pos += 1
+            want("}")
+        pos += 1
+        return paths
+
+    return parse_object("")
+
+
 # --- schemas/config-schema.json ----------------------------------------------
 
 
@@ -225,7 +295,6 @@ DEFAULT_FIELDS = {
     "mutation.p_add_assumption": "p_add_assumption",
     "mutation.p_remove_guarantee": "p_remove_guarantee",
     "mutation.p_conditional_assumption": "p_conditional_assumption",
-    "mutation.strengthen_assumptions": "strengthen_assumptions",
     "mutation.allow_output_assumptions": "allow_output_assumptions",
     "tlsf.muc_max_iterations": "muc_max_iterations",
     "tlsf.mutation.p_assumption": "tlsf_p_assumption",
@@ -413,6 +482,7 @@ def main():
     root = ap.parse_args().root
 
     cpp = root / "src" / "config_io.cpp"
+    manifest_cpp = root / "src" / "repair" / "manifest.cpp"
     hpp = root / "include" / "config.hpp"
     schema_path = root / "schemas" / "config-schema.json"
     example_path = root / "example-config.toml"
@@ -428,6 +498,7 @@ def main():
             return None, f"{path}: {exc}"
 
     cpp_source, cpp_error = load(cpp, lambda text: text)
+    manifest_source, manifest_error = load(manifest_cpp, lambda text: text)
     hpp_source, hpp_error = load(hpp, lambda text: text)
     schema, schema_error = load(schema_path, json.loads)
     example, example_error = load(example_path, tomllib.loads)
@@ -439,6 +510,14 @@ def main():
         except ValueError as exc:
             spec_error = f"{cpp}: could not read config_key_spec(): {exc}"
 
+    from_manifest, manifest_parse_error = (None, None)
+    if manifest_source is not None:
+        try:
+            from_manifest = manifest_paths(manifest_source)
+        except ValueError as exc:
+            manifest_parse_error = (
+                f"{manifest_cpp}: could not read config_json(): {exc}")
+
     gen_defaults, gen_error = (None, None)
     try:
         gen_defaults = gen_configs_defaults(root)
@@ -448,7 +527,7 @@ def main():
     fatal = [
         e
         for e in (cpp_error, hpp_error, schema_error, example_error, spec_error,
-                  gen_error)
+                  manifest_error, manifest_parse_error, gen_error)
         if e
     ]
     if fatal:
@@ -459,6 +538,7 @@ def main():
 
     assert cpp_source is not None and schema is not None and example is not None
     assert from_parser is not None and hpp_source is not None
+    assert from_manifest is not None
     assert gen_defaults is not None
 
     from_schema = schema_keys(schema["properties"])
@@ -476,6 +556,24 @@ def main():
             f"config_io.cpp: config_key_spec() is missing '{path}', which the "
             f"schema declares. The parser will warn 'unknown key' on it."
         )
+    # run.json is what a campaign reads its own configuration back out of, so a
+    # key the parser accepts but the manifest omits leaves a run with no record
+    # of how it was configured. That is silent in a way the other three are not:
+    # the schema shows up in an editor and the template in a diff, while this
+    # shows up only as a field nobody can find afterwards.
+    for path in sorted(from_parser - from_manifest):
+        errors.append(
+            f"manifest.cpp: config_json() omits '{path}', which the parser "
+            f"accepts. It will not appear in run.json, so a campaign that "
+            f"crosses it records its own arms nowhere."
+        )
+    for path in sorted(from_manifest - from_parser):
+        errors.append(
+            f"manifest.cpp: config_json() reports '{path}', which "
+            f"config_key_spec() does not declare. A manifest field with no key "
+            f"behind it cannot be set and cannot be reproduced from."
+        )
+
     for path in sorted(from_example - from_parser):
         errors.append(
             f"{example_path.name}: sets '{path}', which the parser does not "
@@ -617,14 +715,15 @@ def main():
         for error in errors:
             print(f"  - {error}", file=sys.stderr)
         print(
-            f"\n{len(errors)} problem(s). The parser, the schema, and the "
-            f"template must describe the same config.",
+            f"\n{len(errors)} problem(s). The parser, the manifest, the "
+            f"schema, and the template must describe the same config.",
             file=sys.stderr,
         )
         return 1
 
     print(f"Config key parity: {len(from_parser)} keys agree across "
-          f"config_io.cpp, {schema_path.name}, and {example_path.name}; "
+          f"config_io.cpp, manifest.cpp, {schema_path.name}, and "
+          f"{example_path.name}; "
           f"{len(GEN_CONFIGS_FIELDS)} gen_configs.DEFAULTS entries match "
           f"config.hpp ({len(GEN_CONFIGS_EXEMPT)} exempt).")
     return 0

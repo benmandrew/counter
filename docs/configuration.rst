@@ -173,8 +173,6 @@ What lands there is the raw set of gate-passing candidates. ``repair_N.json`` an
 
 ``allow_output_assumptions`` (on) lets an assumption reference output atoms as well as inputs. It buys the reactive-environment assumptions ``G(<output> -> F <input>)`` that an input-only draw cannot express. Stopping the system from writing itself an assumption it can defeat is then the status score's job rather than a syntactic ban's: an assumption side the system can force to fail costs the candidate the top status tier, and the output gate refuses to write it whatever the filters say.
 
-``strengthen_assumptions`` (on) mutates assumption timings in the strengthening direction. Weakening the overall assume-guarantee pair means weakening a guarantee but *strengthening* an assumption. Weakening both would therefore make every assumption mutation a move away from a repair. It is a flag only so the two directions can be crossed as an experiment factor.
-
 TLSF mode
 ---------
 

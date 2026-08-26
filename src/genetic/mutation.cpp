@@ -620,11 +620,13 @@ Specification mutate_specification(const Specification& specification,
     std::vector<Requirement> assumptions = specification.m_assumptions;
     std::vector<Requirement> guarantees = specification.m_guarantees;
     // Weakening the assume-guarantee specification means weakening a guarantee
-    // but *strengthening* an assumption.
+    // but *strengthening* an assumption, so the direction follows the side. It
+    // was a config flag until 2026-08-26, kept only so the two directions could
+    // be crossed as an experiment factor; no sweep ever crossed them and
+    // gen_configs.py could not emit the key.
     const bool is_assumption = idx < n_assumptions;
-    const Direction direction = (is_assumption && cfg.strengthen_assumptions)
-                                    ? Direction::Strengthen
-                                    : Direction::Weaken;
+    const Direction direction =
+        is_assumption ? Direction::Strengthen : Direction::Weaken;
     // An existing assumption is held to the same pool rule as a freshly added
     // one: with allow_output_assumptions off it draws from inputs only, so no
     // rewrite can smuggle an output atom into the environment side and defeat

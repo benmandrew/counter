@@ -81,7 +81,7 @@ namespace {
 // a limit of its own instead of a verdict ended the run and no manifest was
 // written at all; from this version the query resolves as undecided and this
 // field is the only record that it happened.
-constexpr int k_schema_version = 16;
+constexpr int k_schema_version = 17;
 
 // The inverse of the spellings config_io.cpp parses. It has no table to
 // borrow -- it only ever goes string to enum -- so these must be kept in step
@@ -201,14 +201,19 @@ nlohmann::json config_json(const Config& cfg) {
           {"p_add_assumption", cfg.p_add_assumption},
           {"p_remove_guarantee", cfg.p_remove_guarantee},
           {"p_conditional_assumption", cfg.p_conditional_assumption},
-          {"strengthen_assumptions", cfg.strengthen_assumptions},
           {"allow_output_assumptions", cfg.allow_output_assumptions}}},
         {"tlsf",
          {{"repair_mode", repair_mode_name(cfg.repair_mode)},
           {"muc_max_iterations", cfg.muc_max_iterations},
+          // Every key of [tlsf.mutation], not the two this block reported
+          // until 2026-08-26. A campaign reads its arms out of run.json, and
+          // the ones that were missing are exactly those the recent operator
+          // work added.
           {"mutation",
            {{"p_assumption", cfg.tlsf_p_assumption},
-            {"p_temporal", cfg.tlsf_p_temporal}}}}},
+            {"p_temporal", cfg.tlsf_p_temporal},
+            {"p_monotone", cfg.tlsf_p_monotone},
+            {"p_clone_assumption", cfg.tlsf_p_clone_assumption}}}}},
         {"model_counting",
          {{"default_bound", cfg.default_model_counting_bound},
           {"metric", metric_name(cfg.similarity_metric)}}},

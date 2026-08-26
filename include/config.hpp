@@ -430,13 +430,6 @@ struct Config {
     /// fail is the well-separation filter rather than the syntactic ban, so
     /// pair it with run_well_separation_filter.
     bool allow_output_assumptions = true;
-    /// Mutate assumption timings in the strengthening direction rather than the
-    /// weakening one. Weakening the overall assume-guarantee specification
-    /// means weakening a guarantee but strengthening an assumption, so
-    /// weakening both makes every assumption mutation a move away from a
-    /// repair. Retained as a flag only so the two directions can be crossed as
-    /// an experiment factor.
-    bool strengthen_assumptions = true;
     /// TLSF-mode mutation: probability of mutating an assumption-side section
     /// (INITIALLY/REQUIRE/ASSUME) rather than a guarantee-side one
     /// (PRESET/ASSERT/GUARANTEE) when mutating a tlsf::Specification. The

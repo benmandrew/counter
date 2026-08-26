@@ -852,6 +852,17 @@ def parse_args() -> argparse.Namespace:
                         help=f"Baseline population size (default: "
                              f"{DEFAULTS['population_size']}); sweep B overrides "
                              f"it per level")
+    parser.add_argument("--weights", nargs=3, type=float, default=None,
+                        metavar=("SYNTACTIC", "SEMANTIC", "STATUS"),
+                        help=f"Baseline aggregate-fitness weights, in the order "
+                             f"syntactic semantic status (default: "
+                             f"{DEFAULTS['weight_syntactic']} "
+                             f"{DEFAULTS['weight_semantic']} "
+                             f"{DEFAULTS['weight_status']}). Sweep C overrides "
+                             f"them per level, exactly as sweeps A and B "
+                             f"override --generations and --population-size. "
+                             f"Omit to keep the pinned 0.33 triple every past "
+                             f"grid was generated under")
     parser.add_argument("--schemes", nargs="+", choices=SCHEMES, default=SCHEMES,
                         metavar="SCHEME",
                         help=f"Selection schemes to emit (default: "
@@ -964,6 +975,15 @@ def main() -> None:
     defaults = {**DEFAULTS,
                 "generations": args.generations,
                 "population_size": args.population_size}
+    # The three weights are the one part of DEFAULTS that is deliberately not
+    # the binary's (0.33 each against config.hpp's 0.2 / 0.5 / 0.5), pinned so
+    # every archived grid states the same triple and stays comparable. --weights
+    # moves the baseline for one campaign without touching that pin, so a grid
+    # generated without the flag is byte-identical to what it always was. A
+    # sweep C level still wins over it, make_toml merging overrides last.
+    if args.weights is not None:
+        defaults["weight_syntactic"], defaults["weight_semantic"], \
+            defaults["weight_status"] = args.weights
     # --tlsf swaps in the coarse TLSF cross and, unless the user overrode them,
     # pins the scheme and output directory the campaign expects. Comparing
     # against the argparse defaults is how "left unset" is detected.

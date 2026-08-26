@@ -88,6 +88,9 @@ p_monotone   = 0.25
 # Offer the add-an-operand monotone rule at every node rather than at a
 # conjunction or disjunction alone; off, an atom can only go to a constant.
 monotone_atom_rules = false
+# Give the monotone rewrite a rule at R and X, and a strengthening at <->;
+# off, all three offer the rewrite to a constant alone.
+monotone_extra_rules = false
 # Of the assumptions [mutation] p_add_assumption appends, the fraction that copy
 # an existing one instead of building from the template, which emits at most
 # seven nodes where the assumption-shaped ideals run to thirty.

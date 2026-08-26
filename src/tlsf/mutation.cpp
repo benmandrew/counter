@@ -471,7 +471,46 @@ enum class MonotoneRule : std::uint8_t {
     WeakUntilToUntil,
     // a ↔ b → a → b, or b → a.
     IffToImplies,
+    // φ R ψ → ψ.
+    ReleaseToConsequent,
+    // φ R ψ → G ψ.
+    ReleaseToGlobally,
+    // X φ → F φ.
+    NextToEventually,
+    // X φ → G φ.
+    NextToGlobally,
+    // a ↔ b → a ∧ b, or ¬a ∧ ¬b.
+    IffToConjunction,
 };
+
+// The rules cfg.tlsf_monotone_extra_rules adds at @p formula's kind, empty at
+// every other kind.
+//
+// Release carried no monotone rule while its duals Until and WeakUntil each
+// carry one, Next carried none, and Iff carried the weakening to one of its
+// implications and nothing the other way — so at all three the whole monotone
+// move was the rewrite to a constant, which guts the node. Each of the five
+// below is a disjunct or an operand of the semantics it fires at:
+// `φ R ψ ≡ G ψ | (ψ U (ψ ∧ φ))` gives both Release rules,
+// `F φ ≡ φ | X φ | XX φ | …` and `G φ ≡ φ ∧ X G φ` give both Next rules, and
+// `a ∧ b` and `¬a ∧ ¬b` each entail `a ↔ b`.
+std::vector<MonotoneRule> extra_rules_at(const Formula& formula, bool weaken) {
+    switch (formula.kind()) {
+        case Formula::Kind::Release:
+            return {weaken ? MonotoneRule::ReleaseToConsequent
+                           : MonotoneRule::ReleaseToGlobally};
+        case Formula::Kind::Next:
+            return {weaken ? MonotoneRule::NextToEventually
+                           : MonotoneRule::NextToGlobally};
+        case Formula::Kind::Iff:
+            if (weaken) {
+                return {};
+            }
+            return {MonotoneRule::IffToConjunction};
+        default:
+            return {};
+    }
+}
 
 // The rules that fire at @p formula's own kind. Constant is always one of
 // them, so the list is never empty and every node is a site.
@@ -486,14 +525,19 @@ enum class MonotoneRule : std::uint8_t {
 // built out of literals, and AuRUS reaches them because its FormulaWeakening
 // applies `a → a | b` at a literal.
 //
-// @p atom_rules (cfg.tlsf_monotone_atom_rules, default false) makes the wider
-// menu opt-in. Off, this returns the menu the binary held before the key
+// @p rules.atom_rules (cfg.tlsf_monotone_atom_rules, default false) makes the
+// wider menu opt-in. Off, this returns the menu the binary held before the key
 // existed — the same rules in the same order, so next_index(rules.size()) draws
 // the same value and every draw after it follows. That reproduction is the
 // whole reason the gate exists, so the two branches below must stay written out
 // rather than folded into one push_back with a condition on the rule.
+//
+// @p rules.extra_rules (cfg.tlsf_monotone_extra_rules, default false) appends
+// extra_rules_at's result to all of that, which leaves the list built here
+// unchanged in content and order when the key is off.
 std::vector<MonotoneRule> rules_at(const Formula& formula, bool weaken,
-                                   bool atom_rules) {
+                                   MonotoneRules rules_offered) {
+    const bool atom_rules = rules_offered.atom_rules;
     std::vector<MonotoneRule> rules = {MonotoneRule::Constant};
     if (atom_rules) {
         rules.push_back(MonotoneRule::AddOperand);
@@ -542,7 +586,25 @@ std::vector<MonotoneRule> rules_at(const Formula& formula, bool weaken,
         default:
             break;
     }
+    if (rules_offered.extra_rules) {
+        const std::vector<MonotoneRule> extra = extra_rules_at(formula, weaken);
+        rules.insert(rules.end(), extra.begin(), extra.end());
+    }
     return rules;
+}
+
+// The operands of a node a rule fires at. Every rule is filed under the kind
+// it applies to, so the shape is a precondition rather than a case to handle.
+Formula unary_operand(const Formula& formula) {
+    const auto child = formula.unary_child();
+    assert(child.has_value());
+    return *child;
+}
+
+std::pair<Formula, Formula> binary_operands(const Formula& formula) {
+    const auto children = formula.binary_children();
+    assert(children.has_value());
+    return *children;
 }
 
 Formula apply_monotone_rule(const Formula& formula, MonotoneRule rule,
@@ -552,10 +614,9 @@ Formula apply_monotone_rule(const Formula& formula, MonotoneRule rule,
         case MonotoneRule::Constant:
             return Formula::make_atom(weaken ? "true" : "false");
         case MonotoneRule::DropOperand: {
-            const auto children = formula.binary_children();
-            assert(children.has_value());
-            return random_source.next_bool() ? children->first
-                                             : children->second;
+            const std::pair<Formula, Formula> operands =
+                binary_operands(formula);
+            return random_source.next_bool() ? operands.first : operands.second;
         }
         case MonotoneRule::AddOperand: {
             const Formula literal = draw_literal(atoms, random_source);
@@ -569,41 +630,62 @@ Formula apply_monotone_rule(const Formula& formula, MonotoneRule rule,
                 weaken ? Formula::Kind::Or : Formula::Kind::And, formula,
                 literal);
         }
-        case MonotoneRule::GloballyToEventually: {
-            const auto child = formula.unary_child();
-            assert(child.has_value());
-            return Formula::make_unary(Formula::Kind::Eventually, *child);
-        }
+        case MonotoneRule::GloballyToEventually:
+            return Formula::make_unary(Formula::Kind::Eventually,
+                                       unary_operand(formula));
         case MonotoneRule::GloballyToInfinitelyOften:
             return Formula::make_unary(Formula::Kind::Globally, formula);
-        case MonotoneRule::EventuallyToGlobally: {
-            const auto child = formula.unary_child();
-            assert(child.has_value());
-            return Formula::make_unary(Formula::Kind::Globally, *child);
-        }
+        case MonotoneRule::EventuallyToGlobally:
+            return Formula::make_unary(Formula::Kind::Globally,
+                                       unary_operand(formula));
         case MonotoneRule::UntilToWeakUntil: {
-            const auto children = formula.binary_children();
-            assert(children.has_value());
+            const std::pair<Formula, Formula> operands =
+                binary_operands(formula);
             return Formula::make_binary(Formula::Kind::WeakUntil,
-                                        children->first, children->second);
+                                        operands.first, operands.second);
         }
         case MonotoneRule::WeakUntilToUntil: {
-            const auto children = formula.binary_children();
-            assert(children.has_value());
-            return Formula::make_binary(Formula::Kind::Until, children->first,
-                                        children->second);
+            const std::pair<Formula, Formula> operands =
+                binary_operands(formula);
+            return Formula::make_binary(Formula::Kind::Until, operands.first,
+                                        operands.second);
         }
         case MonotoneRule::IffToImplies: {
-            const auto children = formula.binary_children();
-            assert(children.has_value());
+            const std::pair<Formula, Formula> operands =
+                binary_operands(formula);
             // Both directions of a biconditional are weakenings of it, so
             // which one is a further draw rather than a fixed choice.
             return random_source.next_bool()
                        ? Formula::make_binary(Formula::Kind::Implies,
-                                              children->first, children->second)
+                                              operands.first, operands.second)
                        : Formula::make_binary(Formula::Kind::Implies,
-                                              children->second,
-                                              children->first);
+                                              operands.second, operands.first);
+        }
+        case MonotoneRule::ReleaseToConsequent:
+            return binary_operands(formula).second;
+        case MonotoneRule::ReleaseToGlobally:
+            return Formula::make_unary(Formula::Kind::Globally,
+                                       binary_operands(formula).second);
+        case MonotoneRule::NextToEventually:
+            return Formula::make_unary(Formula::Kind::Eventually,
+                                       unary_operand(formula));
+        case MonotoneRule::NextToGlobally:
+            return Formula::make_unary(Formula::Kind::Globally,
+                                       unary_operand(formula));
+        case MonotoneRule::IffToConjunction: {
+            const std::pair<Formula, Formula> operands =
+                binary_operands(formula);
+            // Both polarities of the agreement entail the biconditional, so
+            // which one is a further draw, as IffToImplies draws between its
+            // two directions.
+            if (random_source.next_bool()) {
+                return Formula::make_binary(Formula::Kind::And, operands.first,
+                                            operands.second);
+            }
+            return Formula::make_binary(
+                Formula::Kind::And,
+                Formula::make_unary(Formula::Kind::Not, operands.first),
+                Formula::make_unary(Formula::Kind::Not, operands.second));
         }
         default:
             assert(false);
@@ -634,7 +716,8 @@ void collect_polarities(const Formula& formula, Polarity polarity,
 // strictly larger index and no second node can match.
 Formula rewrite_at_site(const Formula& formula, Polarity polarity,
                         std::size_t target, std::size_t& next, bool want_weaker,
-                        bool atom_rules, const std::vector<std::string>& atoms,
+                        MonotoneRules rules_offered,
+                        const std::vector<std::string>& atoms,
                         const RandomSource& random_source) {
     const std::size_t index = next++;
     if (index == target) {
@@ -644,7 +727,7 @@ Formula rewrite_at_site(const Formula& formula, Polarity polarity,
         const bool weaken_here =
             (polarity == Polarity::Positive) == want_weaker;
         const std::vector<MonotoneRule> rules =
-            rules_at(formula, weaken_here, atom_rules);
+            rules_at(formula, weaken_here, rules_offered);
         const std::size_t choice = random_source.next_index(rules.size());
         return apply_monotone_rule(formula, rules[choice], weaken_here, atoms,
                                    random_source);
@@ -654,7 +737,7 @@ Formula rewrite_at_site(const Formula& formula, Polarity polarity,
         return Formula::make_unary(
             formula.kind(),
             rewrite_at_site(*child, polarities.first, target, next, want_weaker,
-                            atom_rules, atoms, random_source));
+                            rules_offered, atoms, random_source));
     }
     if (const auto children = formula.binary_children(); children.has_value()) {
         const auto polarities = child_polarities(formula, polarity);
@@ -662,10 +745,10 @@ Formula rewrite_at_site(const Formula& formula, Polarity polarity,
         // evaluation order is unspecified.
         const Formula left =
             rewrite_at_site(children->first, polarities.first, target, next,
-                            want_weaker, atom_rules, atoms, random_source);
+                            want_weaker, rules_offered, atoms, random_source);
         const Formula right =
             rewrite_at_site(children->second, polarities.second, target, next,
-                            want_weaker, atom_rules, atoms, random_source);
+                            want_weaker, rules_offered, atoms, random_source);
         return Formula::make_binary(formula.kind(), left, right);
     }
     return formula;
@@ -893,7 +976,7 @@ std::vector<std::string> section_atom_pool(const tlsf::Specification& spec,
 }  // namespace
 
 Formula tlsf_monotone_rewrite(const Formula& formula,
-                              MonotoneDirection direction, bool atom_rules,
+                              MonotoneDirection direction, MonotoneRules rules,
                               const std::vector<std::string>& atoms,
                               const RandomSource& random_source) {
     assert(!atoms.empty());
@@ -914,8 +997,8 @@ Formula tlsf_monotone_rewrite(const Formula& formula,
     const std::size_t site = random_source.next_index(sites.size());
     std::size_t next = 0;
     return rewrite_at_site(formula, Polarity::Positive, sites[site], next,
-                           direction == MonotoneDirection::Weaken, atom_rules,
-                           atoms, random_source);
+                           direction == MonotoneDirection::Weaken, rules, atoms,
+                           random_source);
 }
 
 // One mutation. tlsf_mutate below applies a burst of these.
@@ -1008,7 +1091,9 @@ tlsf::Specification tlsf_mutate_once(const tlsf::Specification& spec,
         entry.m_formula = tlsf_monotone_rewrite(
             entry.m_formula,
             weaken ? MonotoneDirection::Weaken : MonotoneDirection::Strengthen,
-            cfg.tlsf_monotone_atom_rules, pool, random_source);
+            MonotoneRules{cfg.tlsf_monotone_atom_rules,
+                          cfg.tlsf_monotone_extra_rules},
+            pool, random_source);
         return mutated;
     }
     // An initial condition must stay propositional, so it takes the rewrite

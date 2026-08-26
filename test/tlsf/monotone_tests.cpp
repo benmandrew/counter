@@ -5,6 +5,7 @@
 #include <optional>
 #include <random>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "config.hpp"
@@ -61,17 +62,19 @@ std::vector<Formula> subjects() {
         formula_of("F (a <-> c);"),
         formula_of("G F c;"),
         formula_of("a;"),
+        formula_of("a R c;"),
+        formula_of("G X c;"),
     };
 }
 
 // The whole point of the arm: whichever node and rule are drawn, the result
 // must sit on the same side of the implication order every time. A weakening
 // that only usually weakens is the general rewriter with extra steps.
-// Both settings of tlsf_monotone_atom_rules are run: the gate widens the rule
-// menu, and a wider menu that could break monotonicity would defeat the arm.
-// The guard counts per setting, so neither arm can pass on unanswered queries.
+// Both gates are crossed: each widens the rule menu, and a wider menu that
+// could break monotonicity would defeat the arm. The guard counts per setting,
+// so no arm can pass on unanswered queries.
 void test_monotone_rewrite_direction_holds(MonotoneDirection direction,
-                                           bool atom_rules) {
+                                           MonotoneRules rules) {
     const bool weaken = direction == MonotoneDirection::Weaken;
     const char* label =
         weaken ? "monotone: parent implies the weakened rewrite"
@@ -81,7 +84,7 @@ void test_monotone_rewrite_direction_holds(MonotoneDirection direction,
         for (std::size_t seed = 0; seed < 12; ++seed) {
             const RandomSource rng = make_random_source_from_seed(seed);
             const Formula child = tlsf_monotone_rewrite(
-                parent, direction, atom_rules, atom_pool(), rng);
+                parent, direction, rules, atom_pool(), rng);
             const std::optional<bool> held =
                 weaken ? implies(parent, child) : implies(child, parent);
             if (!held.has_value()) {
@@ -96,14 +99,16 @@ void test_monotone_rewrite_direction_holds(MonotoneDirection direction,
            "monotone: the implication oracle settled most of the queries");
 }
 
-void test_monotone_rewrite_weakens() {
-    test_monotone_rewrite_direction_holds(MonotoneDirection::Weaken, false);
-    test_monotone_rewrite_direction_holds(MonotoneDirection::Weaken, true);
-}
-
-void test_monotone_rewrite_strengthens() {
-    test_monotone_rewrite_direction_holds(MonotoneDirection::Strengthen, false);
-    test_monotone_rewrite_direction_holds(MonotoneDirection::Strengthen, true);
+void test_monotone_rewrite_holds_in_both_directions() {
+    for (const MonotoneDirection direction :
+         {MonotoneDirection::Weaken, MonotoneDirection::Strengthen}) {
+        for (const bool atom_rules : {false, true}) {
+            for (const bool extra_rules : {false, true}) {
+                test_monotone_rewrite_direction_holds(
+                    direction, MonotoneRules{atom_rules, extra_rules});
+            }
+        }
+    }
 }
 
 // Weakening a biconditional to one of its implications is what puts
@@ -116,7 +121,8 @@ void test_monotone_rewrite_reaches_the_biconditional_weakening() {
     for (std::size_t seed = 0; seed < 200 && !reached; ++seed) {
         const RandomSource rng = make_random_source_from_seed(seed);
         reached = tlsf_monotone_rewrite(parent, MonotoneDirection::Weaken,
-                                        false, atom_pool(), rng) == target;
+                                        MonotoneRules{false, false},
+                                        atom_pool(), rng) == target;
     }
     expect(reached,
            "monotone: `<->` weakens to `->` with both children untouched");
@@ -133,8 +139,9 @@ void test_monotone_rewrite_grows_an_atom() {
     bool strengthened = false;
     for (std::size_t seed = 0; seed < 200; ++seed) {
         const RandomSource rng = make_random_source_from_seed(seed);
-        const Formula child = tlsf_monotone_rewrite(
-            parent, MonotoneDirection::Weaken, true, atom_pool(), rng);
+        const Formula child =
+            tlsf_monotone_rewrite(parent, MonotoneDirection::Weaken,
+                                  MonotoneRules{true, false}, atom_pool(), rng);
         if (child.kind() == Formula::Kind::Or) {
             const auto children = child.binary_children();
             weakened = children.has_value() && children->first == parent;
@@ -145,8 +152,9 @@ void test_monotone_rewrite_grows_an_atom() {
     }
     for (std::size_t seed = 0; seed < 200; ++seed) {
         const RandomSource rng = make_random_source_from_seed(seed);
-        const Formula child = tlsf_monotone_rewrite(
-            parent, MonotoneDirection::Strengthen, true, atom_pool(), rng);
+        const Formula child =
+            tlsf_monotone_rewrite(parent, MonotoneDirection::Strengthen,
+                                  MonotoneRules{true, false}, atom_pool(), rng);
         if (child.kind() == Formula::Kind::And) {
             const auto children = child.binary_children();
             strengthened = children.has_value() && children->first == parent;
@@ -168,8 +176,9 @@ void test_add_operand_follows_the_direction_not_the_node() {
     bool disjoined = false;
     for (std::size_t seed = 0; seed < 200 && !disjoined; ++seed) {
         const RandomSource rng = make_random_source_from_seed(seed);
-        const Formula child = tlsf_monotone_rewrite(
-            parent, MonotoneDirection::Weaken, true, atom_pool(), rng);
+        const Formula child =
+            tlsf_monotone_rewrite(parent, MonotoneDirection::Weaken,
+                                  MonotoneRules{true, false}, atom_pool(), rng);
         const auto children = child.binary_children();
         disjoined = child.kind() == Formula::Kind::Or && children.has_value() &&
                     children->first == parent;
@@ -190,12 +199,117 @@ void test_atom_rules_off_leaves_an_atom_ungrown() {
              {MonotoneDirection::Weaken, MonotoneDirection::Strengthen}) {
             const RandomSource rng = make_random_source_from_seed(seed);
             const Formula child = tlsf_monotone_rewrite(
-                parent, direction, false, atom_pool(), rng);
+                parent, direction, MonotoneRules{false, false}, atom_pool(),
+                rng);
             const bool constant = child == Formula::true_formula ||
                                   child == Formula::false_formula;
             expect(constant,
                    "monotone: with atom rules off an atom rewrites to a "
                    "constant, got `" +
+                       child.to_string() + "`");
+        }
+    }
+}
+
+// Whether some seed under 200 rewrites `parent` into `target`.
+bool reaches(const Formula& parent, MonotoneDirection direction,
+             const Formula& target) {
+    for (std::size_t seed = 0; seed < 200; ++seed) {
+        const RandomSource rng = make_random_source_from_seed(seed);
+        if (tlsf_monotone_rewrite(parent, direction, MonotoneRules{false, true},
+                                  atom_pool(), rng) == target) {
+            return true;
+        }
+    }
+    return false;
+}
+
+// Release carried no monotone rule at all while its duals U and W each carry
+// one, and Next carried none, so both were dead ends for the arm whose job is
+// to stay on the implication order. `φ R ψ ≡ G ψ | (ψ U (ψ ∧ φ))` puts ψ at
+// time 0 under either disjunct, and `F φ` holds wherever `X φ` does.
+void test_extra_rules_reach_the_weakenings() {
+    expect(reaches(formula_of("a R c;"), MonotoneDirection::Weaken,
+                   formula_of("c;")),
+           "monotone: `a R c` weakens to `c`");
+    expect(reaches(formula_of("X c;"), MonotoneDirection::Weaken,
+                   formula_of("F c;")),
+           "monotone: `X c` weakens to `F c`");
+}
+
+// The strengthening half. `G ψ` is a disjunct of `φ R ψ`, `G φ` unfolds to
+// `φ & X G φ`, and both `a & b` and `!a & !b` entail `a <-> b` -- the last
+// being the direction Iff had no rule for, its weakening to one implication
+// having been the whole menu.
+void test_extra_rules_reach_the_strengthenings() {
+    expect(reaches(formula_of("a R c;"), MonotoneDirection::Strengthen,
+                   formula_of("G c;")),
+           "monotone: `a R c` strengthens to `G c`");
+    expect(reaches(formula_of("X c;"), MonotoneDirection::Strengthen,
+                   formula_of("G c;")),
+           "monotone: `X c` strengthens to `G c`");
+    const Formula iff = formula_of("a <-> c;");
+    expect(
+        reaches(iff, MonotoneDirection::Strengthen, formula_of("a & c;")) &&
+            reaches(iff, MonotoneDirection::Strengthen, formula_of("!a & !c;")),
+        "monotone: `a <-> c` strengthens to both polarities of the "
+        "agreement");
+}
+
+bool is_constant(const Formula& formula) {
+    return formula == Formula::true_formula ||
+           formula == Formula::false_formula;
+}
+
+// Whether `child` is `parent` with exactly one subtree replaced by a boolean
+// constant, which is the whole result set the Constant rule can produce.
+bool is_parent_with_one_constant(const Formula& parent, const Formula& child) {
+    if (is_constant(child)) {
+        return true;
+    }
+    if (child.kind() != parent.kind()) {
+        return false;
+    }
+    const auto parent_child = parent.unary_child();
+    const auto child_child = child.unary_child();
+    if (parent_child.has_value() && child_child.has_value()) {
+        return is_parent_with_one_constant(*parent_child, *child_child);
+    }
+    const auto parents = parent.binary_children();
+    const auto children = child.binary_children();
+    if (parents.has_value() && children.has_value()) {
+        return (children->first == parents->first &&
+                is_parent_with_one_constant(parents->second,
+                                            children->second)) ||
+               (children->second == parents->second &&
+                is_parent_with_one_constant(parents->first, children->first));
+    }
+    return child == parent;
+}
+
+// The property the gate exists to hold. Off, a Release, a Next and a
+// strengthened biconditional each offer the rewrite to a constant alone, so
+// the menu size at those nodes stays 1 -- which is what makes next_index draw
+// the value it drew before the key existed, and every draw after it follow. A
+// rule leaking into the off arm shows up here as a node whose kind changed.
+void test_extra_rules_off_leaves_the_new_sites_constant() {
+    const std::vector<std::pair<Formula, MonotoneDirection>> cases = {
+        {formula_of("a R c;"), MonotoneDirection::Weaken},
+        {formula_of("a R c;"), MonotoneDirection::Strengthen},
+        {formula_of("X c;"), MonotoneDirection::Weaken},
+        {formula_of("X c;"), MonotoneDirection::Strengthen},
+        {formula_of("a <-> c;"), MonotoneDirection::Strengthen},
+    };
+    for (const auto& subject : cases) {
+        for (std::size_t seed = 0; seed < 200; ++seed) {
+            const RandomSource rng = make_random_source_from_seed(seed);
+            const Formula child = tlsf_monotone_rewrite(
+                subject.first, subject.second, MonotoneRules{false, false},
+                atom_pool(), rng);
+            expect(is_parent_with_one_constant(subject.first, child),
+                   "monotone: with extra rules off `" +
+                       subject.first.to_string() +
+                       "` rewrites to a constant somewhere, got `" +
                        child.to_string() + "`");
         }
     }
@@ -263,12 +377,14 @@ void test_non_zero_probability_changes_offspring() {
 
 void run_tlsf_monotone_tests() {
     global_sat_checker().set_timeout(std::chrono::milliseconds(5000));
-    test_monotone_rewrite_weakens();
-    test_monotone_rewrite_strengthens();
+    test_monotone_rewrite_holds_in_both_directions();
     test_monotone_rewrite_reaches_the_biconditional_weakening();
     test_monotone_rewrite_grows_an_atom();
     test_add_operand_follows_the_direction_not_the_node();
     test_atom_rules_off_leaves_an_atom_ungrown();
+    test_extra_rules_reach_the_weakenings();
+    test_extra_rules_reach_the_strengthenings();
+    test_extra_rules_off_leaves_the_new_sites_constant();
     test_zero_probability_costs_no_draw();
     test_non_zero_probability_changes_offspring();
 }

@@ -438,7 +438,7 @@ enum class MonotoneRule : std::uint8_t {
     Constant,
     // a ∧ b → a, or a ∨ b → a.
     DropOperand,
-    // a ∨ b → (a ∨ b) ∨ ℓ, or a ∧ b → (a ∧ b) ∧ ℓ.
+    // φ → φ ∨ ℓ when weakening, φ → φ ∧ ℓ when strengthening.
     AddOperand,
     // G φ → F φ.
     GloballyToEventually,
@@ -456,16 +456,43 @@ enum class MonotoneRule : std::uint8_t {
 
 // The rules that fire at @p formula's own kind. Constant is always one of
 // them, so the list is never empty and every node is a site.
-std::vector<MonotoneRule> rules_at(const Formula& formula, bool weaken) {
+//
+// Constant and AddOperand are the two rules sound at every node: `φ → true`
+// and `φ → φ ∨ ℓ` weaken anything, `φ → false` and `φ → φ ∧ ℓ` strengthen
+// anything. AddOperand was nonetheless offered at And and Or alone, which
+// leaves an Atom with Constant as its only move — so the one rewrite that
+// grows a literal into a disjunction is reachable only where a disjunction
+// already stands, and gutting the node to `true` is the whole monotone menu
+// at a literal. Every assumption-shaped ideal in the corpus is a disjunction
+// built out of literals, and AuRUS reaches them because its FormulaWeakening
+// applies `a → a | b` at a literal.
+//
+// @p atom_rules (cfg.tlsf_monotone_atom_rules, default false) makes the wider
+// menu opt-in. Off, this returns the menu the binary held before the key
+// existed — the same rules in the same order, so next_index(rules.size()) draws
+// the same value and every draw after it follows. That reproduction is the
+// whole reason the gate exists, so the two branches below must stay written out
+// rather than folded into one push_back with a condition on the rule.
+std::vector<MonotoneRule> rules_at(const Formula& formula, bool weaken,
+                                   bool atom_rules) {
     std::vector<MonotoneRule> rules = {MonotoneRule::Constant};
+    if (atom_rules) {
+        rules.push_back(MonotoneRule::AddOperand);
+    }
     switch (formula.kind()) {
         case Formula::Kind::And:
-            rules.push_back(weaken ? MonotoneRule::DropOperand
-                                   : MonotoneRule::AddOperand);
+            if (weaken) {
+                rules.push_back(MonotoneRule::DropOperand);
+            } else if (!atom_rules) {
+                rules.push_back(MonotoneRule::AddOperand);
+            }
             break;
         case Formula::Kind::Or:
-            rules.push_back(weaken ? MonotoneRule::AddOperand
-                                   : MonotoneRule::DropOperand);
+            if (!weaken) {
+                rules.push_back(MonotoneRule::DropOperand);
+            } else if (!atom_rules) {
+                rules.push_back(MonotoneRule::AddOperand);
+            }
             break;
         case Formula::Kind::Globally:
             if (weaken) {
@@ -513,7 +540,15 @@ Formula apply_monotone_rule(const Formula& formula, MonotoneRule rule,
         }
         case MonotoneRule::AddOperand: {
             const Formula literal = draw_literal(atoms, random_source);
-            return Formula::make_binary(formula.kind(), formula, literal);
+            // The connective comes from the direction rather than the
+            // node's own kind. This is deliberately ungated: where the legacy
+            // menu offers AddOperand at all — an And node being strengthened,
+            // an Or node being weakened — `weaken ? Or : And` is the node's
+            // own kind, so with tlsf_monotone_atom_rules off the two spellings
+            // agree on every formula. Only rules_at needs the gate.
+            return Formula::make_binary(
+                weaken ? Formula::Kind::Or : Formula::Kind::And, formula,
+                literal);
         }
         case MonotoneRule::GloballyToEventually: {
             const auto child = formula.unary_child();
@@ -580,7 +615,7 @@ void collect_polarities(const Formula& formula, Polarity polarity,
 // strictly larger index and no second node can match.
 Formula rewrite_at_site(const Formula& formula, Polarity polarity,
                         std::size_t target, std::size_t& next, bool want_weaker,
-                        const std::vector<std::string>& atoms,
+                        bool atom_rules, const std::vector<std::string>& atoms,
                         const RandomSource& random_source) {
     const std::size_t index = next++;
     if (index == target) {
@@ -589,7 +624,8 @@ Formula rewrite_at_site(const Formula& formula, Polarity polarity,
         // formula the way the caller asked for.
         const bool weaken_here =
             (polarity == Polarity::Positive) == want_weaker;
-        const std::vector<MonotoneRule> rules = rules_at(formula, weaken_here);
+        const std::vector<MonotoneRule> rules =
+            rules_at(formula, weaken_here, atom_rules);
         const std::size_t choice = random_source.next_index(rules.size());
         return apply_monotone_rule(formula, rules[choice], weaken_here, atoms,
                                    random_source);
@@ -599,7 +635,7 @@ Formula rewrite_at_site(const Formula& formula, Polarity polarity,
         return Formula::make_unary(
             formula.kind(),
             rewrite_at_site(*child, polarities.first, target, next, want_weaker,
-                            atoms, random_source));
+                            atom_rules, atoms, random_source));
     }
     if (const auto children = formula.binary_children(); children.has_value()) {
         const auto polarities = child_polarities(formula, polarity);
@@ -607,10 +643,10 @@ Formula rewrite_at_site(const Formula& formula, Polarity polarity,
         // evaluation order is unspecified.
         const Formula left =
             rewrite_at_site(children->first, polarities.first, target, next,
-                            want_weaker, atoms, random_source);
+                            want_weaker, atom_rules, atoms, random_source);
         const Formula right =
             rewrite_at_site(children->second, polarities.second, target, next,
-                            want_weaker, atoms, random_source);
+                            want_weaker, atom_rules, atoms, random_source);
         return Formula::make_binary(formula.kind(), left, right);
     }
     return formula;
@@ -838,7 +874,7 @@ std::vector<std::string> section_atom_pool(const tlsf::Specification& spec,
 }  // namespace
 
 Formula tlsf_monotone_rewrite(const Formula& formula,
-                              MonotoneDirection direction,
+                              MonotoneDirection direction, bool atom_rules,
                               const std::vector<std::string>& atoms,
                               const RandomSource& random_source) {
     assert(!atoms.empty());
@@ -859,8 +895,8 @@ Formula tlsf_monotone_rewrite(const Formula& formula,
     const std::size_t site = random_source.next_index(sites.size());
     std::size_t next = 0;
     return rewrite_at_site(formula, Polarity::Positive, sites[site], next,
-                           direction == MonotoneDirection::Weaken, atoms,
-                           random_source);
+                           direction == MonotoneDirection::Weaken, atom_rules,
+                           atoms, random_source);
 }
 
 // One mutation. tlsf_mutate below applies a burst of these.
@@ -953,7 +989,7 @@ tlsf::Specification tlsf_mutate_once(const tlsf::Specification& spec,
         entry.m_formula = tlsf_monotone_rewrite(
             entry.m_formula,
             weaken ? MonotoneDirection::Weaken : MonotoneDirection::Strengthen,
-            pool, random_source);
+            cfg.tlsf_monotone_atom_rules, pool, random_source);
         return mutated;
     }
     // An initial condition must stay propositional, so it takes the rewrite

@@ -300,6 +300,7 @@ DEFAULT_FIELDS = {
     "tlsf.mutation.p_assumption": "tlsf_p_assumption",
     "tlsf.mutation.p_temporal": "tlsf_p_temporal",
     "tlsf.mutation.p_monotone": "tlsf_p_monotone",
+    "tlsf.mutation.monotone_atom_rules": "tlsf_monotone_atom_rules",
     "tlsf.mutation.p_clone_assumption": "tlsf_p_clone_assumption",
     "tlsf.mutation.max_assumption_width": "tlsf_max_assumption_width",
     "tlsf.mutation.p_bare_assumption": "tlsf_p_bare_assumption",

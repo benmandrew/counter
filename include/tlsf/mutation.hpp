@@ -39,8 +39,17 @@ enum class MonotoneDirection : std::uint8_t {
 /// negation or in the antecedent of an implication the dual rule is applied
 /// instead. @p atoms is the section-appropriate atom pool and must be
 /// non-empty.
+///
+/// @p atom_rules is `Config::tlsf_monotone_atom_rules`. On, adding a drawn
+/// literal as a disjunct (weakening) or conjunct (strengthening) is offered at
+/// every node, so an atom can grow; off — the default — it is offered at a
+/// conjunction or a disjunction alone, leaving an atom with nothing but the
+/// rewrite to a constant. Off leaves the menu, and so the draw stream, as it
+/// was before the key existed. The parameter carries no default argument on
+/// purpose: a new call site must state which arm it wants rather than silently
+/// taking one.
 Formula tlsf_monotone_rewrite(const Formula& formula,
-                              MonotoneDirection direction,
+                              MonotoneDirection direction, bool atom_rules,
                               const std::vector<std::string>& atoms,
                               const RandomSource& random_source);
 
@@ -61,7 +70,8 @@ Formula tlsf_monotone_rewrite(const Formula& formula,
 ///
 /// With probability `cfg.tlsf_p_monotone` the chosen formula takes a monotone
 /// rewrite (tlsf_monotone_rewrite) instead of either of those two, its
-/// direction drawn as a fair coin.
+/// direction drawn as a fair coin and its rule menu widened by
+/// `cfg.tlsf_monotone_atom_rules`.
 ///
 /// With probability `cfg.p_add_assumption` the operator instead appends a new
 /// environment assumption to the ASSUME section (a conditional `G(c -> F r)`

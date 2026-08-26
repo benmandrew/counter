@@ -67,7 +67,11 @@ std::vector<Formula> subjects() {
 // The whole point of the arm: whichever node and rule are drawn, the result
 // must sit on the same side of the implication order every time. A weakening
 // that only usually weakens is the general rewriter with extra steps.
-void test_monotone_rewrite_direction_holds(MonotoneDirection direction) {
+// Both settings of tlsf_monotone_atom_rules are run: the gate widens the rule
+// menu, and a wider menu that could break monotonicity would defeat the arm.
+// The guard counts per setting, so neither arm can pass on unanswered queries.
+void test_monotone_rewrite_direction_holds(MonotoneDirection direction,
+                                           bool atom_rules) {
     const bool weaken = direction == MonotoneDirection::Weaken;
     const char* label =
         weaken ? "monotone: parent implies the weakened rewrite"
@@ -76,8 +80,8 @@ void test_monotone_rewrite_direction_holds(MonotoneDirection direction) {
     for (const Formula& parent : subjects()) {
         for (std::size_t seed = 0; seed < 12; ++seed) {
             const RandomSource rng = make_random_source_from_seed(seed);
-            const Formula child =
-                tlsf_monotone_rewrite(parent, direction, atom_pool(), rng);
+            const Formula child = tlsf_monotone_rewrite(
+                parent, direction, atom_rules, atom_pool(), rng);
             const std::optional<bool> held =
                 weaken ? implies(parent, child) : implies(child, parent);
             if (!held.has_value()) {
@@ -93,11 +97,13 @@ void test_monotone_rewrite_direction_holds(MonotoneDirection direction) {
 }
 
 void test_monotone_rewrite_weakens() {
-    test_monotone_rewrite_direction_holds(MonotoneDirection::Weaken);
+    test_monotone_rewrite_direction_holds(MonotoneDirection::Weaken, false);
+    test_monotone_rewrite_direction_holds(MonotoneDirection::Weaken, true);
 }
 
 void test_monotone_rewrite_strengthens() {
-    test_monotone_rewrite_direction_holds(MonotoneDirection::Strengthen);
+    test_monotone_rewrite_direction_holds(MonotoneDirection::Strengthen, false);
+    test_monotone_rewrite_direction_holds(MonotoneDirection::Strengthen, true);
 }
 
 // Weakening a biconditional to one of its implications is what puts
@@ -110,10 +116,89 @@ void test_monotone_rewrite_reaches_the_biconditional_weakening() {
     for (std::size_t seed = 0; seed < 200 && !reached; ++seed) {
         const RandomSource rng = make_random_source_from_seed(seed);
         reached = tlsf_monotone_rewrite(parent, MonotoneDirection::Weaken,
-                                        atom_pool(), rng) == target;
+                                        false, atom_pool(), rng) == target;
     }
     expect(reached,
            "monotone: `<->` weakens to `->` with both children untouched");
+}
+
+// What tlsf_monotone_atom_rules buys when it is on. With it off an atom's only
+// monotone move is Constant, so the whole weakening menu at a literal is
+// `a -> true`, and growing a literal into a disjunction -- the shape every
+// assumption-shaped ideal in the corpus is built from -- is reachable only
+// where a disjunction already stands.
+void test_monotone_rewrite_grows_an_atom() {
+    const Formula parent = formula_of("a;");
+    bool weakened = false;
+    bool strengthened = false;
+    for (std::size_t seed = 0; seed < 200; ++seed) {
+        const RandomSource rng = make_random_source_from_seed(seed);
+        const Formula child = tlsf_monotone_rewrite(
+            parent, MonotoneDirection::Weaken, true, atom_pool(), rng);
+        if (child.kind() == Formula::Kind::Or) {
+            const auto children = child.binary_children();
+            weakened = children.has_value() && children->first == parent;
+            if (weakened) {
+                break;
+            }
+        }
+    }
+    for (std::size_t seed = 0; seed < 200; ++seed) {
+        const RandomSource rng = make_random_source_from_seed(seed);
+        const Formula child = tlsf_monotone_rewrite(
+            parent, MonotoneDirection::Strengthen, true, atom_pool(), rng);
+        if (child.kind() == Formula::Kind::And) {
+            const auto children = child.binary_children();
+            strengthened = children.has_value() && children->first == parent;
+            if (strengthened) {
+                break;
+            }
+        }
+    }
+    expect(weakened, "monotone: an atom weakens to `a | l`");
+    expect(strengthened, "monotone: an atom strengthens to `a & l`");
+}
+
+// AddOperand takes its connective from the direction, not from the node it
+// fires at. Reading it off the node was equivalent only while the rule was
+// offered at And and Or alone, where the two agree; at any other kind, and at
+// an And node being weakened, they disagree.
+void test_add_operand_follows_the_direction_not_the_node() {
+    const Formula parent = formula_of("(a & b);");
+    bool disjoined = false;
+    for (std::size_t seed = 0; seed < 200 && !disjoined; ++seed) {
+        const RandomSource rng = make_random_source_from_seed(seed);
+        const Formula child = tlsf_monotone_rewrite(
+            parent, MonotoneDirection::Weaken, true, atom_pool(), rng);
+        const auto children = child.binary_children();
+        disjoined = child.kind() == Formula::Kind::Or && children.has_value() &&
+                    children->first == parent;
+    }
+    expect(disjoined,
+           "monotone: weakening a conjunction adds a disjunct, not a conjunct");
+}
+
+// The property the gate exists to hold. With tlsf_monotone_atom_rules off an
+// Atom offers Constant alone, so every rewrite of a literal is `true` or
+// `false` and the menu size stays 1 -- which is what makes next_index draw the
+// same value it drew before the key existed, and every draw after it follow.
+// A rule leaking into the off arm shows up here as a literal that grew.
+void test_atom_rules_off_leaves_an_atom_ungrown() {
+    const Formula parent = formula_of("a;");
+    for (std::size_t seed = 0; seed < 200; ++seed) {
+        for (const MonotoneDirection direction :
+             {MonotoneDirection::Weaken, MonotoneDirection::Strengthen}) {
+            const RandomSource rng = make_random_source_from_seed(seed);
+            const Formula child = tlsf_monotone_rewrite(
+                parent, direction, false, atom_pool(), rng);
+            const bool constant = child == Formula::true_formula ||
+                                  child == Formula::false_formula;
+            expect(constant,
+                   "monotone: with atom rules off an atom rewrites to a "
+                   "constant, got `" +
+                       child.to_string() + "`");
+        }
+    }
 }
 
 // A zero probability must cost no draw, or every campaign archived before the
@@ -181,6 +266,9 @@ void run_tlsf_monotone_tests() {
     test_monotone_rewrite_weakens();
     test_monotone_rewrite_strengthens();
     test_monotone_rewrite_reaches_the_biconditional_weakening();
+    test_monotone_rewrite_grows_an_atom();
+    test_add_operand_follows_the_direction_not_the_node();
+    test_atom_rules_off_leaves_an_atom_ungrown();
     test_zero_probability_costs_no_draw();
     test_non_zero_probability_changes_offspring();
 }

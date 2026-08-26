@@ -602,6 +602,25 @@ struct Config {
     /// parameter: it sits above the widest ideal the corpus holds, and
     /// without it a continuation probability near 1 is an unbounded loop.
     double tlsf_p_burst_continue = 0.0;
+
+    /// TLSF-mode mutation: whether a monotone rewrite may add an operand at
+    /// any node, rather than at a conjunction or a disjunction alone.
+    ///
+    /// `Constant` and `AddOperand` are the two rules sound everywhere:
+    /// `phi -> true` and `phi -> phi | l` weaken anything, `phi -> false` and
+    /// `phi -> phi & l` strengthen anything. The arm nonetheless offered
+    /// `AddOperand` at `And` and `Or` alone, which left an atom with
+    /// `Constant` as its only move -- the one rule that grows a literal into a
+    /// disjunction was reachable only where a disjunction already stood.
+    /// Every assumption-shaped ideal in the corpus is a disjunction built out
+    /// of literals, and AuRUS reaches them because its `FormulaWeakening`
+    /// applies `a -> a | b` at a literal.
+    ///
+    /// The wider menu is opt-in. Off -- the default -- the rule list at every
+    /// node holds the same rules in the same order as it did before the key
+    /// existed, so the shipping binary's behaviour is unchanged and a seeded
+    /// run reproduces its stream byte for byte.
+    bool tlsf_monotone_atom_rules = false;
     /// TLSF repair strategy (see RepairMode). Muc mode caps its outer
     /// extract-repair-reintegrate loop at muc_max_iterations, so a spec whose
     /// core never becomes realizable ends the run without a repair rather than

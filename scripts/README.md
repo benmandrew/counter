@@ -111,6 +111,17 @@ defaults, exactly one level of each is byte-identical to the `A/gen10` baseline
 C++ parser accepts. Omitting a flag keeps the flat layout and takes that factor
 from the defaults, so a no-arg run reproduces the pre-factor grid.
 
+`--weights SYNTACTIC SEMANTIC STATUS` moves the baseline aggregate-fitness
+weights for one campaign. They are the one part of `DEFAULTS` deliberately not
+the binary's — 0.33 each against `config.hpp`'s 0.2 / 0.5 / 0.5, pinned so every
+archived grid states the same triple — and the flag changes the baseline without
+touching that pin, so a run that omits it is byte-identical to what it always
+was. Sweep `C` still overrides them per level, exactly as `A` and `B` override
+`--generations` and `--population-size`. The weights reach the `weighted`
+selection scheme alone: under either NSGA-II scheme, ranking, elitism and the
+output gate all read the per-objective vector, and the scalar decides only the
+order repairs are written in and the reported `best_fitness`.
+
 Two of these are worth a note. `G` is nearly free: the bound enters through the
 transfer matrix rather than a SAT call, and bound 160 measures within noise of
 bound 5, but it moves the semantic similarity score and so changes which

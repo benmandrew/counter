@@ -1,7 +1,7 @@
 name = "selection-smoke"
 branch = "campaign/selection-smoke"
 profile = "selection-smoke"
-description = "WeightedAverage against the shipped nsga2-apportion on the 21 cost-affordable TLSF families, at the 2026-08-26 shipping configuration with selection_scheme as the only key that differs between the arms. A 2 h/host smoke test."
+description = "WeightedAverage against the shipped nsga2-apportion on the 21 cost-affordable TLSF families, at the 2026-08-26 shipping configuration with fitness weights 0.1/0.2/0.7 and selection_scheme as the only key that differs between the arms. A 2 h/host smoke test."
 
 # Seeds 0-15 split evenly. Both arms of a pair run on the same host, so the
 # split is over seeds and never over schemes -- run_experiments.py crosses the
@@ -24,7 +24,15 @@ hosts = { av2 = "0-7", av3 = "8-15" }
 # config.hpp defaults; --weakening off, --metric log and --pin-vintage state
 # the rest. The two emitted configs differ in exactly one line,
 # selection_scheme, which is the campaign's whole claim about itself.
-configs = "python3 scripts/gen_configs.py --tlsf --schemes nsga2-apportion weighted --sweeps T --levels monoon --metric log --weakening off --out-dir experiments/configs-selection-smoke --pin-vintage"
+#
+# --weights 0.1 0.2 0.7 is the one deliberate departure from a default, and it
+# is chosen rather than inherited. gen_configs.py otherwise pins the three
+# weights at 0.33 each, which is neither the binary's 0.2 / 0.5 / 0.5 nor
+# anything a user gets, so this campaign states the triple it means instead of
+# taking whichever of the two it would have got by silence. The weighted arm
+# ranks by exactly the scalar these define, so the value is a parameter of the
+# question, not of the harness -- see PLAN.md section 4.
+configs = "python3 scripts/gen_configs.py --tlsf --schemes nsga2-apportion weighted --sweeps T --levels monoon --metric log --weakening off --weights 0.1 0.2 0.7 --out-dir experiments/configs-selection-smoke --pin-vintage"
 
 # jobs = 8, as monotone and aurus-h2h-ship ran it, which is what makes this
 # campaign's wall times readable against theirs. The aurus-h2h calibration

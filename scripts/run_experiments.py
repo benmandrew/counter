@@ -1168,6 +1168,15 @@ PROFILES: dict[str, dict] = {
     # and did not make. `--weakening off`, `--metric log` and `--pin-vintage`
     # cover the rest; see the campaign declaration for the generator line.
     #
+    # The aggregate fitness weights are 0.1 / 0.2 / 0.7 (syntactic / semantic /
+    # status), passed explicitly through gen_configs.py's `--weights`. They are
+    # neither the binary's 0.2 / 0.5 / 0.5 nor the 0.33 triple gen_configs.py
+    # pins into every other grid, so nothing here is inherited: the weighted arm
+    # ranks by precisely this scalar, which makes the triple a parameter of the
+    # question rather than of the harness. Every wall time and rate quoted below
+    # and in the cap table was measured at 0.33 each, so they size the run and
+    # do not control it.
+    #
     # The corpus is SELECTION_SMOKE_SPECS, H2H_TLSF_READY minus four families
     # excluded on measured cost alone -- see that constant for the rule and the
     # numbers. found_repair is saturated at 1.00 on all 21 under the nsga2 arm,

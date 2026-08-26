@@ -6,7 +6,7 @@ Pre-registered 2026-08-26, before any `selection-smoke` row existed. Section 7 r
 
 `Config::selection_scheme` takes three values, and one of them has never been measured against the scheme counter ships. `WeightedAverage` (TOML `weighted`) ranks the population by the aggregate scalar fitness. The two *Non-dominated Sorting Genetic Algorithm II* (NSGA-II) schemes rank by non-dominated sorting and crowding distance over the individual objectives, and differ from each other only in the survivor step.
 
-The campaign asks whether `weighted` still trades against NSGA-II the way the 2026-07-24 ablation measured it, on the engine counter ships on 2026-08-26. `selection_scheme` is the only config key that differs between the two arms.
+The campaign asks whether `weighted` still trades against NSGA-II the way the 2026-07-24 ablation measured it, on the engine counter ships on 2026-08-26 and at the fitness weights section 4 states rather than any counter defaults to. `selection_scheme` is the only config key that differs between the two arms.
 
 ## 2. Why the archived rows do not answer it
 
@@ -43,11 +43,17 @@ Both arms of a pair run on the same host at the same seed, so the seed split is 
 
 The budget is 2 h per host, and 16 seeds is what fits it. The `monoon` arm of `2026-08-23-monotone` sums to 1,807 s of serial work per `(seed, arm)` over these 21 families, so 8 seeds of both arms is about 28,900 serial seconds per host — roughly 80 minutes at `jobs = 8` if the weighted arm costs what the control does, and inside 2 h at 1.5x. That estimate is the control arm's cost projected onto an arm with no archived timings, which is the same one-sided assumption the caps rest on, so it may be wrong in the same direction. The run order is seed-major — 42 runs per seed, both arms of every family — so a host stopped at the deadline leaves whole seeds and a balanced design rather than a corpus truncated mid-sweep. Overrunning therefore costs seeds, not the design.
 
-## 4. Configuration, and the one divergence from the shipping defaults
+## 4. Configuration, and the weights the campaign chooses
 
 The configs are generated on the host at stage time by the `configs` line in `campaign.toml`. The two emitted TOML files were diffed and differ in exactly one line, `selection_scheme`. That is the campaign's whole claim about itself.
 
-Every other key the two files state equals the built-in default in `include/config.hpp`, with one exception. `gen_configs.py` emits `weight_syntactic = weight_semantic = weight_status = 0.33` unconditionally into every config it has ever written, where the binary defaults to 0.2 / 0.5 / 0.5. The divergence is deliberate and documented in `gen_configs.py`, on the ground that it keeps every archived grid comparable and self-describing. It applies identically to both arms, so it cannot bias the contrast. It does mean the campaign measures the schemes at equal-weighted fitness rather than at the shipped weights, and section 8 registers that as a limit rather than leaving it in the generator's comments.
+Every other key the two files state equals the built-in default in `include/config.hpp`, apart from the three aggregate fitness weights. The campaign states 0.1 / 0.2 / 0.7 — syntactic, semantic, status — through `gen_configs.py`'s new `--weights` flag, rather than inheriting the binary's 0.2 / 0.5 / 0.5 or the 0.33 triple the generator has pinned into every config it has ever written. The flag defaults to that pinned triple, so every past grid still generates byte-identically, which was verified.
+
+A trace of the C++ places the choice inside the treatment arm alone. `nsga2_sort` (`include/genetic/nsga2.hpp:59-77`) builds its key from the per-objective vector, non-domination rank and crowding distance, and never reads the scalar. `order_population` (`include/genetic/pipeline.hpp:41-53`) compares the scalar only under `WeightedAverage`, and elitism takes the top `elite_n` from that same NSGA-II order (`include/genetic/pipeline.hpp:396-403`). The output path is content-based: `realizable_survivors` (`src/tlsf/survivors.cpp:118-140`) gates on realizability and the correctness table, and the weakening and implication filters match by specification value (`src/tlsf/survivors.cpp:166-181`). Every maximal spec is written whatever the scalar reads, which leaves the scalar fixing the order alone, and with it the `repair_N` numbering. The fitness cache keys on the specification and stores the objective vector (`include/fitness/function.hpp:57-90`), the scalar being computed on demand. Its remaining readers are cosmetic, being the status line, `best_fitness` in `run.json` and the dashboard, and `fitness.total` in the `repair_N.fitness.json` sidecar.
+
+So the weights are a parameter of the treatment arm and of nothing else. The control arm is invariant to them: `implies_ideal`, `found_repair`, `n_repairs` and `wall_time_s` do not move with the triple there, and only the reported ordering and `best_fitness` do. A parameter applied unequally to two arms would be a confound because the control's behaviour depends on it, and this control's does not.
+
+The choice is substantive. At 0.7 on status the weighted arm ranks chiefly by realizability and pays little for similarity, so it is measured in the configuration most favourable to yield and least favourable to `implies_ideal`. That sharpens the 2026-07-24 trade rather than sitting neutrally between its two directions.
 
 Sweep T at level `monoon` is used because it is the only level in any TLSF sweep whose four keys — `p_monotone` 0.25, `p_clone_assumption` 0.25, `elitism_rate` 0.1 and `accumulate_repairs` true — all equal today's defaults, so the archived config states every key that has moved recently instead of inheriting it. `monoship` pins `elitism_rate` 0.0, a default move the 2026-08-23 monotone campaign measured and did not make.
 
@@ -62,6 +68,8 @@ The exclusion carries a cost that has to be stated. Three of the four sit at `im
 ## 6. Endpoints, and where the headroom is
 
 The primary endpoint is per-run `implies_ideal` greater than zero, paired by `(spec, seed)` and read by a two-sided exact *McNemar test* over the discordant pairs among the 336. Secondary and pre-registered as secondary: `found_repair`, `n_repairs`, and `wall_time_s` as a paired per-family *Wilcoxon signed-rank test*.
+
+All four are weight-invariant on the control arm, by the trace in section 4. The move to 0.1 / 0.2 / 0.7 therefore changes one column there, `best_fitness`, and that column is not an endpoint.
 
 `found_repair` reads 1.00 on all 21 families under the control arm in the monotone archive. The yield half of the 2026-07-24 trade therefore has no room to reproduce on this corpus: a weighted win on yield is not measurable here, and its absence must not be read as a reversal. That saturation is the reason `implies_ideal` is the primary.
 
@@ -90,7 +98,7 @@ The campaign can say whether the 2026-07-24 quality gap, 23.7% against 14.9%, su
 
 ## 8. Threats to validity
 
-**The fitness weights are not the shipping ones.** They are 0.33 / 0.33 / 0.33 rather than 0.2 / 0.5 / 0.5, for the reason section 4 gives. `weighted` ranks by the aggregate scalar those weights define, so it is the arm the divergence could matter most to.
+**The result describes one setting of the fitness weights.** They are 0.1 / 0.2 / 0.7, for the reason section 4 gives, and the trace there rules out any bias in the contrast. What is left is a limit on generalisation. The weighted arm is measured at status-heavy weights alone, so nothing here speaks to `weighted` at the shipped 0.2 / 0.5 / 0.5 or at the 0.33 triple every archived campaign ran, and a loss on this campaign is no verdict on the scheme.
 
 **Timeout caps are sized from the control arm alone.** They are 4× the per-family maximum from the `monoon` arm of `2026-08-23-monotone`, floored at 300 s and clamped at 3600 s, because that is the only arm with archived timings. If the weighted arm runs longer the caps bite it alone, which is one-sided censoring on the response under test, the failure `replicate-recap` exists to undo. Read `timed_out` per arm before reading `implies_ideal`; where the two arms' timeout counts differ, the primary endpoint is not readable as it stands.
 
@@ -98,7 +106,7 @@ The campaign can say whether the 2026-07-24 quality gap, 23.7% against 14.9%, su
 
 **TLSF only.** Most of the six engine changes in section 2 are TLSF-only, which is why, and the 2026-07-24 ablation measured both paths where this answers one of them.
 
-**The archived `monoon` rows are a check, not a control.** They share this corpus, the seeds 0–15 overlap, the level and the scheme, so they are a free validity check on the fresh control arm. They came from commit `6b78709` under a 7200 s cap, so their censoring differs from this campaign's, and both arms run fresh for that reason.
+**The archived `monoon` rows are a check, not a control.** They share this corpus, the seeds 0–15 overlap, the level and the scheme, so they are a free validity check on the fresh control arm. The weight change costs that check nothing, the control arm being weight-invariant by section 4's trace, which leaves the archived rows differing from the fresh control arm in two things: commit `6b78709` and a 7200 s cap. That cap censors differently from this campaign's, and both arms run fresh for that reason.
 
 ## 9. Deliberately not covered
 
@@ -107,7 +115,7 @@ Four things are out of scope by construction, and naming them here stops any of 
 - **The FRETISH path.** No FRETISH phase runs, so the 2026-07-24 FRETISH finding of 0.642 against 0.297 is neither replicated nor contradicted.
 - **`nsga2-truncate`.** Only the shipped `nsga2-apportion` is crossed against `weighted`. The 2026-07-24 rows are the truncate arm, across a binary change, and no third arm runs here.
 - **The four excluded families.** Section 5.
-- **The shipped fitness weights.** Section 4.
+- **Any fitness weights but 0.1 / 0.2 / 0.7.** Section 4. Neither the shipped 0.2 / 0.5 / 0.5 nor the archived 0.33 triple is measured for the weighted arm.
 
 ## 10. Provenance
 

@@ -76,11 +76,6 @@ PROFILE_CSVS: dict[str, str] = {
     # resume key, so a shared CSV would let the merge keep whichever row of a
     # pair arrived first.
     "aurus-h2h-ship": "results-aurus-h2h-ship.csv",
-    # Retired with sweep U -- two of its operator levels set
-    # [tlsf.mutation] p_union_assumption, a key that no longer exists --
-    # and kept here for the same reason the ops-* entries are: the
-    # archived CSVs stay mergeable.
-    "assumption-reach": "results-assumption-reach.csv",
     "monotone": "results-monotone.csv",
     # The 2026-08-26 selection smoke test. Its own CSV rather than sharing
     # `monotone`'s: the two run the same sweep T level over an overlapping
@@ -149,8 +144,6 @@ PROFILE_RESULT_DIRS: dict[str, str] = {
     "h2h-tlsf": "results-ablate-tlsf",
     "aurus-h2h": "results-aurus-h2h",
     "aurus-h2h-ship": "results-aurus-h2h-ship",
-    # Retired with sweep U, and kept for the same reason as above.
-    "assumption-reach": "results-assumption-reach",
     "monotone": "results-monotone",
     "selection-smoke": "results-selection-smoke",
     # Retired with their sweep, and kept for the same reason as above.

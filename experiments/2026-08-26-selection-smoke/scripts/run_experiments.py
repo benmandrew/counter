@@ -1648,13 +1648,6 @@ PROFILES: dict[str, dict] = {
     # one, so the sweep can no longer be generated and neither can a profile that
     # names it. merge_experiments.py keeps its entries for them, as it does for
     # wellsep-timing, so the archived CSVs stay mergeable.
-    #
-    # The assumption-reach profile is retired on the same terms. It ran sweep U,
-    # two of whose three operator levels set `[tlsf.mutation]
-    # p_union_assumption`; that key is gone with the union crossover it armed,
-    # so the sweep cannot be generated and neither can this profile.
-    # `experiments/2026-08-26-assumption-reach` is the record, and it reproduces
-    # from its own vendored scripts/ at the commit its PROVENANCE.json names.
 }
 
 

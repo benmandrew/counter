@@ -220,18 +220,6 @@ DEFAULTS: dict = {
     # silent one -- reproducing such a campaign means writing both keys to 0.
     "p_monotone": 0.25,
     "p_clone_assumption": 0.25,
-    # The 2026-08-25 assumption-reach keys (see config.hpp): a width for the
-    # disjunctive body tlsf_add_assumption draws, a bare-F form for an appended
-    # assumption, an assumption removal and a mutation burst. All four default
-    # to their no-op value in the binary, so a campaign archived before
-    # 2026-08-25 that omits them means exactly what it always meant and no
-    # "Config vintage" entry is owed. A fifth key, p_union_assumption, was
-    # removed rather than kept at its no-op; a config that still sets it is
-    # rejected, so reproduce such a campaign from its vendored scripts/.
-    "max_assumption_width": 1,
-    "p_bare_assumption": 0.0,
-    "p_remove_assumption": 0.0,
-    "p_burst_continue": 0.0,
     # 0 = unlimited, matching config.hpp. Emitted into [runtime] only when
     # positive (see make_toml), so the standard grids stay byte-identical to the
     # pre-cap output; the TLSF campaign sets it to bound ltlsynt's peak RAM.
@@ -339,20 +327,9 @@ def make_toml(overrides: dict, defaults: dict = DEFAULTS) -> str:
     ] + ([f"p_monotone   = {_fmt(d['p_monotone'])}"]
          if "p_monotone" in overrides else []) + (
         [f"p_clone_assumption = {_fmt(d['p_clone_assumption'])}"]
-        if "p_clone_assumption" in overrides else []) + (
-        [f"max_assumption_width = {d['max_assumption_width']}"]
-        if "max_assumption_width" in overrides else []) + (
-        [f"p_bare_assumption = {_fmt(d['p_bare_assumption'])}"]
-        if "p_bare_assumption" in overrides else []) + (
-        [f"p_remove_assumption = {_fmt(d['p_remove_assumption'])}"]
-        if "p_remove_assumption" in overrides else []) + (
-        [f"p_burst_continue = {_fmt(d['p_burst_continue'])}"]
-        if "p_burst_continue" in overrides else [])
+        if "p_clone_assumption" in overrides else [])
         if overrides.keys() & {"p_assumption", "p_temporal",
-                               "p_monotone", "p_clone_assumption",
-                               "max_assumption_width",
-                               "p_bare_assumption", "p_remove_assumption",
-                               "p_burst_continue"}
+                               "p_monotone", "p_clone_assumption"}
         else []) + [
         "",
     ])
@@ -751,15 +728,6 @@ TLSF_SWEEP_T: list[tuple[str, dict]] = [
     ("monoship", {"p_monotone": 0.25, "p_clone_assumption": 0.25,
                   "elitism_rate": 0.0, "accumulate_repairs": True}),
 ]
-
-# Sweep U is retired. It crossed the 2026-08-25 assumption-reach operators
-# against search size, and two of its three operator levels set
-# [tlsf.mutation] p_union_assumption; that key is gone -- the union crossover
-# it armed cannot reach what it was written for -- so neither `reach` nor
-# `reachburst` is expressible and the sweep cannot be generated at all.
-# `experiments/2026-08-26-assumption-reach` is the only record of what ran, and
-# it reproduces from its vendored per-campaign scripts/ at the commit its
-# PROVENANCE.json names, as sweeps C, O and V do.
 
 TLSF_SWEEPS: list[tuple[str, list]] = [
     ("A", TLSF_SWEEP_A),

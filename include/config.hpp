@@ -401,12 +401,14 @@ struct Config {
     ///
     /// Defaults to 0.05, matching p_add_assumption: the two are the same move
     /// in opposite directions and there is no reason for the environment to be
-    /// easier to strengthen than the system is to relax. Setting it to 0
-    /// restores the search exactly as it ran before the operator existed —
-    /// the probability is read before the RNG is drawn, so a zero never costs
-    /// a draw — which is what reproducing a campaign archived before
-    /// 2026-08-13 requires (see the config vintage note in
-    /// experiments/README.md).
+    /// easier to strengthen than the system is to relax. The operators are
+    /// offered as a cascade with early return, p_add_assumption tested first
+    /// and this one only where that did not fire, so the realised rate is 0.95
+    /// × 0.05 = 0.0475 rather than 0.05. Setting it to 0 restores the search
+    /// exactly as it ran before the operator existed — the probability is read
+    /// before the RNG is drawn, so a zero never costs a draw — which is what
+    /// reproducing a campaign archived before 2026-08-13 requires (see the
+    /// config vintage note in experiments/README.md).
     ///
     /// The risk to watch is that removal is monotonically good for
     /// realizability, so the status objective pays for it while the similarity

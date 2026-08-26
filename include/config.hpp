@@ -445,6 +445,24 @@ struct Config {
     /// rewrite. At 0 the temporal skeleton of existing formulae is never
     /// altered.
     double tlsf_p_temporal = 0.2;
+    /// TLSF-mode mutation: whether the temporal rewrite's case (2d) graft may
+    /// draw an implication as its connective, beside `U`, `W`, `&` and `|`.
+    ///
+    /// Case (2d) is the arm that fires at an atom or a unary node, and it
+    /// grafts a drawn anchor onto the mutated child under a connective. Its
+    /// menu kept the exclusion `pick_binary_kind` shed on 2026-08-21, which
+    /// came from Brizzio's fragment -- Owl's negation normal form, where
+    /// `a -> b` is stored as a disjunction and there is no implication node to
+    /// re-emit. So `p -> X phi`, the shape of every minimal guarantee
+    /// weakening and the shape tlsf_add_assumption hard-codes, was out of
+    /// reach in one draw at exactly the nodes where a guard has to be
+    /// introduced.
+    ///
+    /// The wider draw is opt-in. The arm is appended last, so off -- the
+    /// default -- the case order and the draw's modulus are what they were
+    /// before the key existed, the shipping binary's behaviour is unchanged and
+    /// a seeded run reproduces its stream byte for byte.
+    bool tlsf_connective_implies = false;
     /// TLSF-mode mutation: once a section formula has been chosen for
     /// rewriting, the probability of applying a *monotone* rewrite -- one
     /// whose result is comparable to the formula it replaces under implication

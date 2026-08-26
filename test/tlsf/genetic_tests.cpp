@@ -260,6 +260,66 @@ void test_temporal_mutation_can_emit_an_implication() {
            "at least one seed");
 }
 
+// Case (2d) of mutate_temporal is the arm firing at an atom or a unary node.
+// It grafts a drawn anchor onto the mutated child under a connective, and
+// that connective menu kept the Brizzio-fragment exclusion pick_binary_kind
+// shed on 2026-08-21 — so a guarded response, the shape of every minimal
+// guarantee weakening, was out of reach in one draw at exactly the nodes
+// where a guard has to be introduced.
+//
+// `G g` is the subject that isolates the graft: its child is an atom, and
+// case (1) emits only an atom or a unary node, so pick_connective_kind is the
+// sole source of a binary node anywhere in the result.
+tlsf::Specification connective_subject() {
+    return parse("INPUTS { r; } OUTPUTS { g; } GUARANTEE { G g; }");
+}
+
+Config connective_config(bool connective_implies) {
+    Config cfg;
+    cfg.tlsf_p_temporal = 1.0;
+    cfg.tlsf_p_monotone = 0.0;  // the monotone arm is offered ahead of it
+    cfg.p_add_assumption = 0.0;
+    cfg.p_remove_guarantee = 0.0;
+    cfg.tlsf_connective_implies = connective_implies;
+    return cfg;
+}
+
+void test_connective_graft_can_emit_an_implication() {
+    const Config cfg = connective_config(true);
+    const tlsf::Specification original = connective_subject();
+    bool grafted = false;
+    for (std::size_t seed = 0; seed < 200 && !grafted; ++seed) {
+        const RandomSource rng = make_random_source_from_seed(seed);
+        const tlsf::Specification mutated = tlsf_mutate(original, rng, cfg);
+        const Formula& formula = mutated.m_guarantee.front().m_formula;
+        const auto children = formula.binary_children();
+        grafted = formula.kind() == Formula::Kind::Implies &&
+                  children.has_value() &&
+                  children->first.kind() == Formula::Kind::Atom;
+    }
+    expect(grafted,
+           "connective draw: the case (2d) graft emits `anchor -> inner` for "
+           "at least one seed");
+}
+
+// The property the gate exists to hold. Off, the graft draws from four kinds
+// in the order it always did, so next_index takes the same modulus and every
+// draw after it follows. An arm leaking into the off setting shows up here as
+// an implication in a subject that can produce one no other way.
+void test_connective_graft_off_emits_no_implication() {
+    const Config cfg = connective_config(false);
+    const tlsf::Specification original = connective_subject();
+    for (std::size_t seed = 0; seed < 200; ++seed) {
+        const RandomSource rng = make_random_source_from_seed(seed);
+        const tlsf::Specification mutated = tlsf_mutate(original, rng, cfg);
+        const Formula& formula = mutated.m_guarantee.front().m_formula;
+        expect(!contains_kind(formula, Formula::Kind::Implies),
+               "connective draw: with the key off the graft emits no "
+               "implication, got `" +
+                   formula.to_string() + "`");
+    }
+}
+
 void test_temporal_mutation_atoms_from_inputs_only() {
     // The temporal operator threads the side-appropriate atom pool through its
     // recursion, so an assumption-side rewrite must never draw an output atom.
@@ -700,6 +760,8 @@ void run_tlsf_genetic_tests() {
     test_mutation_side_probability_selects_side();
     test_temporal_mutation_changes_skeleton();
     test_temporal_mutation_can_emit_an_implication();
+    test_connective_graft_can_emit_an_implication();
+    test_connective_graft_off_emits_no_implication();
     test_temporal_mutation_atoms_from_inputs_only();
     test_add_assumption_forms();
     test_add_assumption_never_obliges_an_output();

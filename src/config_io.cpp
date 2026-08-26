@@ -122,10 +122,11 @@ const KeySpec& config_key_spec() {
          {"tlsf",
           section({"repair_mode", "muc_max_iterations"},
                   {{"mutation",
-                    section({"p_assumption", "p_temporal", "p_monotone",
-                             "monotone_atom_rules", "p_clone_assumption",
-                             "max_assumption_width", "p_bare_assumption",
-                             "p_remove_assumption", "p_burst_continue"})}})},
+                    section({"p_assumption", "p_temporal", "connective_implies",
+                             "p_monotone", "monotone_atom_rules",
+                             "p_clone_assumption", "max_assumption_width",
+                             "p_bare_assumption", "p_remove_assumption",
+                             "p_burst_continue"})}})},
          {"model_counting", section({"default_bound", "metric"})},
          {"filters", section({"run_weakening", "run_implication", "run_vacuity",
                               "run_well_separation"})},
@@ -326,6 +327,9 @@ void apply_tlsf_mutation(const toml::table& mutation, Config& cfg) {
                 "tlsf.mutation.max_assumption_width must be at least 1");
         }
         cfg.tlsf_max_assumption_width = static_cast<std::size_t>(*val);
+    }
+    if (auto val = mutation["connective_implies"].value<bool>()) {
+        cfg.tlsf_connective_implies = *val;
     }
     if (auto val = mutation["monotone_atom_rules"].value<bool>()) {
         cfg.tlsf_monotone_atom_rules = *val;

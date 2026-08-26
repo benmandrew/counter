@@ -66,9 +66,24 @@ Formula::Kind pick_binary_kind(const RandomSource& random_source) {
 }
 
 // Connective used in case (2d), o2' ∈ {U, W, ∧, ∨}, to graft a fresh atom onto
-// the mutated child.
-Formula::Kind pick_connective_kind(const RandomSource& random_source) {
-    switch (random_source.next_index(4)) {
+// the mutated child. Under @p connective_implies
+// (cfg.tlsf_connective_implies, default false) the menu gains →.
+//
+// This function kept the Brizzio-fragment exclusion pick_binary_kind shed on
+// 2026-08-21, and it is the arm that fires at an atom or a unary node — the
+// nodes where a guard has to be introduced. So `p → X φ`, the shape of every
+// minimal guarantee weakening and the shape tlsf_add_assumption hard-codes,
+// took more than one draw to reach at exactly those nodes. The caller passes
+// the drawn anchor first, so → yields `anchor → inner`, the guard-implies-
+// response direction.
+//
+// The arm is appended last so that off, next_index(4) and the case order are
+// what they were before the key existed, and the whole downstream draw stream
+// reproduces. Release stays out: it is already in pick_binary_kind and there is
+// nothing behind adding it here.
+Formula::Kind pick_connective_kind(const RandomSource& random_source,
+                                   bool connective_implies) {
+    switch (random_source.next_index(connective_implies ? 5 : 4)) {
         case 0:
             return Formula::Kind::Until;
         case 1:
@@ -77,6 +92,8 @@ Formula::Kind pick_connective_kind(const RandomSource& random_source) {
             return Formula::Kind::And;
         case 3:
             return Formula::Kind::Or;
+        case 4:
+            return Formula::Kind::Implies;
         default:
             assert(false);
             __builtin_unreachable();
@@ -158,7 +175,9 @@ Formula mutate_temporal(const Formula& formula,
                     const Formula inner = Formula::make_unary(
                         pick_unary_kind(random_source), mutated_child);
                     return Formula::make_binary(
-                        pick_connective_kind(random_source), anchor, inner);
+                        pick_connective_kind(random_source,
+                                             cfg.tlsf_connective_implies),
+                        anchor, inner);
                 }
                 default:
                     assert(false);

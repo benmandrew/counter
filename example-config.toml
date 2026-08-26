@@ -77,6 +77,10 @@ muc_max_iterations = 32            # muc mode only
 [tlsf.mutation]
 p_assumption = 0.3
 p_temporal   = 0.2
+# Let case (2d) of the temporal rewrite draw an implication as its graft
+# connective, beside U, W, & and |; off, a guarded response is out of reach in
+# one draw at an atom or a unary node.
+connective_implies = false
 # A rewrite whose result is comparable to what it replaces under implication,
 # offered ahead of the other two. Set to 0 to reproduce a run from before the
 # arm existed.

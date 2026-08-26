@@ -68,6 +68,12 @@ Formula tlsf_monotone_rewrite(const Formula& formula,
 /// inputs and outputs. If no mutable formula exists the specification is
 /// returned unchanged.
 ///
+/// `cfg.tlsf_connective_implies` widens the temporal rewrite's case (2d)
+/// graft, which fires at an atom or a unary node, to draw an implication as
+/// its connective beside `U`, `W`, `&` and `|`. Off -- the default -- a
+/// guarded response such as `p -> X phi` takes more than one draw to reach at
+/// the nodes where a guard has to be introduced.
+///
 /// With probability `cfg.tlsf_p_monotone` the chosen formula takes a monotone
 /// rewrite (tlsf_monotone_rewrite) instead of either of those two, its
 /// direction drawn as a fair coin and its rule menu widened by

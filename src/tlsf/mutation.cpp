@@ -821,8 +821,8 @@ tlsf::Specification tlsf_mutate(const tlsf::Specification& spec,
         // counter's runs against AuRUS's 2.6% -- and both directions deliver
         // that equally, leaving the fitness function to pick between them.
         // AuRUS draws its two monotone visitors with equal probability for
-        // the same reason, which is why cfg.strengthen_assumptions is
-        // deliberately not read here.
+        // the same reason, which is why this arm does not align its direction
+        // with the side the way the FRETISH timing rewrite does.
         const bool weaken = random_source.next_bool();
         entry.m_formula = tlsf_monotone_rewrite(
             entry.m_formula,

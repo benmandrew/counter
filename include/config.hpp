@@ -401,12 +401,14 @@ struct Config {
     ///
     /// Defaults to 0.05, matching p_add_assumption: the two are the same move
     /// in opposite directions and there is no reason for the environment to be
-    /// easier to strengthen than the system is to relax. Setting it to 0
-    /// restores the search exactly as it ran before the operator existed —
-    /// the probability is read before the RNG is drawn, so a zero never costs
-    /// a draw — which is what reproducing a campaign archived before
-    /// 2026-08-13 requires (see the config vintage note in
-    /// experiments/README.md).
+    /// easier to strengthen than the system is to relax. The operators are
+    /// offered as a cascade with early return, p_add_assumption tested first
+    /// and this one only where that did not fire, so the realised rate is 0.95
+    /// × 0.05 = 0.0475 rather than 0.05. Setting it to 0 restores the search
+    /// exactly as it ran before the operator existed — the probability is read
+    /// before the RNG is drawn, so a zero never costs a draw — which is what
+    /// reproducing a campaign archived before 2026-08-13 requires (see the
+    /// config vintage note in experiments/README.md).
     ///
     /// The risk to watch is that removal is monotonically good for
     /// realizability, so the status objective pays for it while the similarity
@@ -430,13 +432,6 @@ struct Config {
     /// fail is the well-separation filter rather than the syntactic ban, so
     /// pair it with run_well_separation_filter.
     bool allow_output_assumptions = true;
-    /// Mutate assumption timings in the strengthening direction rather than the
-    /// weakening one. Weakening the overall assume-guarantee specification
-    /// means weakening a guarantee but strengthening an assumption, so
-    /// weakening both makes every assumption mutation a move away from a
-    /// repair. Retained as a flag only so the two directions can be crossed as
-    /// an experiment factor.
-    bool strengthen_assumptions = true;
     /// TLSF-mode mutation: probability of mutating an assumption-side section
     /// (INITIALLY/REQUIRE/ASSUME) rather than a guarantee-side one
     /// (PRESET/ASSERT/GUARANTEE) when mutating a tlsf::Specification. The

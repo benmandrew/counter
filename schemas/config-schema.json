@@ -39,7 +39,6 @@
         "p_add_assumption": { "type": "number", "minimum": 0, "maximum": 1, "description": "Both modes: probability a mutation appends a new environment assumption (fairness over an input) instead of rewriting an existing requirement/formula." },
         "p_remove_guarantee": { "type": "number", "minimum": 0, "maximum": 1, "description": "Both modes: probability a mutation deletes one guarantee instead of rewriting a requirement/formula. The mirror of p_add_assumption; never removes the last live guarantee. Set to 0 to reproduce a run from before the operator existed." },
         "p_conditional_assumption": { "type": "number", "minimum": 0, "maximum": 1, "description": "Of the appended assumptions, the fraction guarded by a random input atom rather than by 'true'." },
-        "strengthen_assumptions": { "type": "boolean", "description": "Mutate assumption timings in the strengthening direction rather than the weakening one. Retained so the two directions can be compared." },
         "allow_output_assumptions": { "type": "boolean", "description": "Allow environment assumptions to reference output atoms as well as inputs, both when added and when rewritten. True is the default; false keeps them input-only and so well-separated by construction." }
       }
     },

@@ -67,7 +67,6 @@ p_conditional_assumption = 0.25
 # Some repairs are unreachable without it. Set to 0 to reproduce a run from
 # before the operator existed.
 p_remove_guarantee       = 0.05
-strengthen_assumptions   = true
 allow_output_assumptions = true  # guarded by the status score, not by a filter
 
 [tlsf]

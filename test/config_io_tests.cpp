@@ -46,6 +46,8 @@ accumulate_repairs = false
 weight_syntactic = 0.3
 weight_semantic  = 0.4
 weight_status    = 0.6
+status_grading      = "mrs"
+mrs_admission_order = "degree"
 
 [mutation]
 p_trigger  = 0.3
@@ -438,6 +440,7 @@ elitism_rate     = 0.1
 crossover_rate   = 0.2
 mutation_rate    = 0.8
 selection_scheme = "nsga2-truncate"
+accumulate_repairs = true
 
 [fitness]
 weight_syntactic = 0.3
@@ -450,7 +453,7 @@ p_response               = 0.7
 p_timing                 = 0.1
 p_add_assumption         = 0.05
 p_conditional_assumption = 0.25
-strengthen_assumptions   = true
+p_remove_guarantee       = 0.05
 allow_output_assumptions = false
 
 [tlsf]
@@ -458,8 +461,10 @@ repair_mode        = "muc"
 muc_max_iterations = 32
 
 [tlsf.mutation]
-p_assumption = 0.3
-p_temporal   = 0.2
+p_assumption       = 0.3
+p_temporal         = 0.2
+p_monotone         = 0.25
+p_clone_assumption = 0.25
 
 [model_counting]
 default_bound = 10
@@ -485,6 +490,21 @@ dashboard                    = true
     const std::string warnings = warnings_from(toml);
     expect(warnings.empty(),
            "config_io: a config of known keys should warn about none, got: " +
+               warnings);
+}
+
+// A removed key is warned about with a hint saying why it is gone, rather than
+// as a bare typo: an archived config's omitted keys take the binary's current
+// default, so a removed key is the one case the config cannot be reinterpreted.
+void test_config_io_retired_key_warns_with_hint() {
+    const std::string warnings =
+        warnings_from("[mutation]\nstrengthen_assumptions = false\n");
+    expect(warnings.find("unknown key mutation.strengthen_assumptions") !=
+               std::string::npos,
+           "config_io: a removed key should be named by its full path");
+    expect(warnings.find("removed:") != std::string::npos,
+           "config_io: a removed key's warning should say why it is gone, "
+           "got: " +
                warnings);
 }
 
@@ -583,6 +603,7 @@ void run_config_io_tests() {
     test_config_io_muc_max_iterations_parsed();
     test_config_io_muc_max_iterations_nonpositive_throws();
     test_config_io_known_keys_do_not_warn();
+    test_config_io_retired_key_warns_with_hint();
     test_config_io_unknown_section_warns();
     test_config_io_unknown_key_warns();
     test_config_io_unknown_top_level_key_warns();

@@ -457,35 +457,6 @@ void test_assumption_and_guarantee_timings_move_opposite_ways() {
            "across 200 seeds");
 }
 
-// With the flag off both lists weaken, so an assumption can reach `eventually`
-// — the move the split exists to prevent.
-void test_strengthen_assumptions_flag_restores_weakening() {
-    const Requirement req(Formula("true"), Formula("a"),
-                          timing::within_ticks(4), ConditionType::Continual,
-                          true);
-    Config cfg;
-    cfg.p_response = 0.0;
-    cfg.p_trigger = 0.0;
-    cfg.p_timing = 1.0;
-    cfg.p_add_assumption = 0.0;
-    cfg.p_remove_guarantee = 0.0;
-    cfg.strengthen_assumptions = false;
-    bool saw_weakening = false;
-    for (std::size_t seed = 0; seed < 200 && !saw_weakening; ++seed) {
-        const Specification spec({req}, {}, {"a"}, {"b"});
-        const Timing mutated =
-            mutate_specification(spec, make_random_source_from_seed(seed), cfg)
-                .m_assumptions[0]
-                .m_timing;
-        const auto* within = std::get_if<timing::WithinTicks>(&mutated);
-        saw_weakening = std::holds_alternative<timing::Eventually>(mutated) ||
-                        (within != nullptr && within->m_ticks > 4);
-    }
-    expect(
-        saw_weakening,
-        "strengthen_assumptions = false should weaken assumptions as before");
-}
-
 // The pool is collected across the whole specification, so a guarantee's tick
 // count can rescue an assumption stuck at eventually — the case that motivates
 // drawing from a pool at all, since add_assumption seeds every new assumption
@@ -956,7 +927,6 @@ void run_mutation_tests() {
     test_mutation_all_locked_is_noop();
     test_mutation_skips_non_weakenable_requirement();
     test_assumption_and_guarantee_timings_move_opposite_ways();
-    test_strengthen_assumptions_flag_restores_weakening();
     test_eventually_assumption_escapes_using_a_guarantee_tick_count();
     test_eventually_assumption_stays_put_without_a_donor();
     test_condition_mutation_never_introduces_output_atom();

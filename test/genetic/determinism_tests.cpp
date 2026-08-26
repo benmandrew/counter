@@ -132,7 +132,6 @@ Config golden_config() {
     // the inputs alone, so next_index sees a narrower bound and the trace hash
     // moves without a single draw being added, removed or reordered.
     cfg.allow_output_assumptions = true;
-    cfg.strengthen_assumptions = true;
     cfg.parallel = 1;
     return cfg;
 }

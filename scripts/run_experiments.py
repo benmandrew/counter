@@ -500,10 +500,6 @@ TLSF_ALIASES: dict[tuple[str, str], tuple[str, str]] = {
 # across profiles: the same (sweep, level, scheme, spec, seed) is one directory
 # name regardless of operating point, so two profiles sharing a results_dir
 # would have parse_repair_files() read the other's stale repair_*.json.
-ASSUMPTION_REACH_SPECS: list[str] = [
-    s for s in H2H_TLSF_READY if s not in ("humanoid-531", "humanoid-742")
-]
-
 PROFILES: dict[str, dict] = {
     # The original sweep, pinned to the levels it has always had so its
     # results.csv stays a single comparable dataset even though gen_configs.py
@@ -1104,47 +1100,6 @@ PROFILES: dict[str, dict] = {
     # needs every one of those to match. Three arms rather than one because the
     # branch carries three independent changes -- see TLSF_SWEEP_T in
     # gen_configs.py for which contrast attributes which.
-    # The 2026-08-25 assumption-reach pair, off against on, over the same
-    # corpus and cap the monotone campaign used so the two archives compare.
-    #
-    # Eight seeds rather than twenty: this is a reachability pilot, and the
-    # question it asks first is whether the pair reaches `gyro-var1`,
-    # `gyro-var2` or `lift` at all, none of which counter repaired in any of
-    # the 60 runs the 2026-08-23 campaign gave them. A rate of zero needs few
-    # seeds to move off and many to estimate, so the design buys the former.
-    # The remaining 22 families ride along as a regression check rather than as
-    # an endpoint; a pooled Wilcoxon over 25 families would be null by
-    # construction for an effect confined to three of them, which is the
-    # reading error `experiments/2026-08-23-monotone/REPORT.md` records.
-    "assumption-reach": {
-        "schemes": ["nsga2-apportion"],
-        "weakenings": ["wkoff"],
-        "metrics": ["log"],
-        "repair_modes": None,
-        "sweeps": ["U"],
-        "levels": {"U": ["reachoff-s", "reach-s", "reachburst-s",
-                         "reachoff-l", "reach-l", "reachburst-l"]},
-        # H2H_TLSF_READY less humanoid-531 and humanoid-742. Both are
-        # time-limited rather than grammar-limited: humanoid-742 timed out in
-        # 60 of 60 runs of the 2026-08-23 campaign and humanoid-531 in 28 of
-        # 60, both at the 7200 s cap, and humanoid-742's ideal
-        # `G F (!obstacle)` is already expressible by the operator grammar as
-        # it stands. Between them they would take 44% of this campaign's wall
-        # clock to measure a rate no arm here can move. Their exclusion is a
-        # budget decision and is recorded in PLAN.md as one, not a quiet
-        # narrowing of the corpus.
-        "specs": ASSUMPTION_REACH_SPECS,
-        # Twelve since the 2026-08-25 blind top-up; the campaign's first phase
-        # ran 0-7 and its second runs 8-11. See PLAN.md section 5.
-        "seeds": list(range(12)),
-        "timeout_caps": {s: 7200 for s in ASSUMPTION_REACH_SPECS},
-        "compare_timeout": 1800,
-        "baseline_aliases": {},
-        "configs_dir": EXPERIMENTS_DIR / "configs-assumption-reach",
-        "results_dir": EXPERIMENTS_DIR / "results-assumption-reach",
-        "results_csv": EXPERIMENTS_DIR / "results-assumption-reach.csv",
-        "default_jobs": 8,
-    },
     "monotone": {
         "schemes": ["nsga2-apportion"],
         "weakenings": ["wkoff"],
@@ -1581,6 +1536,13 @@ PROFILES: dict[str, dict] = {
     # one, so the sweep can no longer be generated and neither can a profile that
     # names it. merge_experiments.py keeps its entries for them, as it does for
     # wellsep-timing, so the archived CSVs stay mergeable.
+    #
+    # The assumption-reach profile is retired on the same terms. It ran sweep U,
+    # two of whose three operator levels set `[tlsf.mutation]
+    # p_union_assumption`; that key is gone with the union crossover it armed,
+    # so the sweep cannot be generated and neither can this profile.
+    # `experiments/2026-08-26-assumption-reach` is the record, and it reproduces
+    # from its own vendored scripts/ at the commit its PROVENANCE.json names.
 }
 
 

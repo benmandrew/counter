@@ -510,52 +510,33 @@ struct Config {
     /// count are clamped to it, there being no fourth distinct literal to draw
     /// from three inputs.
     ///
-    /// It defaults to 1, its no-op value, and so does each of the four keys
-    /// below it. Every one of the five is argued from the corpus rather than
+    /// It defaults to 1, its no-op value, and so does each of the three keys
+    /// below it. Every one of the four is argued from the corpus rather than
     /// measured. Here the argument is that 3 is the width `lift` needs and
     /// the widest the corpus's ideals reach in plain literals, and that is
     /// the whole case for it. tlsf_p_monotone and tlsf_p_clone_assumption
     /// shipped on exactly that footing in August 2026. The campaign that
     /// tested them, `experiments/2026-08-23-monotone`, came back null, and
     /// its pre-registered rule had to be overridden to keep them, which that
-    /// archive's `REPORT.md` records. Shipping five more the same way would
-    /// repeat that knowingly, so all five stay off until a campaign decides
+    /// archive's `REPORT.md` records. Shipping four more the same way would
+    /// repeat that knowingly, so all four stay off until a campaign decides
     /// them.
     ///
     /// Two consequences follow, both of them gains. No "Config vintage" entry
-    /// is owed for any of the five: every archived config omits all five keys
+    /// is owed for any of the four: every archived config omits all four keys
     /// and, at these defaults, still means exactly what it meant. And each
     /// key costs no `RandomSource` draw at its no-op value, so the shipped
     /// binary's breeding stream is byte-identical to what it was before the
     /// keys existed; `test/tlsf/assumption_tests.cpp` asserts that each of
-    /// the five draws only above that value.
+    /// the four draws only above that value.
     ///
-    /// `experiments/assumption-reach` is the campaign that decides them, a
-    /// 3x2 cross whose arms state all five explicitly. Until it closes, the
-    /// defaults here are what the search does.
+    /// `experiments/2026-08-26-assumption-reach` measured them, at five keys:
+    /// a fifth, `tlsf.mutation.p_union_assumption`, was removed rather than
+    /// kept at its no-op, because it cannot reach what it was written for.
+    /// See the "Assumption construction" section of CLAUDE.md. The four that
+    /// remain stay at their no-op defaults, that campaign's registered
+    /// primary having read null.
     std::size_t tlsf_max_assumption_width = 1;
-
-    /// Probability that TLSF crossover unions a whole ASSUME conjunct from the
-    /// second parent into the offspring, instead of grafting a subformula.
-    ///
-    /// This is AuRUS's level-1 move, whose crossover unions conjunct subsets.
-    /// counter's graft draws one conjunct per side and writes the merge back
-    /// into the slot it came from, so a whole conjunct never crosses and an
-    /// assumption one parent has built stays with that parent. It is confined
-    /// to the assumption side: the guarantee side pairs by position with the
-    /// original, which is why deletion is tombstoned rather than erased, while
-    /// the assumption side already grows and `tlsf_syntactic_similarity` pairs
-    /// on the shorter side and divides by the longer.
-    ///
-    /// It propagates rather than constructs, so it earns its place beside
-    /// tlsf_max_assumption_width and not instead of it: a conjunct no
-    /// individual holds cannot be unioned from anywhere. On `lift`, whose
-    /// whole ASSUME section is `true`, it can do nothing at all.
-    ///
-    /// The probability is read before the `RandomSource` is touched, so at 0
-    /// it costs no draw. It defaults to 0, off, on the argument recorded at
-    /// tlsf_max_assumption_width.
-    double tlsf_p_union_assumption = 0.0;
 
     /// Probability that an appended unconditional assumption is left as
     /// `F body` rather than wrapped as `G F body`.

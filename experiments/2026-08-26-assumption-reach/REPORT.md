@@ -35,11 +35,13 @@ The numbers themselves are unambiguous. The target rate is 1 of 36 either way, t
 
 ## The decision
 
-All five keys ship at their no-op values: `max_assumption_width = 1`, `p_bare_assumption = 0.0`, `p_remove_assumption = 0.0`, `p_union_assumption = 0.0` and `p_burst_continue = 0.0`. That is outcome 3's action, reached by reading the numbers rather than by the rule firing, and it is recorded here as such. `p_burst_continue` goes off with a measured pooled loss behind it, 13 gained against 29 lost at p = 0.0195, rather than with an argument.
+Four keys ship at their no-op values: `max_assumption_width = 1`, `p_bare_assumption = 0.0`, `p_remove_assumption = 0.0` and `p_burst_continue = 0.0`. That is outcome 3's action, reached by reading the numbers rather than by the rule firing, and it is recorded here as such. `p_burst_continue` goes off with a measured pooled loss behind it, 13 gained against 29 lost at p = 0.0195, rather than with an argument.
 
-The operators stay in the tree at those values. Each key is tested before the `RandomSource` is touched, so an unarmed key costs no draw and the shipping breeding stream is byte-identical to the one before the five existed; `test/tlsf/assumption_tests.cpp` and the draw-count golden in `test/tlsf/monotone_tests.cpp` pin that. Two reachability results are worth keeping the code for, and both are below.
+The fifth key, `p_union_assumption`, is **removed rather than kept at a no-op**, and its crossover operator with it. The other four are unreachable moves the grammar could make and did not pay for here, so a later campaign can arm them; the union is a move that cannot reach what it was written for on this corpus at all, for the structural reason the next section gives. Sweep U and the `assumption-reach` profile retire with the key, under the rule that a generator emitting a key the binary warns on is worse than an absent one. This archive reproduces from its own vendored `scripts/` at `8b3cb23`, where the key and the sweep still stand.
 
-**No config-vintage entry is owed**, which supersedes section 10's expectation of five. All five keys are new and all five default to a no-op, so an archived config that omits them means exactly what it meant before they arrived. A vintage entry is for a default that moved.
+The four that remain stay in the tree at their no-op values. Each is tested before the `RandomSource` is touched, so an unarmed key costs no draw and the shipping breeding stream is byte-identical to the one before any of them existed; `test/tlsf/assumption_tests.cpp` and the draw-count golden in `test/tlsf/monotone_tests.cpp` pin that. Two reachability results are worth keeping the code for, and both are below.
+
+**No config-vintage entry is owed**, which supersedes section 10's expectation of five. Every key is new and every one that ships defaults to a no-op, so an archived config that omits them means exactly what it meant before they arrived. A vintage entry is for a default that moved.
 
 ## Why lift moved and gyro did not
 

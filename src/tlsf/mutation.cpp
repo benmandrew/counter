@@ -993,7 +993,7 @@ tlsf::Specification tlsf_mutate_once(const tlsf::Specification& spec,
 // tlsf_p_burst_continue is the continuation probability, so the width is
 // 1 + Geometric and never 0: a mutation always mutates. At 0 no draw is taken
 // and the stream is what it was before this existed, the discipline
-// p_remove_guarantee and p_union_assumption follow.
+// p_remove_guarantee and p_monotone follow.
 //
 // The cap is a backstop and not a parameter. Eight is above the widest ideal
 // the corpus holds, and without it a continuation probability set near 1 is an

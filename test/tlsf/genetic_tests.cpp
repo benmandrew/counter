@@ -574,7 +574,7 @@ void test_crossover_grafts_across_slots() {
     for (std::size_t seed = 0; seed < 60; ++seed) {
         const RandomSource rng = make_random_source_from_seed(seed);
         const tlsf::Specification child =
-            tlsf_crossover(parent_a, parent_b, rng, Config{});
+            tlsf_crossover(parent_a, parent_b, rng);
         expect(child.m_guarantee.size() == 2,
                "crossover: section sizes are preserved");
         expect(child.m_inputs == parent_a.m_inputs &&
@@ -610,7 +610,7 @@ void test_crossover_accepts_mismatched_shape() {
     for (std::size_t seed = 0; seed < 20; ++seed) {
         const RandomSource rng = make_random_source_from_seed(seed);
         const tlsf::Specification child =
-            tlsf_crossover(parent_a, parent_b, rng, Config{});
+            tlsf_crossover(parent_a, parent_b, rng);
         expect(child.m_guarantee.size() == 1,
                "crossover: the offspring keeps the first parent's shape");
         saw_change = saw_change || !(child == parent_a);
@@ -625,8 +625,7 @@ void test_crossover_mismatched_signals_returns_first() {
     parent_b.m_inputs = {"other"};
 
     const RandomSource rng = make_random_source_from_seed(1);
-    const tlsf::Specification child =
-        tlsf_crossover(parent_a, parent_b, rng, Config{});
+    const tlsf::Specification child = tlsf_crossover(parent_a, parent_b, rng);
     expect(child == parent_a,
            "crossover: mismatched signals return the first parent unchanged");
 }
@@ -643,7 +642,7 @@ void test_crossover_skips_deleted_conjuncts() {
     for (std::size_t seed = 0; seed < 40; ++seed) {
         const RandomSource rng = make_random_source_from_seed(seed);
         const tlsf::Specification child =
-            tlsf_crossover(parent_a, parent_b, rng, Config{});
+            tlsf_crossover(parent_a, parent_b, rng);
         expect(child.m_guarantee[0] == parent_a.m_guarantee[0],
                "crossover: a deleted slot is never the target of a merge");
         expect(

@@ -85,20 +85,15 @@ p_monotone   = 0.25
 # an existing one instead of building from the template, which emits at most
 # seven nodes where the assumption-shaped ideals run to thirty.
 p_clone_assumption = 0.25
-# The five keys below stand at their no-op values, off until the campaign that
-# decides them (experiments/assumption-reach) closes: each is argued from the
-# corpus rather than measured. At these values the RNG stream is what it was
+# The four keys below stand at their no-op values. The campaign that measured
+# them (experiments/2026-08-26-assumption-reach) read null on its registered
+# primary, so each stays off. At these values the RNG stream is what it was
 # before the keys existed, and no archived config changes meaning.
 #
 # Widest disjunction an appended assumption's body may be: between 1 and this
 # many distinct input literals. 1 draws no width, which is the no-op. Clamped
 # to the input count.
 max_assumption_width = 1
-# Probability that crossover unions a whole ASSUME conjunct from the second
-# parent instead of grafting a subformula -- AuRUS's level-1 move. Assumption
-# side only; it propagates what mutation built rather than constructing. 0 is
-# the no-op.
-p_union_assumption = 0.0
 # Probability of leaving an appended assumption as `F body` rather than
 # `G F body`. lily11's whole ideal is a bare `F req`, which no G-wrapped
 # assumption rewrites into. 0 is the no-op.

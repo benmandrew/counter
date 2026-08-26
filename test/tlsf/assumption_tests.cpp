@@ -1,6 +1,6 @@
 // Tests over the 2026-08-25 assumption-reach operators: the compositional body
 // grammar and the bare-F form in tlsf_add_assumption, tlsf_remove_assumption,
-// the union branch of tlsf_crossover, and the mutation burst.
+// and the mutation burst.
 //
 // Each operator has a value at which it is a no-op, and every one of them is
 // asserted to cost no RandomSource draw there. That is what lets an archived
@@ -19,7 +19,6 @@
 #include "prop_formula.hpp"
 #include "test_suite.hpp"
 #include "test_support.hpp"
-#include "tlsf/crossover.hpp"
 #include "tlsf/mutation.hpp"
 #include "tlsf/parser.hpp"
 #include "tlsf/specification.hpp"
@@ -219,42 +218,6 @@ void test_remove_assumption_has_no_floor() {
            "remove-assumption: the last assumption may go");
 }
 
-// -- the union crossover ------------------------------------------------------
-
-void test_union_appends_a_donor_conjunct() {
-    const tlsf::Specification parent_a = tlsf::parse(
-        "INFO { SEMANTICS: Mealy; }\nMAIN {\nINPUTS { b1; } OUTPUTS { f1; }\n"
-        "ASSUME { G (F b1); }\nGUARANTEE { G (b1 -> F f1); }\n}\n");
-    const tlsf::Specification parent_b = tlsf::parse(
-        "INFO { SEMANTICS: Mealy; }\nMAIN {\nINPUTS { b1; } OUTPUTS { f1; }\n"
-        "ASSUME { G (b1 -> X b1); }\nGUARANTEE { G (b1 -> F f1); }\n}\n");
-    Config cfg;
-    cfg.tlsf_p_union_assumption = 1.0;
-    bool grew = false;
-    for (std::size_t seed = 0; seed < 20 && !grew; ++seed) {
-        const RandomSource rng = make_random_source_from_seed(seed);
-        grew =
-            tlsf_crossover(parent_a, parent_b, rng, cfg).m_assume.size() == 2;
-    }
-    expect(grew, "union: a donor ASSUME conjunct is appended whole");
-}
-
-// A conjunct the offspring already holds is not a donor: appending it would
-// duplicate rather than union, which is the clone operator's job.
-void test_union_skips_a_conjunct_already_held() {
-    const tlsf::Specification parent_a = tlsf::parse(
-        "INFO { SEMANTICS: Mealy; }\nMAIN {\nINPUTS { b1; } OUTPUTS { f1; }\n"
-        "ASSUME { G (F b1); }\nGUARANTEE { G (b1 -> F f1); }\n}\n");
-    Config cfg;
-    cfg.tlsf_p_union_assumption = 1.0;
-    for (std::size_t seed = 0; seed < 20; ++seed) {
-        const RandomSource rng = make_random_source_from_seed(seed);
-        expect(
-            tlsf_crossover(parent_a, parent_a, rng, cfg).m_assume.size() == 1,
-            "union: an identical parent contributes no donor");
-    }
-}
-
 // -- the burst ----------------------------------------------------------------
 
 // At 0 every mutation is single, which is the contract every test written
@@ -365,8 +328,6 @@ void run_tlsf_assumption_tests() {
     test_bare_assumption_is_reachable();
     test_remove_assumption_tombstones_in_place();
     test_remove_assumption_has_no_floor();
-    test_union_appends_a_donor_conjunct();
-    test_union_skips_a_conjunct_already_held();
     test_burst_zero_applies_one_mutation();
     test_burst_reaches_several_and_stops();
     test_each_key_draws_only_when_armed();

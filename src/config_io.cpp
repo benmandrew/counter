@@ -123,8 +123,8 @@ const KeySpec& config_key_spec() {
                       {{"mutation",
                         section({"p_assumption", "p_temporal", "p_monotone",
                                  "p_clone_assumption", "max_assumption_width",
-                                 "p_union_assumption", "p_bare_assumption",
-                                 "p_remove_assumption", "p_burst_continue"})}})},
+                                 "p_bare_assumption", "p_remove_assumption",
+                                 "p_burst_continue"})}})},
              {"model_counting", section({"default_bound", "metric"})},
              {"filters", section({"run_weakening", "run_implication",
                                   "run_vacuity", "run_well_separation"})},
@@ -148,6 +148,9 @@ std::string retired_key_hint(const std::string& path) {
     if (path == "mutation.strengthen_assumptions") {
         return " (removed: assumptions are always mutated in the strengthening"
                " direction)";
+    }
+    if (path == "tlsf.mutation.p_union_assumption") {
+        return " (removed: the union crossover no longer exists)";
     }
     return "";
 }
@@ -292,17 +295,16 @@ void apply_mutation(const toml::table& tbl, Config& cfg) {
 }
 
 // The [tlsf.mutation] probabilities differ only in their key and the member
-// they land on, so they are driven from a table rather than a branch each. Nine
-// near-identical branches read as complexity to clang-tidy, and each was
+// they land on, so they are driven from a table rather than a branch each.
+// Eight near-identical branches read as complexity to clang-tidy, and each was
 // another chance to paste the wrong member name beside a key -- a mistake
 // nothing else here would catch, the types being identical.
-constexpr std::array<std::pair<const char*, double Config::*>, 8>
+constexpr std::array<std::pair<const char*, double Config::*>, 7>
     k_tlsf_mutation_probabilities{{
         {"p_assumption", &Config::tlsf_p_assumption},
         {"p_temporal", &Config::tlsf_p_temporal},
         {"p_monotone", &Config::tlsf_p_monotone},
         {"p_clone_assumption", &Config::tlsf_p_clone_assumption},
-        {"p_union_assumption", &Config::tlsf_p_union_assumption},
         {"p_bare_assumption", &Config::tlsf_p_bare_assumption},
         {"p_remove_assumption", &Config::tlsf_p_remove_assumption},
         {"p_burst_continue", &Config::tlsf_p_burst_continue},

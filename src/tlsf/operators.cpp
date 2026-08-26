@@ -27,8 +27,8 @@ const GeneticOperators<tlsf::Specification>& tlsf_operators() {
     static const GeneticOperators<tlsf::Specification> ops{
         [](const tlsf::Specification& parent_a,
            const tlsf::Specification& parent_b,
-           const RandomSource& random_source, const Config& cfg) {
-            return tlsf_crossover(parent_a, parent_b, random_source, cfg);
+           const RandomSource& random_source, const Config&) {
+            return tlsf_crossover(parent_a, parent_b, random_source);
         },
         tlsf_mutate, tlsf_simplify};
     return ops;

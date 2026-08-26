@@ -215,7 +215,6 @@ nlohmann::json config_json(const Config& cfg) {
             {"p_monotone", cfg.tlsf_p_monotone},
             {"p_clone_assumption", cfg.tlsf_p_clone_assumption},
             {"max_assumption_width", cfg.tlsf_max_assumption_width},
-            {"p_union_assumption", cfg.tlsf_p_union_assumption},
             {"p_bare_assumption", cfg.tlsf_p_bare_assumption},
             {"p_remove_assumption", cfg.tlsf_p_remove_assumption},
             {"p_burst_continue", cfg.tlsf_p_burst_continue}}}}},

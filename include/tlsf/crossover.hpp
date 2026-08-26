@@ -3,7 +3,6 @@
 /// @file crossover.hpp
 /// @brief Subformula-grafting crossover operator for tlsf::Specification.
 
-#include "config.hpp"
 #include "genetic/random_source.hpp"
 #include "tlsf/specification.hpp"
 
@@ -23,14 +22,6 @@
 /// donor from its counterpart section alone, since basic TLSF requires an
 /// initial condition to be propositional over one side's own signals. The
 /// graft replaces the first occurrence of its site, not every one.
-///
-/// The assumption side has a second move, drawn first and taken instead of the
-/// graft when it fires: under `tlsf.mutation.p_union_assumption` a live ASSUME
-/// conjunct of @p parent_b that the offspring does not already hold is
-/// appended whole. That is AuRUS's level-1 union of conjunct subsets, which the
-/// graft cannot express, and it is confined to the assumption side because the
-/// guarantee side pairs by position with the original.
 tlsf::Specification tlsf_crossover(const tlsf::Specification& parent_a,
                                    const tlsf::Specification& parent_b,
-                                   const RandomSource& random_source,
-                                   const Config& cfg);
+                                   const RandomSource& random_source);

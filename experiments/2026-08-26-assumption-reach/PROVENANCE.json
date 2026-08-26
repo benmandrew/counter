@@ -60,36 +60,36 @@
     "av2": {
       "machine": "avlab12",
       "seeds": "0-3, 8-9",
-      "rows": 820,
+      "rows": 827,
       "started": "2026-08-25T14:41:21+0100",
       "top_up_started": "2026-08-26T10:45:01+0100"
     },
     "av3": {
       "machine": "av3",
       "seeds": "4-7, 10-11",
-      "rows": 826,
+      "rows": 828,
       "started": "2026-08-25T14:41:22+0100",
       "top_up_started": "2026-08-26T10:40:01+0100"
     },
-    "note": "Both staged and launched through scripts/campaign.py's queue, so each binary's commit was verified against the checkout before the phase ran. Seeds 0-7 ran as queue entry 009 at 0510b31 and finished 2026-08-26T10:32:22 (av2) and 10:31:11 (av3); the top-up ran as entry 010 at 8b3cb23. The split is declared in campaign.toml, phase 2 carrying its own hosts table."
+    "note": "Both staged and launched through scripts/campaign.py's queue, so each binary's commit was verified against the checkout before the phase ran. Seeds 0-7 ran as queue entry 009 at 0510b31 and finished 2026-08-26T10:32:22 (av2) and 10:31:11 (av3); the top-up ran as entry 010 at 8b3cb23. The split is declared in campaign.toml, phase 2 carrying its own hosts table. Both queue entries reached state done, av2 at 827 rows and av3 at 828."
   },
   "rows": {
-    "merged_total": 1646,
+    "merged_total": 1655,
     "planned_total": 1656,
-    "shortfall_note": "10 of 1656 cells were not run. All ten are large-arm runs of pcar-v2-888, prioritized-arbiter-aurus and round-robin-arbiter-aurus, families that hit the 7200 s wall cap; the campaign was closed on the user's instruction with those in flight. No target-family cell is affected, and all three -s arms are complete at 276 of 276, so the primary, the regression gate and the burst contrast are final rather than provisional. The three -l arms hold 271, 274 and 273 of 276.",
-    "complete_cells": 271,
-    "complete_cells_note": "Every contrast above is taken over the 271 (spec, seed) cases present in all six arms, so the arms are comparable column to column and not only within a paired contrast.",
+    "shortfall_note": "1 of 1656 cells was never run: reachoff-l / prioritized-arbiter-aurus / seed 0, from the original phase on av2. Every other cell of the twelve-seed design completed. Five of the six arms hold 276 of 276 and reachoff-l holds 275.",
+    "complete_cells": 275,
+    "complete_cells_note": "Every contrast above is taken over the 275 (spec, seed) cases present in all six arms, so the arms are comparable column to column and not only within a paired contrast.",
     "per_host": {
-      "av2": 820,
-      "av3": 826
+      "av2": 827,
+      "av3": 828
     },
     "runs_per_arm": {
       "reachoff-s": 276,
       "reach-s": 276,
       "reachburst-s": 276,
-      "reachoff-l": 271,
-      "reach-l": 274,
-      "reachburst-l": 273
+      "reachoff-l": 275,
+      "reach-l": 276,
+      "reachburst-l": 276
     },
     "seeds": "0-11 on all six arms"
   },
@@ -101,19 +101,19 @@
       "gained": 1,
       "lost": 1,
       "exact_mcnemar_two_sided_p": 1.0,
-      "note": "The registered primary. All three -s arms are complete at 276 of 276 runs, so this contrast is final.",
+      "note": "The registered primary.",
       "p_floor": "2/2^2 = 0.5000",
       "verdict": "no separation; the target rate is unmoved at 1 of 36 either way, and the one success on each side is gyro-var2 at a different seed"
     },
     "regression_gate_reachoff_s_to_reach_s_others": {
-      "paired_runs": 235,
-      "implies_before": 149,
-      "implies_after": 145,
+      "paired_runs": 239,
+      "implies_before": 152,
+      "implies_after": 147,
       "gained": 15,
-      "lost": 19,
-      "exact_mcnemar_two_sided_p": 0.6076,
+      "lost": 20,
+      "exact_mcnemar_two_sided_p": 0.4996,
       "note": "PLAN.md section 5. A loss here at p < 0.05 keeps the keys off whatever the primary says.",
-      "verdict": "gate does not fire; direction negative, 15 gained against 19 lost"
+      "verdict": "gate does not fire; direction negative, 15 gained against 20 lost"
     },
     "secondary_burst_target": {
       "paired_runs": 36,
@@ -125,27 +125,27 @@
       "verdict": "3 gained and none lost, but 3 discordant pairs put the exact floor at 0.2500"
     },
     "secondary_burst_pooled": {
-      "paired_runs": 271,
-      "implies_before": 146,
-      "implies_after": 130,
-      "gained": 13,
-      "lost": 29,
-      "exact_mcnemar_two_sided_p": 0.0195,
+      "paired_runs": 275,
+      "implies_before": 148,
+      "implies_after": 132,
+      "gained": 14,
+      "lost": 30,
+      "exact_mcnemar_two_sided_p": 0.0226,
       "verdict": "the campaign's one significant result, and it is against the burst"
     },
     "secondary_search_size": {
-      "paired_runs": 271,
-      "implies_before": 150,
-      "implies_after": 154,
+      "paired_runs": 275,
+      "implies_before": 153,
+      "implies_after": 155,
       "gained": 22,
-      "lost": 18,
-      "exact_mcnemar_two_sided_p": 0.6358,
+      "lost": 20,
+      "exact_mcnemar_two_sided_p": 0.8776,
       "verdict": "null; roughly 9x the wall time for no measurable change"
     },
     "secondary_burst_at_size": {
-      "paired_runs": 271,
-      "implies_before": 152,
-      "implies_after": 154,
+      "paired_runs": 275,
+      "implies_before": 153,
+      "implies_after": 155,
       "gained": 10,
       "lost": 8,
       "exact_mcnemar_two_sided_p": 0.8145,
@@ -161,9 +161,9 @@
       "verdict": "null; lift gains 3 and loses none, gyro-var2 loses 6 and gains 2"
     },
     "operators_at_size_pooled": {
-      "paired_runs": 271,
-      "implies_before": 154,
-      "implies_after": 152,
+      "paired_runs": 275,
+      "implies_before": 155,
+      "implies_after": 153,
       "gained": 8,
       "lost": 10,
       "exact_mcnemar_two_sided_p": 0.8145,
@@ -311,17 +311,17 @@
       "reachoff-s": "1/12",
       "reach-s": "2/12",
       "reachburst-s": "1/12",
-      "reachoff-l": "0/11",
-      "reach-l": "0/11",
-      "reachburst-l": "0/11"
+      "reachoff-l": "0/12",
+      "reach-l": "0/12",
+      "reachburst-l": "0/12"
     },
     "prioritized-arbiter-aurus": {
       "reachoff-s": "10/12",
       "reach-s": "8/12",
       "reachburst-s": "4/12",
-      "reachoff-l": "1/9",
-      "reach-l": "1/11",
-      "reachburst-l": "0/10"
+      "reachoff-l": "1/11",
+      "reach-l": "1/12",
+      "reachburst-l": "0/12"
     },
     "rg1": {
       "reachoff-s": "0/12",
@@ -351,65 +351,65 @@
       "reachoff-s": "12/12",
       "reach-s": "12/12",
       "reachburst-s": "12/12",
-      "reachoff-l": "11/11",
+      "reachoff-l": "12/12",
       "reach-l": "12/12",
       "reachburst-l": "12/12"
     }
   },
   "section_8_measures": {
     "reachoff-s": {
-      "runs": 271,
+      "runs": 275,
       "yield": 0.996,
-      "implies_ideal": 0.554,
+      "implies_ideal": 0.556,
       "timeout": 0.0,
-      "median_wall_s": 39.0,
+      "median_wall_s": 39.4,
       "median_n_repairs": 28.0
     },
     "reach-s": {
-      "runs": 271,
+      "runs": 275,
       "yield": 0.996,
-      "implies_ideal": 0.539,
+      "implies_ideal": 0.538,
       "timeout": 0.0,
-      "median_wall_s": 38.8,
+      "median_wall_s": 38.9,
       "median_n_repairs": 28.0
     },
     "reachburst-s": {
-      "runs": 271,
+      "runs": 275,
       "yield": 0.996,
       "implies_ideal": 0.48,
       "timeout": 0.0,
-      "median_wall_s": 38.9,
+      "median_wall_s": 39.0,
       "median_n_repairs": 27.0
     },
     "reachoff-l": {
-      "runs": 271,
-      "yield": 0.841,
-      "implies_ideal": 0.568,
-      "timeout": 0.159,
-      "median_wall_s": 357.2,
+      "runs": 275,
+      "yield": 0.833,
+      "implies_ideal": 0.564,
+      "timeout": 0.167,
+      "median_wall_s": 360.6,
       "median_n_repairs": 78.0
     },
     "reach-l": {
-      "runs": 271,
-      "yield": 0.845,
-      "implies_ideal": 0.561,
-      "timeout": 0.155,
-      "median_wall_s": 333.2,
+      "runs": 275,
+      "yield": 0.836,
+      "implies_ideal": 0.556,
+      "timeout": 0.164,
+      "median_wall_s": 333.3,
       "median_n_repairs": 75.0
     },
     "reachburst-l": {
-      "runs": 271,
-      "yield": 0.845,
-      "implies_ideal": 0.568,
-      "timeout": 0.155,
-      "median_wall_s": 385.8,
-      "median_n_repairs": 80.0
+      "runs": 275,
+      "yield": 0.836,
+      "implies_ideal": 0.564,
+      "timeout": 0.164,
+      "median_wall_s": 387.9,
+      "median_n_repairs": 76.0
     }
   },
   "files": {
-    "results-assumption-reach.csv": "Merged results, 1646 rows, the endpoint source for every figure here.",
-    "results-assumption-reach-av2.csv": "av2's rows as collected, 820.",
-    "results-assumption-reach-av3.csv": "av3's rows as collected, 826.",
+    "results-assumption-reach.csv": "Merged results, 1655 rows, the endpoint source for every figure here.",
+    "results-assumption-reach-av2.csv": "av2's rows as collected, 827.",
+    "results-assumption-reach-av3.csv": "av3's rows as collected, 828.",
     "results-assumption-reach-manifest-avlab12.json": "av2's launch manifest for the top-up phase.",
     "results-assumption-reach-manifest-av3.json": "av3's launch manifest for the top-up phase.",
     "PLAN.md": "The pre-registration, with its 2026-08-25 seed amendment recorded in place.",
@@ -438,7 +438,7 @@
   },
   "post_hoc_findings": {
     "note": "Found on this campaign's rows after close, neither registered nor gating. Recorded because the question it answers was in the owed list.",
-    "search_budget_converts_where_it_finishes": "The null secondary (reachoff-s to reachoff-l, 150 to 154 of 271, p = 0.6358) is two large opposite effects cancelling. Splitting the 23 families by whether the -l arm finishes inside the 7200 s cap: the 19 that do read 131 to 153, 22 gained and 0 lost, exact McNemar p = 4.8e-7; the 4 that do not (full-arbiter-aurus, humanoid-503, pcar-v2-888, prioritized-arbiter-aurus) read 19 to 1, 0 gained and 18 lost, p = 7.6e-6, with 43 of their 44 large runs emitting no repair. The -s arm times out on 0 of those 44, so the losses are censored runs rather than degraded searches.",
+    "search_budget_converts_where_it_finishes": "The null secondary (reachoff-s to reachoff-l, 153 to 155 of 275, p = 0.8776) is two large opposite effects cancelling. Splitting the 23 families by whether the -l arm finishes inside the 7200 s cap: the 19 that do read 132 to 154 over 228 pairs, 22 gained and 0 lost, exact McNemar p = 4.8e-7; the 4 that do not (full-arbiter-aurus, humanoid-503, pcar-v2-888, prioritized-arbiter-aurus) read 21 to 1 over 47 pairs, 0 gained and 20 lost, p = 1.9e-6, with 46 of those 47 large runs emitting no repair. The -s arm times out on 0 of the same 47, so the losses are censored runs rather than degraded searches.",
     "caveat": "Post hoc, and it conditions on timed_out, which the treatment causes. It wants confirming on a design that varies the wall cap rather than the search size.",
     "mechanism": "compute_subsumed (src/filter/implication.cpp) sweeps pairs over the accumulated pool, so accumulate_repairs makes the final implication filter quadratic in the search budget. Solo on arbiter-aurus seed 3 the large configuration spends 42 s in generations and 258 s after them, 86% of wall clock, ltlfilt CPU rising 17x against 8x more breeding.",
     "population_diversity_ruled_out": "distinct/population at the select stage reads 1.000 from generation 3 through 40 on every spec measured, at both budgets, so there is no diversity collapse behind the null.",

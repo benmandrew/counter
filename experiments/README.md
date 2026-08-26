@@ -37,6 +37,85 @@ from 2026-07-14 onwards).
 | `2026-08-23-monotone` | **Decision: the pre-registered rule fired outcome 3 (`PLAN.md` §5) and was overridden; `p_monotone` and `p_clone_assumption` both ship at 0.25.** TLSF sweep T crosses the two new mutation probabilities and `elitism_rate` over the 25-family `H2H_TLSF_READY` corpus at 20 seeds, 1,500 rows, `nsga2-apportion`, paired against the 2026-08-21-aurus-h2h-ship rows on `(spec, seed)`. The primary contrast `monooff` -> `monoon` is null and its two reads disagree in direction: per family 0.490 -> 0.510 at exact Wilcoxon p = 0.3525 over 11 non-tied families, clustered 0.482 -> 0.465 at p = 0.8906 over 7 non-tied clusters, run-level exact McNemar 35 gained against 25 lost at p = 0.2451. §5 makes the clustered read the tiebreaker, its direction is negative, so outcome 3 fired: both defaults to 0. They were kept at 0.25 instead, because sweep T moves both keys together in every arm and no arm sits at (0.25, 0) or (0, 0.25), so outcome 3 disposes severally of two unrelated operators the design only tested jointly; the clustered reversal also rides on `pcar-v2-888` alone at -0.250 against three rising clusters, which is where the signal sits rather than a reason to discount the read the rule named in advance. `REPORT.md` and `PROVENANCE.json` record the override as one. The 2x2 separating the two probabilities and the probability sweep §5 already owed are both outstanding. `monoon` -> `monoship` is the only measured `elitism_rate` comparison at `nsga2-apportion`: quality flat on every read, yield 472 against 470 of 500, and 4.0% more wall time at 0, so the 2026-08-07 TLSF yield advantage for 0 does not replicate. No arm separates from AuRUS at either read. `campaign/monotone` is not merged, its content having reached main as a cherry-pick under a different sha, so `provenance/monotone-campaign` is what holds `6b78709`. |
 | `2026-08-26-assumption-reach` | **Decision: none of the pre-registered outcomes fires as written; four keys ship at their no-op values and `p_union_assumption` is removed outright — outcome 3's action reached by reading the numbers rather than by the rule firing.** TLSF sweep U crosses an operator factor (`reachoff`, the five new keys at no-op; `reach`, the four assumption-construction keys armed; `reachburst`, `reach` plus `p_burst_continue = 0.5`) against a search-size factor (`-s` at gen10/pop200, `-l` at gen40/pop400) over 23 families at seeds 0-11, 1,655 of 1,656 planned rows, `nsga2-apportion`. Every contrast is internal to one binary, unlike `2026-08-23-monotone`, which paired across a binary change against another archive. `humanoid-531` and `humanoid-742` were excluded before launch as time-limited rather than grammar-limited, the two of them accounting for 44% of the campaign's wall clock. Every contrast reads the 275 `(spec, seed)` cases present in all six arms. The registered primary `reachoff-s` -> `reach-s`, confined to `gyro-var1`, `gyro-var2` and `lift`, reads 1 of 36 on both sides with one case gained and one lost, exact McNemar p = 1.0000 on two discordant pairs against a floor of 0.5000; the regression gate over the other 20 families does not fire either, 152 -> 147 of 239, 15 gained against 20 lost, p = 0.4996. `PLAN.md` §5's three outcomes all assume a control pinned at zero on the target families and `reachoff-s` repairs `gyro-var2@7`, so none of them applies — a defect in the registration, recorded as one. Two reachability results are what keep the code. `lift` was repaired for the first time in the project's history, 3 of 12 under `reach-l` against 0 of 12 for its own control and 0 of 60 across the monotone campaign, its ideal `G F (b1 || b2 || b3)` being the width-3 disjunction `max_assumption_width` was written to emit; `lily11` went 5 of 12 to 11 of 12 through `p_bare_assumption`. §6 named both as reachable only through those keys before the run. `p_burst_continue` is the one key with a measured loss rather than a null: 14 gained against 30 lost pooled at exact McNemar p = 0.0226, with `load-balancer-aurus` 12/12 -> 8/12 and `prioritized-arbiter-aurus` 9/11 -> 3/11. AuRUS's mutation applies approximately `Poisson(1)` edits per individual with about 37% no-ops where counter's always applies at least one, so counter was already the more aggressive of the two and the burst pushed further in the direction that costs. `p_union_assumption` cannot reach what it was written for, structurally: `gyro-var2`'s ideal is a ~29-node conjunct taken verbatim from `gyro-var1`'s specification and vice versa, and both crossover parents descend from the same original within a run, so the material sits in a sibling specification no run ever sees. Arming it also displaces the clone-and-edit path that does work there, `gyro-var2` reading 7 of 12 at `reachoff-l` against 3 of 12 at `reach-l`. Search size is null and expensive. `reachoff-s` -> `reachoff-l` moves 153 to 155 of 275 at p = 0.8776 for roughly nine times the wall time, 361 s median against 39 s, and `full-arbiter-aurus` reads 10, 5 and 5 of 12 across the three small arms against 0, 1 and 3 across the three large ones, timing out at the 7200 s cap on 12 of 12 large runs. No "Config vintage" entry is owed, where `PLAN.md` §10 expected five: all five keys are new and all five default to a no-op, so an archived config that omits them means exactly what it always meant. A vintage entry belongs to a default that moved. Owed after this: the 2^4 separating the four assumption-construction keys, whose bundling §6 registered knowingly, and the `p_monotone` tuning campaign, now with a measurement behind it — counter's `best_relation` reads `equivalent` on 1.1% of runs against AuRUS's 33.8%. `p_union_assumption` is removed rather than kept at a no-op, along with its crossover operator: the other four are moves the grammar can make and did not pay for here, where the union cannot reach what it was written for on this corpus at all. Sweep U and the `assumption-reach` profile retire with the key, as sweep O's did, and `merge_experiments.py` keeps its CSV entries so this archive stays mergeable; the campaign reproduces from its vendored `scripts/` at `8b3cb23`, where the key and the sweep still stand. |
 
+## Where each measurement lives
+
+The campaign table above carries each decision. This table resolves a named
+measurement to the file holding it, and most are reachable no other way: a
+`PROVENANCE.json` key does not answer to grep, and the rows above run past
+3,400 characters, so a hit on one returns a whole campaign rather than the
+number asked for.
+
+Paths are dotted keys into the named file. An entry marked P-only sits in
+that campaign's `PROVENANCE.json` alone, being absent from every `REPORT.md`,
+from `../EXPERIMENTS.md` and from the table above.
+
+| Measurement | Campaign | File and key | Headline |
+|---|---|---|---|
+| Assumption construction, primary and gate | `2026-08-26-assumption-reach` | `PROVENANCE.json` `result.primary_reachoff_s_to_reach_s_target`, `result.regression_gate_reachoff_s_to_reach_s_others` | target families 1 → 1 of 36, p = 1.0000; gate 152 → 147 of 239, p = 0.4996 |
+| Mutation burst, pooled | `2026-08-26-assumption-reach` | `PROVENANCE.json` `result.secondary_burst_pooled` | 148 → 132 of 275, p = 0.0226, the campaign's one significant result and against the burst |
+| Families the new operators reach | `2026-08-26-assumption-reach` | `PROVENANCE.json` `reachability_findings` | `lift` repaired for the first time, 3 of 12 under `reach-l`; `lily11` 5/12 → 11/12 |
+| Per-arm yield, cost and repair counts — P-only | `2026-08-26-assumption-reach` | `PROVENANCE.json` `section_8_measures` | `-s` yields 0.996 at 39.4 s median; `-l` yields 0.833 at 360.6 s and 78 repairs |
+| Why the search-size null is two effects cancelling — P-only, post hoc | `2026-08-26-assumption-reach` | `PROVENANCE.json` `post_hoc_findings` | conditions on `timed_out`, which the treatment causes; diversity ruled out at 1.000 distinct |
+| Monotone operators, primary contrast | `2026-08-23-monotone` | `PROVENANCE.json` `result.primary_monooff_to_monoon` | 0.490 → 0.510 per family, p = 0.3525; clustered negative at p = 0.8906 |
+| Per-arm yield and cost — P-only | `2026-08-23-monotone` | `PROVENANCE.json` `result.per_arm` | yield 467/472/470 of 500; 108.5/97.1/101.1 machine-hours |
+| No separation against AuRUS | `2026-08-21-aurus-h2h-ship` | `PROVENANCE.json` `result.primary_per_family` | counter 0.502, AuRUS 0.504, p = 0.7549 |
+| AuRUS output before and after the §10.1 filter — P-only | `2026-08-21-aurus-h2h-ship` | `PROVENANCE.json` `secondary.aurus_side` | median 424 claimed, 240 well-separated; 806 revalidation disagreements |
+| Wall-time means — P-only | `2026-08-21-aurus-h2h-ship` | `PROVENANCE.json` `secondary.wall_s` | 763.1 s against the archive's 427.1 s |
+| Repaired mutation grammar, TLSF | `2026-08-20-ops-grammar` | `PROVENANCE.json` `result.tlsf` | 0.333 → 0.388, 25 gains against 12, p = 0.047 |
+| Repaired mutation grammar, FRETISH | `2026-08-20-ops-grammar` | `PROVENANCE.json` `result.fret` | 0.667 → 0.717, p = 0.146 |
+| Weakening screen, the 2×2 | `2026-08-20-ops-weakening` | `REPORT.md`; `PROVENANCE.json` `two_by_two` | screen off gains 38 of 720 runs and loses 0 |
+| Per-family timeout caps — P-only | `2026-08-20-ops-pilot` | `PROVENANCE.json` `decision` | gyro-var1 600 s, lift 960 s, humanoid-531 2580 s |
+| Repairs the weakening screen makes unreachable — P-only | `2026-08-19-weakening-arbiter` | `PROVENANCE.json` `decision` | 9 of 120 pairs yield only with the screen off, 0 the other way, p = 0.00195 |
+| Accumulator decision | `2026-08-19-accumulator` | `PROVENANCE.json` `decision` | yield 79 → 81 of 100, exact McNemar p = 0.0312 |
+| Repairs the accumulator adds — P-only | `2026-08-19-accumulator` | `PROVENANCE.json` `secondary_results` | median 40 per run, mean 46.1, max 127 |
+| Maximality and diversity sweep | `2026-08-14-aurus-h2h` | `PROVENANCE.json` `diversity.results` | per run AuRUS 480 distinct / 45 maximal / 40 classes against counter 4 / 4 / 3 |
+| Per-candidate precision — P-only | `2026-08-14-aurus-h2h` | `PROVENANCE.json` `decision_mechanism.4_the_endpoint_rewards_candidate_volume.per_candidate_hit_rate` | counter 267/2295 = 0.116, AuRUS 7169/172917 = 0.042 |
+| Well-separation sweep | `2026-08-14-aurus-h2h` | `PROVENANCE.json` `well_separation_sweep` | 113,958 of 287,006 ill-separated (39.71%), 0 undecided |
+| What the July AuRUS arm ran — P-only | `2026-08-14-aurus-h2h` | `PROVENANCE.json` `decision_mechanism.3_what_actually_flipped_is_the_aurus_arm` | `-k=10` against the paper's 20, on this project's fork rather than the base |
+| Operator defects behind the quality gap | `2026-08-14-aurus-h2h` | `REPORT.md` | 7 defects measured over 2,295 archived repair files |
+| MRS against tiered status, yield — P-only | `2026-08-11-status-grading` | `PROVENANCE.json` `decision` | 410/480 against 367/480, sign test p < 0.0001 |
+| MRS cost — P-only | `2026-08-11-status-grading` | `PROVENANCE.json` `results.wall_time` | median paired 1.15, aggregate 1.89, `amba` alone 4.52 |
+| MRS quality once yield is controlled — P-only | `2026-08-11-status-grading` | `PROVENANCE.json` `results.implies_ideal.both_yielded_pairs` | 3 against 2 over 360 pairs, no detectable difference |
+| Arbiter unlock is spec-specific | `2026-08-10-arbiter-probe` | `PROVENANCE.json` `result.criterion_1_breadth` | 1 of 9 arbitration families clears the bar against a threshold of 3 |
+| FRETISH elitism rates — P-only | `2026-08-07-elitism` | `PROVENANCE.json` `results.fretish` | quality 0.5933 against 0.5700; wall ratio 1.082 |
+| libspot lock contention — P-only | `2026-08-04-engine-comparison` | `PROVENANCE.json` `results.boundary` | 53,632 of 231,861 simplify calls (23.1%) found the lock busy |
+| Peak resident set across the boundary | `2026-08-04-engine-comparison` | `PROVENANCE.json` `results.resources` | 24.99 GB in process against `ltlfilt`'s 0.18 GB |
+| In-process retention — P-only | `2026-08-03-libspot-soak` | `PROVENANCE.json` `results.reversion` | 85.7% of translations and 78.9% of simplifications stay in process |
+
+Six campaigns carry a `REPORT.md`: `2026-07-24-ablation`,
+`2026-08-14-aurus-h2h`, `2026-08-20-ops-weakening`,
+`2026-08-21-aurus-h2h-ship`, `2026-08-23-monotone` and
+`2026-08-26-assumption-reach`. Everywhere else the archived narrative is the
+campaign's `PROVENANCE.json` and its row above. Seven campaigns have no row
+above, and six of those carry no `REPORT.md` either, which makes them the
+least reachable in the archive: `2026-08-06-wellsep-timing` (covered in
+`../EXPERIMENTS.md`), `2026-08-11-selection-default`,
+`2026-08-11-status-grading`, `2026-08-19-weakening-arbiter`,
+`2026-08-20-ops-grammar` and `2026-08-20-ops-pilot`.
+`2026-08-20-ops-weakening` is the seventh, reachable through its report
+alone.
+
+`2026-08-11-selection-default` is the one open campaign here. It has no
+`PROVENANCE.json` and no decision, and its rows sit at this directory's top
+level as `results-seldefault*.csv`.
+
+Campaigns dated 2026-07-10 to 2026-07-17 keep their numbers in the printed
+cell output of `analyse.ipynb` and nowhere else. Their `PROVENANCE.json` is
+`attribution: inferred` and carries reproducibility metadata with no results
+section, so there is nothing in it to index.
+
+### Results a later campaign has overtaken
+
+Check this list before quoting any figure from the campaign named on the
+left.
+
+| Superseded | By | What changed |
+|---|---|---|
+| `2026-07-24-ablation`, the AuRUS head-to-head | `2026-08-14-aurus-h2h` | July ran AuRUS at `-k=10` on this project's fork over 12 families. The verdict reverses. |
+| `2026-08-14-aurus-h2h`, counter behind at p = 0.0127 | `2026-08-21-aurus-h2h-ship` | The 0.222 mean-rate gap becomes 0.002 once four engine changes land. The result does not reproduce. |
+| Every pre-2026-08-11 zero-yield TLSF row on `arbiter` and `rg1` | `2026-08-11-status-grading` | Those zeroes were the tiered status scale. Under `mrs` they read 22/24 and 24/24. |
+| `2026-08-07-elitism`, TLSF yield favouring `elitism_rate = 0` | `2026-08-23-monotone`, the `monoon` → `monoship` arm | Retested at `nsga2-apportion`, quality is flat and the yield advantage does not replicate. |
+
 ## Scoring vintage
 
 All CSVs were rescored on 2026-07-29 (`recompare.py --all`) against the

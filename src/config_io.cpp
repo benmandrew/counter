@@ -107,32 +107,34 @@ KeySpec section(std::set<std::string> keys,
 
 const KeySpec& config_key_spec() {
     static const KeySpec spec = section(
-        {}, {{"genetic",
-              section({"generations", "population_size", "selection_rate",
-                       "elitism_rate", "crossover_rate", "mutation_rate",
-                       "selection_scheme", "accumulate_repairs"})},
-             {"fitness",
-              section({"weight_syntactic", "weight_semantic", "weight_status",
-                       "status_grading", "mrs_admission_order"})},
-             {"mutation", section({"p_trigger", "p_response", "p_timing",
-                                   "p_add_assumption", "p_remove_guarantee",
-                                   "p_conditional_assumption",
-                                   "allow_output_assumptions"})},
-             {"tlsf",
-              section({"repair_mode", "muc_max_iterations"},
-                      {{"mutation",
-                        section({"p_assumption", "p_temporal", "p_monotone",
-                                 "p_clone_assumption", "max_assumption_width",
-                                 "p_bare_assumption", "p_remove_assumption",
-                                 "p_burst_continue"})}})},
-             {"model_counting", section({"default_bound", "metric"})},
-             {"filters", section({"run_weakening", "run_implication",
-                                  "run_vacuity", "run_well_separation"})},
-             {"runtime", section({"black_timeout_ms", "ltlsynt_timeout_ms",
-                                  "ltl2tgba_timeout_ms", "ltlfilt_timeout_ms",
-                                  "ganak_timeout_ms", "parallel",
-                                  "max_concurrent_realizability",
-                                  "max_scoring_failure_rate", "dashboard"})}});
+        {},
+        {{"genetic",
+          section({"generations", "population_size", "selection_rate",
+                   "elitism_rate", "crossover_rate", "mutation_rate",
+                   "selection_scheme", "accumulate_repairs"})},
+         {"fitness",
+          section({"weight_syntactic", "weight_semantic", "weight_status",
+                   "status_grading", "mrs_admission_order"})},
+         {"mutation",
+          section({"p_trigger", "p_response", "p_timing", "p_add_assumption",
+                   "p_remove_guarantee", "p_conditional_assumption",
+                   "allow_output_assumptions"})},
+         {"tlsf",
+          section({"repair_mode", "muc_max_iterations"},
+                  {{"mutation",
+                    section({"p_assumption", "p_temporal", "connective_implies",
+                             "p_monotone", "monotone_atom_rules",
+                             "monotone_extra_rules", "p_clone_assumption",
+                             "max_assumption_width", "p_bare_assumption",
+                             "p_remove_assumption", "p_burst_continue"})}})},
+         {"model_counting", section({"default_bound", "metric"})},
+         {"filters", section({"run_weakening", "run_implication", "run_vacuity",
+                              "run_well_separation"})},
+         {"runtime", section({"black_timeout_ms", "ltlsynt_timeout_ms",
+                              "ltl2tgba_timeout_ms", "ltlfilt_timeout_ms",
+                              "ganak_timeout_ms", "parallel",
+                              "max_concurrent_realizability",
+                              "max_scoring_failure_rate", "dashboard"})}});
     return spec;
 }
 
@@ -325,6 +327,15 @@ void apply_tlsf_mutation(const toml::table& mutation, Config& cfg) {
                 "tlsf.mutation.max_assumption_width must be at least 1");
         }
         cfg.tlsf_max_assumption_width = static_cast<std::size_t>(*val);
+    }
+    if (auto val = mutation["connective_implies"].value<bool>()) {
+        cfg.tlsf_connective_implies = *val;
+    }
+    if (auto val = mutation["monotone_atom_rules"].value<bool>()) {
+        cfg.tlsf_monotone_atom_rules = *val;
+    }
+    if (auto val = mutation["monotone_extra_rules"].value<bool>()) {
+        cfg.tlsf_monotone_extra_rules = *val;
     }
 }
 

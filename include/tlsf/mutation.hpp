@@ -23,6 +23,25 @@ enum class MonotoneDirection : std::uint8_t {
     Strengthen,
 };
 
+/// Which of the monotone rewrite's optional rules its menu offers. Both are
+/// off by default, and off the rule list at every node is identical in content
+/// and order to the one the binary held before these keys existed, so
+/// `next_index` over it draws the same value and every draw after it follows.
+struct MonotoneRules {
+    /// `Config::tlsf_monotone_atom_rules`. On, adding a drawn literal as a
+    /// disjunct (weakening) or conjunct (strengthening) is offered at every
+    /// node, so an atom can grow; off it is offered at a conjunction or a
+    /// disjunction alone, leaving an atom with nothing but the rewrite to a
+    /// constant.
+    bool atom_rules;
+    /// `Config::tlsf_monotone_extra_rules`. On, `Release`, `Next` and the
+    /// strengthening of a biconditional each gain a rule; off those three
+    /// nodes offer the rewrite to a constant alone, so `R` sits among the
+    /// kinds the temporal rewrite draws with no monotone move of its own
+    /// while its duals `U` and `W` each carry one.
+    bool extra_rules;
+};
+
 /// Rewrites @p formula so that the result is comparable to it under
 /// implication: `Weaken` returns a formula @p formula implies, `Strengthen`
 /// one that implies @p formula. One node is drawn uniformly from those whose
@@ -39,8 +58,13 @@ enum class MonotoneDirection : std::uint8_t {
 /// negation or in the antecedent of an implication the dual rule is applied
 /// instead. @p atoms is the section-appropriate atom pool and must be
 /// non-empty.
+///
+/// @p rules says which of the two optional menu widenings are on; see
+/// MonotoneRules. The parameter carries no default argument on purpose, and
+/// neither field a default member initialiser: a new call site must state
+/// which arm it wants rather than silently taking one.
 Formula tlsf_monotone_rewrite(const Formula& formula,
-                              MonotoneDirection direction,
+                              MonotoneDirection direction, MonotoneRules rules,
                               const std::vector<std::string>& atoms,
                               const RandomSource& random_source);
 
@@ -59,9 +83,16 @@ Formula tlsf_monotone_rewrite(const Formula& formula,
 /// inputs and outputs. If no mutable formula exists the specification is
 /// returned unchanged.
 ///
+/// `cfg.tlsf_connective_implies` widens the temporal rewrite's case (2d)
+/// graft, which fires at an atom or a unary node, to draw an implication as
+/// its connective beside `U`, `W`, `&` and `|`. Off -- the default -- a
+/// guarded response such as `p -> X phi` takes more than one draw to reach at
+/// the nodes where a guard has to be introduced.
+///
 /// With probability `cfg.tlsf_p_monotone` the chosen formula takes a monotone
 /// rewrite (tlsf_monotone_rewrite) instead of either of those two, its
-/// direction drawn as a fair coin.
+/// direction drawn as a fair coin and its rule menu widened by
+/// `cfg.tlsf_monotone_atom_rules` and `cfg.tlsf_monotone_extra_rules`.
 ///
 /// With probability `cfg.p_add_assumption` the operator instead appends a new
 /// environment assumption to the ASSUME section (a conditional `G(c -> F r)`

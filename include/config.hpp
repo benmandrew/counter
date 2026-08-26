@@ -445,6 +445,24 @@ struct Config {
     /// rewrite. At 0 the temporal skeleton of existing formulae is never
     /// altered.
     double tlsf_p_temporal = 0.2;
+    /// TLSF-mode mutation: whether the temporal rewrite's case (2d) graft may
+    /// draw an implication as its connective, beside `U`, `W`, `&` and `|`.
+    ///
+    /// Case (2d) is the arm that fires at an atom or a unary node, and it
+    /// grafts a drawn anchor onto the mutated child under a connective. Its
+    /// menu kept the exclusion `pick_binary_kind` shed on 2026-08-21, which
+    /// came from Brizzio's fragment -- Owl's negation normal form, where
+    /// `a -> b` is stored as a disjunction and there is no implication node to
+    /// re-emit. So `p -> X phi`, the shape of every minimal guarantee
+    /// weakening and the shape tlsf_add_assumption hard-codes, was out of
+    /// reach in one draw at exactly the nodes where a guard has to be
+    /// introduced.
+    ///
+    /// The wider draw is opt-in. The arm is appended last, so off -- the
+    /// default -- the case order and the draw's modulus are what they were
+    /// before the key existed, the shipping binary's behaviour is unchanged and
+    /// a seeded run reproduces its stream byte for byte.
+    bool tlsf_connective_implies = false;
     /// TLSF-mode mutation: once a section formula has been chosen for
     /// rewriting, the probability of applying a *monotone* rewrite -- one
     /// whose result is comparable to the formula it replaces under implication
@@ -602,6 +620,45 @@ struct Config {
     /// parameter: it sits above the widest ideal the corpus holds, and
     /// without it a continuation probability near 1 is an unbounded loop.
     double tlsf_p_burst_continue = 0.0;
+
+    /// TLSF-mode mutation: whether a monotone rewrite may add an operand at
+    /// any node, rather than at a conjunction or a disjunction alone.
+    ///
+    /// `Constant` and `AddOperand` are the two rules sound everywhere:
+    /// `phi -> true` and `phi -> phi | l` weaken anything, `phi -> false` and
+    /// `phi -> phi & l` strengthen anything. The arm nonetheless offered
+    /// `AddOperand` at `And` and `Or` alone, which left an atom with
+    /// `Constant` as its only move -- the one rule that grows a literal into a
+    /// disjunction was reachable only where a disjunction already stood.
+    /// Every assumption-shaped ideal in the corpus is a disjunction built out
+    /// of literals, and AuRUS reaches them because its `FormulaWeakening`
+    /// applies `a -> a | b` at a literal.
+    ///
+    /// The wider menu is opt-in. Off -- the default -- the rule list at every
+    /// node holds the same rules in the same order as it did before the key
+    /// existed, so the shipping binary's behaviour is unchanged and a seeded
+    /// run reproduces its stream byte for byte.
+    bool tlsf_monotone_atom_rules = false;
+    /// TLSF-mode mutation: whether the monotone rewrite covers `Release`,
+    /// `Next` and the strengthening of a biconditional.
+    ///
+    /// Three node kinds sat outside the menu. `Release` had no monotone rule
+    /// at all, while its duals `Until` and `WeakUntil` each carry one, so a
+    /// kind the temporal rewrite draws freely was a dead end for the arm whose
+    /// job is to stay on the implication order. `Next` was the same. `Iff`
+    /// carried the weakening to one of its implications and nothing in the
+    /// other direction. At all three the whole monotone menu was the rewrite
+    /// to a constant, which gutted the node.
+    ///
+    /// On, five rules join: `phi R psi -> psi` and `phi R psi -> G psi`,
+    /// `X phi -> F phi` and `X phi -> G phi`, and `a <-> b` to `a & b` or
+    /// `!a & !b` by a fair coin.
+    ///
+    /// The wider menu is opt-in. Off -- the default -- the rule list at every
+    /// node holds the same rules in the same order as it did before the key
+    /// existed, so the shipping binary's behaviour is unchanged and a seeded
+    /// run reproduces its stream byte for byte.
+    bool tlsf_monotone_extra_rules = false;
     /// TLSF repair strategy (see RepairMode). Muc mode caps its outer
     /// extract-repair-reintegrate loop at muc_max_iterations, so a spec whose
     /// core never becomes realizable ends the run without a repair rather than

@@ -281,6 +281,29 @@ H2H_TLSF_READY: list[str] = [
     if s not in H2H_PENDING_IMPORT and s not in H2H_UNSCOREABLE
 ]
 
+# The four families the 2026-08-26 selection smoke test drops, and the rule that
+# drops them: mean wall time above 600 s in the 2026-08-23-monotone `monoon`
+# arm, which is that campaign's cell at the configuration this one runs. The
+# rule is cost and nothing else -- outcome plays no part -- because a corpus
+# chosen by how well the incumbent scheme scored on it is a corpus selected on
+# the response, and the whole point of the comparison is that either arm may
+# win a family. Stated here rather than applied inline so the exclusion is
+# checkable against the archive it was measured from.
+#
+# The measured means: humanoid-742 7200 s (capped on every seed, and 0/20 on
+# found_repair), humanoid-531 6149 s, pcar-v2-888 1643 s, humanoid-503 685 s.
+# Together they are 84% of a seed's serial cost over the 25 families, and
+# humanoid-742 alone is the whole 2 h per-host budget on one job -- so keeping
+# any of them means the campaign cannot finish, not that it finishes slowly.
+SELECTION_SMOKE_EXCLUDED: list[str] = [
+    "humanoid-503", "humanoid-531", "humanoid-742", "pcar-v2-888",
+]
+
+# H2H_TLSF_READY minus the cost exclusions above: 21 families.
+SELECTION_SMOKE_SPECS: list[str] = [
+    s for s in H2H_TLSF_READY if s not in SELECTION_SMOKE_EXCLUDED
+]
+
 # The corpus the 2026-07-24 head-to-head actually ran, frozen so that changing
 # the live list above cannot retroactively change what the `h2h-tlsf` profile
 # means. That profile is the July campaign's definition and nothing else runs
@@ -1120,6 +1143,86 @@ PROFILES: dict[str, dict] = {
         "configs_dir": EXPERIMENTS_DIR / "configs-monotone",
         "results_dir": EXPERIMENTS_DIR / "results-monotone",
         "results_csv": EXPERIMENTS_DIR / "results-monotone.csv",
+        "default_jobs": 8,
+    },
+    # WeightedAverage against the shipped nsga2-apportion, at the configuration
+    # counter ships on 2026-08-26 and with the selection scheme as the only key
+    # that differs between the arms. A smoke test: 2 h per host, so it is sized
+    # to answer whether the scheme still trades the way the 2026-07-24 ablation
+    # measured it, not to close the question.
+    #
+    # Both arms run fresh rather than pairing the nsga2 arm against the
+    # 2026-08-23-monotone `monoon` rows it would otherwise duplicate. Those rows
+    # came from a different commit under a 7200 s cap, and this profile caps far
+    # tighter, so their censoring differs from this one's -- and a control
+    # inherited across a commit boundary is what the stale-binary and
+    # cost-vintage notes in the root CLAUDE.md exist about. The archived rows
+    # are a validity check on the fresh nsga2 arm instead, which is free.
+    #
+    # Sweep T at `monoon` alone, rather than sweep N or a bare C level: `monoon`
+    # is the one level in any TLSF sweep whose four keys (p_monotone 0.25,
+    # p_clone_assumption 0.25, elitism_rate 0.1, accumulate_repairs true) all
+    # equal today's config.hpp defaults, so the archived config states every key
+    # that has moved recently instead of inheriting it. `monoship` does not --
+    # it pins elitism_rate 0.0, a default move the monotone campaign measured
+    # and did not make. `--weakening off`, `--metric log` and `--pin-vintage`
+    # cover the rest; see the campaign declaration for the generator line.
+    #
+    # The corpus is SELECTION_SMOKE_SPECS, H2H_TLSF_READY minus four families
+    # excluded on measured cost alone -- see that constant for the rule and the
+    # numbers. found_repair is saturated at 1.00 on all 21 under the nsga2 arm,
+    # so implies_ideal is the endpoint and found_repair is a control that should
+    # not move.
+    "selection-smoke": {
+        "schemes": ["nsga2-apportion", "weighted"],
+        "weakenings": ["wkoff"],
+        "metrics": ["log"],
+        "repair_modes": None,
+        "sweeps": ["T"],
+        "levels": {"T": ["monoon"]},
+        "specs": SELECTION_SMOKE_SPECS,
+        # 16 seeds, split 0-7 / 8-15. Both arms of a pair run on the same host,
+        # so the split is over seeds and never over schemes, which the runner
+        # crosses itself. 21 families x 16 seeds = 336 pairs.
+        "seeds": list(range(16)),
+        # 4x the slowest run the 2026-08-23-monotone `monoon` arm recorded per
+        # family, floored at 300 s, rounded to the minute and clamped at 3600 s.
+        # 4x rather than the older tables' 6-20x for status-grading's reason:
+        # ltlsynt_timeout_ms bounds the per-query tail at 10 s here. The clamp
+        # binds on lift alone (904 s max, so 3600 s is 4.0x by luck) and exists
+        # because a single run at a cap above the per-host budget cannot be
+        # distinguished from the campaign not finishing.
+        #
+        # The caps are sized off the nsga2 arm because it is the only arm with
+        # archived timings. If the weighted arm is slower they bite it alone,
+        # which is the one-sided censoring `replicate-recap` was written to
+        # undo -- so read timed_out per arm before reading implies_ideal.
+        "timeout_caps": {
+            "lift": 3600, "prioritized-arbiter-aurus": 3300,
+            "gyro-var1": 2100, "full-arbiter-aurus": 1980,
+            "humanoid-458": 1560, "round-robin-arbiter-aurus": 1380,
+            "gyro-var2": 840, "ltl2dba-theta-2": 600,
+            "load-balancer-aurus": 360, "arbiter-aurus": 300,
+            "detector-aurus": 300, "lily02": 300, "lily11": 300,
+            "lily15": 300, "lily16": 300, "ltl2dba-r-2": 300,
+            "ltl2dba27": 300, "minepump": 300, "rg1": 300, "rg2": 300,
+            "simple-arbiter-aurus": 300,
+        },
+        # 1800 s, as monotone and aurus-h2h-ship set it. accumulate_repairs is
+        # on, so a run emits several times more repairs than the 600 s default
+        # was sized for, and a compare timeout costs the row's implies_ideal
+        # silently -- which is the endpoint.
+        "compare_timeout": 1800,
+        # Neither arm is a grid baseline, and there is no gen/pop axis in sweep
+        # T to alias onto.
+        "baseline_aliases": {},
+        "configs_dir": EXPERIMENTS_DIR / "configs-selection-smoke",
+        "results_dir": EXPERIMENTS_DIR / "results-selection-smoke",
+        "results_csv": EXPERIMENTS_DIR / "results-selection-smoke.csv",
+        # jobs = 8, the value the aurus-h2h calibration cleared on this corpus
+        # (24 runs peaked at load 21.7 of 32 and 18.7 GB of 125 GB), and the
+        # value monotone and aurus-h2h-ship ran -- which is what makes this
+        # campaign's wall times readable against theirs.
         "default_jobs": 8,
     },
     # nsga2 vs nsga2-replicate on FRETISH, at the gen40/pop1000 operating point

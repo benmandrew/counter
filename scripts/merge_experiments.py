@@ -77,6 +77,13 @@ PROFILE_CSVS: dict[str, str] = {
     # pair arrived first.
     "aurus-h2h-ship": "results-aurus-h2h-ship.csv",
     "monotone": "results-monotone.csv",
+    # The 2026-08-26 selection smoke test. Its own CSV rather than sharing
+    # `monotone`'s: the two run the same sweep T level over an overlapping
+    # corpus and seed range, and the arm that separates them is
+    # `selection`, which IS in the key -- but the corpus and the timeout caps
+    # are not, and this campaign drops four families and caps far tighter. A
+    # shared CSV would put rows from two cap tables under one key.
+    "selection-smoke": "results-selection-smoke.csv",
     # The 2026-08-20 operator cross; one CSV per path, never shared, since
     # the two paths run different corpora at different operating points. All
     # five profiles are retired -- their sweep varied genetic.repaired_operators,
@@ -138,6 +145,7 @@ PROFILE_RESULT_DIRS: dict[str, str] = {
     "aurus-h2h": "results-aurus-h2h",
     "aurus-h2h-ship": "results-aurus-h2h-ship",
     "monotone": "results-monotone",
+    "selection-smoke": "results-selection-smoke",
     # Retired with their sweep, and kept for the same reason as above.
     "opswk-fret": "results-opswk-fret",
     "opswk-tlsf": "results-opswk-tlsf",

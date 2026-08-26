@@ -81,7 +81,7 @@ namespace {
 // a limit of its own instead of a verdict ended the run and no manifest was
 // written at all; from this version the query resolves as undecided and this
 // field is the only record that it happened.
-constexpr int k_schema_version = 18;
+constexpr int k_schema_version = 19;
 
 // The inverse of the spellings config_io.cpp parses. It has no table to
 // borrow -- it only ever goes string to enum -- so these must be kept in step
@@ -212,7 +212,10 @@ nlohmann::json config_json(const Config& cfg) {
           {"mutation",
            {{"p_assumption", cfg.tlsf_p_assumption},
             {"p_temporal", cfg.tlsf_p_temporal},
+            {"connective_implies", cfg.tlsf_connective_implies},
             {"p_monotone", cfg.tlsf_p_monotone},
+            {"monotone_atom_rules", cfg.tlsf_monotone_atom_rules},
+            {"monotone_extra_rules", cfg.tlsf_monotone_extra_rules},
             {"p_clone_assumption", cfg.tlsf_p_clone_assumption},
             {"max_assumption_width", cfg.tlsf_max_assumption_width},
             {"p_bare_assumption", cfg.tlsf_p_bare_assumption},

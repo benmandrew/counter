@@ -142,5 +142,7 @@ max_concurrent_realizability = 0
 # land in one generation on the heavy TLSF specs to trip a tighter bound.
 max_scoring_failure_rate     = 0.15
 dashboard = false
-# parallel = 8   # thread pool size; the default is hardware concurrency, so
-                 # this key has no fixed default to pin and stays commented out.
+# parallel = 8   # thread pool size; the default is the hardware concurrency
+                 # narrowed by the CPU affinity mask and the cgroup CPU quota,
+                 # so this key has no fixed default to pin and stays commented
+                 # out.

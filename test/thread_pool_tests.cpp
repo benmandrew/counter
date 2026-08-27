@@ -13,10 +13,12 @@
 #include <cstdlib>
 #include <exception>
 #include <future>
+#include <optional>
 #include <string>
-#include <thread>
+#include <string_view>
 #include <vector>
 
+#include "cpu_limits.hpp"
 #include "test_suite.hpp"
 #include "test_support.hpp"
 #include "thread_pool.hpp"
@@ -39,10 +41,7 @@ std::size_t requested_pool_size() {
 }
 
 // The default width, which the sized case must not accidentally ask for.
-std::size_t default_pool_size() {
-    const unsigned int hw_threads = std::thread::hardware_concurrency();
-    return hw_threads > 0 ? hw_threads : 1;
-}
+std::size_t default_pool_size() { return available_parallelism(); }
 
 // A size that cannot coincide with the default. Asking for exactly the width
 // the pool would have taken anyway makes both assertions below pass whatever
@@ -67,10 +66,84 @@ void test_pool_takes_the_requested_size(std::size_t requested) {
            "already built");
 }
 
-void test_pool_defaults_to_the_hardware_concurrency() {
+void test_pool_defaults_to_the_available_parallelism() {
     expect(global_thread_pool().size() == default_pool_size(),
-           "a pool nobody sized should run one worker per hardware thread, or "
-           "one worker where that is unknown");
+           "a pool nobody sized should run one worker per usable CPU, or one "
+           "worker where that is unknown");
+}
+
+// Whatever the machine, the affinity mask and the cgroup quota, sizing a pool
+// from this must never ask for zero workers.
+void test_available_parallelism_is_never_zero() {
+    expect(available_parallelism() >= 1,
+           "available_parallelism should always report at least one worker");
+}
+
+void expect_cpu_max(std::string_view content,
+                    std::optional<std::size_t> expected, const char* message) {
+    expect(parse_cgroup_v2_cpu_max(content) == expected, message);
+}
+
+void test_cgroup_v2_cpu_max_parses() {
+    expect_cpu_max("max 100000", std::nullopt,
+                   "a cgroup v2 quota of \"max\" is unlimited, so it bounds "
+                   "nothing");
+    expect_cpu_max("400000 100000", std::size_t{4},
+                   "a cgroup v2 quota of four periods should allow four "
+                   "workers");
+    expect_cpu_max("150000 100000", std::size_t{2},
+                   "a fractional cgroup v2 quota should round up rather than "
+                   "stranding the surplus");
+    expect_cpu_max("100000 100000", std::size_t{1},
+                   "a cgroup v2 quota of one period should allow one worker");
+    expect_cpu_max("50000 100000", std::size_t{1},
+                   "a sub-CPU cgroup v2 quota should still allow one worker");
+    expect_cpu_max("400000 100000\n", std::size_t{4},
+                   "the trailing newline the kernel writes should not defeat "
+                   "the parse");
+}
+
+void test_malformed_cgroup_v2_cpu_max_bounds_nothing() {
+    expect_cpu_max("", std::nullopt, "an empty cpu.max should bound nothing");
+    expect_cpu_max("400000", std::nullopt,
+                   "a cpu.max missing its period should bound nothing");
+    expect_cpu_max("400000 0", std::nullopt,
+                   "a zero period should bound nothing rather than divide by "
+                   "zero");
+    expect_cpu_max("four 100000", std::nullopt,
+                   "a non-numeric quota should bound nothing");
+    expect_cpu_max("400000 ten", std::nullopt,
+                   "a non-numeric period should bound nothing");
+    expect_cpu_max("-1 100000", std::nullopt,
+                   "a negative quota is not cgroup v2 syntax and should bound "
+                   "nothing");
+}
+
+void expect_cfs_quota(std::string_view quota, std::string_view period,
+                      std::optional<std::size_t> expected,
+                      const char* message) {
+    expect(parse_cgroup_v1_cpu_quota(quota, period) == expected, message);
+}
+
+void test_cgroup_v1_cpu_quota_parses() {
+    expect_cfs_quota("-1", "100000", std::nullopt,
+                     "a cgroup v1 quota of -1 is unlimited, so it bounds "
+                     "nothing");
+    expect_cfs_quota("400000", "100000", std::size_t{4},
+                     "a cgroup v1 quota of four periods should allow four "
+                     "workers");
+    expect_cfs_quota("150000", "100000", std::size_t{2},
+                     "a fractional cgroup v1 quota should round up");
+    expect_cfs_quota("100000\n", "100000\n", std::size_t{1},
+                     "the trailing newlines the kernel writes should not "
+                     "defeat the parse");
+    expect_cfs_quota("", "100000", std::nullopt,
+                     "an empty quota file should bound nothing");
+    expect_cfs_quota("400000", "", std::nullopt,
+                     "an empty period file should bound nothing");
+    expect_cfs_quota("400000", "0", std::nullopt,
+                     "a zero period should bound nothing rather than divide by "
+                     "zero");
 }
 
 // size() is only worth asserting on if it describes a pool that runs work, so
@@ -110,8 +183,12 @@ void run_thread_pool_tests() {
     if (requested > 0) {
         test_pool_takes_the_requested_size(distinct_from_default(requested));
     } else {
-        test_pool_defaults_to_the_hardware_concurrency();
+        test_pool_defaults_to_the_available_parallelism();
     }
+    test_available_parallelism_is_never_zero();
+    test_cgroup_v2_cpu_max_parses();
+    test_malformed_cgroup_v2_cpu_max_bounds_nothing();
+    test_cgroup_v1_cpu_quota_parses();
     test_every_submitted_task_runs();
     test_dispatch_window_is_twice_the_pool();
 }

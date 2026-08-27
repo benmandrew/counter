@@ -232,7 +232,7 @@ The per-filter run intervals that once throttled these were removed: across ever
 Runtime
 -------
 
-``runtime.parallel`` overrides the thread pool size, which otherwise follows ``std::thread::hardware_concurrency()``.
+``runtime.parallel`` overrides the thread pool size, which otherwise follows ``available_parallelism()``: the hardware concurrency narrowed by the process's CPU affinity mask and by the cgroup CPU quota, where either applies. ``std::thread::hardware_concurrency()`` alone reports the host's online CPUs and sees neither, so a container given four CPUs on a 64-core host would size the pool at 64 and oversubscribe its quota sixteen-fold.
 
 ``runtime.max_concurrent_realizability`` caps how many ``ltlsynt`` processes run at once across the whole program, independently of ``parallel``. The default, 0, means unlimited; a positive value serialises the surplus while the other workers carry on with non-``ltlsynt`` work.
 

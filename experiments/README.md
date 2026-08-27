@@ -80,6 +80,7 @@ from `../EXPERIMENTS.md` and from the table above.
 | Well-separation sweep | `2026-08-14-aurus-h2h` | `PROVENANCE.json` `well_separation_sweep` | 113,958 of 287,006 ill-separated (39.71%), 0 undecided |
 | What the July AuRUS arm ran — P-only | `2026-08-14-aurus-h2h` | `PROVENANCE.json` `decision_mechanism.3_what_actually_flipped_is_the_aurus_arm` | `-k=10` against the paper's 20, on this project's fork rather than the base |
 | Operator defects behind the quality gap | `2026-08-14-aurus-h2h` | `REPORT.md` | 7 defects measured over 2,295 archived repair files |
+| AuRUS relation mix, rescored like-for-like | `2026-08-14-aurus-h2h` | `PROVENANCE.json` `maximality_rescore.incomparable_rate`, `.relation_mix`; `REPORT.md` "What this costs" | AuRUS 46 of 203 (22.7%) incomparable against counter's 150 of 400 (37.5%); `implies_ideal` invariant on 202 of 203 |
 | MRS against tiered status, yield — P-only | `2026-08-11-status-grading` | `PROVENANCE.json` `decision` | 410/480 against 367/480, sign test p < 0.0001 |
 | MRS cost — P-only | `2026-08-11-status-grading` | `PROVENANCE.json` `results.wall_time` | median paired 1.15, aggregate 1.89, `amba` alone 4.52 |
 | MRS quality once yield is controlled — P-only | `2026-08-11-status-grading` | `PROVENANCE.json` `results.implies_ideal.both_yielded_pairs` | 3 against 2 over 360 pairs, no detectable difference |
@@ -120,6 +121,7 @@ left.
 |---|---|---|
 | `2026-07-24-ablation`, the AuRUS head-to-head | `2026-08-14-aurus-h2h` | July ran AuRUS at `-k=10` on this project's fork over 12 families. The verdict reverses. |
 | `2026-08-14-aurus-h2h`, counter behind at p = 0.0127 | `2026-08-21-aurus-h2h-ship` | The 0.222 mean-rate gap becomes 0.002 once four engine changes land. The result does not reproduce. |
+| `2026-08-14-aurus-h2h`, the `best_relation` mix — counter 47.7% incomparable against AuRUS's 2.6% | the 2026-08-27 maximality rescore in that archive | The two sides were scored through different filters. Like-for-like it is 37.5% against 22.7%, a gap of about 15 points rather than 45. `implies_ideal` is invariant on 202 of 203 cells, so the campaign's endpoint stands. |
 | Every pre-2026-08-11 zero-yield TLSF row on `arbiter` and `rg1` | `2026-08-11-status-grading` | Those zeroes were the tiered status scale. Under `mrs` they read 22/24 and 24/24. |
 | `2026-08-07-elitism`, TLSF yield favouring `elitism_rate = 0` | `2026-08-23-monotone`, the `monoon` → `monoship` arm | Retested at `nsga2-apportion`, quality is flat and the yield advantage does not replicate. |
 

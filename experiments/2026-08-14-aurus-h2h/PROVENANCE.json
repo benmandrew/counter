@@ -322,5 +322,72 @@
     "cost": "Not the quadratic the pair enumeration suggests. check_pair short-circuits once either endpoint is flagged, so a subsumed spec stops paying for its remaining pairs and the cost lands near n times the surviving set. Measured 86 CPU-seconds for 275 candidates, against the ~35 CPU-minutes 37,675 pairs at the measured 28 ms per implication check would have cost.",
     "hosts": "av2 and av3 each swept their own AuRUS output at --jobs 6, under an 1800 s per-directory wall cap. The counter arm was first attempted on 2026-08-18 in a local worktree at --jobs 8, which exhausted the 30 GB desktop and triggered a global out-of-memory kill at 18:24: three ltlfilt children held 9.6 GB, 4.8 GB and 4.5 GB, and the kernel killed a process inside the terminal's cgroup, taking the sweep down with it. `maximal` raises ltlfilt_timeout to 300,000 ms against the 10,000 ms default, which is part of how a blowing-up ltlfilt got that far. The run's 218 completed rows were recovered from the dead session's scratchpad. The arm was then swept on av2 and av3 on 2026-08-19 at --jobs 8 under the same 1800 s cap, with humanoid-742 excluded. The three runs overlap on 287 keys and agree on every count, so the measurement is deterministic and the salvaged rows are sound. A capped directory is recorded as such rather than dropped, so the sweep never reports a diversity number it did not finish measuring. Sweeps belong on the lab hosts, at 125 GB and 32 cores each, and not on the 30 GB desktop.",
     "cannot_change_the_outcome": "Scoring is existential: a run scores 1 when at least one of its repairs is equivalent to or strictly stronger than at least one ideal. `compare` decides that with `tlsf_spec_implies` on the TLSF path, the same predicate `maximal` applies, at the same 20 s budget. Every element of a finite set sits below some maximal element under that order, and implication is transitive, so if any repair implies an ideal then some maximal repair does too. Filtering to the maximal set therefore leaves implies_ideal and implies_genuine exactly where they were. The 10 timeout exceptions recorded under control cannot move either rate, since the extra specifications are dominated ones whose dominators are retained and score at least as well. Diversity is a separate axis and is reported as one. The decision still stands on implies_ideal and implies_genuine."
+  },
+  "maximality_rescore": {
+    "status": "closed",
+    "run_on": "2026-08-27",
+    "question": "Whether this report's `best_relation` comparison between the two arms is like-for-like.",
+    "defect": "It is not. counter's `best_relation` is a maximum over its maximality-filtered `repair_N` output (`run_implication_filter` defaults true); AuRUS's was a maximum over its unfiltered realizable and well-separated solution set, a mean of 317.7 solutions per run against counter's 37.9. The maximality filter migrates a run from `strictly weaker` to `incomparable` whenever a weaker solution is dominated by an off-axis one, so the unfiltered side could not read incomparable at the filtered side's rate by construction.",
+    "method": "Rescore the AuRUS side through counter's own maximality filter (`build-release/maximal`), three scorings per repeat against the same ideals in the same run so the migration is paired: `base` reproduces the archived column, `max` applies the shipping filter, `cls` keeps one representative per implication-equivalence class.",
+    "script": "scripts/aurus_maxscore.py",
+    "script_blob_sha": "033d1255e5dbea91eb872443610c4eede2b829d5",
+    "script_note": "Reads this archive's `validation-av*_details.csv` for the realizable and well-separated file list; those CSVs are untracked, as every campaign's are, so the script plus this block are the tracked record.",
+    "csvs": "maxscore-av2.csv, maxscore-av3.csv (untracked, as this archive's other CSVs are)",
+    "scope": {
+      "families": 20,
+      "families_note": "the 20 families both tools cover",
+      "repeats": "0-29",
+      "cells_possible": 600,
+      "cells_attempted": 212,
+      "cells_scored": 203,
+      "dropped": {
+        "MAXTIMEOUT": 8,
+        "SKIP": 1
+      }
+    },
+    "relation_mix": {
+      "base": {
+        "equivalent": 114,
+        "strictly stronger": 31,
+        "strictly weaker": 55,
+        "incomparable": 3
+      },
+      "max": {
+        "strictly stronger": 125,
+        "incomparable": 46,
+        "equivalent": 19,
+        "strictly weaker": 13
+      },
+      "cls": {
+        "strictly stronger": 125,
+        "incomparable": 46,
+        "equivalent": 19,
+        "strictly weaker": 13
+      }
+    },
+    "incomparable_rate": {
+      "aurus_unfiltered": "3/203",
+      "aurus_maximality_filtered": "46/203 = 22.7%",
+      "counter_2026_08_21_ship_same_families": "150/400 = 37.5%",
+      "gap": "about 15 points, against the ~45 the unlike-for-like pair implied"
+    },
+    "mean_solutions_per_run": {
+      "aurus_scored": 317.7,
+      "aurus_maximal": 32.8,
+      "aurus_classes": 28.0,
+      "counter_ship_n_repairs": 37.9
+    },
+    "implies_ideal_invariance": {
+      "unfiltered": 0.714,
+      "filtered": 0.709,
+      "cells_agreeing": "202/203",
+      "meaning": "Only the relation mix was misread. The endpoint this campaign decided on is unaffected and its conclusions stand."
+    },
+    "what_survives": "counter remains the more incomparable of the two, 37.5% against 22.7%, so section 5's argument and the monotone-rewrite operator's premise both hold. Nothing about the operator changes.",
+    "limits": [
+      "The AuRUS side is a partial sample, 203 of roughly 600 cells for those families.",
+      "The counter side is drawn from the 2026-08-21 ship campaign rather than this campaign's own 499 runs.",
+      "The `cls` scoring gives a relation mix identical to `max`, so the pending equivalence-class tie-break would not move this result."
+    ]
   }
 }

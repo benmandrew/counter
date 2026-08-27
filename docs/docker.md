@@ -77,7 +77,7 @@ Node.js is absent by default because nothing the image runs calls it, and it is 
 
 ## Publishing
 
-[`.github/workflows/docker.yml`](../.github/workflows/docker.yml) builds the image on every push to `main` and on every `v*` tag, and publishes one *manifest list* to Docker Hub covering `linux/amd64` and `linux/arm64`. A pull request builds the image and publishes nothing, a fork's pull request having no access to the repository's secrets. The build alone still catches a Dockerfile that has stopped working.
+[`.github/workflows/docker.yml`](../.github/workflows/docker.yml) builds the image on every push to `main` and on every `v*` tag, and publishes one *manifest list* to Docker Hub covering `linux/amd64` and `linux/arm64`. Nothing else publishes: a pull request and a manual `workflow_dispatch` both build the image and stop there, which still catches a Dockerfile that has stopped working. The condition is the event rather than whether the secrets can be read, since a pull request raised from a branch in this repository does get them and only a fork's does not.
 
 The primary tag is the short commit sha, and it is deliberately the same seven characters the binaries print for `commit_short`. `cmake/write_version_header.cmake` takes the first seven of the sha and `docker/metadata-action`'s `type=sha,format=short` does the same, so an image tag and the `--version` inside that image name the commit identically. `latest` follows the default branch, and a `v*` git tag publishes under its own name as well.
 

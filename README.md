@@ -27,6 +27,8 @@ Done in 4.12s
 
 That writes the 3 maximal repairs to `out/`, each `repair_N.tlsf` paired with a `repair_N.fitness.json` holding its score. Expect a few seconds on 20 threads; the seed fixes the repairs, not the runtime, which swings with how the external solvers get scheduled.
 
+The [container image](docs/docker.md) is the alternative to `nix develop`: it carries the binaries, the solvers and these examples, so `docker run --rm counter:<tag> realize /opt/counter/share/counter/examples/lily02/spec.tlsf` needs no toolchain on the host.
+
 The example is a grant arbiter that must answer every request within three ticks, never grant twice in a row, and withhold grants after a `cancel` until a `go` arrives. Nothing forces `go` to ever arrive, so a cancelled request can be neither granted nor refused — and the specification cannot be implemented. All three repairs rewrite that third guarantee, which is also the one `mucs` identifies as the minimal unrealisable core. The [TLSF guide](https://benmandrew.com/docs/counter/tlsf.html) walks through this run in full.
 
 ## Commands
@@ -62,6 +64,7 @@ The full documentation is published at [benmandrew.com/docs/counter](https://ben
 | | |
 |---|---|
 | [Building from source](docs/building.md) | Nix and non-Nix builds, dependencies, presets, tests |
+| [Docker](docs/docker.md) | building and running the container image |
 | [Architecture](https://benmandrew.com/docs/counter/architecture.html) | algorithm flow, key types, module layout |
 | [Configuration](https://benmandrew.com/docs/counter/configuration.html) | tuning via TOML, fitness weights, selection schemes |
 | [TLSF specifications](https://benmandrew.com/docs/counter/tlsf.html) | TLSF mode and a worked repair |

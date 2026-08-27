@@ -75,6 +75,29 @@ Node.js is absent by default because nothing the image runs calls it, and it is 
 
 `BASE_IMAGE` defaults to `ubuntu:24.04` for a specific reason. [`cmake/black.cmake`](../cmake/black.cmake) downloads a prebuilt `black-sat` `.deb` on noble and builds black from source against z3 anywhere else. The source build works, and it costs several minutes and a z3 toolchain in the builder for a binary that is already published.
 
+## Publishing
+
+[`.github/workflows/docker.yml`](../.github/workflows/docker.yml) builds the image on every push to `main` and on every `v*` tag, and publishes one *manifest list* to Docker Hub covering `linux/amd64` and `linux/arm64`. A pull request builds the image and publishes nothing, a fork's pull request having no access to the repository's secrets. The build alone still catches a Dockerfile that has stopped working.
+
+The primary tag is the short commit sha, and it is deliberately the same seven characters the binaries print for `commit_short`. `cmake/write_version_header.cmake` takes the first seven of the sha and `docker/metadata-action`'s `type=sha,format=short` does the same, so an image tag and the `--version` inside that image name the commit identically. `latest` follows the default branch, and a `v*` git tag publishes under its own name as well.
+
+There is no `docker/setup-qemu-action` anywhere in the workflow. Each architecture is built on a runner of its own architecture — `ubuntu-24.04` and `ubuntu-24.04-arm`, both free to public repositories — rather than by emulating arm64 on an amd64 host. Spot is the one dependency that compiles rather than downloads, so emulation would put an autotools C++ build behind an instruction translator, and that is where the cost would land.
+
+Each build job pushes its image *by digest*, under no tag at all, and uploads that digest as an artefact. A merge job then downloads the digests and assembles them into the tagged manifest list with `docker buildx imagetools create`. A matrix that tagged as it went would publish a tag resolving for one architecture and not the other whenever half of it failed.
+
+Both build jobs read and write a layer cache through `cache-from`/`cache-to: type=gha`, scoped per architecture. The per-dependency stage split pays off here, Spot's stage copying `cmake/spot.cmake` and nothing else, so a change anywhere else in the tree reuses its layer. GitHub documents that cache as holding 10GB per repository and evicting least recently used entries, and the two architectures share it with every other workflow, so a cold Spot rebuild is a possibility the scoping makes less likely rather than one it rules out.
+
+The two architectures genuinely differ in one place. Upstream publishes exactly one Linux `black` binary and it is x86\_64, so amd64 downloads the prebuilt `.deb` and arm64 compiles black from source against z3, which is why `libz3-dev` is installed in the toolchain stage. That source build is the route macOS has always taken, Apple Silicon included, [`cmake/black.cmake`](../cmake/black.cmake)'s Darwin branch carrying no architecture test at all. Until 2026-08-27 an architecture guard sat at the top of that file's Linux branch and failed configure outright on Linux arm64; it now guards the `.deb` alone.
+
+Pulling a tagged image needs no architecture flag, Docker resolving the manifest list to the puller's own:
+
+```console
+$ docker pull benmandrew/counter:latest
+$ docker buildx imagetools inspect benmandrew/counter:latest
+```
+
+The second command lists both entries of the list, with the platform each was built for. `benmandrew/counter` is the name the workflow publishes under; the registry credentials it pushes with are not configured yet, so that is a description of the workflow rather than of what sits on Docker Hub today.
+
 ## Layer structure
 
 The stage layout is load-bearing. Spot dominates the dependency build by roughly two orders of magnitude over Ganak and black, so it gets a stage of its own that copies [`cmake/spot.cmake`](../cmake/spot.cmake) and nothing else, and its layer is keyed on that one file. Copying the whole `cmake/` directory instead would rebuild Spot whenever an unrelated module such as `lint.cmake` changed.

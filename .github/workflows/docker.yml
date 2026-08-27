@@ -1,0 +1,161 @@
+# Builds the container image for amd64 and arm64 and publishes one manifest
+# list covering both.
+#
+# There is deliberately no docker/setup-qemu-action here. Each architecture is
+# built on a runner of its own architecture, which is free for this repository:
+# GitHub's arm64 hosted runners are available to public repositories. Emulating
+# arm64 on an amd64 runner would put Spot's autotools build behind QEMU, and
+# Spot is the one dependency that compiles rather than downloads.
+#
+# Each build job pushes an image *by digest* under no tag at all, and the merge
+# job below assembles those digests into the tagged manifest list. That is what
+# keeps a half-finished matrix from publishing a tag that resolves for one
+# architecture and not the other.
+
+name: Docker image
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  pull_request:
+  workflow_dispatch:
+
+env:
+  REGISTRY_IMAGE: benmandrew/counter
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: linux/amd64
+            runner: ubuntu-24.04
+          - platform: linux/arm64
+            runner: ubuntu-24.04-arm
+    runs-on: ${{ matrix.runner }}
+    env:
+      # A fork's pull request has no secrets, so those runs build and stop.
+      PUSH: ${{ github.event_name != 'pull_request' }}
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Name this platform
+        id: platform
+        run: echo "pair=${{ matrix.platform }}" | tr '/' '-' >> "$GITHUB_OUTPUT"
+
+      - name: Set up Buildx
+        uses: docker/setup-buildx-action@v3
+
+      # Skipped where PUSH is false, which still catches a Dockerfile that no
+      # longer works without handing a fork push rights.
+      - name: Log in to Docker Hub
+        if: env.PUSH == 'true'
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      # BUILD_JOBS is deliberately unset: a hosted runner is small enough that
+      # one job per core is right, and the value would otherwise join the cache
+      # key of every stage that reads it (see the Dockerfile).
+      #
+      # The cache is scoped per platform because the two architectures share one
+      # 10GB repository-wide GitHub Actions cache, which evicts least-recently
+      # used. Spot's layer is the large one, and it is also the one that hits:
+      # its stage copies cmake/spot.cmake and nothing else, so a change anywhere
+      # else in the tree reuses it.
+      - name: Build and push by digest
+        id: build
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: ${{ matrix.platform }}
+          build-args: |
+            COUNTER_GIT_COMMIT=${{ github.sha }}
+            COUNTER_GIT_DIRTY=false
+          cache-from: type=gha,scope=${{ steps.platform.outputs.pair }}
+          cache-to: type=gha,mode=max,scope=${{ steps.platform.outputs.pair }}
+          provenance: false
+          outputs: type=image,name=${{ env.REGISTRY_IMAGE }},push-by-digest=true,name-canonical=true,push=${{ env.PUSH }}
+
+      - name: Export the digest
+        if: env.PUSH == 'true'
+        run: |
+          mkdir -p "${{ runner.temp }}/digests"
+          digest="${{ steps.build.outputs.digest }}"
+          touch "${{ runner.temp }}/digests/${digest#sha256:}"
+
+      - name: Upload the digest
+        if: env.PUSH == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: digest-${{ steps.platform.outputs.pair }}
+          path: ${{ runner.temp }}/digests/*
+          if-no-files-found: error
+          retention-days: 1
+
+  merge:
+    needs: [build]
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Download the digests
+        uses: actions/download-artifact@v4
+        with:
+          path: ${{ runner.temp }}/digests
+          pattern: digest-*
+          merge-multiple: true
+
+      - name: Set up Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      # The short sha is the primary tag, and it is the same seven characters
+      # the binaries print for commit_short — cmake/write_version_header.cmake
+      # takes the first 7 of the sha, and so does type=sha,format=short. An
+      # image and the `--version` inside it therefore name the commit
+      # identically, which is the point of the whole provenance mechanism.
+      - name: Derive the tags
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY_IMAGE }}
+          tags: |
+            type=sha,format=short,prefix=
+            type=raw,value=latest,enable={{is_default_branch}}
+            type=ref,event=tag
+
+      # Built as arrays rather than by splitting a command substitution, so
+      # neither a tag nor a digest can be re-split by the shell. Each digest is
+      # the name of a file the build jobs uploaded, its contents being empty.
+      - name: Create the manifest list and push it
+        working-directory: ${{ runner.temp }}/digests
+        run: |
+          tags=()
+          while IFS= read -r tag; do
+            tags+=(--tag "$tag")
+          done < <(jq -r '.tags[]' <<< "$DOCKER_METADATA_OUTPUT_JSON")
+
+          sources=()
+          for digest in *; do
+            sources+=("${REGISTRY_IMAGE}@sha256:${digest}")
+          done
+
+          docker buildx imagetools create "${tags[@]}" "${sources[@]}"
+
+      - name: Check what was published
+        env:
+          VERSION: ${{ steps.meta.outputs.version }}
+        run: docker buildx imagetools inspect "${REGISTRY_IMAGE}:${VERSION}"

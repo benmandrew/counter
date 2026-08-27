@@ -301,6 +301,8 @@ Install rules live in `cmake/install.cmake`, every one of them in the `counter` 
 
 The Dockerfile's stage layout is load-bearing rather than cosmetic. One stage per fetched dependency, each copying only the cmake module that drives it, because copying all of `cmake/` made an edit to `lint.cmake` cost a full Spot rebuild. Spot dominates that build by roughly two orders of magnitude — 248.1s against black's 3.6s and Ganak's 1.2s, at `BUILD_JOBS=8` on a 20-core machine — so its layer must be keyed on `cmake/spot.cmake` alone. `docs/docker.md` is the user-facing half.
 
+`.github/workflows/docker.yml` builds each architecture on a runner of its own architecture and never emulates, and both build jobs push by digest under no tag, so only the merge job's `imagetools create` publishes one and a half-failed matrix cannot leave a tag resolving for one architecture alone. `cmake/black.cmake`'s architecture guard covers the prebuilt `.deb` alone since 2026-08-27; it guarded the whole Linux branch before that, which failed configure on Linux arm64 rather than falling through to the source build below it — a path with no architecture in it, and the one Darwin has always used. Moving that guard back up breaks arm64 images and nothing else, so an amd64 build will not show it.
+
 ## Key types
 
 - `Timing` — `std::variant<Immediately, NextTimepoint, WithinTicks, ForTicks, AfterTicks, Eventually, Always>` (see `requirement.hpp`).

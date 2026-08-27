@@ -154,11 +154,16 @@ std::pair<std::string, bool> read_until_eof(int read_fd,
 /// if the parent is already gone. Both forks in process.cpp call it themselves,
 /// and they are its only callers.
 ///
+/// `parent_pid` is the caller's own pid, read *before* the fork: that is what
+/// "already gone" is tested against. Testing for reparenting to pid 1 instead
+/// is wrong wherever this process is itself pid 1, which is the normal case
+/// inside a container.
+///
 /// Note that the new process group is not the terminal's foreground group, so
 /// a Ctrl-C no longer reaches the tool directly. Under KillWithParentThread the
 /// PDEATHSIG half covers that: the signal kills this process, and the kernel
 /// then kills the child.
-void harden_child_after_fork(ParentDeathPolicy policy);
+void harden_child_after_fork(ParentDeathPolicy policy, pid_t parent_pid);
 
 /// The parent half of the same policy, called immediately after fork(): repeats
 /// the child's setpgid so the group exists no matter which side is scheduled

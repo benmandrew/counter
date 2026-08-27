@@ -212,7 +212,7 @@ if(COUNTER_FUZZ)
     add_subdirectory(fuzz)
 endif()
 
-install(PROGRAMS "${GANAK_EXECUTABLE}" DESTINATION bin RENAME ganak)
+include(cmake/install.cmake)
 
 include(cmake/docs.cmake)
 include(cmake/format.cmake)

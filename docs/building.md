@@ -72,6 +72,38 @@ The FRET requirement-formaliser command-line interface (CLI) is vendored as a pl
 
 `black` needs `libfmt.so.9` at run time, whether it is a system binary found on `PATH` or the pre-built `.deb` that `cmake/black.cmake` downloads as a fallback — the `.deb` does not bundle it. The Nix dev shell provides this via the `fmt_9` package; otherwise install `libfmt-dev` (or the equivalent) system-wide.
 
+## Installing
+
+```sh
+cmake --install build-release --prefix <prefix> --component counter
+```
+
+`--component counter` is what keeps the install to this project. FetchContent brings its dependencies in with `add_subdirectory`, which brings their install rules along with them, so an unqualified install writes Eigen's headers and cpptrace's CMake config beside the binaries, a large amount of material belonging to neither.
+
+The tree has three parts: `bin/` for the eight binaries, `libexec/counter/` for the solvers, and `share/counter/` for the dashboard page, the vendored formaliser script, the bundled examples and `counter-env.sh`. The solvers sit under `libexec/` because they are private to counter, so a host with its own `ltlsynt` or `ganak` on `PATH` keeps getting that one for its own use.
+
+```sh
+. <prefix>/share/counter/counter-env.sh
+```
+
+Sourcing that file points the installed binaries at the solvers installed beside them. Without it they still look in the build tree they were compiled against, since every tool path is compiled in as an absolute path. The file resolves the prefix from its own location, so the tree is relocatable — verified by moving a prefix and re-running.
+
+### Environment overrides
+
+Five paths are compiled in, and each takes an environment variable that wins over it. `counter-env.sh` sets all five; setting one by hand overrides that single path and leaves the rest alone.
+
+| Variable | Overrides |
+|---|---|
+| `COUNTER_SPOT_BIN_DIR` | the directory holding `ltlsynt`, `ltl2tgba` and `ltlfilt` |
+| `COUNTER_GANAK_PATH` | the `ganak` binary |
+| `COUNTER_BLACK_PATH` | the `black` binary |
+| `COUNTER_FORMALISER_SCRIPT` | the vendored FRET formaliser script |
+| `COUNTER_DASHBOARD_PAGE` | the dashboard page `--dashboard` copies into the output directory |
+
+Each is read once, on first use. An unset or empty variable falls back to the compiled-in default, since a shell or container runtime that carries an unset variable around exports it as empty.
+
+The container image is the packaged form of the same install tree, with the five variables baked in as `ENV` because there is no shell to source anything from. [Docker](docker.md) covers building and running it.
+
 ## Tests, linting and formatting
 
 ```sh

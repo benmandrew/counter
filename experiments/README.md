@@ -8,8 +8,15 @@ and are archived into a dated subdirectory when they close. Within a
 subdirectory the CSV stem matches its run-dir folder name
 (`results-muc.csv` ↔ `results-muc/`) so
 `scripts/recompare.py --results <csv>` resolves run dirs directly.
-Campaign narrative and findings live in `../EXPERIMENTS.md` (entries exist
-from 2026-07-14 onwards).
+Campaign narrative lives in `../EXPERIMENTS.md` for campaigns dated
+2026-07-14 to 2026-08-06, and that file stops there.
+From 2026-08-07 onwards
+the findings are in the campaign table below, in each campaign's own
+`REPORT.md` where one exists, and in its `PROVENANCE.json` where one does
+not.
+"Where each measurement lives" below resolves a named measurement to the
+file holding it, because a `PROVENANCE.json` key is not reachable by grep and
+a table row here runs to 3,400 characters.
 
 | Directory | Campaign |
 |---|---|

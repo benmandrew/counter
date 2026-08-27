@@ -8,16 +8,25 @@
 
 #include <nlohmann/json.hpp>
 
+#include "runner/tool_paths.hpp"
+
 namespace {
 
 constexpr const char* k_progress_filename = "progress.jsonl";
 constexpr const char* k_page_filename = "index.html";
 
+std::string page_source_path() {
 #ifdef COUNTER_DASHBOARD_PAGE_PATH
-constexpr const char* k_page_source = COUNTER_DASHBOARD_PAGE_PATH;
+    static const ToolPath k_page = tool_path_from_env(
+        "COUNTER_DASHBOARD_PAGE", COUNTER_DASHBOARD_PAGE_PATH);
+    return k_page.m_path;
 #else
-constexpr const char* k_page_source = "";
+    // A build with no page path writes no page, and an override cannot
+    // conjure one: the contract dashboard.hpp documents is that the page is
+    // a property of the build.
+    return "";
 #endif
+}
 
 }  // namespace
 
@@ -41,7 +50,7 @@ std::string DashboardWriter::write_page() {
     if (!m_enabled) {
         return {};
     }
-    const std::string source(k_page_source);
+    const std::string source = page_source_path();
     if (source.empty()) {
         return {};
     }

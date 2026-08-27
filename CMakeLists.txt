@@ -79,6 +79,7 @@ target_sources(counter_fitness PRIVATE
     src/runner/ltlfilt.cpp
     src/runner/process.cpp
     src/runner/spot.cpp
+    src/runner/tool_paths.cpp
     src/thread_pool.cpp
     src/filter/bloat.cpp
     src/filter/correctness.cpp

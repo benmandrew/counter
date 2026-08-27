@@ -21,6 +21,7 @@
 #include "prop_formula.hpp"
 #include "runner/ltlfilt.hpp"
 #include "runner/process.hpp"
+#include "tool_paths.hpp"
 
 namespace {
 
@@ -109,7 +110,9 @@ void set_ganak_timeout(std::chrono::milliseconds timeout) {
 
 std::string ganak_executable_path() {
 #ifdef GANAK_EXECUTABLE_PATH
-    return GANAK_EXECUTABLE_PATH;
+    static const ToolPath k_path =
+        tool_path_from_env("COUNTER_GANAK_PATH", GANAK_EXECUTABLE_PATH);
+    return k_path.m_path;
 #else
     assert(false);
     return "";

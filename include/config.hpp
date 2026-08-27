@@ -3,7 +3,8 @@
 #include <chrono>
 #include <cstddef>
 #include <cstdint>
-#include <thread>
+
+#include "thread_pool.hpp"
 
 /// Selection scheme driving parent and survivor selection during evolution.
 /// The two NSGA-II schemes rank identically -- by Pareto non-domination and
@@ -665,7 +666,11 @@ struct Config {
     /// looping forever.
     RepairMode repair_mode = RepairMode::Monolithic;
     std::size_t muc_max_iterations = 32;
-    std::size_t parallel = std::thread::hardware_concurrency();
+    /// Scoring thread pool size. The default is available_parallelism(), which
+    /// is the hardware concurrency narrowed by the CPU affinity mask and the
+    /// cgroup CPU quota where those apply -- so a containerised run is sized by
+    /// what the container was given rather than by what the host has.
+    std::size_t parallel = available_parallelism();
     /// Upper bound on ltlsynt processes running concurrently across the whole
     /// program, independent of `parallel`. 0 means unlimited (the default); a
     /// positive value serialises the surplus while the other workers keep doing

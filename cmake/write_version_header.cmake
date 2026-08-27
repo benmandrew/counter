@@ -6,7 +6,9 @@
 # reporting the old hash — which is the failure this whole mechanism exists to
 # prevent.
 #
-# Expects GIT_EXECUTABLE, SOURCE_DIR, TEMPLATE_FILE and OUTPUT_FILE.
+# Expects GIT_EXECUTABLE, SOURCE_DIR, TEMPLATE_FILE and OUTPUT_FILE, and
+# optionally COMMIT_OVERRIDE / COMMIT_SHORT_OVERRIDE / DIRTY_OVERRIDE (see
+# cmake/version.cmake, which passes through -DCOUNTER_GIT_COMMIT and friends).
 
 set(COUNTER_GIT_COMMIT "unknown")
 set(COUNTER_GIT_COMMIT_SHORT "unknown")
@@ -26,6 +28,8 @@ function(_counter_git out_var)
     set(${out_var} "${_out}" PARENT_SCOPE)
 endfunction()
 
+set(_resolved_from_git FALSE)
+
 if(GIT_EXECUTABLE AND EXISTS "${GIT_EXECUTABLE}")
     # A source tree exported from a tarball, or vendored into another
     # checkout, is not a work tree; fall back rather than fail the build.
@@ -35,6 +39,7 @@ if(GIT_EXECUTABLE AND EXISTS "${GIT_EXECUTABLE}")
         _counter_git(_short rev-parse --short HEAD)
         if(_full)
             set(COUNTER_GIT_COMMIT "${_full}")
+            set(_resolved_from_git TRUE)
         endif()
         if(_short)
             set(COUNTER_GIT_COMMIT_SHORT "${_short}")
@@ -46,6 +51,40 @@ if(GIT_EXECUTABLE AND EXISTS "${GIT_EXECUTABLE}")
         if(NOT _status STREQUAL "")
             set(COUNTER_GIT_DIRTY "true")
         endif()
+    endif()
+endif()
+
+# The override exists for builds whose source is a copy rather than a work
+# tree — a Docker image built from a COPY of the sources, most of all, where
+# shipping .git would put the whole history in a layer and invalidate the cache
+# on every commit. It supplies what git cannot answer there; it does not get to
+# contradict what git can. A build that has both and disagrees is either a
+# mistyped argument or a stale one, and both are the same failure this
+# mechanism exists to catch, so it stops the build rather than picking a side.
+if(COMMIT_OVERRIDE)
+    if(_resolved_from_git AND NOT COMMIT_OVERRIDE STREQUAL COUNTER_GIT_COMMIT)
+        message(FATAL_ERROR
+            "COUNTER_GIT_COMMIT is ${COMMIT_OVERRIDE}, but ${SOURCE_DIR} is a "
+            "work tree at ${COUNTER_GIT_COMMIT}. Drop the override and let git "
+            "answer, or build from a source copy that is not a work tree.")
+    endif()
+    set(COUNTER_GIT_COMMIT "${COMMIT_OVERRIDE}")
+    if(COMMIT_SHORT_OVERRIDE)
+        set(COUNTER_GIT_COMMIT_SHORT "${COMMIT_SHORT_OVERRIDE}")
+    else()
+        string(SUBSTRING "${COMMIT_OVERRIDE}" 0 7 COUNTER_GIT_COMMIT_SHORT)
+    endif()
+    # An override asserts that the source is a clean checkout of the commit it
+    # names, which is what the image build guarantees by exporting from one.
+    # -DCOUNTER_GIT_DIRTY=true is there for a build that cannot make that
+    # promise, so the binary says so rather than the caller having to remember.
+    # A work tree that git already read as dirty keeps that verdict: the
+    # commits agreeing says nothing about the files on top of them, and this is
+    # the one flag a caller must not be able to clear by hand.
+    if(DIRTY_OVERRIDE)
+        set(COUNTER_GIT_DIRTY "true")
+    elseif(NOT _resolved_from_git)
+        set(COUNTER_GIT_DIRTY "false")
     endif()
 endif()
 

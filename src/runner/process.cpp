@@ -596,6 +596,9 @@ PipedChild spawn_piped_child(const std::vector<std::string>& arguments,
     // that needs it happens arbitrarily later, in another thread, by which time
     // this process has grown and can no longer measure its own floor.
     const std::uint64_t rss_floor_kb = self_resident_kb();
+    // Read before the fork, since after it the child cannot tell its original
+    // parent from any other pid. See harden_child_after_fork.
+    const pid_t parent_pid = getpid();
     const pid_t child_pid = fork();
     if (child_pid < 0) {
         close(stdin_pipe[0]);
@@ -616,7 +619,7 @@ PipedChild spawn_piped_child(const std::vector<std::string>& arguments,
         }
         close(stdin_pipe[0]);
         close(stdout_pipe[1]);
-        harden_child_after_fork(policy);
+        harden_child_after_fork(policy, parent_pid);
         if (lookup == ExecutableLookup::SearchPath) {
             execvp(arguments[0].c_str(), argv.data());
         } else {
@@ -640,7 +643,7 @@ std::pair<std::string, bool> read_until_eof(int read_fd,
     return read_until(read_fd, deadline);
 }
 
-void harden_child_after_fork(ParentDeathPolicy policy) {
+void harden_child_after_fork(ParentDeathPolicy policy, pid_t parent_pid) {
     // Own process group, so one killpg reaches this child *and anything it
     // spawns*. A bare kill(pid) hits only the direct child and strands every
     // grandchild as an orphan reparented to PID 1 — which is how multi-GB
@@ -676,7 +679,14 @@ void harden_child_after_fork(ParentDeathPolicy policy) {
     // Closes the fork/registration race: if the parent died in the window
     // before the request was registered, nothing is coming to enforce it —
     // and nothing has escaped yet either, since the exec is still below.
-    if (getppid() == 1) {
+    //
+    // Compared against the pid the parent read before forking, never against
+    // 1. Reparenting to init is the *symptom* of a dead parent rather than the
+    // condition, and the two part company exactly when counter is itself PID 1
+    // — which a container makes routine, ENTRYPOINT being exec'd as pid 1. Read
+    // as "getppid() == 1", every tool subprocess in the image exited 127 before
+    // its exec, and every query came back with empty output and no timeout.
+    if (getppid() != parent_pid) {
         _exit(127);
     }
 }
@@ -749,6 +759,8 @@ ProcessResult execute_and_capture(const std::vector<std::string>& arguments,
         // The near side of the floor; widen_rss_floor takes the far side once
         // the fork has returned.
         rss_floor_kb = self_resident_kb();
+        // See the same capture in spawn_piped_child.
+        const pid_t parent_pid = getpid();
         child_pid = fork();
         if (child_pid < 0) {
             close(pipe_fds[0]);
@@ -763,7 +775,8 @@ ProcessResult execute_and_capture(const std::vector<std::string>& arguments,
                 _exit(127);
             }
             close(pipe_fds[1]);
-            harden_child_after_fork(ParentDeathPolicy::KillWithParentThread);
+            harden_child_after_fork(ParentDeathPolicy::KillWithParentThread,
+                                    parent_pid);
             if (lookup == ExecutableLookup::SearchPath) {
                 execvp(arguments[0].c_str(), argv.data());
             } else {

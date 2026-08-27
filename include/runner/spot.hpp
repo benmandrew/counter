@@ -15,8 +15,12 @@
 
 #include "requirement.hpp"
 
-/// Returns the directory containing SPOT tool binaries, set at build time via
-/// the SPOT_BIN_DIR preprocessor definition.
+/// Returns the directory containing SPOT tool binaries: `COUNTER_SPOT_BIN_DIR`
+/// when that environment variable is set and non-empty, and otherwise the
+/// SPOT_BIN_DIR preprocessor definition baked in at build time. The
+/// environment is read once, on first use, so a relocated build is pointed at
+/// its tools by the environment it starts in rather than the one it was
+/// compiled in.
 std::string spot_bin_dir();
 
 /// Returns the full filesystem path to the ltlsynt binary.

@@ -24,10 +24,6 @@ set(BLACK_VERSION "25.09.0")
 set(BLACK_ROOT_DIR "${CMAKE_BINARY_DIR}/third_party/black")
 
 if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
-    if(NOT CMAKE_SYSTEM_PROCESSOR MATCHES "^(x86_64|AMD64)$")
-        message(FATAL_ERROR "No black-sat binary available for Linux ${CMAKE_SYSTEM_PROCESSOR}")
-    endif()
-
     # Prebuilt debs require Ubuntu 24.04 (noble) glibc/libstdc++.  On older
     # releases (e.g. 22.04 jammy) the binary won't load, so fall back to a
     # source build there.
@@ -38,7 +34,14 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
         ERROR_QUIET
     )
 
-    if(_ubuntu_codename STREQUAL "noble")
+    # The architecture test belongs to the deb and nothing else: upstream
+    # publishes one Linux binary and it is x86_64, so every other Linux
+    # architecture takes the source build below. It guarded the whole Linux
+    # branch until 2026-08-27, which failed configure outright on Linux arm64
+    # rather than falling through to a path that has no architecture in it --
+    # the same path macOS has always used, on Apple Silicon included.
+    if(_ubuntu_codename STREQUAL "noble"
+       AND CMAKE_SYSTEM_PROCESSOR MATCHES "^(x86_64|AMD64)$")
         set(BLACK_DEB_NAME "black-sat-${BLACK_VERSION}.ubuntu24.04.x86_64.deb")
         set(BLACK_DOWNLOAD_URL
             "https://github.com/black-sat/black/releases/download/v${BLACK_VERSION}/${BLACK_DEB_NAME}")

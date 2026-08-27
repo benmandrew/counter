@@ -24,6 +24,7 @@
 #include "requirement.hpp"
 #include "runner/ltlfilt.hpp"
 #include "runner/process.hpp"
+#include "tool_paths.hpp"
 
 namespace {
 
@@ -204,7 +205,9 @@ RealizabilityChecker& global_real_checker() {
 
 std::string spot_bin_dir() {
 #ifdef SPOT_BIN_DIR
-    return SPOT_BIN_DIR;
+    static const ToolPath k_dir =
+        tool_path_from_env("COUNTER_SPOT_BIN_DIR", SPOT_BIN_DIR);
+    return k_dir.m_path;
 #else
     assert(false);
     return "";

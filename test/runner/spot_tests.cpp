@@ -1,4 +1,5 @@
 #include <chrono>
+#include <cstdlib>
 #include <optional>
 #include <string>
 #include <utility>
@@ -6,6 +7,7 @@
 
 #include "requirement.hpp"
 #include "runner/spot.hpp"
+#include "runner/tool_paths.hpp"
 #include "test_suite.hpp"
 #include "test_support.hpp"
 
@@ -254,9 +256,77 @@ void test_tautology_exit2_yields_universal_automaton() {
         "spot-runner: a substituted tautology should be memoised");
 }
 
+// Clears the variable however the test leaves, expect() throwing past the
+// end of a case that fails.
+class ScopedEnvVar {
+   public:
+    explicit ScopedEnvVar(const char* name) : m_name(name) {}
+    ~ScopedEnvVar() { unsetenv(m_name); }
+
+    ScopedEnvVar(const ScopedEnvVar&) = delete;
+    ScopedEnvVar& operator=(const ScopedEnvVar&) = delete;
+    ScopedEnvVar(ScopedEnvVar&&) = delete;
+    ScopedEnvVar& operator=(ScopedEnvVar&&) = delete;
+
+    void set(const char* value) const { setenv(m_name, value, 1); }
+    void clear() const { unsetenv(m_name); }
+
+   private:
+    const char* m_name;
+};
+
+// spot_bin_dir() and its four siblings each memoise their answer in a
+// function-local static, so calling one of them twice under two environments
+// cannot distinguish these cases. The helper underneath them is where the
+// logic is, and is tested here rather than through any one caller.
+void test_tool_path_env_wins_over_compiled_default() {
+    constexpr const char* k_var = "COUNTER_TOOL_PATH_TEST";
+    const ScopedEnvVar env(k_var);
+
+    env.set("/override/bin");
+    const ToolPath overridden = tool_path_from_env(k_var, "/compiled/bin");
+    expect(overridden.m_path == "/override/bin",
+           "tool-paths: a set, non-empty variable should win over the "
+           "compiled-in default");
+    expect(overridden.m_from_env,
+           "tool-paths: an overridden path should report the environment as "
+           "its source");
+}
+
+void test_tool_path_empty_env_falls_back() {
+    constexpr const char* k_var = "COUNTER_TOOL_PATH_TEST";
+    const ScopedEnvVar env(k_var);
+
+    env.set("");
+    const ToolPath resolved = tool_path_from_env(k_var, "/compiled/bin");
+    expect(resolved.m_path == "/compiled/bin",
+           "tool-paths: an empty variable should fall back to the compiled-in "
+           "default");
+    expect(!resolved.m_from_env,
+           "tool-paths: a fallback path should not report the environment as "
+           "its source");
+}
+
+void test_tool_path_unset_env_falls_back() {
+    constexpr const char* k_var = "COUNTER_TOOL_PATH_TEST";
+    const ScopedEnvVar env(k_var);
+
+    env.clear();
+    const ToolPath resolved = tool_path_from_env(k_var, "/compiled/bin");
+    expect(resolved.m_path == "/compiled/bin",
+           "tool-paths: an unset variable should fall back to the compiled-in "
+           "default");
+    expect(!resolved.m_from_env,
+           "tool-paths: a fallback path should not report the environment as "
+           "its source");
+}
+
 }  // namespace
 
 void run_spot_runner_tests() {
+    test_tool_path_env_wins_over_compiled_default();
+    test_tool_path_empty_env_falls_back();
+    test_tool_path_unset_env_falls_back();
     test_tautology_exit2_yields_universal_automaton();
     test_realizable_eventually();
     test_realizable_immediately();

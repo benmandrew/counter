@@ -14,10 +14,15 @@
 #include <unordered_map>
 #include <vector>
 
-/// Returns the filesystem path to fretCLI.main.js, set at build time via the
-/// FORMALISER_SCRIPT_PATH preprocessor definition. Unlike the other runner/
-/// tool paths, this one has no baked-in default: it is a machine-local path
-/// that must be supplied explicitly at configure time.
+/// Returns the filesystem path to fretCLI.main.js: `COUNTER_FORMALISER_SCRIPT`
+/// when that environment variable is set and non-empty, and otherwise the
+/// FORMALISER_SCRIPT_PATH preprocessor definition baked in at build time. The
+/// environment is read once, on first use.
+///
+/// Unlike the other runner/ tool paths, this one has no baked-in default: it
+/// is a machine-local path that must be supplied explicitly at configure time.
+/// Throws std::runtime_error when the resolved path does not exist, naming the
+/// environment variable where that is what supplied it.
 std::string formaliser_script_path();
 
 /// Returns the argv used to launch the formaliser: `node` invoked on

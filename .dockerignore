@@ -1,0 +1,39 @@
+# Everything the image build does not read. Two entries here are load-bearing
+# rather than merely tidy.
+#
+# .git: keeping it out means the history does not land in a layer, and the
+# context hash stops changing on every commit. The cost is that the build cannot
+# resolve its own commit, which is what --build-arg COUNTER_GIT_COMMIT supplies.
+#
+# build*/: a host build tree would overwrite the third_party the tools stage
+# copied in, and with it the done-stamps that let the build skip Spot.
+.git
+.gitignore
+.githooks
+build
+build-*
+
+.direnv
+.envrc
+.cache
+.ruff_cache
+__pycache__
+*.pyc
+*.profraw
+
+# Campaign archives, prose and crash reports: nothing here is compiled, and
+# every one of them would otherwise invalidate the COPY layer above the build
+# whenever it changed. cmake/docs.cmake reads docs/ only when Doxygen, Sphinx
+# and KaTeX are all present, and the builder stage has none of them.
+experiments
+crashes
+outputs
+docs
+README.md
+CLAUDE.md
+EXPERIMENTS.md
+PLAN.md
+.github
+
+Dockerfile
+.dockerignore

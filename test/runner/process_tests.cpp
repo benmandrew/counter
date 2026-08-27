@@ -1,3 +1,4 @@
+#include <sys/wait.h>
 #include <unistd.h>
 
 #include <chrono>
@@ -220,6 +221,70 @@ void test_does_not_report_the_parents_footprint_as_the_childs() {
                std::to_string(quiet.m_peak_rss_kb) + "kB");
 }
 
+// Distinctive so that "the guard let control return" cannot be confused with
+// the 127 the guard itself exits with, nor with a shell's own status.
+constexpr int k_passed_guard = 42;
+constexpr int k_guard_fired = 127;
+
+// Runs the guard in a child of this process, telling it `claimed_parent_pid`
+// is the pid its parent read before forking, and returns the child's exit
+// status (-1 if it did not exit normally). _exit rather than exit, as after a
+// real fork here: the child must not run this process's atexit handlers.
+int guard_exit_status(ParentDeathPolicy policy, pid_t claimed_parent_pid) {
+    const pid_t child = fork();
+    if (child < 0) {
+        fail("process: could not fork a child to run the guard in");
+    }
+    if (child == 0) {
+        harden_child_after_fork(policy, claimed_parent_pid);
+        _exit(k_passed_guard);
+    }
+    int status = 0;
+    if (waitpid(child, &status, 0) != child) {
+        fail("process: could not reap the child running the guard");
+    }
+    return WIFEXITED(status) ? WEXITSTATUS(status) : -1;
+}
+
+// The guard closes the fork/registration race by asking whether the parent is
+// still the one that forked this child, and the only honest test of that is
+// the pid it compares against. Reading it as "getppid() == 1" instead passes
+// every case below except the two mismatches, and is wrong wherever counter is
+// itself pid 1 -- the container entrypoint case, where it exited 127 before
+// every tool exec and left each query with empty output and no timeout.
+void test_parent_death_guard_compares_the_recorded_parent_pid() {
+    expect(getpid() != 1,
+           "process: this test distinguishes a dead parent from pid 1, so it "
+           "means nothing if the test binary is itself pid 1");
+
+    const pid_t parent_pid = getpid();
+    expect(guard_exit_status(ParentDeathPolicy::KillWithParentThread,
+                             parent_pid) == k_passed_guard,
+           "process: a child whose parent is still alive must exec, not exit");
+
+    // parent_pid + 1 is never this child's parent, so it stands for the parent
+    // that died in the window before PDEATHSIG was registered.
+    expect(guard_exit_status(ParentDeathPolicy::KillWithParentThread,
+                             parent_pid + 1) == k_guard_fired,
+           "process: a parent-pid mismatch means nothing will clean this child "
+           "up, so the guard must exit 127 rather than exec a tool");
+
+    // 1 has no privileged meaning: what decides is whether getppid() still
+    // matches, so a child told its parent was pid 1 while it is not fires the
+    // guard exactly as any other mismatch does.
+    expect(guard_exit_status(ParentDeathPolicy::KillWithParentThread,
+                             static_cast<pid_t>(1)) == k_guard_fired,
+           "process: the guard must test the recorded parent pid, not whether "
+           "this child has been reparented to init");
+
+    // The other policy is for a child that outlives its forking thread, so it
+    // registers nothing and has no race to close.
+    expect(guard_exit_status(ParentDeathPolicy::SurviveParentThread,
+                             parent_pid + 1) == k_passed_guard,
+           "process: SurviveParentThread sets no PDEATHSIG, so it must not "
+           "refuse to exec on a dead parent either");
+}
+
 }  // namespace
 
 void run_process_runner_tests() {
@@ -231,4 +296,5 @@ void run_process_runner_tests() {
     test_timeout_kills_the_whole_process_group();
     test_reports_the_child_peak_resident_set();
     test_does_not_report_the_parents_footprint_as_the_childs();
+    test_parent_death_guard_compares_the_recorded_parent_pid();
 }

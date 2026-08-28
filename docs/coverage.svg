@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink"
-     width="96" height="20" role="img" aria-label="coverage: 84%">
-  <title>coverage: 84%</title>
+     width="96" height="20" role="img" aria-label="coverage: 85%">
+  <title>coverage: 85%</title>
 
   <linearGradient id="smooth" x2="0" y2="100%">
     <stop offset="0" stop-color="#bbb" stop-opacity=".1"/>
@@ -13,7 +13,7 @@
 
   <g mask="url(#round)">
     <rect width="60" height="20" fill="#555"/>
-    <rect x="60" width="36" height="20" fill="#a4a61d"/>
+    <rect x="60" width="36" height="20" fill="#97ca00"/>
     <rect width="96" height="20" fill="url(#smooth)"/>
   </g>
 
@@ -21,7 +21,7 @@
      font-family="Verdana,Geneva,DejaVu Sans,sans-serif" font-size="11">
     <text x="30" y="15" fill="#010101" fill-opacity=".3">coverage</text>
     <text x="30" y="14">coverage</text>
-    <text x="78" y="15" fill="#010101" fill-opacity=".3">84%</text>
-    <text x="78" y="14">84%</text>
+    <text x="78" y="15" fill="#010101" fill-opacity=".3">85%</text>
+    <text x="78" y="14">85%</text>
   </g>
 </svg>

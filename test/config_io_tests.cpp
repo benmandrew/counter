@@ -256,6 +256,13 @@ void test_config_io_mrs_admission_order_rejects_unknown() {
            "config_io: an unknown mrs_admission_order should be rejected");
 }
 
+void test_config_io_status_grading_aurus_parsed() {
+    const Config cfg =
+        config_from_toml_string("[fitness]\nstatus_grading = \"aurus\"\n");
+    expect(cfg.status_grading == StatusGrading::Aurus,
+           "config_io: status_grading = \"aurus\" should parse as Aurus");
+}
+
 void test_config_io_status_grading_rejects_unknown() {
     bool threw = false;
     try {
@@ -653,6 +660,7 @@ void run_config_io_tests() {
     test_config_io_status_grading_defaults_to_mrs();
     test_config_io_status_grading_tiered_parsed();
     test_config_io_status_grading_mrs_parsed();
+    test_config_io_status_grading_aurus_parsed();
     test_config_io_status_grading_rejects_unknown();
     test_config_io_mrs_admission_order_defaults_to_degree();
     test_config_io_mrs_admission_order_spec_parsed();

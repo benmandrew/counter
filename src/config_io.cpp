@@ -292,9 +292,12 @@ void apply_fitness(const toml::table& tbl, Config& cfg) {
             cfg.status_grading = StatusGrading::Tiered;
         } else if (*val == "mrs") {
             cfg.status_grading = StatusGrading::Mrs;
+        } else if (*val == "aurus") {
+            cfg.status_grading = StatusGrading::Aurus;
         } else {
             throw std::runtime_error(
-                R"(config: fitness.status_grading must be "tiered" or "mrs")");
+                R"(config: fitness.status_grading must be "tiered", "mrs" or )"
+                R"("aurus")");
         }
     }
     if (auto val = tbl["mrs_admission_order"].value<std::string>()) {

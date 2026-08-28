@@ -112,7 +112,16 @@ namespace {
 // reading run.json could not: n_equivalent_collapsed in particular is the only
 // record of how much of the output was one repair written twice, and it is
 // unreadable without n_comparisons beside it to say how many pairs were asked.
-constexpr int k_schema_version = 23;
+//
+// 24 added "aurus" to the values fitness.status_grading can take. It exists to
+// be ablated against rather than to be run: it reproduces AuRUS's own ladder so
+// a campaign can cross counter's grading against the design counter derives
+// from, and it is the one scale that does not cap a candidate gaming its own
+// assumptions. A reader keying on that field against an older manifest can
+// assume it names one of two scales that do; from this version it may name a
+// third that does not, so the status objective of two runs is comparable only
+// where the field agrees.
+constexpr int k_schema_version = 24;
 
 // The inverse of the spellings config_io.cpp parses. It has no table to
 // borrow -- it only ever goes string to enum -- so these must be kept in step
@@ -146,6 +155,8 @@ const char* status_grading_name(StatusGrading grading) {
             return "tiered";
         case StatusGrading::Mrs:
             return "mrs";
+        case StatusGrading::Aurus:
+            return "aurus";
     }
     return "unknown";
 }

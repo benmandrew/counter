@@ -427,6 +427,110 @@ void test_mrs_defaults_to_the_tiered_scale() {
            "mrs: the default grading should be the tiered scale");
 }
 
+// --- specification_status under StatusGrading::Aurus ---
+
+// `G <response>`, the shape that makes a whole side unsatisfiable when paired
+// with its own negation. The ladder grades sides rather than requirements, so
+// every level below realizability needs a side that cannot hold.
+Requirement always(const std::string& response) {
+    return Requirement(Formula("true"), Formula(response), timing::always());
+}
+
+void test_aurus_both_sides_unsatisfiable_score_zero() {
+    SatisfiabilityChecker sat;
+    RealizabilityChecker real;
+    const Specification spec({always("i"), always("!i")},
+                             {always("o"), always("!o")}, {"i"}, {"o"});
+    expect(specification_status(spec, sat, real, StatusGrading::Aurus) ==
+               k_status_component_unsatisfiable,
+           "aurus: neither side satisfiable should score the bottom level");
+}
+
+void test_aurus_unsatisfiable_assumptions_score_the_guarantees_level() {
+    SatisfiabilityChecker sat;
+    RealizabilityChecker real;
+    const Specification spec(
+        {always("i"), always("!i")},
+        {Requirement(Formula("i"), Formula("o"), timing::immediately())}, {"i"},
+        {"o"});
+    expect(specification_status(spec, sat, real, StatusGrading::Aurus) ==
+               k_status_aurus_guarantees_only,
+           "aurus: an unsatisfiable assumption side with a satisfiable "
+           "guarantee side should score 0.05");
+}
+
+void test_aurus_unsatisfiable_guarantees_score_the_assumptions_level() {
+    // An empty assumption side is `true`, so it is the satisfiable half here.
+    SatisfiabilityChecker sat;
+    RealizabilityChecker real;
+    const Specification spec({}, {always("o"), always("!o")}, {"i"}, {"o"});
+    expect(specification_status(spec, sat, real, StatusGrading::Aurus) ==
+               k_status_aurus_assumptions_only,
+           "aurus: an unsatisfiable guarantee side with a satisfiable "
+           "assumption side should score 0.1");
+}
+
+void test_aurus_contradictory_sides_score_the_contradictory_level() {
+    // `G i` and `G !i` are each satisfiable alone, so both side queries pass
+    // and only the conjunction places the candidate.
+    SatisfiabilityChecker sat;
+    RealizabilityChecker real;
+    const Specification spec({always("i")}, {always("!i")}, {"i"}, {"o"});
+    expect(specification_status(spec, sat, real, StatusGrading::Aurus) ==
+               k_status_aurus_contradictory,
+           "aurus: sides that are satisfiable alone but contradict each other "
+           "should score 0.2");
+}
+
+void test_aurus_unrealizable_scores_point_five() {
+    // The spec of test_status_unrealizable_returns_point_five: both sides hold
+    // together, and no strategy exists.
+    SatisfiabilityChecker sat;
+    RealizabilityChecker real;
+    const Specification spec(
+        {},
+        {Requirement(Formula("true"), Formula("o"), timing::eventually()),
+         Requirement(Formula("o"), Formula("i"), timing::immediately())},
+        {"i"}, {"o"});
+    expect(specification_status(spec, sat, real, StatusGrading::Aurus) ==
+               k_status_unrealizable,
+           "aurus: a jointly satisfiable but unrealizable spec should score "
+           "0.5");
+}
+
+void test_aurus_realizable_scores_one() {
+    SatisfiabilityChecker sat;
+    RealizabilityChecker real;
+    const auto spec = make_spec("i", "o", {"i"}, {"o"});
+    expect(specification_status(spec, sat, real, StatusGrading::Aurus) ==
+               k_status_realizable,
+           "aurus: a realizable spec should score 1.0");
+}
+
+// The divergence, asserted rather than only commented. The assumption `G o` is
+// over the system's own output, so the system satisfies the specification by
+// holding o false and defeating it. Tiered folds well-separation into its
+// realizability query and scores that 0.5; the AuRUS ladder does not ask the
+// question at all, because AuRUS does not -- WellSeparationAnalysis.java has no
+// caller in its search -- and scores it full marks. An arm that graded it would
+// not be the ladder it is named after.
+void test_aurus_does_not_penalise_an_ill_separated_candidate() {
+    SatisfiabilityChecker sat;
+    RealizabilityChecker real;
+    const Specification spec(
+        {Requirement(Formula("true"), Formula("o"), timing::always())},
+        {Requirement(Formula("i"), Formula("o"), timing::immediately())}, {"i"},
+        {"o"});
+    expect(specification_status(spec, sat, real, StatusGrading::Tiered) ==
+               k_status_unrealizable,
+           "aurus: the tiered scale should still cap an ill-separated "
+           "candidate at the unrealizable tier");
+    expect(specification_status(spec, sat, real, StatusGrading::Aurus) ==
+               k_status_realizable,
+           "aurus: the AuRUS ladder must score an ill-separated but realizable "
+           "candidate 1.0, since AuRUS never asks about well-separation");
+}
+
 }  // namespace
 
 void run_status_tests() {
@@ -456,4 +560,11 @@ void run_status_tests() {
     test_mrs_ill_separated_spec_does_not_score_one();
     test_mrs_input_only_assumption_still_scores_one();
     test_mrs_defaults_to_the_tiered_scale();
+    test_aurus_both_sides_unsatisfiable_score_zero();
+    test_aurus_unsatisfiable_assumptions_score_the_guarantees_level();
+    test_aurus_unsatisfiable_guarantees_score_the_assumptions_level();
+    test_aurus_contradictory_sides_score_the_contradictory_level();
+    test_aurus_unrealizable_scores_point_five();
+    test_aurus_realizable_scores_one();
+    test_aurus_does_not_penalise_an_ill_separated_candidate();
 }

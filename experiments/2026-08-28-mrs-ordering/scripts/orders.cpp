@@ -15,6 +15,7 @@
 #include <numeric>
 #include <sstream>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include <nlohmann/json.hpp>
@@ -63,9 +64,9 @@ std::vector<std::size_t> greedy(const Oracle& oracle,
 }
 
 // Every k-subset of [0, n), passed to `visit`.
-void each_subset(std::size_t n, std::size_t k,
-                 const std::function<bool(const std::vector<std::size_t>&)>&
-                     visit) {
+void each_subset(
+    std::size_t n, std::size_t k,
+    const std::function<bool(const std::vector<std::size_t>&)>& visit) {
     std::vector<std::size_t> pick(k);
     std::iota(pick.begin(), pick.end(), 0);
     if (k > n) {
@@ -98,7 +99,7 @@ std::string read_file(const std::string& path) {
 
 }  // namespace
 
-int main(int argc, char* argv[]) {
+int main(int argc, const char* const argv[]) {
     std::size_t parallel = 16;
     std::size_t level_cap = 40000;
     std::vector<std::string> paths;
@@ -173,28 +174,26 @@ int main(int argc, char* argv[]) {
             }
             std::vector<std::vector<std::size_t>> candidates;
             bool overflowed = false;
-            each_subset(n, size,
-                        [&](const std::vector<std::size_t>& subset) {
-                            for (const std::size_t part : subset) {
-                                if (!solo[part]) {
-                                    return true;
-                                }
-                            }
-                            for (std::size_t a = 0; a < subset.size(); ++a) {
-                                for (std::size_t b = a + 1; b < subset.size();
-                                     ++b) {
-                                    if (conflict[subset[a]][subset[b]]) {
-                                        return true;
-                                    }
-                                }
-                            }
-                            candidates.push_back(subset);
-                            if (candidates.size() > level_cap) {
-                                overflowed = true;
-                                return false;
-                            }
+            each_subset(n, size, [&](const std::vector<std::size_t>& subset) {
+                for (const std::size_t part : subset) {
+                    if (!solo[part]) {
+                        return true;
+                    }
+                }
+                for (std::size_t a = 0; a < subset.size(); ++a) {
+                    for (std::size_t b = a + 1; b < subset.size(); ++b) {
+                        if (conflict[subset[a]][subset[b]]) {
                             return true;
-                        });
+                        }
+                    }
+                }
+                candidates.push_back(subset);
+                if (candidates.size() > level_cap) {
+                    overflowed = true;
+                    return false;
+                }
+                return true;
+            });
             if (overflowed) {
                 exact = false;
                 break;

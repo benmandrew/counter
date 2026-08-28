@@ -9,6 +9,7 @@
 #include <algorithm>
 #include <chrono>
 #include <cstddef>
+#include <cstdint>
 #include <cstdlib>
 #include <exception>
 #include <filesystem>
@@ -41,9 +42,8 @@ struct Verdict {
 
 Verdict ask(const tlsf::Specification& spec, RealizabilityChecker& real) {
     Verdict v;
-    v.realizable =
-        real.check_realizability_ltl(spec.to_ltl(), spec.m_inputs,
-                                     spec.m_outputs);
+    v.realizable = real.check_realizability_ltl(spec.to_ltl(), spec.m_inputs,
+                                                spec.m_outputs);
     v.well_separated = !tlsf_is_not_well_separated(spec, real);
     return v;
 }
@@ -69,16 +69,16 @@ std::string read_file(const std::string& path) {
 
 }  // namespace
 
-int main(int argc, char* argv[]) {
+int main(int argc, const char* const argv[]) {
     std::size_t parallel = 4;
-    long timeout_ms = 30000;
+    std::int64_t timeout_ms = 30000;
     std::vector<std::string> paths;
     for (int i = 1; i < argc; ++i) {
         const std::string arg = argv[i];
         if (arg.rfind("--parallel=", 0) == 0) {
             parallel = static_cast<std::size_t>(std::stoul(arg.substr(11)));
         } else if (arg.rfind("--timeout-ms=", 0) == 0) {
-            timeout_ms = std::stol(arg.substr(13));
+            timeout_ms = std::stoll(arg.substr(13));
         } else {
             paths.push_back(arg);
         }
@@ -142,10 +142,10 @@ int main(int argc, char* argv[]) {
                 const std::size_t left = pairs[k].first;
                 const std::size_t right = pairs[k].second;
                 return [&, left, right] {
-                    return ask(tlsf::build_part_subset(
-                                   spec, parts,
-                                   std::vector<std::size_t>{left, right}),
-                               real);
+                    return ask(
+                        tlsf::build_part_subset(
+                            spec, parts, std::vector<std::size_t>{left, right}),
+                        real);
                 };
             },
             [&pair_verdict](std::size_t k, Verdict v) {
@@ -221,10 +221,8 @@ int main(int argc, char* argv[]) {
         std::vector<std::size_t> degree_order = index_order;
         std::sort(degree_order.begin(), degree_order.end(),
                   [&](std::size_t a, std::size_t b) {
-                      const std::size_t ra =
-                          solo[a].kept() ? degree[a] : n + 1;
-                      const std::size_t rb =
-                          solo[b].kept() ? degree[b] : n + 1;
+                      const std::size_t ra = solo[a].kept() ? degree[a] : n + 1;
+                      const std::size_t rb = solo[b].kept() ? degree[b] : n + 1;
                       return std::make_pair(ra, a) < std::make_pair(rb, b);
                   });
         out["degree_order"] = degree_order;

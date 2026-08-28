@@ -14,6 +14,7 @@
 #include <random>
 #include <sstream>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include <nlohmann/json.hpp>
@@ -24,8 +25,8 @@
 #include "runner/spot.hpp"
 #include "thread_pool.hpp"
 #include "tlsf/fitness.hpp"
-#include "tlsf/mutation.hpp"
 #include "tlsf/guarantee_parts.hpp"
+#include "tlsf/mutation.hpp"
 #include "tlsf/parser.hpp"
 #include "tlsf/specification.hpp"
 
@@ -40,7 +41,7 @@ std::string read_file(const std::string& path) {
 
 }  // namespace
 
-int main(int argc, char* argv[]) {
+int main(int argc, const char* const argv[]) {
     std::size_t parallel = 16;
     std::size_t chains = 8;
     std::size_t depth = 6;
@@ -180,8 +181,10 @@ int main(int argc, char* argv[]) {
         out["cache_hits"] = RealizabilityChecker::n_cache_hits - hits_before;
         out["cache_misses"] =
             RealizabilityChecker::n_cache_misses - misses_before;
-        out["real_tool_s"] = RealizabilityChecker::total_time_s - real_time_before;
-        out["sat_tool_s"] = SatisfiabilityChecker::total_time_s - sat_time_before;
+        out["real_tool_s"] =
+            RealizabilityChecker::total_time_s - real_time_before;
+        out["sat_tool_s"] =
+            SatisfiabilityChecker::total_time_s - sat_time_before;
         out["sat_misses"] =
             SatisfiabilityChecker::n_cache_misses.load() - sat_misses_before;
         out["per_candidate"] = per_candidate;

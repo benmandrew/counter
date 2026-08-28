@@ -286,6 +286,8 @@ DEFAULT_FIELDS = {
     "genetic.crossover_rate": "crossover_rate",
     "genetic.mutation_rate": "mutation_rate",
     "genetic.accumulate_repairs": "accumulate_repairs",
+    "genetic.max_individuals": "max_individuals",
+    "genetic.max_wall_s": "max_wall_s",
     "fitness.weight_syntactic": "fitness_weight_syntactic",
     "fitness.weight_semantic": "fitness_weight_semantic",
     "fitness.weight_status": "fitness_weight_status",
@@ -326,6 +328,7 @@ DEFAULT_FIELDS = {
 # Keys the parser accepts but that carry no pinnable constant default.
 UNPINNED_KEYS = {
     "genetic.selection_scheme",
+    "genetic.termination",
     "tlsf.repair_mode",
     "model_counting.metric",
     "fitness.status_grading",

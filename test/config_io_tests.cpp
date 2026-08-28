@@ -266,6 +266,79 @@ void test_config_io_status_grading_rejects_unknown() {
     expect(threw, "config_io: an unknown status_grading should be rejected");
 }
 
+// Pinned because every archived config omits these keys and inherits whatever
+// they mean. Generations with no caps is what a run did before they existed, so
+// the defaults have to keep reproducing it.
+void test_config_io_termination_defaults_to_generations() {
+    const Config cfg = config_from_toml_string("");
+    expect(cfg.termination == TerminationMode::Generations,
+           "config_io: termination should default to Generations");
+    expect(cfg.max_individuals == 0,
+           "config_io: max_individuals should default to 0");
+    expect(cfg.max_wall_s == 0, "config_io: max_wall_s should default to 0");
+}
+
+void test_config_io_termination_individuals_parsed() {
+    const Config cfg = config_from_toml_string(
+        "[genetic]\ntermination = \"individuals\"\nmax_individuals = 1000\n");
+    expect(cfg.termination == TerminationMode::Individuals,
+           "config_io: termination = \"individuals\" should parse as "
+           "Individuals");
+    expect(cfg.max_individuals == 1000,
+           "config_io: max_individuals should parse");
+}
+
+void test_config_io_termination_rejects_unknown() {
+    bool threw = false;
+    try {
+        config_from_toml_string("[genetic]\ntermination = \"wall\"\n");
+    } catch (const std::exception&) {
+        threw = true;
+    }
+    expect(threw, "config_io: an unknown termination mode should throw");
+}
+
+// Rejected rather than read as unlimited: a run with no search budget is what
+// the other mode is for, so a zero here is a typo rather than an intent.
+void test_config_io_individuals_without_a_cap_throws() {
+    bool threw = false;
+    try {
+        config_from_toml_string("[genetic]\ntermination = \"individuals\"\n");
+    } catch (const std::exception& exc) {
+        threw = true;
+        const std::string msg(exc.what());
+        expect(msg.find("max_individuals") != std::string::npos,
+               "config_io: the message should name max_individuals");
+    }
+    expect(threw,
+           "config_io: termination = \"individuals\" with no cap should throw");
+}
+
+void test_config_io_negative_budgets_throw() {
+    for (const char* toml : {"[genetic]\nmax_individuals = -1\n",
+                             "[genetic]\nmax_wall_s = -1\n"}) {
+        bool threw = false;
+        try {
+            config_from_toml_string(toml);
+        } catch (const std::exception&) {
+            threw = true;
+        }
+        expect(threw, "config_io: a negative budget should throw");
+    }
+}
+
+void test_config_io_max_wall_s_parsed_under_either_mode() {
+    const Config generations =
+        config_from_toml_string("[genetic]\nmax_wall_s = 7200\n");
+    expect(generations.max_wall_s == 7200,
+           "config_io: max_wall_s should parse under the Generations mode");
+    const Config individuals = config_from_toml_string(
+        "[genetic]\ntermination = \"individuals\"\nmax_individuals = 1000\n"
+        "max_wall_s = 7200\n");
+    expect(individuals.max_wall_s == 7200,
+           "config_io: max_wall_s should parse under the Individuals mode");
+}
+
 void test_config_io_selection_scheme_weighted_parsed() {
     const Config cfg =
         config_from_toml_string("[genetic]\nselection_scheme = \"weighted\"\n");
@@ -585,6 +658,12 @@ void run_config_io_tests() {
     test_config_io_mrs_admission_order_spec_parsed();
     test_config_io_mrs_admission_order_degree_parsed();
     test_config_io_mrs_admission_order_rejects_unknown();
+    test_config_io_termination_defaults_to_generations();
+    test_config_io_termination_individuals_parsed();
+    test_config_io_termination_rejects_unknown();
+    test_config_io_individuals_without_a_cap_throws();
+    test_config_io_negative_budgets_throw();
+    test_config_io_max_wall_s_parsed_under_either_mode();
     test_config_io_selection_scheme_weighted_parsed();
     test_config_io_selection_scheme_nsga2_truncate_parsed();
     test_config_io_selection_scheme_nsga2_apportion_parsed();

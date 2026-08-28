@@ -77,9 +77,13 @@ int run_tlsf_repair(const Config& cfg, const std::string& input_path,
         register_crash_metadata(
             format_crash_metadata(*effective_seed, input_path, cfg));
     }
+    // Measured from the same origin as the run's reported wall_s, on both
+    // paths: a deadline the manifest's own clock disagrees with would put a
+    // run over its cap and record it under.
+    SearchBudget budget(cfg, wall_start);
     try {
-        const int result =
-            tlsf::run_repair(input_path, output_dir, cfg, random_source);
+        const int result = tlsf::run_repair(input_path, output_dir, cfg,
+                                            random_source, budget);
         print_scoring_report();
         if (cfg.report_diagnostics) {
             print_diagnostics_report();
@@ -96,7 +100,7 @@ int run_tlsf_repair(const Config& cfg, const std::string& input_path,
         // since there is then no output directory worth describing.
         if (result == 0 && effective_seed.has_value()) {
             write_run_manifest(output_dir, input_path, *effective_seed, cfg,
-                               seconds_since(wall_start));
+                               seconds_since(wall_start), budget);
         }
         // Last on both paths, so the figure covers the same work either way.
         std::cout << "Done in " << std::fixed << std::setprecision(2)
@@ -163,10 +167,15 @@ int run_fretish_repair(const Config& cfg, const std::string& input_path,
     }
 
     const auto wall_start = std::chrono::steady_clock::now();
+    // Started here rather than at process start, matching AuRUS: its
+    // startRunningTime is set on entry to evolve(count), after the initial
+    // population has been built and scored, so neither tool's deadline is
+    // charged for loading its input.
+    SearchBudget budget(cfg, wall_start);
     try {
         EvolutionResult evolved = run_evolution(
             cfg, std::move(population), fitness_function, filter_functions,
-            random_source, dashboard, output_dir);
+            random_source, dashboard, output_dir, budget);
         population = std::move(evolved.population);
         std::vector<FilterRunStats> filter_stats =
             std::move(evolved.filter_stats);
@@ -192,7 +201,7 @@ int run_fretish_repair(const Config& cfg, const std::string& input_path,
             std::cout << ", written to " << output_dir << "/";
         }
         std::cout << "\n";
-        dashboard.run_end(cfg.generations, realizable_vec.size(),
+        dashboard.run_end(budget.generations(), realizable_vec.size(),
                           maximal.size(), seconds_since(wall_start));
         filter_stats.insert(filter_stats.end(), final_filter_stats.begin(),
                             final_filter_stats.end());
@@ -208,7 +217,7 @@ int run_fretish_repair(const Config& cfg, const std::string& input_path,
         // After the reports, so the per-tool counts it records are the run's
         // totals.
         write_run_manifest(output_dir, input_path, effective_seed, cfg,
-                           seconds_since(wall_start));
+                           seconds_since(wall_start), budget);
         std::cout << "Done in " << std::fixed << std::setprecision(2)
                   << seconds_since(wall_start) << "s\n";
     } catch (const std::exception& exc) {

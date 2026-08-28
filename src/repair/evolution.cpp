@@ -86,7 +86,7 @@ EvolutionResult run_evolution(
     const AggregateWeightedFitnessFunction& fitness_function,
     const std::vector<FilterFunction>& filter_functions,
     RandomSource& random_source, DashboardWriter& dashboard,
-    const std::string& output_dir) {
+    const std::string& output_dir, SearchBudget& budget) {
     // The same serialiser repair_N.json goes through, so an accumulated file
     // is a specification document and nothing else -- no fitness record, since
     // these are gate-passing candidates rather than the run's filtered output.
@@ -131,6 +131,13 @@ EvolutionResult run_evolution(
         static_cast<double>(pop_size) * cfg.elitism_rate);
     const std::string total_str = std::to_string(cfg.generations);
     for (std::size_t gen_idx = 0; gen_idx < cfg.generations; ++gen_idx) {
+        // Checked before the generation as well as between offspring, matching
+        // checkTermination() at the head of AuRUS's evolve(count) loop. Without
+        // it a spent budget still pays for a generation of filtering, scoring
+        // and selection over an offspring set breeding left empty.
+        if (budget.active() && budget.exhausted()) {
+            break;
+        }
         const auto start = std::chrono::steady_clock::now();
         const std::string gen_str =
             std::to_string(gen_idx + 1) + "/" + total_str;
@@ -156,7 +163,8 @@ EvolutionResult run_evolution(
 
         population = evolve_generation(
             cfg, population, selection_size, elitism_size, fitness_function,
-            filter_functions, random_source, on_progress, on_stage);
+            filter_functions, random_source, on_progress, on_stage, &budget);
+        budget.count_generation();
 
         // Each active filter copy carries this generation's in/out sizes; fold
         // them into the running per-filter totals reported at the end.

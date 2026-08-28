@@ -7,6 +7,7 @@
 #include <string>
 
 #include "config.hpp"
+#include "genetic/pipeline.hpp"
 
 /// The manifest's filename within a run's output directory. Exposed because
 /// that directory is also the one `compare --repairs` is pointed at, so every
@@ -28,8 +29,16 @@ inline constexpr const char* k_run_manifest_name = "run.json";
 /// runs of one seed can differ legitimately, and the timeout counts are what
 /// separates that from a real difference.
 ///
+/// Reports how the run ended, from @p budget: `stopped_by`, `generations_run`
+/// and `individuals_bred`. A survival analysis needs to tell a run that spent
+/// its whole budget from one that finished early, and the wall time alone
+/// cannot -- a run that stops on its deadline and one killed by the harness
+/// look the same from outside, except that the killed one writes no manifest at
+/// all.
+///
 /// Best-effort. A directory that cannot be written warns on stderr and the run
 /// still reports its repairs, which are the thing the user asked for.
 void write_run_manifest(const std::string& output_dir,
                         const std::string& input_path, std::size_t seed,
-                        const Config& cfg, double wall_s);
+                        const Config& cfg, double wall_s,
+                        const SearchBudget& budget);

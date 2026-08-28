@@ -93,7 +93,16 @@ namespace {
 // reached no field at all (the black row reports black's own exec count,
 // deliberately, since SPOT takes the first stage), and it is the largest cache
 // in a run at 237,969 lookups over that corpus.
-constexpr int k_schema_version = 20;
+//
+// 21 added stopped_by, generations_run and individuals_bred, with
+// genetic.termination, genetic.max_individuals and genetic.max_wall_s beside
+// them in the config block. A run could end only by exhausting
+// genetic.generations before this version, so its wall time and its generation
+// count said everything there was to say about how it stopped; from this
+// version it can also spend an offspring budget or pass a deadline, and only
+// stopped_by separates the three. individuals_bred is null wherever no budget
+// was active, an unbudgeted run not paying for the count.
+constexpr int k_schema_version = 21;
 
 // The inverse of the spellings config_io.cpp parses. It has no table to
 // borrow -- it only ever goes string to enum -- so these must be kept in step
@@ -137,6 +146,28 @@ const char* mrs_admission_order_name(MrsAdmissionOrder order) {
             return "spec";
         case MrsAdmissionOrder::Degree:
             return "degree";
+    }
+    return "unknown";
+}
+
+const char* termination_name(TerminationMode mode) {
+    switch (mode) {
+        case TerminationMode::Generations:
+            return "generations";
+        case TerminationMode::Individuals:
+            return "individuals";
+    }
+    return "unknown";
+}
+
+const char* stop_reason_name(StopReason reason) {
+    switch (reason) {
+        case StopReason::Generations:
+            return "generations";
+        case StopReason::Individuals:
+            return "individuals";
+        case StopReason::Deadline:
+            return "deadline";
     }
     return "unknown";
 }
@@ -198,6 +229,9 @@ nlohmann::json config_json(const Config& cfg) {
           {"crossover_rate", cfg.crossover_rate},
           {"mutation_rate", cfg.mutation_rate},
           {"selection_scheme", scheme_name(cfg.selection_scheme)},
+          {"termination", termination_name(cfg.termination)},
+          {"max_individuals", cfg.max_individuals},
+          {"max_wall_s", cfg.max_wall_s},
           {"accumulate_repairs", cfg.accumulate_repairs}}},
         {"fitness",
          {{"weight_syntactic", cfg.fitness_weight_syntactic},
@@ -329,7 +363,8 @@ nlohmann::json fitness_cache_json() {
 
 void write_run_manifest(const std::string& output_dir,
                         const std::string& input_path, std::size_t seed,
-                        const Config& cfg, double wall_s) {
+                        const Config& cfg, double wall_s,
+                        const SearchBudget& budget) {
     const std::filesystem::path dir(output_dir);
     const nlohmann::json manifest{
         {"schema_version", k_schema_version},
@@ -339,6 +374,17 @@ void write_run_manifest(const std::string& output_dir,
         {"dirty", version::dirty()},
         {"finished_utc", utc_timestamp()},
         {"wall_s", wall_s},
+        // Which budget ended the run, the generations it completed, and the
+        // offspring it bred getting there. individuals_bred is null under the
+        // default configuration: counting an offspring means comparing it
+        // against the parent it was bred from, which an unbudgeted run does not
+        // pay for, so a zero here would read as a fact rather than as an
+        // absence.
+        {"stopped_by",
+         stop_reason_name(budget.reason(StopReason::Generations))},
+        {"generations_run", budget.generations()},
+        {"individuals_bred", budget.active() ? nlohmann::json(budget.bred())
+                                             : nlohmann::json(nullptr)},
         {"input", input_path},
         {"seed", seed},
         {"n_repairs", count_repairs(dir)},

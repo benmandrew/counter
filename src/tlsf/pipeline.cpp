@@ -45,7 +45,8 @@ std::optional<std::string> read_file(const std::string& path) {
 }  // namespace
 
 int run_repair(const std::string& input_path, const std::string& output_dir,
-               const Config& cfg, const RandomSource& random_source) {
+               const Config& cfg, const RandomSource& random_source,
+               SearchBudget& budget) {
     const std::optional<std::string> text = read_file(input_path);
     if (!text.has_value()) {
         std::cerr << "cannot read input file: " << input_path << "\n";
@@ -108,9 +109,10 @@ int run_repair(const std::string& input_path, const std::string& output_dir,
 
     std::vector<Scored<Specification>> survivors =
         cfg.repair_mode == RepairMode::Muc
-            ? internal::run_muc(original, cfg, random_source, fitness, progress)
+            ? internal::run_muc(original, cfg, random_source, fitness, progress,
+                                budget)
             : internal::run_monolithic(original, cfg, random_source, fitness,
-                                       progress, output_dir);
+                                       progress, output_dir, budget);
     const std::size_t n_realizable = survivors.size();
     if (cfg.run_weakening_filter && !survivors.empty()) {
         survivors = internal::keep_weakenings(survivors, original,
@@ -120,7 +122,10 @@ int run_repair(const std::string& input_path, const std::string& output_dir,
         survivors = internal::keep_maximal(survivors, global_sat_checker());
     }
     internal::write_survivors(survivors, fitness, output_dir);
-    dashboard.run_end(cfg.generations, n_realizable, survivors.size(),
+    // budget.generations() rather than cfg.generations: the parameter is the
+    // count the run actually completed, and a budget can end the run short of
+    // its configured total.
+    dashboard.run_end(budget.generations(), n_realizable, survivors.size(),
                       std::chrono::duration<double>(
                           std::chrono::steady_clock::now() - wall_start)
                           .count());

@@ -7,6 +7,7 @@
 #include <string>
 
 #include "config.hpp"
+#include "genetic/pipeline.hpp"
 #include "genetic/random_source.hpp"
 
 namespace tlsf {
@@ -32,8 +33,13 @@ namespace tlsf {
 /// @param output_dir    Existing directory for the repair outputs.
 /// @param cfg           Algorithm configuration.
 /// @param random_source Seeded random source driving crossover and mutation.
+/// @param budget        The run's termination budget, owned by the caller so it
+///                      can be read back for the manifest. Shared across every
+///                      core a MUC-mode run evolves, the budget being the
+///                      run's rather than the core's.
 /// @return 0 on success; 1 on a read or parse error.
 int run_repair(const std::string& input_path, const std::string& output_dir,
-               const Config& cfg, const RandomSource& random_source);
+               const Config& cfg, const RandomSource& random_source,
+               SearchBudget& budget);
 
 }  // namespace tlsf

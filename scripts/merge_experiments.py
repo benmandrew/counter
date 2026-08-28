@@ -89,6 +89,12 @@ PROFILE_CSVS: dict[str, str] = {
     # are not, and this campaign drops four families and caps far tighter. A
     # shared CSV would put rows from two cap tables under one key.
     "selection-smoke": "results-selection-smoke.csv",
+    # The 2026-08-28 selection x grading ablation. Two CSVs, never shared: the
+    # calibration runs a 12-family subset at 2 seeds to size the full run, so
+    # merging its rows into the campaign's would put a different corpus and a
+    # different seed count under one key.
+    "curves-calib": "results-curves-calib.csv",
+    "curves": "results-curves.csv",
     # The 2026-08-20 operator cross; one CSV per path, never shared, since
     # the two paths run different corpora at different operating points. All
     # five profiles are retired -- their sweep varied genetic.repaired_operators,
@@ -153,6 +159,8 @@ PROFILE_RESULT_DIRS: dict[str, str] = {
     "assumption-reach": "results-assumption-reach",
     "monotone": "results-monotone",
     "selection-smoke": "results-selection-smoke",
+    "curves-calib": "results-curves-calib",
+    "curves": "results-curves",
     # Retired with their sweep, and kept for the same reason as above.
     "opswk-fret": "results-opswk-fret",
     "opswk-tlsf": "results-opswk-tlsf",

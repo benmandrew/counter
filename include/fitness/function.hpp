@@ -50,6 +50,22 @@ struct WeightedFitnessFunctionT {
 /// weighted average. Multi-objective selection (NSGA-II) reads the raw vector
 /// via objectives(); the weighted scalar remains available through
 /// operator().
+/// The fitness cache's hit and miss totals, shared by every instantiation of
+/// the template below.
+///
+/// They live outside it because `inline static` members of a class template
+/// are per-instantiation, and the manifest reads one instantiation. FRETISH
+/// runs are scored through `AggregateWeightedFitnessFunctionT<Specification>`
+/// and TLSF ones through `AggregateWeightedFitnessFunctionT<tlsf::-
+/// Specification>`, so every archived TLSF campaign records this cache as
+/// `{hits: 0, misses: 0}` while the matching FRETISH runs record 16,047
+/// against 3,955 -- the top-level cache, on the path counter is now
+/// benchmarked against, reporting nothing at all.
+struct FitnessCacheStats {
+    inline static std::size_t n_hits = 0;
+    inline static std::size_t n_misses = 0;
+};
+
 template <typename Spec>
 class AggregateWeightedFitnessFunctionT {
    private:
@@ -75,10 +91,10 @@ class AggregateWeightedFitnessFunctionT {
             std::scoped_lock lock(*m_cache_mutex);
             const auto cache_iter = m_cache.find(spec);
             if (cache_iter != m_cache.end()) {
-                n_cache_hits++;
+                FitnessCacheStats::n_hits++;
                 return cache_iter->second;
             }
-            n_cache_misses++;
+            FitnessCacheStats::n_misses++;
         }
         std::vector<double> values;
         values.reserve(m_fitness_functions.size());
@@ -99,9 +115,6 @@ class AggregateWeightedFitnessFunctionT {
     }
 
    public:
-    inline static std::size_t n_cache_hits = 0;
-    inline static std::size_t n_cache_misses = 0;
-
     explicit AggregateWeightedFitnessFunctionT(
         std::vector<WeightedFitnessFunctionT<Spec>> fitness_functions)
         : m_fitness_functions(std::move(fitness_functions)),

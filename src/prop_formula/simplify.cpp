@@ -174,12 +174,95 @@ std::optional<Formula> simplify_self_join(const Formula& lhs,
     return std::nullopt;
 }
 
+// The boolean constants fold through every temporal operator, and nothing here
+// did that: simplify() folded them propositionally only, so the `Constant`
+// monotone rewrite's own output left `G(false)`, `X(true)` and
+// `(true) W (false)` standing as distinct spellings of one constant. Measured
+// over 14 specifications, 30.4% of the formulae reaching simplify_ltl and
+// 43.7% of those reaching ltlsynt mention a constant, and each distinct
+// spelling buys its own exec of both. This is not a wall-time change -- a
+// paired A/B over 33 cases read null, the fold moving the search on the TLSF
+// path faster than it saves anything -- so the case for it is that a guarantee
+// which folds to `true` is a gutted guarantee whether or not anything notices.
+std::optional<Formula> simplify_temporal_unary(const Formula& node) {
+    const auto child = node.unary_child();
+    if (!child) {
+        return std::nullopt;
+    }
+    // X, F and G all preserve both constants: a constant holds at every
+    // timepoint or at none.
+    const Formula& operand = *child;
+    if (is_true_formula(operand) || is_false_formula(operand)) {
+        return operand;
+    }
+    return std::nullopt;
+}
+
+// phi U psi, phi W psi and phi R psi with a constant operand. Each identity is
+// read off the fixpoint expansion; W and R are the two that do not simply
+// annihilate, since phi W false == G phi and false R psi == G psi.
+std::optional<Formula> simplify_temporal_binary(Formula::Kind kind,
+                                                const Formula& lhs,
+                                                const Formula& rhs) {
+    const bool lhs_true = is_true_formula(lhs);
+    const bool lhs_false = is_false_formula(lhs);
+    const bool rhs_true = is_true_formula(rhs);
+    const bool rhs_false = is_false_formula(rhs);
+    switch (kind) {
+        case Formula::Kind::Until:
+            // phi U true == true; phi U false == false; false U psi == psi;
+            // true U psi == F psi.
+            if (rhs_true || rhs_false || lhs_false) {
+                return rhs;
+            }
+            if (lhs_true) {
+                return Formula::make_unary(Formula::Kind::Eventually, rhs);
+            }
+            return std::nullopt;
+        case Formula::Kind::WeakUntil:
+            // phi W true == true; true W psi == true; false W psi == psi;
+            // phi W false == G phi.
+            if (rhs_true) {
+                return rhs;
+            }
+            if (lhs_true) {
+                return lhs;
+            }
+            if (lhs_false) {
+                return rhs;
+            }
+            if (rhs_false) {
+                return Formula::make_unary(Formula::Kind::Globally, lhs);
+            }
+            return std::nullopt;
+        case Formula::Kind::Release:
+            // phi R true == true; phi R false == false; true R psi == psi;
+            // false R psi == G psi.
+            if (rhs_true || rhs_false || lhs_true) {
+                return rhs;
+            }
+            if (lhs_false) {
+                return Formula::make_unary(Formula::Kind::Globally, rhs);
+            }
+            return std::nullopt;
+        default:
+            return std::nullopt;
+    }
+}
+
 std::optional<Formula> simplify_node(const Formula& node) {
     if (node.kind() == Formula::Kind::Not) {
         return simplify_not(node);
     }
     if (node.kind() == Formula::Kind::Globally ||
-        node.kind() == Formula::Kind::Eventually) {
+        node.kind() == Formula::Kind::Eventually ||
+        node.kind() == Formula::Kind::Next) {
+        if (const auto folded = simplify_temporal_unary(node)) {
+            return folded;
+        }
+        if (node.kind() == Formula::Kind::Next) {
+            return std::nullopt;
+        }
         return simplify_idempotent_unary(node);
     }
     const auto children = node.binary_children();
@@ -200,13 +283,17 @@ std::optional<Formula> simplify_node(const Formula& node) {
         case Formula::Kind::Until:
         case Formula::Kind::Release:
         case Formula::Kind::WeakUntil:
+            if (const auto folded =
+                    simplify_temporal_binary(node.kind(), lhs, rhs)) {
+                return folded;
+            }
             return simplify_self_join(lhs, rhs);
         case Formula::Kind::Atom:
         case Formula::Kind::Not:
-        // X has no idempotence to exploit: X X φ is a genuinely different
-        // formula from X φ.
+        // Handled above, before the binary-children guard rejects them. X
+        // has no idempotence to exploit -- X X φ is a genuinely different
+        // formula from X φ -- but it does fold a constant operand.
         case Formula::Kind::Next:
-        // Handled above, before the binary-children guard rejects them.
         case Formula::Kind::Eventually:
         case Formula::Kind::Globally:
             break;

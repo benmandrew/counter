@@ -2,6 +2,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
@@ -72,6 +73,12 @@ struct DimacsCnf {
 };
 
 std::vector<Node> parse_formula(const std::string& formula);
+
+/// As parse_formula, reporting a malformed string rather than asserting on it.
+/// The asserts hold for every caller that builds its own input; this is for
+/// the ones handed a string from outside, where a bad one is a missed cache
+/// collapse rather than a defect.
+std::optional<std::vector<Node>> try_parse_formula(const std::string& formula);
 DimacsCnf encode_dimacs(const std::vector<Node>& nodes);
 Formula::Kind node_type_to_kind(NodeType type);
 NodeType kind_to_node_type(Formula::Kind kind);

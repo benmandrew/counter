@@ -24,6 +24,7 @@ add_executable(counter_tests
     fitness/transfer_matrix_tests.cpp
     requirement_tests.cpp
     prop_formula/ast_tests.cpp
+    prop_formula/canonical_tests.cpp
     prop_formula/cnf_tests.cpp
     prop_formula/rewrite_tests.cpp
     prop_formula/similarity_tests.cpp
@@ -102,6 +103,7 @@ add_test(NAME counter_tests.pipeline COMMAND counter_tests pipeline)
 add_test(NAME counter_tests.nsga2 COMMAND counter_tests nsga2)
 add_test(NAME counter_tests.mutation COMMAND counter_tests mutation)
 add_test(NAME counter_tests.prop_formula_ast COMMAND counter_tests prop_formula_ast)
+add_test(NAME counter_tests.prop_formula_canonical COMMAND counter_tests prop_formula_canonical)
 add_test(NAME counter_tests.prop_formula_cnf COMMAND counter_tests prop_formula_cnf)
 add_test(NAME counter_tests.prop_formula_rewrite COMMAND counter_tests prop_formula_rewrite)
 add_test(NAME counter_tests.prop_formula_similarity COMMAND counter_tests prop_formula_similarity)

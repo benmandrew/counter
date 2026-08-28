@@ -141,7 +141,8 @@ MinimalUnrealizableCore extract_muc(const Specification& spec) {
         // the candidate set rather than reporting a core it never confirmed.
         return checker
             .check_realizability_ltl(candidate.to_ltl(), candidate.m_inputs,
-                                     candidate.m_outputs)
+                                     candidate.m_outputs,
+                                     tlsf::specification_sides(candidate))
             .value_or(false);
     });
 }

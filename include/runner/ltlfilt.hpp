@@ -11,8 +11,25 @@
 #include <string>
 
 struct LtlfiltStats {
+    /// simplify_ltl's memo. n_cache_misses is its exec count.
     inline static std::size_t n_cache_hits = 0;
     inline static std::size_t n_cache_misses = 0;
+    /// rewrite_weak_operators' memo, which is a separate key space: it is
+    /// called on the pre-simplification spelling, since black needs that one.
+    inline static std::size_t n_remove_wm_hits = 0;
+    inline static std::size_t n_remove_wm_execs = 0;
+    /// spot_satisfiable, which is memoised nowhere -- check_satisfiability
+    /// caches the decided answer one layer up, so a repeat never reaches it.
+    /// Counted here because total_time_s covers these execs and nothing else
+    /// did: reporting n_cache_misses as ltlfilt's call count understated the
+    /// true figure by 35.5% over a 14-specification corpus, and divided one
+    /// tool's seconds by another set's calls.
+    inline static std::size_t n_satisfiable_execs = 0;
+    /// Every ltlfilt subprocess this process launched, over all three entry
+    /// points. total_time_s is over exactly this set.
+    [[nodiscard]] static std::size_t n_execs() {
+        return n_cache_misses + n_remove_wm_execs + n_satisfiable_execs;
+    }
     inline static double total_time_s = 0.0;
     /// Child-process CPU time (user+sys), from wait4(); unlike total_time_s
     /// (wall) it excludes time the parent spends blocked waiting on the child.
@@ -41,9 +58,16 @@ void set_ltlfilt_timeout(std::chrono::milliseconds timeout);
 /// boolean constants "0" (false) and "1" (true) when the formula reduces to
 /// one. A constant result settles satisfiability outright, so callers able to
 /// act on it can skip a solver entirely; callers that must hand the result to
-/// a downstream tool want normalize_ltl instead. The result is memoised: the
-/// subprocess is launched at most once per unique input string. Returns
-/// `formula` unchanged if the binary is inaccessible or exits non-zero.
+/// a downstream tool want normalize_ltl instead. Returns `formula` unchanged
+/// if the binary is inaccessible or exits non-zero.
+///
+/// Memoised twice over: once on the input string, and behind that on the
+/// canonical renamed key (`formula_key::renamed`), which is what the
+/// subprocess is actually asked about and what the answer is read back from.
+/// The second level is why the exec count is 22.1% below the number of
+/// distinct input spellings, and 31.6% below it once the renaming is counted:
+/// operand order, association and atom naming all vary freely in what the
+/// search builds and none of them changes the answer.
 std::string simplify_ltl(const std::string& formula);
 
 /// Returns the ltlfilt-simplified canonical form of `formula`. The result is

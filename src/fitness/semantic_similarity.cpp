@@ -14,6 +14,7 @@
 
 #include "fitness/model_counter.hpp"
 #include "fitness/transfer_matrix.hpp"
+#include "formula_key.hpp"
 
 namespace {
 
@@ -125,14 +126,20 @@ Count cached_count_traces(const std::string& ltl, std::size_t n_total_atoms,
                           std::size_t step_count) {
     static std::unordered_map<std::string, Count> cache;
     static std::mutex cache_mutex;
-    const std::string key = ltl + "|" + std::to_string(n_total_atoms) + "|" +
+    // The renamed canonical form: a trace count over a fixed atom universe is
+    // invariant under a bijection on the atoms, and the universe is pinned by
+    // n_total_atoms, which stays in the key for that reason.
+    const std::string key = formula_key::renamed(ltl) + "|" +
+                            std::to_string(n_total_atoms) + "|" +
                             std::to_string(step_count);
     {
         std::scoped_lock lock(cache_mutex);
         const auto found = cache.find(key);
         if (found != cache.end()) {
+            CountTracesStats::n_hits++;
             return found->second;
         }
+        CountTracesStats::n_misses++;
     }
     const TransferSystem system =
         build_transfer_system_from_ltl(ltl, n_total_atoms);

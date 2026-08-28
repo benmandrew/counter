@@ -44,6 +44,8 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 add_library(counter_core STATIC)
 target_sources(counter_core PRIVATE
+    src/formula_key.cpp
+    src/prop_formula/canonical.cpp
     src/prop_formula/cnf.cpp
     src/prop_formula/core.cpp
     src/prop_formula/dimacs_api.cpp

@@ -14,6 +14,7 @@
 
 #include "hash_combine.hpp"
 #include "prop_formula.hpp"
+#include "runner/spot.hpp"
 
 namespace tlsf {
 
@@ -137,6 +138,23 @@ std::array<Section*, 6> mutable_sections_of(Specification& spec);
 std::array<const Section*, 3> guarantee_sections_of(const Specification& spec);
 std::array<Section*, 3> mutable_guarantee_sections_of(Specification& spec);
 std::array<const Section*, 3> assumption_sections_of(const Specification& spec);
+
+/// The conjunct sets behind `to_ltl()`, for RealizabilityChecker's subsumption
+/// table. Every environment conjunct (INITIALLY, REQUIRE, ASSUME) occurs
+/// negatively in the lowered formula and every system one (PRESET, ASSERT,
+/// GUARANTEE) positively, so strengthening the first side weakens the formula
+/// and strengthening the second strengthens it -- the shape the table needs.
+/// See RealizabilityChecker::check_realizability_ltl for why REQUIRE, which
+/// occurs twice and looks like a counterexample, is not one.
+///
+/// Each conjunct carries its section as a tag, one formula meaning different
+/// things in PRESET and in GUARANTEE, and the scope carries the semantics,
+/// strict and non-strict lowering to different shapes. Tombstoned conjuncts
+/// are skipped, lowering as an absent section is what deleting them means.
+///
+/// Valid only for a query over `spec.to_ltl()` itself. The well-separation
+/// queries build a different formula and must pass no sides.
+SpecificationSides specification_sides(const Specification& spec);
 std::array<Section*, 3> mutable_assumption_sections_of(Specification& spec);
 
 /// How many conjuncts of the guarantee side (PRESET, ASSERT, GUARANTEE) have

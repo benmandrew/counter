@@ -169,9 +169,96 @@ void test_rewrite_preserves_temporal_skeleton() {
            "the temporal skeleton");
 }
 
+// The boolean constants fold through every temporal operator. Each identity is
+// read off the fixpoint expansion, and the two that do not simply annihilate
+// -- `phi W false == G phi` and `false R psi == G psi` -- are the ones worth
+// getting wrong. Shape only; ltlfilt_runner checks the same list for meaning,
+// which is the half that would catch an identity filed backwards.
+void test_temporal_constant_folds() {
+    const Formula truth = Formula("true");
+    const Formula falsity = Formula("false");
+    const Formula proposition = Formula::make_atom("p");
+
+    auto folds = [&](Formula::Kind kind, const Formula& child) {
+        Formula formula = Formula::make_unary(kind, child);
+        formula.simplify();
+        return formula.to_string();
+    };
+    for (const Formula::Kind kind :
+         {Formula::Kind::Next, Formula::Kind::Eventually,
+          Formula::Kind::Globally}) {
+        expect(folds(kind, truth) == "true",
+               "prop-formula-temporal: a unary operator over true should fold "
+               "to true, got " +
+                   folds(kind, truth));
+        expect(folds(kind, falsity) == "false",
+               "prop-formula-temporal: a unary operator over false should fold "
+               "to false, got " +
+                   folds(kind, falsity));
+    }
+
+    auto binary = [](Formula::Kind kind, const Formula& lhs,
+                     const Formula& rhs) {
+        Formula formula = Formula::make_binary(kind, lhs, rhs);
+        formula.simplify();
+        return formula.to_string();
+    };
+    // phi U true == true; phi U false == false; false U psi == psi;
+    // true U psi == F psi.
+    expect(binary(Formula::Kind::Until, proposition, truth) == "true",
+           "prop-formula-temporal: phi U true should fold to true");
+    expect(binary(Formula::Kind::Until, proposition, falsity) == "false",
+           "prop-formula-temporal: phi U false should fold to false");
+    expect(binary(Formula::Kind::Until, falsity, proposition) == "p",
+           "prop-formula-temporal: false U psi should fold to psi");
+    expect(binary(Formula::Kind::Until, truth, proposition) == "F(p)",
+           "prop-formula-temporal: true U psi should fold to F psi, got " +
+               binary(Formula::Kind::Until, truth, proposition));
+    // phi W true == true; true W psi == true; false W psi == psi;
+    // phi W false == G phi.
+    expect(binary(Formula::Kind::WeakUntil, proposition, truth) == "true",
+           "prop-formula-temporal: phi W true should fold to true");
+    expect(binary(Formula::Kind::WeakUntil, truth, proposition) == "true",
+           "prop-formula-temporal: true W psi should fold to true");
+    expect(binary(Formula::Kind::WeakUntil, falsity, proposition) == "p",
+           "prop-formula-temporal: false W psi should fold to psi");
+    expect(binary(Formula::Kind::WeakUntil, proposition, falsity) == "G(p)",
+           "prop-formula-temporal: phi W false should fold to G phi, got " +
+               binary(Formula::Kind::WeakUntil, proposition, falsity));
+    // phi R true == true; phi R false == false; true R psi == psi;
+    // false R psi == G psi.
+    expect(binary(Formula::Kind::Release, proposition, truth) == "true",
+           "prop-formula-temporal: phi R true should fold to true");
+    expect(binary(Formula::Kind::Release, proposition, falsity) == "false",
+           "prop-formula-temporal: phi R false should fold to false");
+    expect(binary(Formula::Kind::Release, truth, proposition) == "p",
+           "prop-formula-temporal: true R psi should fold to psi");
+    expect(binary(Formula::Kind::Release, falsity, proposition) == "G(p)",
+           "prop-formula-temporal: false R psi should fold to G psi, got " +
+               binary(Formula::Kind::Release, falsity, proposition));
+}
+
+// A fold that fires inside a larger formula, since simplify() walks post-order
+// and the constant is usually something the search built further down.
+void test_temporal_constant_folds_are_nested() {
+    Formula formula = Formula::make_binary(
+        Formula::Kind::And, Formula::make_atom("q"),
+        Formula::make_unary(
+            Formula::Kind::Globally,
+            Formula::make_binary(Formula::Kind::WeakUntil, Formula("true"),
+                                 Formula("false"))));
+    formula.simplify();
+    // G (true W false) is G true is true, and `q & true` is q.
+    expect(formula.to_string() == "q",
+           "prop-formula-temporal: a nested constant should fold out, got " +
+               formula.to_string());
+}
+
 }  // namespace
 
 void run_prop_formula_temporal_tests() {
+    test_temporal_constant_folds();
+    test_temporal_constant_folds_are_nested();
     test_unary_temporal_to_string();
     test_binary_temporal_to_string();
     test_kind_reports_temporal();

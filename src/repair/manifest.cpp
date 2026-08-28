@@ -15,6 +15,7 @@
 #include "filter/correctness.hpp"
 #include "filter/well_separation.hpp"
 #include "fitness/function.hpp"
+#include "fitness/semantic_similarity.hpp"
 #include "genetic/accumulator.hpp"
 #include "runner/black.hpp"
 #include "runner/ganak.hpp"
@@ -81,7 +82,18 @@ namespace {
 // a limit of its own instead of a verdict ended the run and no manifest was
 // written at all; from this version the query resolves as undecided and this
 // field is the only record that it happened.
-constexpr int k_schema_version = 19;
+// 20 redefined tool_calls.ltlfilt.calls and added the caches block. `calls`
+// counted simplify_ltl's and rewrite_weak_operators' cache misses, while
+// `total_s` beside it also covered every spot_satisfiable exec, which is
+// memoised nowhere -- so the field understated ltlfilt's true exec count by
+// 35.5% over a 14-specification corpus and the seconds per call derived from
+// the pair were over two different sets. It is now the exec count total_s is
+// actually over. `caches` reports the hits and misses of every memo in the
+// run, which no field carried before: the satisfiability cache's miss count
+// reached no field at all (the black row reports black's own exec count,
+// deliberately, since SPOT takes the first stage), and it is the largest cache
+// in a run at 237,969 lookups over that corpus.
+constexpr int k_schema_version = 20;
 
 // The inverse of the spellings config_io.cpp parses. It has no table to
 // borrow -- it only ever goes string to enum -- so these must be kept in step
@@ -249,31 +261,68 @@ nlohmann::json tool_calls_json() {
                               {"timeouts", timeouts},
                               {"total_s", total_s}};
     };
-    return {{"ltl2tgba",
-             row(Ltl2tgbaStats::n_cache_misses, Ltl2tgbaStats::n_cache_hits,
-                 Ltl2tgbaStats::n_timeouts, Ltl2tgbaStats::total_time_s)},
-            {"ltlfilt",
-             row(LtlfiltStats::n_cache_misses, LtlfiltStats::n_cache_hits,
-                 LtlfiltStats::n_timeouts, LtlfiltStats::total_time_s)},
-            {"ltlsynt", row(RealizabilityChecker::n_cache_misses,
-                            RealizabilityChecker::n_cache_hits,
-                            RealizabilityChecker::n_timeouts,
-                            RealizabilityChecker::total_time_s)},
-            // "calls" is black's own exec count, which parted company with the
-            // cache-miss count when SPOT took the first stage: a miss now
-            // reaches black only if SPOT left it undecided and its polarity
-            // says black could still answer.
-            {"black", row(SatisfiabilityChecker::n_black_calls,
-                          SatisfiabilityChecker::n_cache_hits,
-                          SatisfiabilityChecker::n_timeouts,
-                          SatisfiabilityChecker::total_time_s)},
-            {"ganak", row(GanakStats::n_cache_misses, GanakStats::n_cache_hits,
-                          GanakStats::n_timeouts, GanakStats::total_time_s)}};
+    return {
+        {"ltl2tgba",
+         row(Ltl2tgbaStats::n_cache_misses, Ltl2tgbaStats::n_cache_hits,
+             Ltl2tgbaStats::n_timeouts, Ltl2tgbaStats::total_time_s)},
+        // Every ltlfilt exec, over all three entry points, which is the
+        // set total_s is over. Its per-entry-point split is in `caches`.
+        {"ltlfilt", row(LtlfiltStats::n_execs(), LtlfiltStats::n_cache_hits,
+                        LtlfiltStats::n_timeouts, LtlfiltStats::total_time_s)},
+        {"ltlsynt", row(RealizabilityChecker::n_cache_misses,
+                        RealizabilityChecker::n_cache_hits,
+                        RealizabilityChecker::n_timeouts,
+                        RealizabilityChecker::total_time_s)},
+        // "calls" is black's own exec count, which parted company with the
+        // cache-miss count when SPOT took the first stage: a miss now
+        // reaches black only if SPOT left it undecided and its polarity
+        // says black could still answer.
+        {"black", row(SatisfiabilityChecker::n_black_calls,
+                      SatisfiabilityChecker::n_cache_hits,
+                      SatisfiabilityChecker::n_timeouts,
+                      SatisfiabilityChecker::total_time_s)},
+        {"ganak", row(GanakStats::n_cache_misses, GanakStats::n_cache_hits,
+                      GanakStats::n_timeouts, GanakStats::total_time_s)}};
+}
+
+// Every memoisation cache in the run, so that a hit rate is derivable for each
+// rather than for the four that happened to share a name with a tool. The
+// counts are lookups, not execs: several of these sit in front of one tool and
+// a miss in one is not a subprocess in another.
+nlohmann::json caches_json() {
+    auto row = [](std::size_t hits, std::size_t misses) {
+        return nlohmann::json{{"hits", hits}, {"misses", misses}};
+    };
+    return {
+        {"fitness",
+         row(FitnessCacheStats::n_hits, FitnessCacheStats::n_misses)},
+        {"satisfiability", row(SatisfiabilityChecker::n_cache_hits,
+                               SatisfiabilityChecker::n_cache_misses)},
+        {"realizability",
+         nlohmann::json{{"hits", RealizabilityChecker::n_cache_hits},
+                        {"misses", RealizabilityChecker::n_cache_misses},
+                        // Answered from the monotone subsumption table rather
+                        // than by an exec. Not a hit: a hit is the same
+                        // question asked twice.
+                        {"subsumed", RealizabilityChecker::n_subsumed}}},
+        {"count_traces",
+         row(CountTracesStats::n_hits, CountTracesStats::n_misses)},
+        {"ltl2tgba",
+         row(Ltl2tgbaStats::n_cache_hits, Ltl2tgbaStats::n_cache_misses)},
+        {"ganak", row(GanakStats::n_cache_hits, GanakStats::n_cache_misses)},
+        {"simplify_ltl",
+         row(LtlfiltStats::n_cache_hits, LtlfiltStats::n_cache_misses)},
+        {"remove_wm",
+         row(LtlfiltStats::n_remove_wm_hits, LtlfiltStats::n_remove_wm_execs)},
+        // Memoised nowhere: check_satisfiability caches the decided answer one
+        // layer up, so a repeat never reaches it. Reported with no hits rather
+        // than omitted, so that a reader summing execs finds it.
+        {"spot_satisfiable", row(0, LtlfiltStats::n_satisfiable_execs)}};
 }
 
 nlohmann::json fitness_cache_json() {
-    return {{"hits", AggregateWeightedFitnessFunction::n_cache_hits},
-            {"misses", AggregateWeightedFitnessFunction::n_cache_misses}};
+    return {{"hits", FitnessCacheStats::n_hits},
+            {"misses", FitnessCacheStats::n_misses}};
 }
 
 }  // namespace
@@ -339,7 +388,8 @@ void write_run_manifest(const std::string& output_dir,
         // Well-separation queries that raised instead of answering, resolved as
         // undecided (the candidate is dropped) rather than propagating.
         {"n_well_separation_errors", WellSeparationStats::n_errors.load()},
-        {"fitness_cache", fitness_cache_json()}};
+        {"fitness_cache", fitness_cache_json()},
+        {"caches", caches_json()}};
 
     const std::filesystem::path path = dir / k_run_manifest_name;
     std::ofstream out(path);

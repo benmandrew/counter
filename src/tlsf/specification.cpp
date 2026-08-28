@@ -82,6 +82,34 @@ std::array<Section*, 3> mutable_assumption_sections_of(Specification& spec) {
     return {&spec.m_initially, &spec.m_require, &spec.m_assume};
 }
 
+SpecificationSides specification_sides(const Specification& spec) {
+    // The tags are positional rather than spelled out: they only have to
+    // distinguish the six sections from one another, and assumption_sections_of
+    // and guarantee_sections_of fix the order.
+    auto collect = [](const std::array<const Section*, 3>& sections,
+                      char side) {
+        std::vector<std::string> conjuncts;
+        for (std::size_t index = 0; index < sections.size(); ++index) {
+            for (const SectionEntry& entry : *sections[index]) {
+                if (entry.m_removed) {
+                    continue;
+                }
+                std::string tagged(1, side);
+                tagged += std::to_string(index);
+                tagged += '\x1f';
+                tagged += entry.m_formula.to_string();
+                conjuncts.push_back(std::move(tagged));
+            }
+        }
+        return conjuncts;
+    };
+    SpecificationSides sides;
+    sides.m_assumptions = collect(assumption_sections_of(spec), 'a');
+    sides.m_guarantees = collect(guarantee_sections_of(spec), 'g');
+    sides.m_scope = "tlsf" + std::to_string(static_cast<int>(spec.m_semantics));
+    return sides;
+}
+
 std::size_t count_live_guarantees(const Specification& spec) {
     std::size_t total = 0;
     for (const Section* section : guarantee_sections_of(spec)) {

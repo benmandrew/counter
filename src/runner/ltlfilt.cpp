@@ -12,6 +12,7 @@
 #include <string>
 #include <unordered_map>
 
+#include "formula_key.hpp"
 #include "profile.hpp"
 #include "runner/process.hpp"
 #include "runner/spot.hpp"
@@ -83,12 +84,25 @@ std::string ltlfilt_path() { return spot_bin_dir() + "/ltlfilt"; }
 
 std::string simplify_ltl(const std::string& formula) {
     COUNTER_PROFILE_SCOPE("ltlfilt/simplify_ltl");
-    static std::unordered_map<std::string, std::string> cache;
+    // Keyed on the canonical form rather than on the caller's spelling, so
+    // that operand order and association -- which vary freely in what the
+    // search builds and change nothing about the answer -- stop buying an
+    // exec each. formula_key::canonical is itself memoised on the input
+    // string, so a spelling already seen costs a hash rather than a parse.
+    //
+    // The renamed key is not usable here. The value is a formula, so returning
+    // it would mean renaming atoms back inside ltlfilt's own output, and SPOT
+    // prints a unary operator hard against its operand -- `F` applied to an
+    // atom named `fk1` comes back as `Ffk1` -- which no tokenisation of that
+    // output can separate. Keying on the canonical form keeps the caller's own
+    // atom names on both sides.
+    static std::unordered_map<std::string, std::string> answers;
+    const std::string& key = formula_key::canonical(formula);
     {
         COUNTER_PROFILE_SCOPE("ltlfilt/simplify_ltl:cache-lookup");
         std::scoped_lock lock(g_ltlfilt_mutex);
-        const auto found = cache.find(formula);
-        if (found != cache.end()) {
+        const auto found = answers.find(key);
+        if (found != answers.end()) {
             LtlfiltStats::n_cache_hits++;
             return found->second;
         }
@@ -97,11 +111,13 @@ std::string simplify_ltl(const std::string& formula) {
     const std::string binary = ltlfilt_path();
     if (access(binary.c_str(), F_OK) != 0) {
         std::scoped_lock lock(g_ltlfilt_mutex);
-        cache.emplace(formula, formula);
+        answers.emplace(key, formula);
         return formula;
     }
     const auto start = std::chrono::steady_clock::now();
-    const OneShotSimplify one_shot = one_shot_simplify(binary, formula);
+    // The canonical form is what the subprocess is asked about, so that one
+    // answer serves every spelling that reaches this key.
+    const OneShotSimplify one_shot = one_shot_simplify(binary, key);
     const std::string simplified = one_shot.m_formula;
     const double child_cpu_s = one_shot.m_cpu_s;
     const bool timed_out = one_shot.m_timed_out;
@@ -118,7 +134,7 @@ std::string simplify_ltl(const std::string& formula) {
     // after a timeout: a formula that blew the budget once will blow it every
     // time, and re-paying the wait per occurrence is the stall this timeout
     // exists to avoid.
-    cache.emplace(formula, simplified);
+    answers.emplace(key, simplified);
     return simplified;
 }
 
@@ -153,21 +169,24 @@ bool has_weak_operator(const std::string& formula) {
 std::optional<std::string> rewrite_weak_operators(const std::string& formula) {
     COUNTER_PROFILE_SCOPE("ltlfilt/rewrite_weak_operators");
     static std::unordered_map<std::string, std::optional<std::string>> cache;
+    // The canonical key, for the reason simplify_ltl gives: this value is a
+    // formula, so it must come back over the caller's own atom names.
+    const std::string& key = formula_key::canonical(formula);
     {
         std::scoped_lock lock(g_ltlfilt_mutex);
-        const auto found = cache.find(formula);
+        const auto found = cache.find(key);
         if (found != cache.end()) {
-            LtlfiltStats::n_cache_hits++;
+            LtlfiltStats::n_remove_wm_hits++;
             return found->second;
         }
-        LtlfiltStats::n_cache_misses++;
+        LtlfiltStats::n_remove_wm_execs++;
     }
-    const auto remember = [&formula](std::optional<std::string> result) {
+    const auto remember = [&key](std::optional<std::string> result) {
         std::scoped_lock lock(g_ltlfilt_mutex);
         // Failures are cached like successes, as in simplify_ltl: a formula
         // ltlfilt cannot rewrite once it cannot rewrite ever, and a timeout
         // that blew the budget once will blow it again.
-        cache.emplace(formula, result);
+        cache.emplace(key, result);
         return result;
     };
     const std::string binary = ltlfilt_path();
@@ -176,7 +195,7 @@ std::optional<std::string> rewrite_weak_operators(const std::string& formula) {
     }
     const auto start = std::chrono::steady_clock::now();
     const ProcessResult result = execute_and_capture(
-        {binary, "--remove-wm", "-p", "-f", formula}, ltlfilt_timeout());
+        {binary, "--remove-wm", "-p", "-f", key}, ltlfilt_timeout());
     const double elapsed =
         std::chrono::duration<double>(std::chrono::steady_clock::now() - start)
             .count();
@@ -210,6 +229,10 @@ std::optional<bool> spot_satisfiable(const std::string& formula,
     const std::string binary = ltlfilt_path();
     if (access(binary.c_str(), F_OK) != 0) {
         return std::nullopt;
+    }
+    {
+        std::scoped_lock lock(g_ltlfilt_mutex);
+        LtlfiltStats::n_satisfiable_execs++;
     }
     const auto start = std::chrono::steady_clock::now();
     const ProcessResult result =

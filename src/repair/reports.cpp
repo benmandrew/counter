@@ -9,6 +9,7 @@
 
 #include "filter/well_separation.hpp"
 #include "fitness/function.hpp"
+#include "fitness/semantic_similarity.hpp"
 #include "genetic/accumulator.hpp"
 #include "genetic/generation.hpp"
 #include "runner/black.hpp"
@@ -52,6 +53,46 @@ void print_scoring_report() {
     }
 }
 
+// Every memo in the run, with the hit rate each one actually reached. The
+// per-tool rows above cannot carry this: several caches sit in front of one
+// tool, and two of them (the satisfiability cache and the fitness cache) sit
+// in front of no single tool at all.
+void print_cache_report() {
+    auto print_row = [](const char* name, std::size_t hits,
+                        std::size_t misses) {
+        const std::size_t lookups = hits + misses;
+        const double rate = lookups > 0 ? 100.0 * static_cast<double>(hits) /
+                                              static_cast<double>(lookups)
+                                        : 0.0;
+        std::cout << std::left << std::setw(18) << name << std::right
+                  << std::setw(9) << lookups << " lookups  " << std::setw(8)
+                  << misses << " misses  " << std::fixed << std::setprecision(1)
+                  << std::setw(5) << rate << "% hit\n";
+    };
+    std::cout << "\nCache report:\n";
+    print_row("fitness", FitnessCacheStats::n_hits,
+              FitnessCacheStats::n_misses);
+    print_row("satisfiability", SatisfiabilityChecker::n_cache_hits,
+              SatisfiabilityChecker::n_cache_misses);
+    print_row("realizability", RealizabilityChecker::n_cache_hits,
+              RealizabilityChecker::n_cache_misses);
+    print_row("count_traces", CountTracesStats::n_hits,
+              CountTracesStats::n_misses);
+    print_row("ltl2tgba", Ltl2tgbaStats::n_cache_hits,
+              Ltl2tgbaStats::n_cache_misses);
+    print_row("ganak", GanakStats::n_cache_hits, GanakStats::n_cache_misses);
+    print_row("simplify_ltl", LtlfiltStats::n_cache_hits,
+              LtlfiltStats::n_cache_misses);
+    print_row("remove_wm", LtlfiltStats::n_remove_wm_hits,
+              LtlfiltStats::n_remove_wm_execs);
+    print_row("spot_satisfiable", 0, LtlfiltStats::n_satisfiable_execs);
+    if (RealizabilityChecker::n_subsumed > 0) {
+        std::cout << "realizability queries answered by monotone subsumption "
+                     "rather than by an exec: "
+                  << RealizabilityChecker::n_subsumed << "\n";
+    }
+}
+
 void print_diagnostics_report() {
     // timeouts has no default argument on purpose: it used to, and three of
     // the five rows quietly took it, so the counts they were keeping never
@@ -76,8 +117,11 @@ void print_diagnostics_report() {
     print_row("ltl2tgba", Ltl2tgbaStats::n_cache_misses,
               Ltl2tgbaStats::total_time_s, Ltl2tgbaStats::n_cache_hits,
               Ltl2tgbaStats::n_timeouts);
-    print_row("ltlfilt", LtlfiltStats::n_cache_misses,
-              LtlfiltStats::total_time_s, LtlfiltStats::n_cache_hits,
+    // Every ltlfilt exec, over all three entry points. Reporting
+    // simplify_ltl's misses here divided total_time_s, which covers
+    // spot_satisfiable too, by a fraction of the calls it is over.
+    print_row("ltlfilt", LtlfiltStats::n_execs(), LtlfiltStats::total_time_s,
+              LtlfiltStats::n_cache_hits + LtlfiltStats::n_remove_wm_hits,
               LtlfiltStats::n_timeouts);
     print_row("ltlsynt", RealizabilityChecker::n_cache_misses,
               RealizabilityChecker::total_time_s,
@@ -119,10 +163,9 @@ void print_diagnostics_report() {
     std::cout << "\nRepairs contributed by the cross-generation accumulator "
                  "(0 unless genetic.accumulate_repairs is set): "
               << AccumulatorStats::n_contributed << "\n";
-    std::cout << "\nFitness cache: "
-              << AggregateWeightedFitnessFunction::n_cache_hits << " hits / "
-              << AggregateWeightedFitnessFunction::n_cache_misses
-              << " misses\n";
+    print_cache_report();
+    std::cout << "\nFitness cache: " << FitnessCacheStats::n_hits << " hits / "
+              << FitnessCacheStats::n_misses << " misses\n";
 }
 
 // Reports where CPU actually went: this process's own code (all threads) vs.

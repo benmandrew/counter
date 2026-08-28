@@ -321,12 +321,78 @@ void test_tool_path_unset_env_falls_back() {
            "its source");
 }
 
+// Realizability is monotone in both sides, and the subsumption table answers
+// from that rather than from an exec. A wrong answer here is silent, so every
+// verdict it produces is checked against the one ltlsynt gives for the same
+// query on a fresh checker.
+void test_subsumption_agrees_with_ltlsynt() {
+    const std::vector<std::string> inputs = {"req"};
+    const std::vector<std::string> outputs = {"grant"};
+    // `responds` alone is realizable; with `silent` it is not, `silent`
+    // demanding grant be withheld forever while `responds` demands it
+    // eventually follow a request.
+    const std::string responds = "G((req) -> (F(grant)))";
+    const std::string silent = "G(!(grant))";
+    const std::string always_asks = "G(req)";
+
+    struct Query {
+        std::vector<std::string> m_assumptions;
+        std::vector<std::string> m_guarantees;
+    };
+    // Ordered so the later queries stand in a subsuming relation to the
+    // earlier ones: a realizable {g0} makes {g0} under more assumptions
+    // realizable, and an unrealizable {g0, g1} makes it unrealizable with
+    // fewer assumptions.
+    const std::vector<Query> queries = {
+        {{}, {responds}}, {{always_asks}, {responds}}, {{}, {responds, silent}},
+        {{}, {silent}},   {{always_asks}, {silent}},   {{}, {responds}},
+    };
+
+    RealizabilityChecker subsuming;
+    for (const Query& query : queries) {
+        SpecificationSides sides;
+        sides.m_assumptions = query.m_assumptions;
+        sides.m_guarantees = query.m_guarantees;
+        std::string formula;
+        for (const std::string& guarantee : query.m_guarantees) {
+            formula += formula.empty() ? "(" + guarantee + ")"
+                                       : " & (" + guarantee + ")";
+        }
+        if (!query.m_assumptions.empty()) {
+            std::string implication = "(";
+            for (const std::string& assumption : query.m_assumptions) {
+                if (implication.size() > 1) {
+                    implication += " & ";
+                }
+                implication += "(" + assumption + ")";
+            }
+            implication += ") -> (";
+            implication += formula;
+            implication += ")";
+            formula = implication;
+        }
+        const std::optional<bool> with_table =
+            subsuming.check_realizability_ltl(formula, inputs, outputs, sides);
+        // A fresh checker shares no table and no memo, so this is the tool.
+        RealizabilityChecker fresh;
+        const std::optional<bool> from_tool =
+            fresh.check_realizability_ltl(formula, inputs, outputs);
+        expect(with_table == from_tool,
+               "spot-runner: the subsumption table disagreed with ltlsynt on " +
+                   formula);
+    }
+    expect(RealizabilityChecker::n_subsumed > 0,
+           "spot-runner: the subsumption table should have answered at least "
+           "one of these queries without an exec");
+}
+
 }  // namespace
 
 void run_spot_runner_tests() {
     test_tool_path_env_wins_over_compiled_default();
     test_tool_path_empty_env_falls_back();
     test_tool_path_unset_env_falls_back();
+    test_subsumption_agrees_with_ltlsynt();
     test_tautology_exit2_yields_universal_automaton();
     test_realizable_eventually();
     test_realizable_immediately();

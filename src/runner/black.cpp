@@ -16,6 +16,7 @@
 #include <utility>
 #include <vector>
 
+#include "formula_key.hpp"
 #include "runner/ltlfilt.hpp"
 #include "runner/process.hpp"
 #include "tool_paths.hpp"
@@ -116,6 +117,29 @@ std::string black_executable_path() {
 
 std::optional<bool> SatisfiabilityChecker::check_satisfiability(
     const std::string& ltl_formula, QueryPolarity polarity) {
+    // Two keys into one map, tagged apart so a SPOT spelling can never be
+    // read as a canonical one.
+    //
+    // The first is the caller's own formula in canonical renamed form:
+    // satisfiability is invariant under a bijection on the atoms, so every
+    // spelling and every naming of one query meets there, and a hit on it
+    // skips the ltlfilt exec that computing the second key costs. The second
+    // is `normalised`, which is what this cache used alone. Both are kept
+    // because neither contains the other: ltlfilt simplifies, which the
+    // canonical form deliberately does not, and the canonical form renames,
+    // which ltlfilt does not. Keying on the first alone was measured on rg2 at
+    // 2,773 execs against 2,211 for the second alone -- ltlfilt's collapse is
+    // the larger of the two and must not be given up to gain the renaming.
+    const std::string spelling_key =
+        "r\x1f" + formula_key::renamed(ltl_formula);
+    {
+        std::shared_lock lock(m_cache_mutex);
+        const auto found = m_cache.find(spelling_key);
+        if (found != m_cache.end()) {
+            n_cache_hits++;
+            return found->second;
+        }
+    }
     // --simplify is kept on this path, unlike the ltl2tgba and ltlsynt ones
     // that dropped it: black's inputs are single requirement formulae and
     // implication checks, not the deep nested-X conjunctions that make ltlfilt
@@ -130,17 +154,26 @@ std::optional<bool> SatisfiabilityChecker::check_satisfiability(
     // formulae by itself if the folding does not fire.
     if (const std::optional<bool> decided = constant_answer(normalised)) {
         n_constant_folded++;
+        std::scoped_lock lock(m_cache_mutex);
+        m_cache.emplace(spelling_key, decided);
         return decided;
     }
+    const std::string cache_key = "n\x1f" + normalised;
     {
         std::shared_lock lock(m_cache_mutex);
-        const auto found = m_cache.find(normalised);
+        const auto found = m_cache.find(cache_key);
         if (found != m_cache.end()) {
             n_cache_hits++;
             return found->second;
         }
     }
     n_cache_misses++;
+    // Every verdict is written under both keys, so the next arrival by either
+    // route finds it.
+    const auto remember = [this,
+                           &spelling_key](const std::optional<bool>& verdict) {
+        m_cache.emplace(spelling_key, verdict);
+    };
     // SPOT first, on every query. It decides by automaton emptiness, so its
     // cost tracks the automaton's size rather than the verdict, and it settles
     // in tens of milliseconds the deep nested-X implications that black cannot
@@ -164,7 +197,8 @@ std::optional<bool> SatisfiabilityChecker::check_satisfiability(
             spot_satisfiable(normalised, spot_budget)) {
         n_spot_decided++;
         std::scoped_lock lock(m_cache_mutex);
-        m_cache.emplace(normalised, decided);
+        m_cache.emplace(cache_key, decided);
+        remember(decided);
         return decided;
     }
     // SPOT's own blowup case is a large automaton, which happens on satisfiable
@@ -176,7 +210,8 @@ std::optional<bool> SatisfiabilityChecker::check_satisfiability(
     if (polarity == QueryPolarity::ExpectUnsat) {
         n_escalations_declined++;
         std::scoped_lock lock(m_cache_mutex);
-        m_cache.emplace(normalised, std::nullopt);
+        m_cache.emplace(cache_key, std::nullopt);
+        remember(std::nullopt);
         return std::nullopt;
     }
     const std::string black = black_executable_path();
@@ -232,7 +267,8 @@ std::optional<bool> SatisfiabilityChecker::check_satisfiability(
             // vacuous repair.
             n_weak_operator_unresolved++;
             std::scoped_lock lock(m_cache_mutex);
-            m_cache.emplace(normalised, std::nullopt);
+            m_cache.emplace(cache_key, std::nullopt);
+            remember(std::nullopt);
             return std::nullopt;
         }
         query = *rewritten;
@@ -247,7 +283,8 @@ std::optional<bool> SatisfiabilityChecker::check_satisfiability(
         if (const std::optional<bool> decided = constant_answer(query)) {
             n_constant_folded++;
             std::scoped_lock lock(m_cache_mutex);
-            m_cache.emplace(normalised, decided);
+            m_cache.emplace(cache_key, decided);
+            remember(decided);
             return decided;
         }
     }
@@ -265,7 +302,8 @@ std::optional<bool> SatisfiabilityChecker::check_satisfiability(
     total_cpu_s += result.m_cpu_s;
     if (result.m_timed_out) {
         n_timeouts++;
-        m_cache.emplace(normalised, std::nullopt);
+        m_cache.emplace(cache_key, std::nullopt);
+        remember(std::nullopt);
         return std::nullopt;
     }
     // Check UNSAT before SAT: the former contains the latter as a substring.
@@ -279,7 +317,8 @@ std::optional<bool> SatisfiabilityChecker::check_satisfiability(
         // exited normally with "UNKNOWN (stopped at k = N)".  Treat as
         // indeterminate, same as a process-level timeout.
         n_timeouts++;
-        m_cache.emplace(normalised, std::nullopt);
+        m_cache.emplace(cache_key, std::nullopt);
+        remember(std::nullopt);
         return std::nullopt;
     } else {
         // black's output crossed a process boundary and didn't match any
@@ -289,6 +328,7 @@ std::optional<bool> SatisfiabilityChecker::check_satisfiability(
         throw std::runtime_error("unexpected output from black: " +
                                  result.m_output);
     }
-    m_cache.emplace(normalised, sat);
+    m_cache.emplace(cache_key, sat);
+    remember(sat);
     return sat;
 }

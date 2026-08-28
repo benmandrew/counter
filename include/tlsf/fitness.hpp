@@ -41,6 +41,12 @@ double tlsf_semantic_similarity(const tlsf::Specification& spec,
 /// delegated to `status_score`, which the FRETISH path also uses, so the two
 /// front ends cannot drift onto different scales again.
 ///
+/// Under StatusGrading::Aurus the scale is instead AuRUS's six-level ladder
+/// over the two sides as whole formulae (`assumption_ltl()` against
+/// `guarantee_ltl()`, which are its environment and system formulae), through
+/// `status_score_aurus`. That branch has no component tier and asks no
+/// well-separation query; see the header of `fitness/status.hpp`.
+///
 /// @p admission_order indexes the parts `tlsf::split_guarantee_parts` returns
 /// and is read only under StatusGrading::Mrs; empty means index order. It is
 /// projected onto the candidate's own part count, since mutation rewrites a

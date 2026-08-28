@@ -6,6 +6,7 @@
 #include <functional>
 #include <limits>
 #include <numeric>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
@@ -38,6 +39,48 @@ double status_score(const std::vector<std::string>& components,
     if (!all_components_satisfiable(components, sat)) {
         return k_status_component_unsatisfiable;
     }
+    return is_realizable() ? k_status_realizable : k_status_unrealizable;
+}
+
+double status_score_aurus(const std::string& assumptions,
+                          const std::string& guarantees,
+                          SatisfiabilityChecker& sat,
+                          const std::function<bool()>& is_realizable) {
+    // Both asked, and in this order, whatever the first answers: the pair is
+    // what separates BOTTOM from the two one-sided tiers, and the order is the
+    // one every candidate asks them in, so the cache keys line up across a
+    // population that mostly shares its sides.
+    const std::optional<bool> assumptions_sat =
+        sat.check_satisfiability(assumptions);
+    const std::optional<bool> guarantees_sat =
+        sat.check_satisfiability(guarantees);
+    if (!assumptions_sat.has_value() || !guarantees_sat.has_value()) {
+        // AuRUS leaves the status UNKNOWN on a query its solver could not
+        // settle, and pays UNKNOWN exactly what it pays BOTTOM.
+        return k_status_component_unsatisfiable;
+    }
+    if (!*assumptions_sat && !*guarantees_sat) {
+        return k_status_component_unsatisfiable;
+    }
+    if (!*assumptions_sat) {
+        return k_status_aurus_guarantees_only;
+    }
+    if (!*guarantees_sat) {
+        return k_status_aurus_assumptions_only;
+    }
+    // Reached only where both sides stand on their own, so the answer is not
+    // already known: two consistent halves can still contradict each other.
+    const std::optional<bool> jointly_sat = sat.check_satisfiability(
+        "(" + assumptions + ") & (" + guarantees + ")");
+    if (!jointly_sat.has_value()) {
+        return k_status_component_unsatisfiable;
+    }
+    if (!*jointly_sat) {
+        return k_status_aurus_contradictory;
+    }
+    // No well-separation query behind this one, unlike status_score and
+    // status_score_mrs. See the header: AuRUS never asks it, and an arm that
+    // did would not be the ladder it is named after.
     return is_realizable() ? k_status_realizable : k_status_unrealizable;
 }
 
@@ -189,6 +232,27 @@ Specification with_guarantee_subset(const Specification& specification,
     return subset;
 }
 
+// One side of a FRETISH specification as a single LTL formula, tombstones
+// dropped. An empty side is `true` rather than the empty string, which is what
+// an absent side means and what black would refuse to parse.
+//
+// AuRUS's status ladder asks about a whole side at a time, where every other
+// scale here asks per requirement, so this conjunction exists only for
+// status_score_aurus.
+std::string side_conjunction(const std::vector<Requirement>& requirements) {
+    std::string conjunction;
+    for (const Requirement& req : requirements) {
+        if (req.m_removed) {
+            continue;
+        }
+        if (!conjunction.empty()) {
+            conjunction += " & ";
+        }
+        conjunction += "(" + req.m_ltl + ")";
+    }
+    return conjunction.empty() ? "true" : conjunction;
+}
+
 // A walk order over live guarantee *positions*, from a reference order over
 // guarantee *slots*.
 //
@@ -235,6 +299,22 @@ double specification_status(const Specification& specification,
                             SatisfiabilityChecker& sat,
                             RealizabilityChecker& real, StatusGrading grading,
                             const std::vector<std::size_t>& slot_order) {
+    if (grading == StatusGrading::Aurus) {
+        // Sides rather than requirements, and no component tier: the ladder is
+        // AuRUS's whole scale, not a refinement of counter's. See
+        // status_score_aurus.
+        return status_score_aurus(
+            side_conjunction(specification.m_assumptions),
+            side_conjunction(specification.m_guarantees), sat,
+            [&specification, &real] {
+                // Realizability alone. Well-separation is deliberately not
+                // folded in here, where both other scales fold it in; the
+                // header says why. The output gate still asks it.
+                return count_live(specification.m_guarantees) == 0 ||
+                       real.check_realizability(specification).value_or(false);
+            });
+    }
+
     // Requirements are checked one at a time rather than conjoined across the
     // specification: they fire at different times (different conditions,
     // Trigger vs Continual), so their conditions and responses need not be

@@ -166,6 +166,22 @@ double tlsf_status(const tlsf::Specification& spec, const Config& cfg,
                    const std::vector<std::size_t>& admission_order) {
     SatisfiabilityChecker& sat = global_sat_checker();
     RealizabilityChecker& real = global_real_checker();
+    if (cfg.status_grading == StatusGrading::Aurus) {
+        // Sides rather than section formulae, and no component tier.
+        // assumption_ltl() and guarantee_ltl() are AuRUS's own environment and
+        // system formulae -- INITIALLY & G REQUIRE & ASSUME against PRESET &
+        // G ASSERT & GUARANTEE -- so the ladder asks what it asks there.
+        return status_score_aurus(
+            spec.assumption_ltl(), spec.guarantee_ltl(), sat, [&spec, &real] {
+                // Realizability alone, with no well-separation query behind
+                // it, unlike either branch below. See status_score_aurus.
+                return real
+                    .check_realizability_ltl(spec.to_ltl(), spec.m_inputs,
+                                             spec.m_outputs,
+                                             tlsf::specification_sides(spec))
+                    .value_or(false);
+            });
+    }
     // A TLSF specification's components are the individual formulae of its six
     // sections; the FRETISH path decomposes differently but scores on the same
     // scale, which is why both route through status_score.

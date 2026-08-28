@@ -79,6 +79,72 @@ double status_score(const std::vector<std::string>& components,
                     SatisfiabilityChecker& sat,
                     const std::function<bool()>& is_realizable);
 
+/// Only the guarantee side is satisfiable: the candidate's assumptions cannot
+/// hold at all. See @ref status_score_aurus.
+inline constexpr double k_status_aurus_guarantees_only = 0.05;
+/// Only the assumption side is satisfiable. It sits above the tier opposite
+/// because AuRUS ranks it so, an unsatisfiable guarantee side being the half a
+/// repair is allowed to rewrite.
+inline constexpr double k_status_aurus_assumptions_only = 0.10;
+/// Both sides are satisfiable alone and contradict one another.
+inline constexpr double k_status_aurus_contradictory = 0.20;
+
+/// Scores a candidate on AuRUS's status ladder, selected by
+/// Config::status_grading. It exists so an ablation can cross counter's own
+/// grading against the design this search is derived from, which means
+/// reproducing the ladder value for value rather than improving on it:
+/// `getStatusFitness` and `compute_status` in
+/// `AutomataBasedModelCountingSpecificationFitness.java`, AuRUS 3f6f01f.
+///
+/// The six levels, in the order the queries are asked:
+///
+///   - both sides unsatisfiable, k_status_component_unsatisfiable (BOTTOM);
+///   - @p assumptions unsatisfiable alone, k_status_aurus_guarantees_only;
+///   - @p guarantees unsatisfiable alone, k_status_aurus_assumptions_only;
+///   - the two contradicting each other, k_status_aurus_contradictory;
+///   - jointly satisfiable but not realizable, k_status_unrealizable;
+///   - realizable, k_status_realizable.
+///
+/// Both side queries are asked whatever the first answers, as AuRUS asks them:
+/// the second is what separates BOTTOM from the tier above it, and after the
+/// first candidate carrying a side it is a lookup in SatisfiabilityChecker's
+/// cache. The joint query is asked only where the two sides survive on their
+/// own, so it costs nothing on the candidates the ladder has already placed.
+///
+/// An undecided *satisfiability* query scores k_status_component_unsatisfiable:
+/// AuRUS leaves the status UNKNOWN and `getStatusFitness` pays UNKNOWN what it
+/// pays BOTTOM. An undecided *realizability* query is the caller's to resolve
+/// and lands on k_status_unrealizable, since @p is_realizable answers false.
+/// The two differ in AuRUS as they differ here.
+///
+/// **This scale must not fold well-separation into @p is_realizable**, which is
+/// the one place it diverges from every other scale in this file. AuRUS never
+/// asks the question: `WellSeparationAnalysis.java` has no caller anywhere in
+/// its `src`, so a candidate realizable only by forcing its own assumptions to
+/// fail scores full marks there. An arm that folded the query in would grade
+/// something AuRUS does not, and would no longer measure what it is named
+/// after. Nothing about output correctness changes with it -- the final gate
+/// asks the whole correctness table unconditionally, whatever the search scored
+/// on.
+///
+/// There is no per-component tier here, deliberately: AuRUS tests each side as
+/// one conjunction, so a candidate holding one incoherent requirement among
+/// coherent ones is placed by the side queries rather than dropped to the floor
+/// by a test AuRUS does not make.
+///
+/// @param assumptions   The assumption side as one LTL formula (`true` when the
+///                      side is empty)
+/// @param guarantees    The guarantee side as one LTL formula
+/// @param sat           Satisfiability checker (black)
+/// @param is_realizable Consulted only once both sides and their conjunction
+///                      are satisfiable, and *without* the well-separation
+///                      query the other two scales fold in
+/// @return              One of the six levels above
+double status_score_aurus(const std::string& assumptions,
+                          const std::string& guarantees,
+                          SatisfiabilityChecker& sat,
+                          const std::function<bool()>& is_realizable);
+
 /// Decides whether the guarantee-side parts at the given indices are jointly
 /// realizable against the full, unchanged environment side. Indices address the
 /// caller's own part list, so both front ends share the walk below without
@@ -220,6 +286,11 @@ std::vector<std::size_t> conflict_degree_order(
 /// names the same guarantees after mutation has removed or restored some of
 /// them. Empty means index order. This mapping is untested against a campaign;
 /// the measurements behind Config::mrs_admission_order are TLSF-path only.
+///
+/// Under StatusGrading::Aurus neither decomposition is used: the ladder asks
+/// about a whole side at a time, so the components are the conjunction of the
+/// live assumptions and the conjunction of the live guarantees, each `true`
+/// when its side is empty.
 ///
 /// @param specification A specification whose requirements all have m_ltl set
 /// @param sat           Satisfiability checker (black)

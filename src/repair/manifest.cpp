@@ -102,7 +102,13 @@ namespace {
 // version it can also spend an offspring budget or pass a deadline, and only
 // stopped_by separates the three. individuals_bred is null wherever no budget
 // was active, an unbudgeted run not paying for the count.
-constexpr int k_schema_version = 21;
+//
+// 22 added "aurus" to the values fitness.status_grading can take. A reader
+// keying on that field against an older manifest can assume it names one of
+// two scales, both of which cap a candidate that games its own assumptions;
+// from this version it may name a third that does not, so the status objective
+// of two runs is comparable only where the field agrees.
+constexpr int k_schema_version = 22;
 
 // The inverse of the spellings config_io.cpp parses. It has no table to
 // borrow -- it only ever goes string to enum -- so these must be kept in step
@@ -136,6 +142,8 @@ const char* status_grading_name(StatusGrading grading) {
             return "tiered";
         case StatusGrading::Mrs:
             return "mrs";
+        case StatusGrading::Aurus:
+            return "aurus";
     }
     return "unknown";
 }

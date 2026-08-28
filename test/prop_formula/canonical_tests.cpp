@@ -187,9 +187,37 @@ void test_realizability_key_counts_unmentioned_signals() {
            "change the key");
 }
 
+// The asserting constructor is right for a caller that built its own input.
+// try_parse is for a string from outside, and under NDEBUG the asserts are
+// gone -- the walk used to run past the end of the text and throw out of
+// std::string::compare, which is what this pins.
+void test_try_parse_reports_a_malformed_string() {
+    const std::vector<std::string> malformed = {
+        "G(", "(p", "p)", "", "&", "G(p", "(p) & ",
+    };
+    for (const std::string& text : malformed) {
+        expect(!Formula::try_parse(text).has_value(),
+               "prop-formula-canonical: try_parse should report \"" + text +
+                   "\" as malformed rather than assert on it");
+    }
+}
+
+void test_try_parse_accepts_what_the_renderer_emits() {
+    const std::vector<std::string> valid = {
+        "p", "!(p)", "(p) & (q)", "G((p) -> (X(q)))", "(p) W (q)",
+    };
+    for (const std::string& text : valid) {
+        const auto parsed = Formula::try_parse(text);
+        expect(parsed.has_value() && parsed->to_string() == text,
+               "prop-formula-canonical: try_parse should round-trip " + text);
+    }
+}
+
 }  // namespace
 
 void run_prop_formula_canonical_tests() {
+    test_try_parse_reports_a_malformed_string();
+    test_try_parse_accepts_what_the_renderer_emits();
     test_parser_round_trips_temporal_operators();
     test_operator_letters_do_not_eat_identifiers();
     test_commutative_operands_are_ordered();

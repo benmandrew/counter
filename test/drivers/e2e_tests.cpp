@@ -236,6 +236,33 @@ nlohmann::json expect_run_manifest(const std::filesystem::path& dir,
     expect(
         manifest.at("n_repairs").get<std::size_t>() == repair_files(dir).size(),
         label + ": the manifest's repair count matches the files written");
+    // Every memo in the run, since a hit rate is what a campaign reads and
+    // three of these reached no field at all before schema 20. Checked by name
+    // rather than by count: a cache dropped from the block is the failure this
+    // is here for, and it is silent everywhere else.
+    const nlohmann::json& caches = manifest.at("caches");
+    for (const char* name : {"fitness", "satisfiability", "realizability",
+                             "count_traces", "ltl2tgba", "ganak",
+                             "simplify_ltl", "remove_wm", "spot_satisfiable"}) {
+        expect(caches.contains(name),
+               label + ": the manifest reports the " + name + " cache");
+        expect(caches.at(name).contains("hits") &&
+                   caches.at(name).contains("misses"),
+               label + ": the " + std::string(name) +
+                   " cache reports both hits and misses");
+    }
+    // ltlfilt's exec count is over all three of its entry points, which is the
+    // set its total_s is over; reporting one of them divided a tool's seconds
+    // by a fraction of its calls.
+    expect(
+        manifest.at("tool_calls")
+                .at("ltlfilt")
+                .at("calls")
+                .get<std::size_t>() ==
+            caches.at("simplify_ltl").at("misses").get<std::size_t>() +
+                caches.at("remove_wm").at("misses").get<std::size_t>() +
+                caches.at("spot_satisfiable").at("misses").get<std::size_t>(),
+        label + ": ltlfilt's call count covers all three entry points");
     return manifest;
 }
 

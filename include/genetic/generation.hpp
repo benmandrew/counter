@@ -426,7 +426,7 @@ std::vector<Scored<Spec>> evolve_generation_generic(
     const std::vector<FilterFunctionT<Spec>>& filter_functions,
     const GeneticOperators<Spec>& ops, const RandomSource& random_source,
     const GenerationProgressCallback& on_progress = nullptr,
-    const StageObserver& on_stage = nullptr) {
+    const StageObserver& on_stage = nullptr, SearchBudget* budget = nullptr) {
     assert(random_source);
     assert(!fitness_functions.empty());
     assert(cfg.crossover_rate >= 0.0 && cfg.crossover_rate <= 1.0);
@@ -439,7 +439,8 @@ std::vector<Scored<Spec>> evolve_generation_generic(
          &on_progress](const std::vector<Spec>& candidates) {
             return score_population(cfg, candidates, fitness_functions,
                                     on_progress);
-        });
+        },
+        budget);
     const std::vector<PipelineStage<Spec>> stages =
         make_generation_pipeline<Spec>(filter_stages(filter_functions),
                                        correctness_rescue(filter_functions));
@@ -490,6 +491,9 @@ const GeneticOperators<Specification>& fretish_operators();
 /// @param on_stage          Optional callback invoked after each pipeline stage
 ///                          completes; receives the stage's name, population
 ///                          sizes, and elapsed time
+/// @param budget            Optional run-level budget; breeding stops part-way
+///                          through the generation when it runs out, so the
+///                          result can then be smaller than target_size
 /// @return                  Next generation of target_size specifications
 /// @throws std::invalid_argument if random_source is not callable, if
 ///                               fitness_function is empty, if rates are
@@ -501,4 +505,4 @@ std::vector<ScoredSpecification> evolve_generation(
     const std::vector<FilterFunction>& filter_functions,
     const RandomSource& random_source,
     const GenerationProgressCallback& on_progress = nullptr,
-    const StageObserver& on_stage = nullptr);
+    const StageObserver& on_stage = nullptr, SearchBudget* budget = nullptr);

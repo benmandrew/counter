@@ -70,8 +70,47 @@ enum class StatusGrading : std::uint8_t { Tiered, Mrs };
 /// subset queries once.
 enum class MrsAdmissionOrder : std::uint8_t { Spec, Degree };
 
+/// What ends the search (see @ref Config::termination).
+///
+/// Generations is counter's own budget: `Config::generations` rounds, whatever
+/// they cost. Individuals is AuRUS's, and exists so the two tools can be given
+/// the same budget in the same currency -- its GA stops once
+/// `numberOfVisitedIndividuals` reaches `GA_MAX_NUM_INDIVIDUALS`, counted per
+/// offspring admitted to the new population rather than per generation, and
+/// checked between offspring rather than at a generation boundary. A cap
+/// expressed in generations cannot be converted to one in individuals after the
+/// fact, the offspring per generation being a function of `population_size`,
+/// `selection_rate` and `elitism_rate`, so matching budgets across the two
+/// tools needs the counter rather than arithmetic on the results.
+///
+/// `Config::generations` bounds the run under both, as `GA_GENERATIONS` does
+/// for AuRUS, and @ref Config::max_wall_s is independent of the choice.
+enum class TerminationMode : std::uint8_t { Generations, Individuals };
+
 struct Config {
     std::size_t generations = 10;
+    /// Offspring budget for the whole run under
+    /// `termination = "individuals"`, ignored under Generations. Zero is
+    /// rejected in that mode rather than meaning unlimited, a run with no
+    /// budget at all being the other mode.
+    ///
+    /// An offspring counts when it differs from the parent it was bred from,
+    /// which is what AuRUS counts: its mutation arm increments only on
+    /// `!chromosome.equals(mutated)` and its crossover arm only for offspring
+    /// distinct from the first parent, so a slot whose draws both declined
+    /// costs nothing on either side.
+    std::size_t max_individuals = 0;
+    /// Wall-clock deadline for the whole run in seconds; zero is no deadline.
+    /// Independent of @ref termination, and honoured under both.
+    ///
+    /// The search stops at the first generation boundary or bred offspring past
+    /// the deadline and then writes its output normally, which is the whole
+    /// reason to prefer it to the harness's external kill: a killed run leaves
+    /// no `run.json`, so it is censored with nothing recorded, where a run that
+    /// stops itself reports what it found and which budget ended it. Filters,
+    /// scoring and the final realizability gate are not interrupted, so a run
+    /// overruns by whatever the generation it was in had left.
+    std::size_t max_wall_s = 0;
     std::size_t population_size = 200;
     double fitness_weight_syntactic = 0.2;
     double fitness_weight_semantic = 0.5;
@@ -89,6 +128,11 @@ struct Config {
     /// cost of 1.15x. The gain concentrates where Tiered cannot grade at all --
     /// `arbiter` moves 0/24 to 22/24 and `rg1` 7/24 to 24/24.
     StatusGrading status_grading = StatusGrading::Mrs;
+
+    /// Which budget ends the search (see TerminationMode). Generations is
+    /// counter's own and the default; Individuals matches AuRUS's, for a
+    /// head-to-head where both tools get the same number of offspring.
+    TerminationMode termination = TerminationMode::Generations;
     /// Which order the MRS walk admits parts in (see MrsAdmissionOrder). Read
     /// only under StatusGrading::Mrs.
     ///

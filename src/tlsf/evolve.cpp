@@ -83,7 +83,7 @@ std::vector<Scored<Specification>> evolve_population(
     const AggregateWeightedFitnessFunctionT<Specification>& fitness,
     std::vector<FilterRunStats>& filter_stats_out,
     const DashboardProgress& progress,
-    RepairAccumulator<Specification>& accumulator_out) {
+    RepairAccumulator<Specification>& accumulator_out, SearchBudget& budget) {
     const std::vector<FilterFunctionT<Specification>> per_gen_filters =
         build_per_gen_filters(spec, cfg);
 
@@ -111,6 +111,13 @@ std::vector<Scored<Specification>> evolve_population(
     }
 
     for (std::size_t gen = 0; gen < cfg.generations; ++gen) {
+        // Before the generation as well as between offspring, matching
+        // checkTermination() at the head of AuRUS's evolve(count) loop. The
+        // budget spans the whole run, so under MUC repair a core that opens
+        // with it already spent evolves nothing rather than restarting it.
+        if (budget.active() && budget.exhausted()) {
+            break;
+        }
         const auto gen_start = std::chrono::steady_clock::now();
         // MUC repair restarts its generation count on every core it evolves, so
         // the dashboard is given a number that keeps climbing across
@@ -126,8 +133,9 @@ std::vector<Scored<Specification>> evolve_population(
         };
         population = evolve_generation_generic(
             cfg, population, selection_size, elitism_size, fitness,
-            per_gen_filters, tlsf_operators(), random_source, nullptr,
-            on_stage);
+            per_gen_filters, tlsf_operators(), random_source, nullptr, on_stage,
+            &budget);
+        budget.count_generation();
         // Each filter records this generation's in/out sizes in its own mutable
         // counters; fold them into the running totals for the end-of-run
         // report.

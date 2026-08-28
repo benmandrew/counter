@@ -40,6 +40,20 @@ selection_scheme = "nsga2-apportion"
 # Free on the FRETISH path, one gate sweep per generation on the TLSF one;
 # inert under [tlsf] repair_mode = "muc".
 accumulate_repairs = true
+# What ends the search. "generations" is counter's own budget: the rounds above,
+# whatever they cost. "individuals" is AuRUS's, for a head-to-head where both
+# tools get the same number of offspring rather than the same wall clock; it
+# stops once max_individuals offspring have been bred, counted per offspring
+# that differs from its parent and checked between offspring rather than at a
+# generation boundary. generations still bounds the run under either.
+termination     = "generations"
+# Offspring budget under termination = "individuals"; ignored otherwise, and
+# rejected at 0 there rather than read as unlimited.
+max_individuals = 0
+# Wall-clock deadline for the whole run in seconds, 0 for none. Honoured under
+# both termination modes. A run that stops on its own deadline still writes
+# run.json and its repairs, where one killed by the harness writes neither.
+max_wall_s      = 0
 
 [fitness]
 weight_syntactic = 0.2

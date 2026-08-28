@@ -9,6 +9,7 @@
 #include "config.hpp"
 #include "evolve.hpp"
 #include "fitness/function.hpp"
+#include "genetic/pipeline.hpp"
 #include "genetic/random_source.hpp"
 #include "genetic/scored.hpp"
 #include "tlsf/specification.hpp"
@@ -23,7 +24,8 @@ std::vector<Scored<Specification>> run_monolithic(
     const Specification& original, const Config& cfg,
     const RandomSource& random_source,
     const AggregateWeightedFitnessFunctionT<Specification>& fitness,
-    const DashboardProgress& progress, const std::string& output_dir);
+    const DashboardProgress& progress, const std::string& output_dir,
+    SearchBudget& budget);
 
 // MUC repair: iteratively extract a minimal unrealizable core, evolve only that
 // sub-specification, reintegrate the best realizable-on-sub-spec repair with
@@ -34,6 +36,6 @@ std::vector<Scored<Specification>> run_muc(
     const Specification& original, const Config& cfg,
     const RandomSource& random_source,
     const AggregateWeightedFitnessFunctionT<Specification>& output_fitness,
-    const DashboardProgress& progress);
+    const DashboardProgress& progress, SearchBudget& budget);
 
 }  // namespace tlsf::internal

@@ -39,7 +39,8 @@ std::vector<Scored<Specification>> run_monolithic(
     const Specification& original, const Config& cfg,
     const RandomSource& random_source,
     const AggregateWeightedFitnessFunctionT<Specification>& fitness,
-    const DashboardProgress& progress, const std::string& output_dir) {
+    const DashboardProgress& progress, const std::string& output_dir,
+    SearchBudget& budget) {
     std::vector<FilterRunStats> filter_stats;
     // The same serialiser repair_N.tlsf goes through, so an accumulated file
     // is a specification document and nothing else -- these are gate-passing
@@ -51,7 +52,7 @@ std::vector<Scored<Specification>> run_monolithic(
             [](const Specification& spec) { return write(spec); }));
     const std::vector<Scored<Specification>> population =
         evolve_population(original, cfg, random_source, fitness, filter_stats,
-                          progress, accumulator);
+                          progress, accumulator, budget);
     std::vector<Scored<Specification>> survivors =
         realizable_survivors(population, cfg, fitness);
     survivors = merge_accumulated_survivors(
@@ -64,12 +65,19 @@ std::vector<Scored<Specification>> run_muc(
     const Specification& original, const Config& cfg,
     const RandomSource& random_source,
     const AggregateWeightedFitnessFunctionT<Specification>& output_fitness,
-    const DashboardProgress& progress) {
+    const DashboardProgress& progress, SearchBudget& budget) {
     std::vector<FilterRunStats> aggregate_stats;
     Specification current = original;
     std::size_t gen_offset = 0;
     for (std::size_t iter = 0; iter < cfg.muc_max_iterations; ++iter) {
         if (is_realizable(current)) {
+            break;
+        }
+        // The budget is the run's, not the core's. A core that opens with it
+        // already spent would otherwise pay for an MUC extraction and a full
+        // evolve_population call that breeds nothing.
+        if (budget.active() && budget.exhausted()) {
+            std::cout << "muc: search budget exhausted; stopping\n";
             break;
         }
         const MinimalUnrealizableCore muc = extract_muc(current);
@@ -98,9 +106,9 @@ std::vector<Scored<Specification>> run_muc(
         // whole specifications, but ones the gate has never seen, so it would
         // cost a second gate sweep over the union rather than nothing.
         RepairAccumulator<Specification> no_accumulation(false);
-        const std::vector<Scored<Specification>> population =
-            evolve_population(muc.spec, cfg, random_source, sub_fitness,
-                              iter_stats, iter_progress, no_accumulation);
+        const std::vector<Scored<Specification>> population = evolve_population(
+            muc.spec, cfg, random_source, sub_fitness, iter_stats,
+            iter_progress, no_accumulation, budget);
         gen_offset += cfg.generations;
         accumulate_filter_stats(aggregate_stats, iter_stats);
         const std::vector<Scored<Specification>> sub_survivors =

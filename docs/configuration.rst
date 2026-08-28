@@ -173,6 +173,42 @@ What lands there is the raw set of gate-passing candidates. ``repair_N.json`` an
 
 ``allow_output_assumptions`` (on) lets an assumption reference output atoms as well as inputs. It buys the reactive-environment assumptions ``G(<output> -> F <input>)`` that an input-only draw cannot express. Stopping the system from writing itself an assumption it can defeat is then the status score's job rather than a syntactic ban's: an assumption side the system can force to fail costs the candidate the top status tier, and the output gate refuses to write it whatever the filters say.
 
+Termination
+-----------
+
+``genetic.termination`` chooses what the search budget is counted in. counter's budget is ``generations`` rounds of evolution, where AuRUS's is a count of individuals, so neither tool can be given the other's budget without being able to count the same thing. The head-to-head campaign ``experiments/2026-08-14-aurus-h2h`` gave counter 10 generations at population 200 and AuRUS ``-Max=1000``, which are not the same budget in any currency.
+
+.. list-table::
+   :header-rows: 1
+   :widths: 32 14 54
+
+   * - Key
+     - Default
+     - Meaning
+   * - ``genetic.termination``
+     - ``"generations"``
+     - Budget currency: ``"generations"`` or ``"individuals"``
+   * - ``genetic.max_individuals``
+     - 0
+     - Individual budget, read under ``"individuals"`` alone
+   * - ``genetic.max_wall_s``
+     - 0 (off)
+     - Wall-clock deadline in seconds, honoured under both modes
+
+AuRUS's genetic algorithm stops once ``numberOfVisitedIndividuals`` reaches ``GA_MAX_NUM_INDIVIDUALS``, which is 1000 in the drivers that produced its published numbers. It counts one individual per offspring admitted to the new population, and checks between offspring rather than at a generation boundary. ``termination = "individuals"`` therefore requires ``max_individuals >= 1``; zero is rejected rather than read as unlimited, a run with no search budget being what the other mode is for. ``generations`` still bounds a run under ``"individuals"``, as ``GA_GENERATIONS`` does for AuRUS.
+
+An offspring counts only when it differs from the parent it was bred from. That matches AuRUS, whose mutation arm increments only on ``!chromosome.equals(mutated)`` and whose crossover arm increments only for an offspring distinct from the first parent. A slot whose crossover and mutation draws both declined is free on both sides.
+
+The budget is checked between offspring inside the breeding loop, and again before each generation. Checking at the generation boundary alone would overshoot by up to one generation's offspring, which is 20% of a 1000-individual cap at the shipping population size. Breeding returns a short offspring set when the budget runs out part-way, and the rest of that generation — filters, scoring, selection — completes normally, which is also what AuRUS does after it breaks out of its own loops.
+
+``max_wall_s`` is independent of the mode. A run killed by the harness's external ``timeout`` writes no ``run.json`` at all, so it is *censored* with nothing recorded, where a run that stops on its own deadline writes its repairs and its manifest and says which budget ended it. That is what a survival analysis such as time-to-first-repair needs, since a censored observation carrying no data is not usable. The deadline is measured from the same origin as the manifest's own ``wall_s``. Filters, scoring and the final realisability gate are not interrupted, so a run overruns its deadline by whatever the generation it was in had left.
+
+The manifest gained three fields at schema version 21: ``stopped_by``, reading ``"generations"``, ``"individuals"`` or ``"deadline"``; ``generations_run``; and ``individuals_bred``. The last is null under the default configuration, because counting an offspring means comparing it against its parent and an unbudgeted run does not pay for that, so a zero would read as a fact rather than as an absence. A run that trips both budgets reports individuals ahead of a deadline, matching the order AuRUS's ``checkTermination()`` tests them in.
+
+At the defaults the budget cannot fire, and breeding skips both the parent comparison and the clock read when it cannot, so the ``RandomSource`` draw stream is byte-identical to what it was before these keys existed and a seeded run reproduces. The determinism goldens are unchanged. No entry is owed in the *config vintage* note in ``experiments/README.md`` either: an archived config omitting these keys means exactly what it always meant.
+
+One caveat sits on ``max_wall_s``. A deadline makes a run's output depend on the machine it ran on, so two runs of one seed can legitimately differ under it — the same property the per-tool budgets in ``[runtime]`` already have.
+
 TLSF mode
 ---------
 

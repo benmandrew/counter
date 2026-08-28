@@ -9,6 +9,7 @@
 #include "dashboard.hpp"
 #include "fitness/function.hpp"
 #include "genetic/generation.hpp"
+#include "genetic/pipeline.hpp"
 #include "genetic/random_source.hpp"
 #include "reports.hpp"
 #include "requirement.hpp"
@@ -44,7 +45,7 @@ EvolutionResult run_evolution(
     const AggregateWeightedFitnessFunction& fitness_function,
     const std::vector<FilterFunction>& filter_functions,
     RandomSource& random_source, DashboardWriter& dashboard,
-    const std::string& output_dir);
+    const std::string& output_dir, SearchBudget& budget);
 
 std::vector<Specification> collect_realizable_specifications(
     const std::vector<ScoredSpecification>& population);

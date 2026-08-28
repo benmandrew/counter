@@ -111,7 +111,8 @@ const KeySpec& config_key_spec() {
         {{"genetic",
           section({"generations", "population_size", "selection_rate",
                    "elitism_rate", "crossover_rate", "mutation_rate",
-                   "selection_scheme", "accumulate_repairs"})},
+                   "selection_scheme", "accumulate_repairs", "termination",
+                   "max_individuals", "max_wall_s"})},
          {"fitness",
           section({"weight_syntactic", "weight_semantic", "weight_status",
                    "status_grading", "mrs_admission_order"})},
@@ -177,6 +178,48 @@ void warn_unknown_keys(const toml::table& tbl, const KeySpec& spec,
     }
 }
 
+std::size_t require_count(int64_t value, const char* name) {
+    if (value < 0) {
+        throw std::runtime_error(std::string("config: ") + name +
+                                 " must not be negative");
+    }
+    return static_cast<std::size_t>(value);
+}
+
+// Split out of apply_genetic, which the cognitive-complexity limit will not
+// hold all of. The three keys are one setting between them anyway: what ends
+// the run.
+void apply_termination(const toml::table& tbl, Config& cfg) {
+    if (auto val = tbl["max_individuals"].value<int64_t>()) {
+        cfg.max_individuals = require_count(*val, "genetic.max_individuals");
+    }
+    if (auto val = tbl["max_wall_s"].value<int64_t>()) {
+        cfg.max_wall_s = require_count(*val, "genetic.max_wall_s");
+    }
+    if (auto val = tbl["termination"].value<std::string>()) {
+        if (*val == "generations") {
+            cfg.termination = TerminationMode::Generations;
+        } else if (*val == "individuals") {
+            cfg.termination = TerminationMode::Individuals;
+        } else {
+            throw std::runtime_error(
+                "config: genetic.termination must be \"generations\" or "
+                "\"individuals\"");
+        }
+    }
+    // Rejected rather than read as unlimited: a run with no search budget is
+    // what the other mode is for, and silently treating zero as unbounded
+    // would turn a typo into a run that ends only on its deadline. Checked
+    // against the final values, either of which may have come from the TOML
+    // or from its default.
+    if (cfg.termination == TerminationMode::Individuals &&
+        cfg.max_individuals == 0) {
+        throw std::runtime_error(
+            "config: genetic.max_individuals must be at least 1 under "
+            "genetic.termination = \"individuals\"");
+    }
+}
+
 void apply_genetic(const toml::table& tbl, Config& cfg) {
     if (auto val = tbl["generations"].value<int64_t>()) {
         cfg.generations = static_cast<std::size_t>(
@@ -205,6 +248,7 @@ void apply_genetic(const toml::table& tbl, Config& cfg) {
     if (auto val = tbl["accumulate_repairs"].value<bool>()) {
         cfg.accumulate_repairs = *val;
     }
+    apply_termination(tbl, cfg);
     if (auto val = tbl["selection_scheme"].value<std::string>()) {
         if (*val == "weighted") {
             cfg.selection_scheme = SelectionScheme::WeightedAverage;

@@ -35,6 +35,94 @@ inline bool uses_nsga2_ranking(const Config& cfg) {
            cfg.selection_scheme == SelectionScheme::Nsga2Apportion;
 }
 
+/// What ended a run, reported as `stopped_by` in the run manifest so a survival
+/// analysis can tell a completed run from a censored one without inferring it
+/// from the wall time.
+enum class StopReason : std::uint8_t { Generations, Individuals, Deadline };
+
+/// The run-level half of termination: the budgets that span generations rather
+/// than living inside one.
+///
+/// One instance per run, shared by every generation and -- under
+/// `[tlsf] repair_mode = "muc"` -- by every core the loop evolves, since the
+/// budget belongs to the run and run_muc restarts the generation count per
+/// core. Inactive unless a config asks for it, and then it costs one comparison
+/// against the parent per bred offspring plus one steady_clock read.
+class SearchBudget {
+   public:
+    using Clock = std::chrono::steady_clock;
+
+    SearchBudget(const Config& cfg, Clock::time_point start)
+        : m_max_individuals(cfg.termination == TerminationMode::Individuals
+                                ? cfg.max_individuals
+                                : 0),
+          m_max_wall_s(cfg.max_wall_s),
+          m_start(start) {}
+
+    /// True when this budget can end a run at all. Breeding skips both the
+    /// parent comparison and the clock read when it cannot, so a run under the
+    /// default configuration pays nothing for the mechanism and draws from the
+    /// RandomSource exactly as it did before this existed.
+    [[nodiscard]] bool active() const {
+        return m_max_individuals != 0 || m_max_wall_s != 0;
+    }
+
+    /// Counts one offspring that differs from the parent it was bred from.
+    void count_offspring() { ++m_bred; }
+
+    /// Counts one completed generation. Called by the driver whatever the
+    /// budget is, since the manifest reports the count on every run, and under
+    /// `[tlsf] repair_mode = "muc"` it accumulates over every core rather than
+    /// restarting with the generation index.
+    void count_generation() { ++m_generations; }
+
+    [[nodiscard]] std::size_t generations() const { return m_generations; }
+
+    /// Offspring bred, meaningful only under an active budget: an inactive one
+    /// skips the parent comparison that decides whether a slot counted, so the
+    /// manifest reports null rather than a figure that would read as zero.
+    [[nodiscard]] std::size_t bred() const { return m_bred; }
+
+    [[nodiscard]] bool exhausted() const {
+        return individuals_spent() || past_deadline();
+    }
+
+    /// Which criterion ended the run, given @p fallback for a run that spent
+    /// neither of these. Individuals is tested first because AuRUS tests it
+    /// first, so a run that trips both reports the same reason there.
+    [[nodiscard]] StopReason reason(StopReason fallback) const {
+        if (individuals_spent()) {
+            return StopReason::Individuals;
+        }
+        if (past_deadline()) {
+            return StopReason::Deadline;
+        }
+        return fallback;
+    }
+
+   private:
+    [[nodiscard]] bool individuals_spent() const {
+        return m_max_individuals != 0 && m_bred >= m_max_individuals;
+    }
+
+    // Strictly greater, matching AuRUS's `current.toSeconds() > TIMEOUT`.
+    [[nodiscard]] bool past_deadline() const {
+        if (m_max_wall_s == 0) {
+            return false;
+        }
+        const auto elapsed = std::chrono::duration_cast<std::chrono::seconds>(
+                                 Clock::now() - m_start)
+                                 .count();
+        return elapsed > 0 && static_cast<std::size_t>(elapsed) > m_max_wall_s;
+    }
+
+    std::size_t m_max_individuals;
+    std::size_t m_max_wall_s;
+    Clock::time_point m_start;
+    std::size_t m_bred = 0;
+    std::size_t m_generations = 0;
+};
+
 /// Orders a scored population best-first according to @p cfg's selection
 /// scheme: descending weighted fitness for WeightedAverage, or the NSGA-II
 /// crowded-comparison order (front rank ascending, crowding descending) for
@@ -79,15 +167,32 @@ inline bool probability_check(double rate, const RandomSource& random_source) {
 /// interleaved per slot, so hoisting either into a pass of its own over the
 /// whole population reorders every draw after the first slot. The determinism
 /// test suite pins the resulting stream.
+///
+/// Returns fewer than @p offspring_n specifications when @p budget runs out
+/// part-way through, which is the only way it returns short. A null or inactive
+/// budget cannot, so the default configuration always fills every slot.
 template <typename Spec>
 std::vector<Spec> breed_offspring(const Config& cfg,
                                   const std::vector<Scored<Spec>>& sorted_pop,
                                   std::size_t offspring_n, std::size_t top_n,
                                   const GeneticOperators<Spec>& ops,
-                                  const RandomSource& random_source) {
+                                  const RandomSource& random_source,
+                                  SearchBudget* budget) {
     std::vector<Spec> offspring_pop;
     offspring_pop.reserve(offspring_n);
+    // Read once: an inactive budget must not reach the loop body at all, or an
+    // unbudgeted run pays a specification comparison and a clock read per slot.
+    const bool budgeted = budget != nullptr && budget->active();
     for (std::size_t i = 0; i < offspring_n; ++i) {
+        // Tested between slots rather than after the whole generation, which is
+        // where AuRUS tests it: its mutation and crossover loops both carry
+        // `&& !terminate` and call checkTermination() per offspring. Stopping
+        // at the generation boundary instead would overshoot the budget by up
+        // to one generation's offspring, 20% of a 1000-individual cap at the
+        // shipping population size.
+        if (budgeted && budget->exhausted()) {
+            break;
+        }
         Spec offspring = sorted_pop[i].specification;
         if (probability_check(cfg.crossover_rate, random_source)) {
             const std::size_t partner = random_source.next_index(top_n);
@@ -97,6 +202,13 @@ std::vector<Spec> breed_offspring(const Config& cfg,
         }
         if (probability_check(cfg.mutation_rate, random_source)) {
             offspring = ops.mutate(offspring, random_source, cfg);
+        }
+        // Counted before simplification, and only when the slot actually
+        // produced something new: AuRUS increments on `!chromosome.equals(
+        // mutated)` and on crossover offspring distinct from the first parent,
+        // so a slot whose two draws both declined is free on both sides.
+        if (budgeted && !(offspring == sorted_pop[i].specification)) {
+            budget->count_offspring();
         }
         offspring_pop.push_back(ops.simplify
                                     ? ops.simplify(std::move(offspring))
@@ -218,12 +330,14 @@ struct GenerationContext {
                       const std::vector<Scored<Spec>>& parents,
                       std::size_t target_size, std::size_t elitism_size,
                       const GeneticOperators<Spec>& ops,
-                      const RandomSource& random_source, ScoreFn score)
+                      const RandomSource& random_source, ScoreFn score,
+                      SearchBudget* budget)
         : m_cfg(cfg),
           m_parents(parents),
           m_ops(ops),
           m_random_source(random_source),
           m_score(std::move(score)),
+          m_budget(budget),
           m_target_size(target_size),
           m_top_n(std::min(target_size, parents.size())),
           m_elite_n(std::min(elitism_size, m_top_n)),
@@ -264,6 +378,10 @@ struct GenerationContext {
     const GeneticOperators<Spec>& m_ops;
     const RandomSource& m_random_source;
     ScoreFn m_score;
+    /// The run's budget, or null for a run that has none. Owned by the driver,
+    /// not by the generation, so it accumulates across generations and across
+    /// the cores of a MUC-mode run.
+    SearchBudget* m_budget;
 
     std::size_t m_target_size;
     std::size_t m_top_n;
@@ -349,7 +467,7 @@ void stage_breed(GenerationContext<Spec>& ctx) {
     ctx.m_scored.clear();
     ctx.m_candidates = generation_detail::breed_offspring(
         ctx.m_cfg, ctx.m_sorted_parents, ctx.m_offspring_n, ctx.m_top_n,
-        ctx.m_ops, ctx.m_random_source);
+        ctx.m_ops, ctx.m_random_source, ctx.m_budget);
     // The filter chain is judged as a whole rather than filter by filter, so
     // the unfiltered offspring have to survive until every filter has run.
     ctx.m_pre_filter = ctx.m_candidates;

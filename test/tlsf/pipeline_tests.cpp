@@ -96,8 +96,9 @@ void test_run_repair_end_to_end() {
     cfg.default_model_counting_bound = 3;
 
     const RandomSource random_source = make_random_source_from_seed(1234);
-    const int status =
-        tlsf::run_repair(input_path.string(), dir.string(), cfg, random_source);
+    SearchBudget budget(cfg, SearchBudget::Clock::now());
+    const int status = tlsf::run_repair(input_path.string(), dir.string(), cfg,
+                                        random_source, budget);
     expect(status == 0, "pipeline: run_repair returns 0");
 
     for (const auto& entry : std::filesystem::directory_iterator(dir)) {
@@ -179,8 +180,9 @@ void test_muc_repair_end_to_end() {
     cfg.run_weakening_filter = false;
 
     const RandomSource random_source = make_random_source_from_seed(0);
-    const int status =
-        tlsf::run_repair(input_path.string(), dir.string(), cfg, random_source);
+    SearchBudget budget(cfg, SearchBudget::Clock::now());
+    const int status = tlsf::run_repair(input_path.string(), dir.string(), cfg,
+                                        random_source, budget);
     expect(status == 0, "muc: run_repair returns 0");
 
     std::size_t n_repairs = 0;
@@ -272,8 +274,9 @@ void test_weakening_screen_keeps_exactly_the_weakenings() {
         cfg.selection_scheme = SelectionScheme::Nsga2Truncate;
 
         const RandomSource random_source = make_random_source_from_seed(1);
+        SearchBudget budget(cfg, SearchBudget::Clock::now());
         const int status = tlsf::run_repair(input_path.string(), out.string(),
-                                            cfg, random_source);
+                                            cfg, random_source, budget);
         expect(status == 0, "weakening: run_repair returns 0");
         return read_repairs(out);
     };

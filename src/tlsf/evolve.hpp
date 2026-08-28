@@ -13,6 +13,7 @@
 #include "fitness/function.hpp"
 #include "genetic/accumulator.hpp"
 #include "genetic/generation.hpp"
+#include "genetic/pipeline.hpp"
 #include "genetic/random_source.hpp"
 #include "genetic/scored.hpp"
 #include "tlsf/specification.hpp"
@@ -49,6 +50,6 @@ std::vector<Scored<Specification>> evolve_population(
     const AggregateWeightedFitnessFunctionT<Specification>& fitness,
     std::vector<FilterRunStats>& filter_stats_out,
     const DashboardProgress& progress,
-    RepairAccumulator<Specification>& accumulator_out);
+    RepairAccumulator<Specification>& accumulator_out, SearchBudget& budget);
 
 }  // namespace tlsf::internal

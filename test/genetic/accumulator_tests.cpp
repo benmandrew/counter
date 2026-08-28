@@ -15,6 +15,7 @@
 #include <fstream>
 #include <sstream>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include <nlohmann/json.hpp>
@@ -90,6 +91,9 @@ AccumulatedRepairWriter<Specification> json_writer(const TempDir& dir) {
             }};
 }
 
+// The specification files alone. index.tsv sits in the same directory and is
+// not one of them, so counting it here would make every count below read one
+// too many; it has its own tests.
 std::vector<std::filesystem::path> written_files(const TempDir& dir) {
     std::vector<std::filesystem::path> paths;
     if (!std::filesystem::exists(dir.accumulated())) {
@@ -97,10 +101,22 @@ std::vector<std::filesystem::path> written_files(const TempDir& dir) {
     }
     for (const auto& entry :
          std::filesystem::directory_iterator(dir.accumulated())) {
+        if (entry.path().filename() == "index.tsv") {
+            continue;
+        }
         paths.push_back(entry.path());
     }
     std::sort(paths.begin(), paths.end());
     return paths;
+}
+
+std::vector<std::string> index_rows(const TempDir& dir) {
+    std::vector<std::string> rows;
+    std::ifstream file(dir.accumulated() / "index.tsv");
+    for (std::string line; std::getline(file, line);) {
+        rows.push_back(line);
+    }
+    return rows;
 }
 
 std::string read_file(const std::filesystem::path& path) {
@@ -229,6 +245,70 @@ void test_one_file_per_accumulated_specification() {
         "accumulator: file names carry the generation and a unique sequence");
 }
 
+// The index is what makes a run's accumulation legible on a time axis: every
+// "over time" metric reads it rather than the file names, which carry the
+// generation but no clock.
+void test_the_index_carries_a_row_per_specification() {
+    const TempDir dir;
+    RepairAccumulator<Specification> accumulator(true, json_writer(dir));
+    accumulator.insert(make_spec("x"), 1);
+    accumulator.insert(make_spec("y"), 3);
+    // Already accumulated, so neither a new file nor a new row.
+    accumulator.insert(make_spec("x"), 4);
+
+    const std::vector<std::string> rows = index_rows(dir);
+    expect(rows.size() == 3,
+           "accumulator: the index holds a header and one row per "
+           "specification, found " +
+               std::to_string(rows.size()));
+    expect(rows[0] == "file\tgeneration\telapsed_s",
+           "accumulator: the index leads with a header, once");
+    expect(rows[1].rfind("gen01_0000.json\t1\t", 0) == 0,
+           "accumulator: a row names its file and generation, got " + rows[1]);
+    expect(rows[2].rfind("gen03_0001.json\t3\t", 0) == 0,
+           "accumulator: rows follow accumulation order, got " + rows[2]);
+}
+
+// A writer given no clock still writes its files; the column reads zero rather
+// than the row being absent, so a reader never has to handle a ragged index.
+void test_the_index_reports_zero_without_a_clock() {
+    const TempDir dir;
+    RepairAccumulator<Specification> accumulator(true, json_writer(dir));
+    accumulator.insert(make_spec("x"), 1);
+    const std::vector<std::string> rows = index_rows(dir);
+    expect(rows.size() == 2 && rows[1] == "gen01_0000.json\t1\t0.000000",
+           "accumulator: a clockless writer stamps zero, got " +
+               (rows.size() > 1 ? rows[1] : std::string("no row")));
+}
+
+// The clock reaches the index, and rows carry it in the order they were
+// written. Whether the seconds are plausible is the driver's business; what
+// this pins is that the writer asks the clock at all.
+void test_the_index_records_the_clock_it_was_given() {
+    const TempDir dir;
+    double now = 0.0;
+    AccumulatedRepairWriter<Specification> writer(
+        dir.string(), ".json",
+        [](const Specification& spec) {
+            const nlohmann::json jobj = spec;
+            return jobj.dump(2) + "\n";
+        },
+        [&now] { return now; });
+    RepairAccumulator<Specification> accumulator(true, std::move(writer));
+    now = 1.5;
+    accumulator.insert(make_spec("x"), 1);
+    now = 4.25;
+    accumulator.insert(make_spec("y"), 2);
+
+    const std::vector<std::string> rows = index_rows(dir);
+    expect(rows.size() == 3, "accumulator: two rows and a header");
+    expect(rows[1] == "gen01_0000.json\t1\t1.500000",
+           "accumulator: the first row carries its own elapsed time, got " +
+               rows[1]);
+    expect(rows[2] == "gen02_0001.json\t2\t4.250000",
+           "accumulator: the second row carries its own, got " + rows[2]);
+}
+
 void test_written_files_parse_back_to_what_was_accumulated() {
     const TempDir dir;
     RepairAccumulator<Specification> accumulator(true, json_writer(dir));
@@ -278,5 +358,8 @@ void run_accumulator_tests() {
     test_nothing_is_written_with_the_key_off();
     test_one_file_per_accumulated_specification();
     test_written_files_parse_back_to_what_was_accumulated();
+    test_the_index_carries_a_row_per_specification();
+    test_the_index_reports_zero_without_a_clock();
+    test_the_index_records_the_clock_it_was_given();
     test_the_tlsf_serialiser_round_trips();
 }

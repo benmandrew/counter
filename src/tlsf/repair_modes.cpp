@@ -49,7 +49,8 @@ std::vector<Scored<Specification>> run_monolithic(
         cfg.accumulate_repairs,
         AccumulatedRepairWriter<Specification>(
             output_dir, ".tlsf",
-            [](const Specification& spec) { return write(spec); }));
+            [](const Specification& spec) { return write(spec); },
+            [&budget] { return budget.elapsed_s(); }));
     const std::vector<Scored<Specification>> population =
         evolve_population(original, cfg, random_source, fitness, filter_stats,
                           progress, accumulator, budget);

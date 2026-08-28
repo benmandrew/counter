@@ -78,6 +78,14 @@ class SearchBudget {
 
     [[nodiscard]] std::size_t generations() const { return m_generations; }
 
+    /// Seconds since the run's search began, on the same clock the deadline is
+    /// measured against and the same origin as the manifest's `wall_s`. Read by
+    /// the repair accumulator, which stamps each candidate with the moment it
+    /// passed the gate.
+    [[nodiscard]] double elapsed_s() const {
+        return std::chrono::duration<double>(Clock::now() - m_start).count();
+    }
+
     /// Offspring bred, meaningful only under an active budget: an inactive one
     /// skips the parent comparison that decides whether a slot counted, so the
     /// manifest reports null rather than a figure that would read as zero.

@@ -61,12 +61,18 @@ class AccumulatedRepairWriter {
     /// accumulate in memory alone: the tests, and MUC repair's inert instance.
     AccumulatedRepairWriter() = default;
 
+    /// @p elapsed reports seconds since the search began, and is what stamps
+    /// each candidate into the index. A writer given none still writes the
+    /// specification files; its index reports an elapsed time of zero, which is
+    /// what the tests want and what a caller with no run clock can offer.
     AccumulatedRepairWriter(const std::string& output_dir,
-                            std::string extension, Serialiser serialise)
+                            std::string extension, Serialiser serialise,
+                            std::function<double()> elapsed = {})
         : m_directory(
               (std::filesystem::path(output_dir) / k_subdirectory).string()),
           m_extension(std::move(extension)),
-          m_serialise(std::move(serialise)) {}
+          m_serialise(std::move(serialise)),
+          m_elapsed(std::move(elapsed)) {}
 
     /// @p generation is 1-indexed and names the file, so the origin of an
     /// accumulated repair is legible without opening it; a run-wide sequence
@@ -98,11 +104,44 @@ class AccumulatedRepairWriter {
             warn("could not write " + path);
             return;
         }
+        append_index_row(name.str(), generation);
         ++m_sequence;
     }
 
    private:
     static constexpr const char* k_subdirectory = "accumulated";
+    static constexpr const char* k_index_name = "index.tsv";
+
+    /// One flushed row per accumulated candidate: which file, which generation,
+    /// and how many seconds into the search it passed the gate.
+    ///
+    /// The generation is already in the file name and is repeated here so a
+    /// reader needs no filename parsing, and the elapsed time is here rather
+    /// than in the name because the name is an artefact format that campaign
+    /// scripts already glob. Opened in append mode and closed per row, for the
+    /// reason the specification files are: a run killed by a wall-clock cap has
+    /// to keep the rows it had already written.
+    void append_index_row(const std::string& file_name,
+                          std::size_t generation) {
+        const std::string path =
+            (std::filesystem::path(m_directory) / k_index_name).string();
+        const bool first = m_sequence == 0;
+        std::ofstream index(path, std::ios::out | std::ios::app);
+        if (!index) {
+            warn("could not open " + path);
+            return;
+        }
+        if (first) {
+            index << "file\tgeneration\telapsed_s\n";
+        }
+        index << file_name << "\t" << generation << "\t" << std::fixed
+              << std::setprecision(6) << (m_elapsed ? m_elapsed() : 0.0)
+              << "\n";
+        index.close();
+        if (!index) {
+            warn("could not write " + path);
+        }
+    }
 
     bool create_directory() {
         std::error_code error;
@@ -126,6 +165,7 @@ class AccumulatedRepairWriter {
     std::string m_directory;
     std::string m_extension;
     Serialiser m_serialise;
+    std::function<double()> m_elapsed;
     std::size_t m_sequence{0};
     bool m_created{false};
     bool m_failed{false};

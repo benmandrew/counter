@@ -91,12 +91,13 @@ EvolutionResult run_evolution(
     // is a specification document and nothing else -- no fitness record, since
     // these are gate-passing candidates rather than the run's filtered output.
     RepairAccumulator<Specification> accumulator(
-        cfg.accumulate_repairs,
-        AccumulatedRepairWriter<Specification>(
-            output_dir, ".json", [](const Specification& spec) {
-                const nlohmann::json jobj = spec;
-                return jobj.dump(2) + "\n";
-            }));
+        cfg.accumulate_repairs, AccumulatedRepairWriter<Specification>(
+                                    output_dir, ".json",
+                                    [](const Specification& spec) {
+                                        const nlohmann::json jobj = spec;
+                                        return jobj.dump(2) + "\n";
+                                    },
+                                    [&budget] { return budget.elapsed_s(); }));
     const std::vector<std::string> objective_names =
         fitness_objective_names(fitness_function);
     std::vector<FilterRunStats> filter_stats;

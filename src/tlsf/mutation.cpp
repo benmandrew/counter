@@ -594,16 +594,23 @@ std::vector<MonotoneRule> rules_at(const Formula& formula, bool weaken,
 }
 
 // The operands of a node a rule fires at. Every rule is filed under the kind
-// it applies to, so the shape is a precondition rather than a case to handle.
+// it applies to, so the shape is a precondition rather than a case to handle:
+// there is no operand to return if the node has none, and rules_at is what
+// keeps that from arising. The assert states it, and the suppression is on the
+// access alone rather than on the file, since a second unchecked optional in
+// either function should still be reported. test_monotone_rewrite_direction-
+// _holds is what would catch a rule filed under the wrong kind.
 Formula unary_operand(const Formula& formula) {
     const auto child = formula.unary_child();
     assert(child.has_value());
+    // NOLINTNEXTLINE(bugprone-unchecked-optional-access): precondition above.
     return *child;
 }
 
 std::pair<Formula, Formula> binary_operands(const Formula& formula) {
     const auto children = formula.binary_children();
     assert(children.has_value());
+    // NOLINTNEXTLINE(bugprone-unchecked-optional-access): precondition above.
     return *children;
 }
 

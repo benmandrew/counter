@@ -19,30 +19,38 @@ constexpr std::size_t k_preset = 1;
 constexpr std::size_t k_assert = 4;
 constexpr std::size_t k_guarantee = 5;
 
+// split_into is total: whatever it is handed comes back as one or more parts
+// covering it. So a node whose kind says it has operands but which does not
+// carry them is an indivisible part rather than a case to assert on, and the
+// checks below say that rather than documenting a precondition an NDEBUG build
+// would drop. The kind tests do make the operands present; what the checks buy
+// is that a violation is a slightly worse partition instead of a dereference
+// of an empty optional.
 void split_into(const Formula& formula, std::vector<Formula>& out) {
     if (formula.kind() == Formula::Kind::And) {
         const auto children = formula.binary_children();
-        assert(children.has_value());
-        split_into(children->first, out);
-        split_into(children->second, out);
-        return;
+        if (children) {
+            split_into(children->first, out);
+            split_into(children->second, out);
+            return;
+        }
     }
     if (formula.kind() == Formula::Kind::Globally) {
         const auto child = formula.unary_child();
-        assert(child.has_value());
-        if (child->kind() == Formula::Kind::And) {
+        if (child && child->kind() == Formula::Kind::And) {
             // G distributes over conjunction, so this rewrite preserves the
             // language. It is the one that matters in practice: a TLSF
             // GUARANTEE is commonly a single G over a wide conjunction.
             const auto inner = child->binary_children();
-            assert(inner.has_value());
-            split_into(
-                Formula::make_unary(Formula::Kind::Globally, inner->first),
-                out);
-            split_into(
-                Formula::make_unary(Formula::Kind::Globally, inner->second),
-                out);
-            return;
+            if (inner) {
+                split_into(
+                    Formula::make_unary(Formula::Kind::Globally, inner->first),
+                    out);
+                split_into(
+                    Formula::make_unary(Formula::Kind::Globally, inner->second),
+                    out);
+                return;
+            }
         }
     }
     out.push_back(formula);

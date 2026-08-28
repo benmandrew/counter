@@ -21,6 +21,7 @@ The overview pages describe the algorithm, the tuning knobs, and the TLSF path. 
    api/config
    api/config_io
    api/dashboard
+   api/formula_key
    api/hash_combine
    api/profile
    api/prop_formula

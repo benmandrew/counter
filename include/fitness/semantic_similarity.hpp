@@ -34,6 +34,16 @@ struct SemanticSimilarityCounts {
 Count cached_count_traces(const std::string& ltl, std::size_t n_total_atoms,
                           std::size_t step_count);
 
+/// cached_count_traces' hit and miss totals. This cache sits above both
+/// ltl2tgba's and ganak's and absorbs the repeats before they reach either, so
+/// their hit rates are the residue of this one's and read far lower -- 4.8%
+/// for ltl2tgba against 71.8% here, over a 14-specification corpus. Reading
+/// either without this one in front of it reads a defect that is not there.
+struct CountTracesStats {
+    inline static std::size_t n_hits = 0;
+    inline static std::size_t n_misses = 0;
+};
+
 /// The largest trace length representable for @p n_atoms atoms.
 ///
 /// count_traces sums at most 2^(n_atoms * k) traces, so k is only representable

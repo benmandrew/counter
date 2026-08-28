@@ -28,7 +28,8 @@ bool is_realizable(const Specification& spec) {
     // Undecided reads as unrealizable: the repair loop keeps going rather than
     // declaring a specification repaired on a query that never finished.
     return global_real_checker()
-        .check_realizability_ltl(spec.to_ltl(), spec.m_inputs, spec.m_outputs)
+        .check_realizability_ltl(spec.to_ltl(), spec.m_inputs, spec.m_outputs,
+                                 tlsf::specification_sides(spec))
         .value_or(false);
 }
 

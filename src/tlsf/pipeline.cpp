@@ -73,7 +73,8 @@ int run_repair(const std::string& input_path, const std::string& output_dir,
     std::cerr << ltlsynt_budget_screen(
         [&original] {
             return global_real_checker().check_realizability_ltl(
-                original.to_ltl(), original.m_inputs, original.m_outputs);
+                original.to_ltl(), original.m_inputs, original.m_outputs,
+                tlsf::specification_sides(original));
         },
         cfg.ltlsynt_timeout);
 

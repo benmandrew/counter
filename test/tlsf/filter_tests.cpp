@@ -1,7 +1,9 @@
 #include <algorithm>
 #include <chrono>
 #include <cstddef>
+#include <optional>
 #include <string>
+#include <string_view>
 #include <vector>
 
 #include "runner/black.hpp"
@@ -331,9 +333,78 @@ void test_well_separation_keeps_input_only_assumption() {
            "well-separation: an input-only assumption is kept");
 }
 
+// The subsumption table answers from the monotonicity of the TLSF lowering
+// rather than from an exec, and a wrong answer there is silent. Every verdict
+// it produces is checked against the one ltlsynt gives for the same query on a
+// checker that shares neither table nor memo. Both semantics are covered: the
+// strict lowering carries `psi_s W !psi_e`, which is the term that makes
+// REQUIRE occur twice and is the reason this needed checking at all.
+void test_tlsf_subsumption_agrees_with_ltlsynt() {
+    // Ordered so later queries stand in a subsuming relation to earlier ones:
+    // conjuncts are added and removed on both sides across the sequence.
+    const std::string signals = "INPUTS { a; } OUTPUTS { b; } ";
+    const std::vector<std::string> bodies = {
+        signals + "GUARANTEE { G (a -> b); }",
+        signals + "GUARANTEE { G (a -> b); G (!b); }",
+        signals + "ASSUME { G F a; } GUARANTEE { G (a -> b); }",
+        signals + "ASSUME { G F a; } GUARANTEE { G (a -> b); G (!b); }",
+        signals + "REQUIRE { a; } GUARANTEE { G (a -> b); }",
+        signals + "REQUIRE { a; } GUARANTEE { G (a -> b); G (!b); }",
+        signals + "REQUIRE { a; } ASSERT { b; } GUARANTEE { G (a -> b); }",
+        signals + "ASSERT { b; } GUARANTEE { G (a -> b); }",
+        signals + "GUARANTEE { G (a -> b); }",
+        signals + "GUARANTEE { G (!b); }",
+    };
+    for (const std::string_view semantics : {"Mealy", "Mealy,Strict"}) {
+        RealizabilityChecker subsuming;
+        for (const std::string& body : bodies) {
+            std::string source = "INFO { SEMANTICS: ";
+            source += semantics;
+            source += "; }\nMAIN {\n";
+            source += body;
+            source += "\n}\n";
+            const tlsf::Specification spec = tlsf::parse(source);
+            const std::string formula = spec.to_ltl();
+            const std::optional<bool> with_table =
+                subsuming.check_realizability_ltl(
+                    formula, spec.m_inputs, spec.m_outputs,
+                    tlsf::specification_sides(spec));
+            RealizabilityChecker fresh;
+            const std::optional<bool> from_tool = fresh.check_realizability_ltl(
+                formula, spec.m_inputs, spec.m_outputs);
+            std::string message =
+                "tlsf-filter: the subsumption table disagreed with ltlsynt "
+                "under ";
+            message += semantics;
+            message += " on ";
+            message += body;
+            expect(with_table == from_tool, message);
+        }
+    }
+}
+
+// The same formula in PRESET and in GUARANTEE lowers differently and sits on
+// different sides, so the two must never intern to one conjunct.
+void test_tlsf_sides_tag_their_sections() {
+    const tlsf::Specification spec = parse_spec(
+        "INPUTS { a; } OUTPUTS { b; } PRESET { b; } GUARANTEE { b; }");
+    const SpecificationSides sides = tlsf::specification_sides(spec);
+    expect(sides.m_guarantees.size() == 2,
+           "tlsf-filter: PRESET and GUARANTEE conjuncts should both be listed");
+    expect(sides.m_guarantees[0] != sides.m_guarantees[1],
+           "tlsf-filter: one formula in two sections must be two conjuncts");
+    // A tombstoned conjunct lowers as an absent one, so it must not be listed.
+    tlsf::Specification deleted = spec;
+    deleted.m_guarantee[0].m_removed = true;
+    expect(tlsf::specification_sides(deleted).m_guarantees.size() == 1,
+           "tlsf-filter: a deleted conjunct must not reach the sides");
+}
+
 }  // namespace
 
 void run_tlsf_filter_tests() {
+    test_tlsf_subsumption_agrees_with_ltlsynt();
+    test_tlsf_sides_tag_their_sections();
     test_spec_implies_reflexive();
     test_spec_implies_weakening_direction();
     test_unsatisfiable_assumptions_detected();

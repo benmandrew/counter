@@ -73,10 +73,36 @@ struct Ltl2tgbaStats {
     }
 };
 
+/// The two conjunct sets a specification formula was built from: those whose
+/// strengthening weakens the formula, and those whose strengthening
+/// strengthens it. Supplying them lets the checker answer some queries by
+/// comparison rather than by exec; see RealizabilityChecker's subsumption
+/// table.
+///
+/// A conjunct may carry a tag, separated from the formula by a unit separator
+/// (`\x1f`). The formula half is compared canonically, so a re-spelling of one
+/// is still the same conjunct; the tag is compared verbatim. TLSF needs it,
+/// one formula meaning different things in PRESET and in GUARANTEE.
+///
+/// @p m_scope names everything else that has to match for two queries to be
+/// comparable at all; the checker adds the input/output partition to it. TLSF
+/// puts its semantics there, strict and non-strict lowering to different
+/// shapes.
+struct SpecificationSides {
+    std::vector<std::string> m_assumptions;
+    std::vector<std::string> m_guarantees;
+    std::string m_scope;
+};
+
 class RealizabilityChecker {
    public:
     inline static std::size_t n_cache_misses = 0;
     inline static std::size_t n_cache_hits = 0;
+    /// Queries the subsumption table settled without an exec. Counted apart
+    /// from n_cache_hits because they are a different claim: a hit is the same
+    /// question asked twice, and one of these is a question never asked, whose
+    /// answer follows from one that was.
+    inline static std::size_t n_subsumed = 0;
     inline static double total_time_s = 0.0;
     inline static double total_cpu_s = 0.0;
     /// ltlsynt calls abandoned at the per-call timeout, reported as nullopt.
@@ -112,6 +138,49 @@ class RealizabilityChecker {
         const std::string& ltl_formula, const std::vector<std::string>& inputs,
         const std::vector<std::string>& outputs);
 
+    /// As above, with the conjunct sets the formula was assembled from.
+    ///
+    /// Realizability is monotone in both sides: a realizable specification
+    /// stays realizable when a guarantee is dropped or an assumption added,
+    /// and an unrealizable one stays unrealizable in the other direction. So a
+    /// query standing in the right relation to one already decided is answered
+    /// by comparison. This is worth 18.8% of the ltlsynt execs a run makes,
+    /// pooled over 14 specifications, and the figure splits hard by front end:
+    /// 39.7 to 51.6% on FRETISH, where the minimal-realizable-set walk asks
+    /// about growing subsets of components by construction, against 4.9 to
+    /// 17.8% on TLSF, where the queries are mutations of one another rather
+    /// than subsets.
+    ///
+    /// Only decided entries subsume: an undecided one is memoised, but it
+    /// carries no direction and so answers nothing.
+    ///
+    /// Supplying sides is sound wherever every conjunct sits at a determinate
+    /// polarity in the lowered formula. The FRETISH lowering is the easy case,
+    /// being the two conjunctions joined by an implication. The TLSF one wraps
+    /// whole sections rather than conjuncts and needed checking rather than
+    /// assuming. Over
+    ///
+    ///     theta_e -> (theta_s & [strict: psi_s W !psi_e]
+    ///                 & ((G psi_e & phi_e) -> ([!strict: G psi_s] & phi_s)))
+    ///
+    /// the three environment sections (INITIALLY, REQUIRE, ASSUME) are all
+    /// negative and the three system ones (PRESET, ASSERT, GUARANTEE) all
+    /// positive. REQUIRE is the one that looks like a counterexample and is
+    /// not: it occurs twice, in `G psi_e` under the inner antecedent and in
+    /// `!psi_e` under a weak-until, and the negation flips the second back, so
+    /// both occurrences are negative and strengthening it weakens the formula
+    /// either way. The empty-section cases agree, introducing a section
+    /// introducing the term it governs in the same direction.
+    ///
+    /// So both front ends pass sides. What the TLSF one must also pass is a
+    /// section tag per conjunct, one formula meaning different things in
+    /// PRESET and in GUARANTEE, and its semantics as the scope.
+
+    std::optional<bool> check_realizability_ltl(
+        const std::string& ltl_formula, const std::vector<std::string>& inputs,
+        const std::vector<std::string>& outputs,
+        const SpecificationSides& sides);
+
     /// Caps the number of ltlsynt processes running concurrently across the
     /// whole program. The gate is process-global (shared by every
     /// RealizabilityChecker, including test instances) because the memory
@@ -130,7 +199,33 @@ class RealizabilityChecker {
     static void set_timeout(std::chrono::milliseconds timeout);
 
    private:
+    /// One decided query, with its two sides interned to integer ids so that
+    /// the inclusion tests are over small sorted vectors rather than over
+    /// strings, and with a 64-bit signature of each side so that most entries
+    /// are rejected by one AND.
+    struct Decided {
+        std::vector<int> m_assumptions;
+        std::vector<int> m_guarantees;
+        std::uint64_t m_assumption_signature = 0;
+        std::uint64_t m_guarantee_signature = 0;
+        bool m_realizable = false;
+    };
+
+    std::optional<bool> subsumed_verdict(
+        const std::string& scope, const std::vector<int>& assumptions,
+        const std::vector<int>& guarantees, std::uint64_t assumption_signature,
+        std::uint64_t guarantee_signature) const;
+    std::vector<int> intern_side(const std::vector<std::string>& conjuncts);
+
     mutable std::mutex m_cache_mutex;
+    /// Canonical conjunct to id, and the decided queries over those ids. Both
+    /// live under m_cache_mutex, being read and written on the same paths as
+    /// the memo itself.
+    std::unordered_map<std::string, int> m_conjunct_ids;
+    /// Decided queries by scope. Two queries over different atom partitions,
+    /// or different TLSF semantics, are over different formula shapes, and
+    /// nothing follows from one about the other, so they never meet.
+    std::unordered_map<std::string, std::vector<Decided>> m_decided;
     /// Undecided (nullopt) is memoised alongside the decided verdicts, as
     /// black's satisfiability cache does: ltlsynt is deterministic and its
     /// call durations are sharply bimodal, so a formula that blew the budget

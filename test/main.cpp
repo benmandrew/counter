@@ -209,6 +209,10 @@ void run_suite(std::string_view suite_name,
         run_prop_formula_ast_tests();
         return;
     }
+    if (suite_name == "prop_formula_canonical") {
+        run_prop_formula_canonical_tests();
+        return;
+    }
     if (suite_name == "prop_formula_cnf") {
         run_prop_formula_cnf_tests();
         return;
@@ -292,6 +296,7 @@ int main(int argc, const char* const argv[]) {
             run_nsga2_tests();
             run_mutation_tests();
             run_prop_formula_ast_tests();
+            run_prop_formula_canonical_tests();
             run_prop_formula_cnf_tests();
             run_prop_formula_rewrite_tests();
             run_prop_formula_similarity_tests();

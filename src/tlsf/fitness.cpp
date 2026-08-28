@@ -191,9 +191,10 @@ double tlsf_status(const tlsf::Specification& spec, const Config& cfg,
                     tlsf::build_part_subset(spec, parts, indices);
                 // Undecided resolves as unrealizable, so the part is rejected:
                 // a timed-out query must not buy a candidate a point.
-                return real.check_realizability_ltl(subset.to_ltl(),
-                                                    subset.m_inputs,
-                                                    subset.m_outputs)
+                return real.check_realizability_ltl(
+                               subset.to_ltl(), subset.m_inputs,
+                               subset.m_outputs,
+                               tlsf::specification_sides(subset))
                            .value_or(false) &&
                        !tlsf_is_not_well_separated(subset, real);
             },
@@ -203,7 +204,8 @@ double tlsf_status(const tlsf::Specification& spec, const Config& cfg,
     return status_score(components, sat, [&spec, &real] {
         const bool realizable =
             real.check_realizability_ltl(spec.to_ltl(), spec.m_inputs,
-                                         spec.m_outputs)
+                                         spec.m_outputs,
+                                         tlsf::specification_sides(spec))
                 .value_or(false);
         // Behind the realizability query, as on the FRETISH path: an
         // unrealizable candidate cannot be realizable for the wrong reason.
@@ -236,7 +238,8 @@ std::vector<std::size_t> tlsf_mrs_admission_order(
             // The same oracle tlsf_status walks with, undecided resolving as
             // unrealizable in the same direction.
             return real.check_realizability_ltl(
-                           subset.to_ltl(), subset.m_inputs, subset.m_outputs)
+                           subset.to_ltl(), subset.m_inputs, subset.m_outputs,
+                           tlsf::specification_sides(subset))
                        .value_or(false) &&
                    !tlsf_is_not_well_separated(subset, real);
         });

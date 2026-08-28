@@ -21,6 +21,7 @@
 #include <unordered_set>
 #include <vector>
 
+#include "formula_key.hpp"
 #include "requirement.hpp"
 #include "runner/ltlfilt.hpp"
 #include "runner/process.hpp"
@@ -239,6 +240,10 @@ std::string run_ltl2tgba_for_counting(const std::string& formula) {
     // 15, unbounded by 20, where ltl2tgba yields the identical automaton from
     // the raw formula in milliseconds. Passing the formula straight through
     // avoids that cliff.
+    // The canonical key, not the renamed one: the value is an automaton whose
+    // transitions are labelled with the atoms themselves, so a caller reading
+    // it back needs its own names on those labels (see formula_key.hpp).
+    const std::string& key = formula_key::canonical(formula);
     static std::unordered_map<std::string, std::string> cache;
     // Formulae whose determinization was abandoned at the budget. Memoised
     // like the automata themselves: the blowup is a property of the formula,
@@ -248,12 +253,12 @@ std::string run_ltl2tgba_for_counting(const std::string& formula) {
     static std::mutex cache_mutex;
     {
         std::scoped_lock lock(cache_mutex);
-        const auto found = cache.find(formula);
+        const auto found = cache.find(key);
         if (found != cache.end()) {
             Ltl2tgbaStats::n_cache_hits++;
             return found->second;
         }
-        if (timed_out.count(formula) != 0) {
+        if (timed_out.count(key) != 0) {
             // Same error as the exec would have raised, so a caller sees one
             // behaviour whether or not this formula has been tried before.
             Ltl2tgbaStats::n_cache_hits++;
@@ -268,7 +273,7 @@ std::string run_ltl2tgba_for_counting(const std::string& formula) {
     const auto timeout =
         std::chrono::milliseconds(g_ltl2tgba_timeout_ms.load());
     const ProcessResult result =
-        execute_and_capture({binary, "-D", "-S", "-H", "-f", formula}, timeout);
+        execute_and_capture({binary, "-D", "-S", "-H", "-f", key}, timeout);
     const double elapsed =
         std::chrono::duration<double>(std::chrono::steady_clock::now() - start)
             .count();
@@ -281,7 +286,7 @@ std::string run_ltl2tgba_for_counting(const std::string& formula) {
             std::scoped_lock lock(cache_mutex);
             Ltl2tgbaStats::record_time(elapsed, result.m_cpu_s);
             Ltl2tgbaStats::n_timeouts++;
-            timed_out.insert(formula);
+            timed_out.insert(key);
         }
         throw std::runtime_error("ltl2tgba timed out for formula: " + formula);
     }
@@ -294,7 +299,7 @@ std::string run_ltl2tgba_for_counting(const std::string& formula) {
         std::scoped_lock lock(cache_mutex);
         Ltl2tgbaStats::record_time(elapsed, result.m_cpu_s);
         Ltl2tgbaStats::n_tautology_substitutions++;
-        cache.emplace(formula, k_universal_hoa);
+        cache.emplace(key, k_universal_hoa);
         return k_universal_hoa;
     }
     if (result.m_exit_code != 0) {
@@ -306,21 +311,126 @@ std::string run_ltl2tgba_for_counting(const std::string& formula) {
     }
     std::scoped_lock lock(cache_mutex);
     Ltl2tgbaStats::record_time(elapsed, result.m_cpu_s);
-    cache.emplace(formula, result.m_output);
+    cache.emplace(key, result.m_output);
     return result.m_output;
+}
+
+namespace {
+
+// A 64-bit signature of an id set. A superset test needs every bit of the
+// smaller side present in the larger, so `(small & ~large) != 0` rejects an
+// entry outright and the sorted-vector walk only runs on what survives.
+std::uint64_t signature_of(const std::vector<int>& ids) {
+    std::uint64_t signature = 0;
+    for (const int conjunct_id : ids) {
+        signature |= std::uint64_t{1}
+                     << (static_cast<unsigned>(conjunct_id) % 64U);
+    }
+    return signature;
+}
+
+// Both vectors are sorted and duplicate-free, so this is one merge.
+bool includes_sorted(const std::vector<int>& superset,
+                     const std::vector<int>& subset) {
+    return std::includes(superset.begin(), superset.end(), subset.begin(),
+                         subset.end());
+}
+
+}  // namespace
+
+std::vector<int> RealizabilityChecker::intern_side(
+    const std::vector<std::string>& conjuncts) {
+    std::vector<int> ids;
+    ids.reserve(conjuncts.size());
+    for (const std::string& conjunct : conjuncts) {
+        // Canonically, so that a re-spelling of a conjunct is still the same
+        // conjunct -- which is the whole reason two candidates differing in
+        // one slot are comparable at all.
+        // A tag before the unit separator is carried through verbatim: it
+        // says which section the formula sits in, and the same formula in two
+        // sections is two conjuncts.
+        const std::size_t separator = conjunct.find('\x1f');
+        const std::string key =
+            separator == std::string::npos
+                ? formula_key::canonical(conjunct)
+                : conjunct.substr(0, separator + 1) +
+                      formula_key::canonical(conjunct.substr(separator + 1));
+        const auto found = m_conjunct_ids.find(key);
+        if (found != m_conjunct_ids.end()) {
+            ids.push_back(found->second);
+            continue;
+        }
+        const int fresh = static_cast<int>(m_conjunct_ids.size());
+        m_conjunct_ids.emplace(key, fresh);
+        ids.push_back(fresh);
+    }
+    std::sort(ids.begin(), ids.end());
+    ids.erase(std::unique(ids.begin(), ids.end()), ids.end());
+    return ids;
+}
+
+std::optional<bool> RealizabilityChecker::subsumed_verdict(
+    const std::string& scope, const std::vector<int>& assumptions,
+    const std::vector<int>& guarantees, std::uint64_t assumption_signature,
+    std::uint64_t guarantee_signature) const {
+    const auto bucket = m_decided.find(scope);
+    if (bucket == m_decided.end()) {
+        return std::nullopt;
+    }
+    for (const Decided& entry : bucket->second) {
+        if (entry.m_realizable) {
+            // realizable(A, G) => realizable(A', G') for A' superset A and
+            // G' subset G: the same strategy still wins when the system owes
+            // less and the environment promises more.
+            if ((entry.m_assumption_signature & ~assumption_signature) == 0 &&
+                (guarantee_signature & ~entry.m_guarantee_signature) == 0 &&
+                includes_sorted(assumptions, entry.m_assumptions) &&
+                includes_sorted(entry.m_guarantees, guarantees)) {
+                return true;
+            }
+            continue;
+        }
+        // unrealizable(A, G) => unrealizable(A', G') in the other direction.
+        if ((assumption_signature & ~entry.m_assumption_signature) == 0 &&
+            (entry.m_guarantee_signature & ~guarantee_signature) == 0 &&
+            includes_sorted(entry.m_assumptions, assumptions) &&
+            includes_sorted(guarantees, entry.m_guarantees)) {
+            return false;
+        }
+    }
+    return std::nullopt;
 }
 
 std::optional<bool> RealizabilityChecker::check_realizability(
     const Specification& specification) {
     std::string conj_ltl;
     build_specification_formula(specification, conj_ltl);
+    SpecificationSides sides;
+    for (const Requirement& requirement : specification.m_assumptions) {
+        if (!requirement.m_removed) {
+            sides.m_assumptions.push_back(requirement.m_ltl);
+        }
+    }
+    for (const Requirement& requirement : specification.m_guarantees) {
+        if (!requirement.m_removed) {
+            sides.m_guarantees.push_back(requirement.m_ltl);
+        }
+    }
     return check_realizability_ltl(conj_ltl, specification.m_in_atoms,
-                                   specification.m_out_atoms);
+                                   specification.m_out_atoms, sides);
 }
 
 std::optional<bool> RealizabilityChecker::check_realizability_ltl(
     const std::string& ltl_formula, const std::vector<std::string>& inputs,
     const std::vector<std::string>& outputs) {
+    // No sides: a caller holding only a formula gets the memo alone.
+    return check_realizability_ltl(ltl_formula, inputs, outputs,
+                                   SpecificationSides{});
+}
+
+std::optional<bool> RealizabilityChecker::check_realizability_ltl(
+    const std::string& ltl_formula, const std::vector<std::string>& inputs,
+    const std::vector<std::string>& outputs, const SpecificationSides& sides) {
     // No normalize_ltl() pre-pass, matching run_ltl2tgba_for_counting: ltlsynt
     // simplifies internally, and the specification formula is a conjunction of
     // the guarantees, which reproduces the deeply nested-X shape that hangs
@@ -330,14 +440,40 @@ std::optional<bool> RealizabilityChecker::check_realizability_ltl(
     // the raw formula in milliseconds, so pass it straight through. Unlike the
     // black path, nothing here depends on the "0"/"1" fold normalize enables.
     const std::string& conj_ltl = ltl_formula;
-    const std::string cache_key =
-        conj_ltl + "|" + join_comma(inputs) + "|" + join_comma(outputs);
+    // The canonical key renames the atoms within each side of the partition,
+    // which realizability is invariant under, and folds the declared lists
+    // into it (see formula_key::realizability). It replaces the raw formula
+    // and the two comma-joined lists this used to concatenate.
+    const std::string& cache_key =
+        formula_key::realizability(conj_ltl, inputs, outputs);
+    const bool have_sides =
+        !sides.m_assumptions.empty() || !sides.m_guarantees.empty();
+    // Everything that has to match for a comparison to mean anything: the
+    // caller's own discriminator and the alphabet the synthesiser plays over.
+    const std::string scope = sides.m_scope + "\x1f" + join_comma(inputs) +
+                              "\x1f" + join_comma(outputs);
+    std::vector<int> assumption_ids;
+    std::vector<int> guarantee_ids;
     {
         std::scoped_lock lock(m_cache_mutex);
         const auto found = m_cache.find(cache_key);
         if (found != m_cache.end()) {
             n_cache_hits++;
             return found->second;
+        }
+        if (have_sides) {
+            assumption_ids = intern_side(sides.m_assumptions);
+            guarantee_ids = intern_side(sides.m_guarantees);
+            if (const auto verdict =
+                    subsumed_verdict(scope, assumption_ids, guarantee_ids,
+                                     signature_of(assumption_ids),
+                                     signature_of(guarantee_ids))) {
+                n_subsumed++;
+                // Memoised like any other answer, so the scan is paid once per
+                // distinct query rather than once per occurrence.
+                m_cache.emplace(cache_key, verdict);
+                return verdict;
+            }
         }
         n_cache_misses++;
     }
@@ -396,6 +532,14 @@ std::optional<bool> RealizabilityChecker::check_realizability_ltl(
     // decided; nullopt is not one, so every caller still picks its own
     // direction on every hit.
     m_cache.emplace(cache_key, realizable);
+    // Only a decided verdict joins the table. An undecided one is memoised
+    // above like any other, but it carries no direction, so nothing follows
+    // from it about any other query.
+    if (have_sides && realizable.has_value()) {
+        m_decided[scope].push_back(
+            Decided{assumption_ids, guarantee_ids, signature_of(assumption_ids),
+                    signature_of(guarantee_ids), *realizable});
+    }
     return realizable;
 }
 

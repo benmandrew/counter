@@ -1,0 +1,87 @@
+name = "2026-08-29-aurus-matched"
+branch = "campaign/aurus-matched"
+profile = "matched"
+description = "counter against AuRUS on a common search budget. Phase 1 runs the 2026-08-28 selection x grading cross again under genetic.termination = \"individuals\" at max_individuals = 1000 and population 100, which is AuRUS's own stopping rule, so wall time becomes the measured outcome rather than the budget. Phase 2 gives counter AuRUS's two-hour deadline on the six families where a 400 s horizon truncates AuRUS's own discovery curve."
+
+# Seeds 0-5 split evenly, and the same split as the selection-grading campaign
+# for the same reason: both arms of a pair run on one host, so the split is over
+# seeds and never over the factors, and a host difference cancels inside the
+# (spec, seed) cell the endpoint is read over.
+hosts = { av2 = "0-2", av3 = "3-5" }
+
+# Two config trees because the two phases differ in more than a profile name.
+# Phase 1 fixes the budget in individuals and lets time vary; phase 2 fixes the
+# time and lets the individual count vary. Written as two calls joined with `&&`
+# for the same reason every campaign since aurus-h2h has: the branch carries this
+# declaration and not the config tree, which is untracked, and
+# run_experiments.py exits 1 on an empty configs directory.
+#
+# What the phase-1 flags say, and why each is stated rather than inherited:
+#
+#   --termination individuals       AuRUS's rule. GeneticAlgorithm.java counts
+#   --max-individuals 1000          once per accepted mutant and once per
+#                                   crossover offspring distinct from its first
+#                                   parent, checks the cap between offspring,
+#                                   and every one of the 679 archived h2h logs
+#                                   carrying a settings banner reads
+#                                   GA_MAX_NUM_INDIVIDUALS=1000. Brizzio et al.,
+#                                   GECCO '23 sec. 6: "the termination criterion
+#                                   is reached either when 1000 individuals are
+#                                   generated or after 2hrs of execution time."
+#                                   It is not a cap on solutions -- no archived
+#                                   run reached 1000 of those, median 486.
+#   --population-size 100           GA_POPULATION_SIZE in the same banner. The
+#                                   cap alone is not a match: 1000 individuals
+#                                   at population 200 is half the generations of
+#                                   1000 at population 100.
+#   --generations 500               a ceiling that must not bind. counter breeds
+#                                   population_size - elite_n = 90 offspring a
+#                                   generation and counts only those differing
+#                                   from their parent, so 1000 individuals needs
+#                                   at least 12 generations. If `stopped_by`
+#                                   reads `generations` on any row, that row is
+#                                   measuring the wrong thing.
+#   --parallel 1                    single-threaded, matching AuRUS, and
+#                                   necessary rather than cosmetic here: wall
+#                                   time is the endpoint, so a scoring pool
+#                                   sized by --jobs would make the endpoint a
+#                                   property of the host. It also keeps
+#                                   run_experiments.py's own per-run cap off it.
+#   --weights 0.1 0.2 0.7           the archived banner reads STATUS_FACTOR=0.7,
+#                                   SYNTACTIC_FACTOR=0.1 and two counting terms
+#                                   at 0.1 each, which is this triple with the
+#                                   0.2 standing for the counting pair. Read
+#                                   only by the weighted arm and inert for the
+#                                   two nsga2-apportion ones. Note the paper
+#                                   tunes these per case and reports its table
+#                                   at the best configuration for each; the
+#                                   archived AuRUS runs used one global setting,
+#                                   as counter does here, so the head-to-head is
+#                                   symmetric and neither side is the paper's.
+#   --sweeps G --levels mrs,aurus   the grading factor, riding in level_name
+#   --schemes nsga2-apportion weighted   the selection factor
+#   --metric log --weakening off    the shipping configuration
+#   --pin-vintage                   writes the moved defaults out explicitly
+#
+# Phase 2 differs in three flags and nothing else: no --termination and no
+# --max-individuals, so the run is generation-bounded again; --max-wall-s 7200,
+# matching AuRUS's GA_EXECUTION_TIMEOUT; and --population-size 200, the operating
+# point the 400 s `curves` rows it will be read beside were measured at.
+configs = "python3 scripts/gen_configs.py --tlsf --schemes nsga2-apportion weighted --sweeps G --levels mrs,aurus --metric log --weakening off --weights 0.1 0.2 0.7 --termination individuals --max-individuals 1000 --generations 500 --population-size 100 --parallel 1 --out-dir experiments/configs-matched --pin-vintage && python3 scripts/gen_configs.py --tlsf --schemes nsga2-apportion weighted --sweeps G --levels mrs,aurus --metric log --weakening off --weights 0.1 0.2 0.7 --generations 500 --population-size 200 --max-wall-s 7200 --parallel 1 --out-dir experiments/configs-long --pin-vintage"
+
+# Phase order is load-bearing. Phase 1 is the headline and is cheap -- 1000
+# individuals is roughly 25 s of search at the rate the selection-grading
+# manifests recorded, and the accumulated set left for the gate and the
+# implication filter is about a sixteenth of what a 400 s run leaves. Phase 2 is
+# the uncertain one: it buys two hours of search a run and its post-deadline
+# tail scales with what that search accumulated, so its cost is the half most
+# likely to surprise. Running it second means an overrun costs the top-up rather
+# than the result.
+#
+# jobs = 8 on phase 2 against 16 on phase 1: the 16 was sized by the
+# `curves-calib` phase on 400 s runs, and a run holding its population for two
+# hours is a different peak resident set.
+phases = [
+  { profile = "matched", jobs = 16 },
+  { profile = "matched-long", jobs = 8 },
+]

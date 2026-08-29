@@ -325,22 +325,6 @@ CURVES_CALIB_SPECS: list[str] = [
     "minepump", "rg2",
 ]
 
-# The families where a 400 s horizon truncates AuRUS's own discovery curve, and
-# so the only ones the `matched-long` profile spends two hours a run on. Derived
-# from the 780 archived AuRUS run.log files by pairing each generation row's
-# #Sol field with the Elapsed Time line that follows it, which bounds the first
-# solution above at the generation boundary. Over the 698 runs that ever solve,
-# the median first solution is 5.0 s and 87.1% arrive within 400 s; the 90 that
-# do not are almost entirely these six, humanoid-503 alone contributing 30.
-#
-# AuRUS's seventh, humanoid-741, is absent because H2H_TLSF_READY carries
-# humanoid-742 instead. Adding it there would change what every profile reading
-# that list means, so it is left out rather than smuggled in.
-CURVES_LONG_SPECS: list[str] = [
-    "humanoid-503", "prioritized-arbiter-aurus", "full-arbiter-aurus",
-    "humanoid-531", "humanoid-458", "pcar-v2-888",
-]
-
 # The corpus the 2026-07-24 head-to-head actually ran, frozen so that changing
 # the live list above cannot retroactively change what the `h2h-tlsf` profile
 # means. That profile is the July campaign's definition and nothing else runs
@@ -1423,7 +1407,22 @@ PROFILES: dict[str, dict] = {
         "sweeps": ["G"],
         "levels": {"G": ["mrs", "aurus"]},
         "specs": H2H_TLSF_READY,
-        "seeds": list(range(6)),
+        # 30 rather than the 6 `curves` ran, matching the 30 repeats a family
+        # AuRUS's archived corpus carries (15 per host on each of av2 and av3).
+        # The endpoint is a survival curve and 6 repeats per family per arm
+        # estimates one poorly, which is the whole reason to spend the budget
+        # here rather than on a longer deadline. A budget of 1000 individuals is
+        # what makes it affordable: the smoke run measured 210 s on minepump at
+        # this config, 73 s of it search and the rest the gate and the
+        # implication filter, against the 2012 s `curves` averaged at a 400 s
+        # search. At a mean of 500 s the 3000 runs are about 13 h of wall clock
+        # over the two hosts.
+        #
+        # Must stay consistent with the campaign-level host split, which is the
+        # same number written twice -- a host range wider than this list runs
+        # nothing for the excess. Topping up further is free either way: the
+        # resume key is read off the results CSV, so added seeds re-run nothing.
+        "seeds": list(range(30)),
         # 7200 s rather than the 3600 `curves` used, and the reason is that
         # campaign's own casualty rate: 245 of its 600 runs were killed at 3600 s
         # and lost their manifests, because genetic.max_wall_s bounds the search
@@ -1440,49 +1439,6 @@ PROFILES: dict[str, dict] = {
         "results_dir": EXPERIMENTS_DIR / "results-matched",
         "results_csv": EXPERIMENTS_DIR / "results-matched.csv",
         "default_jobs": 16,
-    },
-    # The time-axis half, on the six families where a 400 s horizon truncates
-    # AuRUS's own discovery curve. Read off the 780 archived AuRUS logs, the
-    # fraction of solving runs finding their first solution within 400 s is
-    # 87.1% overall and near 100% on 19 of the 26 families, whose median first
-    # solution is under 30 s. It collapses on these six. humanoid-503 is the
-    # sharp case: it solves 30 of 30 runs, at a median of 2425 s, so a 400 s
-    # window reports it at 0%.
-    #
-    # AuRUS's seventh such family, humanoid-741, is deliberately absent -- it is
-    # not in H2H_TLSF_READY, which carries humanoid-742 instead, and adding a
-    # family to that list would change what every profile reading it means.
-    #
-    # This arm keeps termination = "generations" and buys its time with
-    # max_wall_s = 7200, matching AuRUS's GA_EXECUTION_TIMEOUT, so counter's
-    # curve is not cut short where AuRUS's is not. The external cap is double
-    # that for the post-deadline gate and filter, which the deadline does not
-    # interrupt; at 7200 s of search the accumulated set is large and that tail
-    # is the expensive half. On the other 19 families the 400 s `curves` rows
-    # already answer the question and this profile deliberately omits them.
-    #
-    # Generate with the `matched` command line, minus --termination and
-    # --max-individuals, plus --max-wall-s 7200 --population-size 200, into
-    # experiments/configs-long.
-    "matched-long": {
-        "schemes": ["nsga2-apportion", "weighted"],
-        "weakenings": ["wkoff"],
-        "metrics": ["log"],
-        "repair_modes": None,
-        "sweeps": ["G"],
-        "levels": {"G": ["mrs", "aurus"]},
-        "specs": CURVES_LONG_SPECS,
-        "seeds": list(range(6)),
-        "timeout_caps": {s: 14400 for s in CURVES_LONG_SPECS},
-        "compare_timeout": 1800,
-        "baseline_aliases": {},
-        "configs_dir": EXPERIMENTS_DIR / "configs-long",
-        "results_dir": EXPERIMENTS_DIR / "results-long",
-        "results_csv": EXPERIMENTS_DIR / "results-long.csv",
-        # 8 rather than 16: these runs hold their populations for two hours
-        # rather than for 400 s, so the peak resident set is the constraint the
-        # curves-calib phase sized 16 against on much shorter runs.
-        "default_jobs": 8,
     },
     # nsga2 vs nsga2-replicate on FRETISH, at the gen40/pop1000 operating point
     # the cj-large and metric campaigns used — so the control arm is checkable

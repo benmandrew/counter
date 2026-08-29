@@ -6,7 +6,7 @@ Pre-registered 2026-08-29, before any row of this campaign existed. Section 2 is
 
 counter's search budget is a count of `generations` and AuRUS's is a count of individuals, so the two tools have never been stopped by the same rule. The `2026-08-14-aurus-h2h` campaign gave counter 10 generations at population 200 against AuRUS's own stopping rule, which is roughly twice the individuals; the `2026-08-28-selection-grading` campaign gave counter a 400 s deadline against nothing at all. Neither says which tool finds more repair per unit of search.
 
-Three keys landed on 2026-08-29 to close that gap — `[genetic] termination`, `max_individuals` and `max_wall_s` — and this campaign is the first use of them. Phase 1 fixes the budget in AuRUS's currency and lets wall time vary, so wall time becomes the measured outcome. Phase 2 fixes AuRUS's two-hour deadline and lets the individual count vary, on the six families where a 400 s horizon truncates AuRUS's own discovery curve.
+Three keys landed on 2026-08-29 to close that gap — `[genetic] termination`, `max_individuals` and `max_wall_s` — and this campaign is the first use of them. It fixes the budget in AuRUS's currency and lets wall time vary, so wall time becomes the measured outcome rather than the budget. One phase, 3000 runs, 30 seeds a family.
 
 The deliverable is the same set of curves the 2026-08-28 campaign produces, read against the archived AuRUS logs on a shared axis.
 
@@ -32,9 +32,9 @@ The 1000 is a cap on bred individuals and never on solutions. Over the 600 archi
 
 counter's `SearchBudget` (`include/genetic/pipeline.hpp`) matches the code on both points: an offspring counts only where it differs from the parent it was bred from, and the budget is checked inside `breed_offspring` between slots rather than at the generation boundary.
 
-## 4. Phase 1: the individuals-matched cross, profile `matched`
+## 4. The individuals-matched cross, profile `matched`
 
-The 2x2 of the 2026-08-28 campaign, run again in AuRUS's currency. `genetic.selection_scheme` crosses `fitness.status_grading` over the 25 families of `H2H_TLSF_READY` at seeds 0 to 5. Four arms, 600 runs.
+The 2x2 of the 2026-08-28 campaign, run again in AuRUS's currency. `genetic.selection_scheme` crosses `fitness.status_grading` over the 25 families of `H2H_TLSF_READY` at seeds 0 to 29. Four arms, 3000 runs.
 
 | arm | `selection_scheme` | `status_grading` |
 |---|---|---|
@@ -42,6 +42,8 @@ The 2x2 of the 2026-08-28 campaign, run again in AuRUS's currency. `genetic.sele
 | 2 | `nsga2-apportion` | `aurus` |
 | 3 | `weighted` | `mrs` |
 | 4 | `weighted` | `aurus` |
+
+Thirty seeds a family matches the 30 repeats AuRUS's archived corpus carries, 15 per host across av2 and av3, so both discovery curves are estimated off the same number of runs. The endpoint is a survival curve, which 6 repeats per family per arm estimates poorly.
 
 Three flags carry the match. `genetic.termination = "individuals"` and `max_individuals = 1000` are AuRUS's rule; `population_size = 100` is `GA_POPULATION_SIZE` from the same banner. The population matters as much as the cap, since 1000 individuals at population 200 is half the generations of 1000 at population 100.
 
@@ -53,23 +55,50 @@ The rest of the configuration is the shipping one and is fixed across all four a
 
 That campaign gave every arm a 400 s `genetic.max_wall_s`. Its 355 surviving manifests read a median 81 generations run at population 200, with p90 256 and a maximum of 461 against a 500-generation ceiling. At 180 offspring a generation that median is about 16,200 bred individuals, roughly 16x AuRUS's budget.
 
-A 400 s window therefore hands counter an order of magnitude more search than AuRUS is allowed. Any claim that counter found more inside 400 s is a claim about the budget rather than about the search, and is not defensible as written. Phase 1 removes that asymmetry by fixing the budget and measuring the time.
+A 400 s window therefore hands counter an order of magnitude more search than AuRUS is allowed. Any claim that counter found more inside 400 s is a claim about the budget rather than about the search, and is not defensible as written. This campaign removes that asymmetry by fixing the budget and measuring the time.
 
-## 6. Phase 2: the time axis, profile `matched-long`
+## 6. Why there is no second phase
 
-Six families — `humanoid-503`, `prioritized-arbiter-aurus`, `full-arbiter-aurus`, `humanoid-531`, `humanoid-458` and `pcar-v2-888` — at the same four arms and the same seeds 0 to 5. 144 runs.
+A second phase was declared and dropped before launch. It would have given counter AuRUS's 7200 s deadline at population 200 on the six families where AuRUS's own first solution lands past 400 s: `humanoid-503`, `prioritized-arbiter-aurus`, `full-arbiter-aurus`, `humanoid-531`, `humanoid-458` and `pcar-v2-888`. Its premise was that a 400 s horizon truncates counter where it truncates AuRUS. The 2026-08-28 campaign's own 600 collected rows falsify that premise, read out of `experiments/results-curves.csv` at 24 runs a family, a 400 s search deadline and a 3600 s external cap.
 
-These runs are generation-bounded again, with `genetic.max_wall_s = 7200` matching `GA_EXECUTION_TIMEOUT`, at `population_size = 200`. That population is the operating point the 400 s `curves` rows this phase will be read beside were measured at, so the two sets of curves share an axis. The external cap is 14400 s, double the deadline, for the post-deadline gate and filter the deadline does not interrupt.
+| family | n | mean_s | max_s | timed out | found repair | implies ideal |
+|---|---|---|---|---|---|---|
+| humanoid-503 | 24 | 494 | 612 | 0 | 15 | 0 |
+| prioritized-arbiter-aurus | 24 | 1877 | 3600 | 9 | 14 | 10 |
+| full-arbiter-aurus | 24 | 1565 | 3600 | 6 | 17 | 11 |
+| humanoid-531 | 24 | 3600 | 3600 | 24 | 0 | 0 |
+| humanoid-458 | 24 | 968 | 2260 | 0 | 24 | 0 |
+| pcar-v2-888 | 24 | 680 | 1195 | 0 | 24 | 0 |
+| (all 25 families) | 600 | 2012 | 3600 | 245 | 340 | 184 |
 
-## 7. Why those six families
+counter already repairs five of the six inside a 400 s search. `humanoid-503` is the sharp case in reverse: AuRUS needs a median 2425 s to its first solution there, and counter finds a repair on 15 of 24 runs inside 400 s. `humanoid-531` is the one unrepaired family, and more search time is the wrong medicine for it, since all 24 of its runs died at the external cap with mean equal to max. What fails there is the post-search gate rather than the search.
 
-The selection comes from the 780 archived AuRUS run logs, by pairing each generation row's `#Sol` field with the `Elapsed Time` line that follows it, which bounds the first solution above at the generation boundary. Of those runs, 698 ever solve. Among the solvers the median first solution is 5.0 s and the p90 is 989 s, and 87.1% arrive within 400 s. On 19 of 26 families the median first solution is under 30 s.
+The phase would have cost about 27 h of wall clock giving counter more of the one resource it already holds in surplus, which is the error the individuals budget exists to correct. That time went into seeds instead, 30 a family rather than 6. The `matched-long` profile and its spec list are deleted from `run_experiments.py` outright rather than left standing unused.
 
-The 90 solving runs that need longer than 400 s are almost entirely these six. `humanoid-503` is the sharp case: it solves 30 of 30 runs, at a median first solution of 2425 s, so a 400 s window reports it at 0%. Spending two hours a run on the other 19 families would buy curve where the 400 s rows already have it.
+## 7. One phase reproduces AuRUS's termination criterion
 
-AuRUS's seventh such family, `humanoid-741`, is deliberately absent. `H2H_TLSF_READY` carries `humanoid-742` instead, and adding a family to that list would change what every profile reading it means, so it is left out rather than smuggled in.
+Dropping the second phase costs nothing in the AuRUS comparison. AuRUS stops on whichever comes first of 1000 individuals or 7200 seconds, and this campaign gives counter the same pair: `max_individuals = 1000`, no `genetic.max_wall_s` at all, and the profile's 7200 s external cap. That is AuRUS's termination criterion reproduced rather than approximated.
 
-## 8. What the paper does not fix, and what must not be claimed against it
+A row whose manifest reads `stopped_by = individuals` spent its entire budget with the deadline slack, so a 7200 s deadline would have changed nothing about it. `stopped_by` is a per-row certificate rather than a counterfactual argument. Rows killed at the external cap are reported as censored, exactly as AuRUS's own 173 killed runs are, and `humanoid-531` is the family to expect there.
+
+What cannot be claimed is anything about counter's behaviour beyond 1000 individuals. There is no AuRUS number to compare such a claim against, AuRUS never running past that either.
+
+## 8. The pre-flight run
+
+The mode was run once at this configuration before launch, on av2's existing binary, over `minepump` at seed 0 and single-threaded.
+
+| field | value |
+|---|---|
+| `stopped_by` | `individuals` |
+| `generations_run` | 26, of a 500 ceiling |
+| `individuals_bred` | 1000, exact, with no overshoot |
+| `wall_s` | 210.3 |
+| `n_repairs` | 33, from 134 realizable |
+| `accumulated/index.tsv` rows | 134, last accumulation at 73.1 s |
+
+Every verification check registered in section 12 passes on it. The tail dominates. Search accounts for 73.1 s of the run and the post-search gate and implication filter for the remaining 137 s, which is 65% of the wall time at this budget.
+
+## 9. What the paper does not fix, and what must not be claimed against it
 
 Three gaps between the paper and the code are recorded here rather than discovered during analysis.
 
@@ -79,15 +108,15 @@ Three gaps between the paper and the code are recorded here rather than discover
 
 **The individual count.** The paper is silent on how an individual generated is counted. It does not say the counter increments once per mutant and once per crossover offspring, nor that an offspring equal to its parent is excluded. counter's `SearchBudget` matches the code on both, so the budget match is a code-level match and has to be described as one.
 
-## 9. AuRUS's timeout does not fire
+## 10. AuRUS's timeout does not fire
 
 Of the 780 archived AuRUS runs, 173 (22.2%) were killed by the harness at 7500 s, concentrated in six hard families. The internal `GA_EXECUTION_TIMEOUT = 7200` printed its `GENETIC ALGORITHM TIMEOUT REACHED` message in 0 of those 780 logs.
 
 The reason is structural. `checkTermination()` sits between offspring in the breeding loops and cannot interrupt the `parallelStream()` fitness evaluation of the whole population, so a run stuck in scoring overruns its own deadline and is killed from outside. The paper's Table 2 reports 7400 s for five cases against its stated 7200 s cap, which is the same behaviour surfacing in the published numbers.
 
-counter's `max_wall_s` has the matching limit and it is recorded in the root `CLAUDE.md`: nothing interrupts filters, scoring or the final gate, so a run overruns by whatever the generation it was in had left. Both tools therefore overshoot their internal deadline, for the same reason, and phase 2's external cap is what bounds each.
+counter's `max_wall_s` has the matching limit and it is recorded in the root `CLAUDE.md`: nothing interrupts filters, scoring or the final gate, so a run overruns by whatever the generation it was in had left. Both tools therefore overshoot their internal deadline, for the same reason, and the external cap is what bounds each.
 
-## 10. The six metrics
+## 11. The six metrics
 
 All six come from `<run-dir>/accumulated/index.tsv` through `scripts/score_curves.py`, which reads the accumulator's flushed record of every candidate that passed the output gate and the elapsed time it was found at. Four are curves against elapsed time and two are scalars.
 
@@ -102,31 +131,29 @@ The last two are computed offline under `--maximality`, after and apart from the
 
 Censoring follows the 2026-08-28 campaign unchanged. A run that never finds an ideal-implying repair has no time to one, and `score_curves.py` writes every such value as an empty field with an explicit `censored` flag rather than a zero or an omitted row.
 
-## 11. Verification checks
+## 12. Verification checks
 
 Five checks come before anything is drawn from these rows. Each is cheap, and each catches a way the campaign silently measures something other than what it declares.
 
-1. **`stopped_by` must read `individuals` on essentially every phase-1 row.** A row reading `generations` means the 500-generation ceiling bound instead of the individuals cap, and that row measures a different budget. `stopped_by`, `generations_run` and `individuals_bred` are in the manifest at schema 21 and are the fields to read.
-2. **`individuals_bred` should sit at or just above 1000 on phase-1 rows.** The budget is checked between offspring slots inside `breed_offspring`, so a small overshoot within one slot is expected. A large one is a bug in the budget wiring.
+1. **`stopped_by` must read `individuals` on essentially every row.** A row reading `generations` means the 500-generation ceiling bound instead of the individuals cap, and that row measures a different budget. `stopped_by`, `generations_run` and `individuals_bred` are in the manifest at schema 21 and are the fields to read.
+2. **`individuals_bred` should sit at or just above 1000.** The budget is checked between offspring slots inside `breed_offspring`, so a small overshoot within one slot is expected; the pre-flight read exactly 1000. A large one is a bug in the budget wiring.
 3. **A flat `ideal_solutions` at zero across every arm points at the join first.** `score_curves.py` joins `compare`'s per-repair output back to the accumulation index by file name, and a broken join reads as a search that found nothing ideal-implying anywhere. Cross-check against the `implies_ideal` column of the results CSV, which comes from a separate `compare` call per run.
-4. **Phase 1 should be cheap and phase 2 should not.** If phase-1 runs approach their 7200 s cap, the assumption that a 1000-individual budget leaves a small accumulated set to filter is wrong, and phase 2's cost estimate is wrong with it.
-5. **Count the censored runs of both phases before any analysis.** A censored run is a run directory holding `accumulated/index.tsv` with no `run.json`. In the 2026-08-28 campaign 245 of 600 runs were censored at a 3600 s cap, which is why the caps here are 7200 s and 14400 s.
+4. **Read this campaign's cost off its own first ~40 rows rather than predicting it.** The 2026-08-28 campaign's estimate was low by a factor of 2.2, because `genetic.max_wall_s` bounds the generation loop and nothing after it — the final realizability gate, the weakening screen and the implication filter all run past the deadline uncapped. This campaign sets no `max_wall_s`, so it does not carry that error in that form, and the pre-flight's 65% tail is one run rather than a distribution. Forty rows give a mean to hold against the 500 s section 13 assumes.
+5. **Count the censored runs before any analysis.** A censored run is a run directory holding `accumulated/index.tsv` with no `run.json`. In the 2026-08-28 campaign 245 of 600 runs were censored at a 3600 s cap, which is why the cap here is 7200 s.
 
-## 12. Cost
+## 13. Cost
 
-Phase 1 is expected cheap. 1000 individuals is roughly 25 s of search at the rate the 2026-08-28 manifests recorded, so the 600 runs come to about 4.2 h of search in total, and the post-search realizability gate and implication filter dominate the bill rather than the search itself.
+At a mean of 500 s a run the 3000 runs come to about 13 h of wall clock over the two hosts at `jobs = 16` each. The available budget is roughly 68 h of wall clock across av2 and av3.
 
-Phase 2 is the uncertain half, and the 2026-08-28 campaign is the reason to say so plainly. That campaign's cost estimate was low by a factor of 2.2, because `genetic.max_wall_s` bounds the generation loop and nothing after it — the final realizability gate, the weakening screen and the implication filter all run past the deadline uncapped. The same correction has not been validated at a 7200 s deadline, where the accumulated set the filters walk is far larger, so phase 2's cost is to be read off its first ~40 rows rather than predicted from phase 1.
+The 2012 s mean of the 2026-08-28 campaign is the pessimistic bound on that figure. Its search was 400 s against this campaign's 73.1 s, and the post-search gate and implication filter walk an accumulated set sized by the search that produced it, so a budget of 1000 individuals leaves far less to filter.
 
-The ceiling on phase-2 search alone is 144 x 7200 s = 288 h, which is 18 h of wall clock at `jobs = 8` on each of av2 and av3. The available budget is roughly 68 h of wall clock across the two hosts. Phase order is what protects that: phase 1 is the headline and runs first, so an overrun in phase 2 costs the top-up rather than the result.
+`jobs = 16` comes from the declaration and was sized by the `curves-calib` phase against 400 s runs.
 
-`jobs = 16` on phase 1 and 8 on phase 2. The 16 was sized by the `curves-calib` phase against 400 s runs, and a run holding its population for two hours has a different peak resident set.
+## 14. Provenance
 
-## 13. Provenance
+Branch `campaign/aurus-matched`, declared in `campaign.toml` beside this file, which carries the per-host seed split — av2 takes seeds 0 to 14, av3 takes 15 to 29 — so no range is ever chosen at a prompt. The split is over seeds and never over the factors, so both arms of every contrast run on one host and a host difference cancels inside the `(spec, seed)` cell. It must stay equal to the `matched` profile's seed list, the two being the same number written twice.
 
-Branch `campaign/aurus-matched`, declared in `campaign.toml` beside this file, which carries the per-host seed split — av2 takes seeds 0 to 2, av3 takes 3 to 5 — so no range is ever chosen at a prompt. The split is over seeds and never over the factors, so both arms of every contrast run on one host and a host difference cancels inside the `(spec, seed)` cell.
-
-Two config trees, `experiments/configs-matched` and `experiments/configs-long`, generated on the host at stage time by the two `gen_configs.py` calls the declaration joins with `&&`. The phases differ in more than a profile name, phase 1 fixing the budget in individuals and phase 2 fixing it in seconds, so one tree could not serve both.
+One config tree, `experiments/configs-matched`, generated on the host at stage time by the `gen_configs.py` call the declaration carries.
 
 On close, vendor `gen_configs.py`, `run_experiments.py`, `merge_experiments.py` and `score_curves.py` into `scripts/` beside this plan with their blob shas in `PROVENANCE.json`, and record whether the branch merged, was split or was rebased. `PROVENANCE.json` records the absence of a decision rule in the same field the other archives use for the decision taken, since a blank there would read as an unfinished close.
 

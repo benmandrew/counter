@@ -415,6 +415,8 @@ GEN_CONFIGS_FIELDS = {
     "p_burst_continue": "tlsf_p_burst_continue",
     "max_concurrent_realizability": "max_concurrent_realizability",
     "max_wall_s": "max_wall_s",
+    "termination": "termination",
+    "max_individuals": "max_individuals",
 }
 
 # Entries that deliberately do not track config.hpp, each with the reason it

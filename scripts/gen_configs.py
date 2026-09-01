@@ -144,6 +144,12 @@ DEFAULTS: dict = {
     "p_trigger": 0.5,
     "p_response": 0.5,
     "p_timing": 0.15,
+    # FRETISH only: probability a mutation moves the scope along its
+    # implication order. It ships at 0, where the arm costs no RNG draw, so a
+    # run reproduces one from before scopes existed. Emitted into [mutation]
+    # only when a sweep overrides it (see make_toml), so the standard grids stay
+    # byte-identical. No sweep crosses it yet; the campaign that would is owed.
+    "p_scope": 0.0,
     # Probability a mutation appends a new environment (fairness) assumption
     # rather than rewriting an existing requirement/section. Emitted into
     # [mutation] only when a sweep overrides it (see make_toml), so the standard
@@ -299,8 +305,10 @@ def make_toml(overrides: dict, defaults: dict = DEFAULTS) -> str:
         f"p_trigger  = {_fmt(d['p_trigger'])}",
         f"p_response = {_fmt(d['p_response'])}",
         f"p_timing   = {_fmt(d['p_timing'])}",
-    ] + ([f"p_add_assumption = {_fmt(d['p_add_assumption'])}"]
-         if "p_add_assumption" in overrides else []) + (
+    ] + ([f"p_scope = {_fmt(d['p_scope'])}"]
+        if "p_scope" in overrides else []) + (
+        [f"p_add_assumption = {_fmt(d['p_add_assumption'])}"]
+        if "p_add_assumption" in overrides else []) + (
         [f"p_remove_guarantee = {_fmt(d['p_remove_guarantee'])}"]
         if "p_remove_guarantee" in overrides else []) + (
         [f"allow_output_assumptions = {_fmt(d['allow_output_assumptions'])}"]

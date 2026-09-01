@@ -104,7 +104,8 @@ bool specification_is_not_well_separated(const Specification& specification,
     std::optional<bool> realizable;
     try {
         realizable = checker.check_realizability_ltl(
-            formula, specification.m_in_atoms, specification.m_out_atoms);
+            formula, environment_signals(specification),
+            specification.m_out_atoms);
     } catch (const std::exception&) {
         WellSeparationStats::n_errors.fetch_add(1, std::memory_order_relaxed);
     }

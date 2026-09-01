@@ -30,6 +30,11 @@
       "type": "array",
       "items": { "type": "string" }
     },
+    "modes": {
+      "description": "Operating modes a requirement's scope may be relative to. Their own namespace, disjoint from in_atoms and out_atoms; they join the environment (uncontrollable) side of the synthesis partition. Absent means the specification uses no scopes.",
+      "type": "array",
+      "items": { "type": "string" }
+    },
     "fitness": { "$ref": "#/$defs/FitnessRecord" }
   },
   "$defs": {
@@ -56,8 +61,40 @@
         "weakenable": {
           "description": "When false, the genetic algorithm never mutates this requirement or uses it as a crossover source. Defaults to true when absent.",
           "type": "boolean"
-        }
+        },
+        "scope": { "$ref": "#/$defs/Scope" }
       }
+    },
+    "Scope": {
+      "description": "The interval, relative to when a mode holds, over which the requirement is enforced. Absent means Global, which is also what an omitted FRET scope means.",
+      "type": "object",
+      "required": ["type"],
+      "additionalProperties": false,
+      "properties": {
+        "type": {
+          "type": "string",
+          "enum": [
+            "Global",
+            "In",
+            "NotIn",
+            "Before",
+            "After",
+            "OnlyIn",
+            "OnlyBefore",
+            "OnlyAfter"
+          ]
+        },
+        "mode": {
+          "description": "Name of the mode, which must appear in the specification's modes list. Required for every type but Global, and forbidden for Global.",
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "if": {
+        "properties": { "type": { "const": "Global" } }
+      },
+      "then": { "not": { "required": ["mode"] } },
+      "else": { "required": ["mode"] }
     },
     "Timing": {
       "description": "Temporal modifier controlling when the response must hold relative to the condition.",

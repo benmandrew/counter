@@ -165,13 +165,40 @@ What lands there is the raw set of gate-passing candidates. ``repair_N.json`` an
 
 ``run.json`` records ``n_accumulated_repairs``: how many repairs the accumulator contributed that the final population's own collection did not already hold. It reads 0 with the key off, and also when every accumulated repair happened to survive to the last generation, so read it against the config key rather than on its own.
 
-``[mutation]`` weights what a mutation does. ``p_trigger`` (0.5), ``p_response`` (0.5) and ``p_timing`` (0.15) select which part of a FRETISH requirement is rewritten.
+``[mutation]`` weights what a mutation does. ``p_trigger`` (0.5), ``p_response`` (0.5) and ``p_timing`` (0.15) select which part of a FRETISH requirement is rewritten, and ``p_scope`` (0) reaches a field those three leave alone.
 
 ``p_add_assumption`` (0.05) is the structural operator shared by both paths: rather than rewriting an existing requirement, it appends a new environment assumption. It is the only way the search can repair an unrealisability that needs the environment strengthened — adding a fairness assumption to an unrealisable *generalised reactivity of rank 1* (GR(1)) specification, say. The rewrite-only operators cannot express that move. Of the assumptions it appends, ``p_conditional_assumption`` (0.25) is the fraction guarded by a random input atom rather than by ``true``; ``G F <input>`` is strictly stronger than ``G(c -> F <input>)`` and so the more effective repair, which is why the unconditional form keeps most of the draw.
 
 ``p_remove_guarantee`` (0.05) is the mirror of ``p_add_assumption``, shared by both paths. Rather than rewriting a requirement, it deletes one guarantee outright — a FRETISH guarantee requirement, or a TLSF guarantee-side conjunct from ``PRESET``, ``ASSERT`` or ``GUARANTEE``. Some repairs are reachable no other way. Every ``drop-*`` ideal in ``examples/`` deletes a guarantee, and for ``amba``, ``full-arbiter``, ``load-balancer``, ``prioritized-arbiter`` and ``round-robin-arbiter`` it is the only ideal there is, so their ``implies_ideal`` score was zero by construction. The operator never deletes the last live guarantee, since a specification with nothing left to guarantee is realisable by doing nothing and is no repair. A deleted guarantee is *tombstoned* in place rather than erased from the list, because the similarity objectives pair requirements by position; erasing one would shift every later requirement and start comparing unrelated pairs against the original. The key value matches ``p_add_assumption``, the two being the same move in opposite directions, and there is no reason for the environment to be easier to strengthen than the system is to relax. The operators are offered as a cascade with early return, ``p_add_assumption`` tested first and this one only where that did not fire, so the realised rate is 0.95 × 0.05 = 0.0475 rather than 0.05. Setting it to 0 reproduces a run from before the operator existed, which is what reproducing a campaign archived before 2026-08-13 requires. Deleting a guarantee is monotonically good for realisability, so the status objective pays for it while the similarity objectives do not, and under NSGA-II a heavily gutted candidate is non-dominated. TLSF sweep D in ``scripts/gen_configs.py`` exists to measure whether that costs repair quality.
 
 ``allow_output_assumptions`` (on) lets an assumption reference output atoms as well as inputs. It buys the reactive-environment assumptions ``G(<output> -> F <input>)`` that an input-only draw cannot express. Stopping the system from writing itself an assumption it can defeat is then the status score's job rather than a syntactic ban's: an assumption side the system can force to fail costs the candidate the top status tier, and the output gate refuses to write it whatever the filters say.
+
+``p_scope`` (0) is a *directional* arm, and it applies on the FRETISH path alone. It rewrites a field whose values are ordered by implication, so a move strengthens or weakens the requirement in a direction known before the draw. It defaults to 0, which means it does not fire unless a configuration turns it on, and no campaign has yet measured it.
+
+``p_scope`` moves a requirement between FRET *scopes* — ``global``, ``in``, ``except in``, ``before``, ``after``, and the three ``only`` forms — which say over what interval, relative to a mode, the requirement is enforced. Its order is thin and depends on the timing. It was measured with ``ltlfilt --implied-by`` at tick counts 2 and 4, which agree, so it does not depend on the tick count. Under a continual condition at any timing but ``eventually``, ``global`` implies ``in``, ``except in``, ``before`` and ``after``, and ``except in`` implies ``before``; a trigger condition under ``always`` gives that same order, and under any other timing but ``eventually`` it keeps only ``global`` implies ``before`` and ``except in`` implies ``before``.
+
+The order thins out under ``eventually`` because a scope boundary relaxes a bounded obligation and tightens an unbounded one. ``in m ... eventually r`` demands that the response arrive before the mode ends, which the global-scoped form does not, so ``global`` stops implying ``in`` there and the continual cell keeps ``global`` implies ``after`` and ``except in`` implies ``before`` alone. ``except in`` implies ``before`` in every cell, the interval strictly before the first mode entry being contained in the points where the mode does not hold. The three ``only`` scopes are incomparable with every other scope and with each other, so a requirement carrying one cannot move on this field at all.
+
+A non-``global`` scope names a mode, so the arm draws from the specification's declared modes and is inert on a specification that declares none. Every example that predates the feature is global-scoped, which leaves ``p_scope`` a no-op across most of the corpus; ``examples/mode-arbiter`` is the scoped subject that ships with it.
+
+At 0 the key does not touch the ``RandomSource``. It reads its probability before drawing, so the breeding stream is byte-identical to what it was before the arm existed and a seeded run reproduces a pre-scope run exactly. The determinism goldens are unchanged.
+
+Scopes and modes
+~~~~~~~~~~~~~~~~
+
+A FRETISH specification declares its modes in a ``modes`` list, beside the input and output atoms:
+
+.. code-block:: json
+
+   {
+     "modes": ["maintenance"],
+     "in_atoms": ["request"],
+     "out_atoms": ["grant"]
+   }
+
+The three lists are disjoint, and a scope naming an atom absent from ``modes`` is rejected at load rather than defaulted. Modes are environment-driven: they join ``ltlsynt``'s input side alongside the input atoms. A mode on the output side would let the synthesised system pick its own scope. An ``in``-scoped guarantee is implied by ``G !mode`` and a ``before``-scoped one is discharged by holding the mode at time 0, so every scope would come with a free way of satisfying the requirement without repairing anything. The rejection has the same reason behind it. ``ltlsynt`` is passed only ``--ins`` and treats every atom it was not told about as an output, so an undeclared mode lands silently on the wrong side of the partition.
+
+Mode exclusivity is not generated for you. FRET keeps it in its variable definitions, which the ``formalize`` path never sees, so a specification whose modes are meant to be mutually exclusive has to say so as an ordinary requirement, marked non-weakenable so that the search cannot relax it. ``examples/fsm-combined/spec.json`` already does this for its enum atoms. Writing the axiom by hand is the price of a lowering that never invents a constraint the author did not write.
 
 Termination
 -----------

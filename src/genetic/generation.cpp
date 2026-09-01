@@ -69,7 +69,8 @@ Specification simplify_offspring(Specification offspring) {
     simplify_all(offspring.m_assumptions);
     simplify_all(offspring.m_guarantees);
     Specification rededuped(offspring.m_assumptions, offspring.m_guarantees,
-                            offspring.m_in_atoms, offspring.m_out_atoms);
+                            offspring.m_in_atoms, offspring.m_out_atoms,
+                            offspring.m_modes);
     if (rededuped.m_assumptions.size() != pre_simplify.m_assumptions.size() ||
         rededuped.m_guarantees.size() != pre_simplify.m_guarantees.size()) {
         return pre_simplify;

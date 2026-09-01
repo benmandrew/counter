@@ -24,6 +24,7 @@ add_executable(counter_tests
     fitness/syntactic_similarity_tests.cpp
     fitness/transfer_matrix_tests.cpp
     requirement_tests.cpp
+    scope_tests.cpp
     prop_formula/ast_tests.cpp
     prop_formula/canonical_tests.cpp
     prop_formula/cnf_tests.cpp
@@ -119,6 +120,7 @@ add_test(NAME counter_tests.implication_filter COMMAND counter_tests implication
 add_test(NAME counter_tests.vacuity_filter COMMAND counter_tests vacuity_filter)
 add_test(NAME counter_tests.well_separation_filter COMMAND counter_tests well_separation_filter)
 add_test(NAME counter_tests.requirement COMMAND counter_tests requirement)
+add_test(NAME counter_tests.scope COMMAND counter_tests scope)
 add_test(NAME counter_tests.serialisation COMMAND counter_tests serialisation)
 add_test(NAME counter_tests.config_io COMMAND counter_tests config_io)
 add_test(NAME counter_tests.dashboard COMMAND counter_tests dashboard)

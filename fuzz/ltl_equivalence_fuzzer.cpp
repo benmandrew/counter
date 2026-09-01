@@ -20,6 +20,7 @@
 #include <cstdlib>
 #include <iostream>
 #include <string>
+#include <variant>
 
 #include "requirement.hpp"
 #include "runner/formaliser.hpp"
@@ -104,6 +105,34 @@ Timing generate_timing(ByteConsumer& bytes) {
     }
 }
 
+// Drawn over one fixed mode name: the fuzzer varies the scope's shape, and the
+// mode is an opaque atom to every rule the lowering applies to it.
+//
+// Bounded timings are left to the caller. At zero ticks FRET's own output holds
+// the degenerate `F[0,-1] ...`, which SPOT cannot parse, so the CLI's answer
+// there is unusable rather than merely different -- those rows are pinned by
+// hand in test/scope_tests.cpp instead.
+Scope generate_scope(ByteConsumer& bytes) {
+    switch (bytes.next(8)) {
+        case 0:
+            return Scope{};
+        case 1:
+            return Scope{ScopeKind::In, "mode"};
+        case 2:
+            return Scope{ScopeKind::NotIn, "mode"};
+        case 3:
+            return Scope{ScopeKind::Before, "mode"};
+        case 4:
+            return Scope{ScopeKind::After, "mode"};
+        case 5:
+            return Scope{ScopeKind::OnlyIn, "mode"};
+        case 6:
+            return Scope{ScopeKind::OnlyBefore, "mode"};
+        default:
+            return Scope{ScopeKind::OnlyAfter, "mode"};
+    }
+}
+
 }  // namespace
 
 extern "C" int LLVMFuzzerTestOneInput(const std::uint8_t* data,
@@ -118,9 +147,21 @@ extern "C" int LLVMFuzzerTestOneInput(const std::uint8_t* data,
     const Timing tim = generate_timing(bytes);
     const ConditionType condition_type =
         bytes.next(2) == 0 ? ConditionType::Continual : ConditionType::Trigger;
+    const Scope scope = generate_scope(bytes);
+    // A zero-tick bounded timing under a bounded scope is the one family the
+    // CLI cannot arbitrate, so it is skipped rather than compared. See
+    // generate_scope.
+    const auto* within = std::get_if<timing::WithinTicks>(&tim);
+    const auto* for_ticks = std::get_if<timing::ForTicks>(&tim);
+    if (!scope.is_global() &&
+        ((within != nullptr && within->m_ticks == 0) ||
+         (for_ticks != nullptr && for_ticks->m_ticks == 0))) {
+        return 0;
+    }
 
     const Requirement req(Formula(condition_str), Formula(response_str), tim,
-                          condition_type);
+                          condition_type, /*weakenable=*/true,
+                          /*removed=*/false, scope);
     const std::string hand_rolled_ltl = req.m_ltl;
     const std::string fretish = req.to_string();
     const std::string cli_ltl = global_formaliser().formalise(fretish);
@@ -134,6 +175,7 @@ extern "C" int LLVMFuzzerTestOneInput(const std::uint8_t* data,
         std::cerr << "LTL equivalence mismatch:\n"
                   << "  condition:       " << condition_str << "\n"
                   << "  response:        " << response_str << "\n"
+                  << "  scope:           " << ::to_string(scope) << "\n"
                   << "  timing/type:     " << ::to_string(tim) << " / "
                   << (condition_type == ConditionType::Trigger ? "Trigger"
                                                                : "Continual")

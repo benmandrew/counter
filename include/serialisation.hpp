@@ -5,6 +5,7 @@
 ///        Specification, and related types via nlohmann/json.
 
 #include <algorithm>
+#include <array>
 #include <cstddef>
 #include <fstream>
 #include <iterator>
@@ -69,6 +70,62 @@ inline void from_json(const nlohmann::json& jobj, Timing& tim) {
 
 }  // namespace timing
 
+// --- Scope ---
+
+inline const char* scope_kind_name(ScopeKind kind) {
+    switch (kind) {
+        case ScopeKind::Global:
+            return "Global";
+        case ScopeKind::In:
+            return "In";
+        case ScopeKind::NotIn:
+            return "NotIn";
+        case ScopeKind::Before:
+            return "Before";
+        case ScopeKind::After:
+            return "After";
+        case ScopeKind::OnlyIn:
+            return "OnlyIn";
+        case ScopeKind::OnlyBefore:
+            return "OnlyBefore";
+        case ScopeKind::OnlyAfter:
+            return "OnlyAfter";
+    }
+    return "Global";
+}
+
+/// Every ScopeKind, in declaration order. The JSON reader and the schema check
+/// both walk this, so a new kind reaches both by being added here.
+inline const std::array<ScopeKind, 8>& scope_kinds() {
+    static const std::array<ScopeKind, 8> kinds = {
+        ScopeKind::Global,     ScopeKind::In,       ScopeKind::NotIn,
+        ScopeKind::Before,     ScopeKind::After,    ScopeKind::OnlyIn,
+        ScopeKind::OnlyBefore, ScopeKind::OnlyAfter};
+    return kinds;
+}
+
+inline void to_json(nlohmann::json& jobj, const Scope& scope) {
+    jobj = {{"type", scope_kind_name(scope.m_kind)}};
+    if (!scope.is_global()) {
+        jobj["mode"] = scope.m_mode;
+    }
+}
+
+inline void from_json(const nlohmann::json& jobj, Scope& scope) {
+    const std::string type = jobj.at("type").get<std::string>();
+    for (const ScopeKind kind : scope_kinds()) {
+        if (type != scope_kind_name(kind)) {
+            continue;
+        }
+        scope.m_kind = kind;
+        scope.m_mode = kind == ScopeKind::Global
+                           ? std::string()
+                           : jobj.at("mode").get<std::string>();
+        return;
+    }
+    throw std::invalid_argument("unknown scope type: " + type);
+}
+
 // --- Requirement ---
 
 inline void to_json(nlohmann::json& jobj, const Requirement& req) {
@@ -85,6 +142,12 @@ inline void to_json(nlohmann::json& jobj, const Requirement& req) {
     // (weakenable).
     if (!stripped.m_weakenable) {
         jobj["weakenable"] = false;
+    }
+    // Emitted only when scoped, so every specification written before scopes
+    // existed round-trips byte for byte; absence means Global, which is also
+    // what an omitted FRET scope means.
+    if (!stripped.m_scope.is_global()) {
+        jobj["scope"] = stripped.m_scope;
     }
 }
 
@@ -110,6 +173,11 @@ inline void to_json(nlohmann::json& jobj, const Specification& spc) {
             {"guarantees", live(spc.m_guarantees)},
             {"in_atoms", stripped.m_in_atoms},
             {"out_atoms", stripped.m_out_atoms}};
+    // Same rule as a requirement's scope: absent unless used, so an unscoped
+    // specification is written exactly as it was before modes existed.
+    if (!stripped.m_modes.empty()) {
+        jobj["modes"] = stripped.m_modes;
+    }
 }
 
 namespace serialisation {
@@ -122,10 +190,12 @@ inline Requirement requirement_from_json(const nlohmann::json& jobj) {
     const ConditionType ctype = ctype_str == "trigger"
                                     ? ConditionType::Trigger
                                     : ConditionType::Continual;
-    return Requirement(Formula(jobj.at("condition").get<std::string>()),
-                       Formula(jobj.at("response").get<std::string>()),
-                       jobj.at("timing").get<Timing>(), ctype,
-                       jobj.value("weakenable", true));
+    return Requirement(
+        Formula(jobj.at("condition").get<std::string>()),
+        Formula(jobj.at("response").get<std::string>()),
+        jobj.at("timing").get<Timing>(), ctype, jobj.value("weakenable", true),
+        false,
+        jobj.contains("scope") ? jobj.at("scope").get<Scope>() : Scope{});
 }
 
 /// Per-component breakdown entry stored alongside a scored specification.
@@ -185,7 +255,8 @@ inline void from_json(const nlohmann::json& jobj, ScoredSpecification& ssc) {
     ssc.spec = Specification(
         parse_reqs(jobj.at("assumptions")), parse_reqs(jobj.at("guarantees")),
         jobj.at("in_atoms").get<std::vector<std::string>>(),
-        jobj.at("out_atoms").get<std::vector<std::string>>());
+        jobj.at("out_atoms").get<std::vector<std::string>>(),
+        jobj.value("modes", std::vector<std::string>{}));
     if (jobj.contains("fitness")) {
         ssc.fitness = jobj.at("fitness").get<FitnessRecord>();
     }
@@ -205,10 +276,68 @@ inline void from_json(const nlohmann::json& jobj, Specification& spc) {
     spc = Specification(parse_reqs(jobj.at("assumptions")),
                         parse_reqs(jobj.at("guarantees")),
                         jobj.at("in_atoms").get<std::vector<std::string>>(),
-                        jobj.at("out_atoms").get<std::vector<std::string>>());
+                        jobj.at("out_atoms").get<std::vector<std::string>>(),
+                        jobj.value("modes", std::vector<std::string>{}));
 }
 
 namespace detail {
+
+inline std::optional<std::string> validate_timing_json(
+    const nlohmann::json& timing, const std::string& path) {
+    if (!timing.is_object()) {
+        return path + ": must be an object";
+    }
+    if (!timing.contains("type") || !timing.at("type").is_string()) {
+        return path + ".type: must be a string";
+    }
+    const std::string ttype = timing.at("type").get<std::string>();
+    if (ttype != "Immediately" && ttype != "NextTimepoint" &&
+        ttype != "WithinTicks" && ttype != "ForTicks" &&
+        ttype != "AfterTicks" && ttype != "Eventually" && ttype != "Always") {
+        return path + ".type: unknown value '" + ttype + "'";
+    }
+    if (ttype != "WithinTicks" && ttype != "ForTicks" &&
+        ttype != "AfterTicks") {
+        return std::nullopt;
+    }
+    if (!timing.contains("ticks") || !timing.at("ticks").is_number_unsigned()) {
+        return path + ".ticks: must be a non-negative integer";
+    }
+    return std::nullopt;
+}
+
+inline std::optional<std::string> validate_scope_json(
+    const nlohmann::json& scope, const std::string& path) {
+    if (!scope.is_object()) {
+        return path + ": must be an object";
+    }
+    if (!scope.contains("type") || !scope.at("type").is_string()) {
+        return path + ".type: must be a string";
+    }
+    const std::string stype = scope.at("type").get<std::string>();
+    const auto& kinds = scope_kinds();
+    const bool known = std::any_of(
+        kinds.begin(), kinds.end(),
+        [&stype](ScopeKind kind) { return stype == scope_kind_name(kind); });
+    if (!known) {
+        return path + ".type: unknown value '" + stype + "'";
+    }
+    // Every kind but Global names a mode, and Global names none. A mode on a
+    // Global scope would be dropped on load, so it is rejected rather than
+    // ignored: silently discarding it would let a specification say one thing
+    // and mean another.
+    if (stype == "Global") {
+        if (scope.contains("mode")) {
+            return path + ".mode: Global scope takes no mode";
+        }
+        return std::nullopt;
+    }
+    if (!scope.contains("mode") || !scope.at("mode").is_string() ||
+        scope.at("mode").get<std::string>().empty()) {
+        return path + ".mode: must be a non-empty string";
+    }
+    return std::nullopt;
+}
 
 inline std::optional<std::string> validate_requirement_json(
     const nlohmann::json& req, const std::string& path) {
@@ -238,28 +367,61 @@ inline std::optional<std::string> validate_requirement_json(
     if (!req.contains("timing")) {
         return path + ".timing: missing required field";
     }
-    const nlohmann::json& timing = req.at("timing");
-    if (!timing.is_object()) {
-        return path + ".timing: must be an object";
-    }
-    if (!timing.contains("type") || !timing.at("type").is_string()) {
-        return path + ".timing.type: must be a string";
-    }
-    const std::string ttype = timing.at("type").get<std::string>();
-    if (ttype != "Immediately" && ttype != "NextTimepoint" &&
-        ttype != "WithinTicks" && ttype != "ForTicks" &&
-        ttype != "AfterTicks" && ttype != "Eventually" && ttype != "Always") {
-        return path + ".timing.type: unknown value '" + ttype + "'";
-    }
-    if (ttype == "WithinTicks" || ttype == "ForTicks" ||
-        ttype == "AfterTicks") {
-        if (!timing.contains("ticks") ||
-            !timing.at("ticks").is_number_unsigned()) {
-            return path + ".timing.ticks: must be a non-negative integer";
-        }
+    if (auto err = validate_timing_json(req.at("timing"), path + ".timing")) {
+        return err;
     }
     if (req.contains("weakenable") && !req.at("weakenable").is_boolean()) {
         return path + ".weakenable: must be a boolean";
+    }
+    if (req.contains("scope")) {
+        if (auto err = validate_scope_json(req.at("scope"), path + ".scope")) {
+            return err;
+        }
+    }
+    return std::nullopt;
+}
+
+/// Checks the declared modes against the scopes that use them, and against the
+/// two atom lists. Modes are their own namespace, so a name in both is
+/// ambiguous rather than merely redundant: the lowering would emit one atom
+/// while ltlsynt was told about two different signals.
+///
+/// This is the one cross-field check in the file. Nothing validates that a
+/// condition or response mentions only declared atoms, but a scope's mode has
+/// to be declared, since it is what decides the mode reaches ltlsynt's input
+/// side at all — an undeclared one falls through to the output side, where the
+/// synthesised system can discharge the scope by never entering the mode.
+inline std::optional<std::string> validate_modes_json(
+    const nlohmann::json& jobj) {
+    std::vector<std::string> declared;
+    if (jobj.contains("modes")) {
+        declared = jobj.at("modes").get<std::vector<std::string>>();
+    }
+    const auto is_declared = [&declared](const std::string& name) {
+        return std::find(declared.begin(), declared.end(), name) !=
+               declared.end();
+    };
+    for (const char* field : {"in_atoms", "out_atoms"}) {
+        for (const auto& atom : jobj.at(field)) {
+            if (atom.is_string() && is_declared(atom.get<std::string>())) {
+                return std::string("modes: '") + atom.get<std::string>() +
+                       "' is also declared in " + field;
+            }
+        }
+    }
+    for (const char* field : {"assumptions", "guarantees"}) {
+        const nlohmann::json& reqs = jobj.at(field);
+        for (std::size_t i = 0; i < reqs.size(); ++i) {
+            const nlohmann::json& req = reqs.at(i);
+            if (!req.contains("scope") || !req.at("scope").contains("mode")) {
+                continue;
+            }
+            const auto mode = req.at("scope").at("mode").get<std::string>();
+            if (!is_declared(mode)) {
+                return std::string(field) + "[" + std::to_string(i) +
+                       "].scope.mode: '" + mode + "' is not declared in modes";
+            }
+        }
     }
     return std::nullopt;
 }
@@ -355,6 +517,14 @@ inline std::optional<std::string> validate_specification_json(
         if (auto err = detail::validate_requirement_array_json(jobj, field)) {
             return err;
         }
+    }
+    if (jobj.contains("modes")) {
+        if (auto err = detail::validate_string_array_json(jobj, "modes")) {
+            return err;
+        }
+    }
+    if (auto err = detail::validate_modes_json(jobj)) {
+        return err;
     }
     if (jobj.contains("fitness")) {
         return detail::validate_fitness_json(jobj.at("fitness"));

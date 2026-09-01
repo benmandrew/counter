@@ -368,6 +368,107 @@ Timing weaken_timing(const Timing& timing, const RandomSource& random_source) {
     return std::visit(mutation_function, timing);
 }
 
+// --- Scope and condition type -------------------------------------------
+//
+// Both fields carry an implication order, so both can be mutated in a
+// direction the way timings are, rather than redrawn freely and left to the
+// filters. Every edge below was measured with `ltlfilt --implied-by` over the
+// lowered formula; test_scope_order_is_pinned re-derives them, so a wrong entry
+// fails the suite rather than surfacing later as a candidate that moved the
+// wrong way.
+
+// Continual implies Trigger for every scope and every timing, strictly except
+// at `always`, where the two coincide: a trigger fires on the rising edges of
+// its condition, which are a subset of the timepoints where the condition
+// holds. So Continual is the strengthening and Trigger the weakening, and this
+// order needs no table.
+// The scope order depends on the timing and the condition type, because the
+// scope boundary relaxes a bounded obligation but *tightens* an unbounded one:
+// `in m ... eventually r` demands the response arrive before the mode ends,
+// which global scope does not, so `global => in` holds at `always` and fails at
+// `eventually`. Measured tick counts 2 and 4 give identical orders, so the
+// table is independent of n.
+//
+// `notin => before` is the one edge holding in every cell: the interval
+// strictly before the first entry into the mode is contained in the set of
+// points where the mode does not hold.
+//
+// The three "only" scopes are an antichain in every cell -- each constrains a
+// different complement -- so a requirement already carrying one cannot move on
+// this field at all.
+struct ScopeEdge {
+    ScopeKind m_stronger;
+    ScopeKind m_weaker;
+};
+
+std::vector<ScopeEdge> scope_order(const Timing& timing,
+                                   ConditionType condition_type) {
+    const ScopeEdge notin_before{ScopeKind::NotIn, ScopeKind::Before};
+    std::vector<ScopeEdge> from_global{{ScopeKind::Global, ScopeKind::In},
+                                       {ScopeKind::Global, ScopeKind::NotIn},
+                                       {ScopeKind::Global, ScopeKind::Before},
+                                       {ScopeKind::Global, ScopeKind::After},
+                                       notin_before};
+    const bool is_eventually =
+        std::holds_alternative<timing::Eventually>(timing);
+    const bool is_always = std::holds_alternative<timing::Always>(timing);
+    if (is_eventually) {
+        // Under `eventually` the boundary turns `F r` into `!boundary U r`, a
+        // strengthening, so global sits below three of the four scopes.
+        if (condition_type == ConditionType::Continual) {
+            return {{ScopeKind::Global, ScopeKind::After}, notin_before};
+        }
+        return {notin_before};
+    }
+    if (condition_type == ConditionType::Continual || is_always) {
+        return from_global;
+    }
+    // A trigger's rising edge is itself confined by the boundary, which costs
+    // the three edges a continual condition keeps.
+    return {{ScopeKind::Global, ScopeKind::Before}, notin_before};
+}
+
+// A scope other than Global names a mode, so a move onto one is available only
+// where the specification declares at least one.
+Scope move_scope(const Scope& scope, Direction direction, const Timing& timing,
+                 ConditionType condition_type,
+                 const std::vector<std::string>& mode_pool,
+                 const RandomSource& random_source) {
+    std::vector<Scope> candidates;
+    for (const ScopeEdge& edge : scope_order(timing, condition_type)) {
+        const ScopeKind from = direction == Direction::Strengthen
+                                   ? edge.m_weaker
+                                   : edge.m_stronger;
+        const ScopeKind target = direction == Direction::Strengthen
+                                     ? edge.m_stronger
+                                     : edge.m_weaker;
+        if (from != scope.m_kind) {
+            continue;
+        }
+        if (target == ScopeKind::Global) {
+            candidates.push_back(Scope{});
+            continue;
+        }
+        if (!scope.is_global()) {
+            // Every edge between two non-Global scopes holds one mode at a
+            // time: `notin m` implies `before m`, and implies nothing about
+            // `before m'`. The mode travels with the move, and the pool is not
+            // consulted.
+            candidates.push_back(Scope{target, scope.m_mode});
+            continue;
+        }
+        // Global implies the scoped form for *every* mode, so any declared one
+        // is a sound target.
+        for (const std::string& mode : mode_pool) {
+            candidates.push_back(Scope{target, mode});
+        }
+    }
+    if (candidates.empty()) {
+        return scope;
+    }
+    return candidates[random_source.next_index(candidates.size())];
+}
+
 }  // namespace
 
 std::vector<Timing> collect_timing_pool(const Specification& specification) {
@@ -405,6 +506,7 @@ Requirement mutate_requirement(const Requirement& requirement,
                                const std::vector<std::string>& condition_atoms,
                                Direction direction,
                                const std::vector<Timing>& timing_pool,
+                               const std::vector<std::string>& mode_pool,
                                const RandomSource& random_source,
                                const Config& cfg) {
     Requirement mutated = requirement;
@@ -422,6 +524,18 @@ Requirement mutate_requirement(const Requirement& requirement,
     if (random_source.next_real() < cfg.p_timing) {
         mutated.m_timing = mutate_timing(requirement.m_timing, direction,
                                          timing_pool, random_source);
+    }
+    // The arm tests its probability before touching the RandomSource, so at
+    // the default of 0 it costs no draw and the breeding stream is what it was
+    // before scopes existed -- the p_remove_guarantee discipline. The
+    // determinism goldens are recorded at that default and pin the key.
+    if (cfg.p_scope > 0.0 && random_source.next_real() < cfg.p_scope) {
+        // Read off the mutated timing and condition type, not the original's:
+        // the order table is a fact about the requirement being written, and an
+        // arm above may have just moved either of them.
+        mutated.m_scope =
+            move_scope(requirement.m_scope, direction, mutated.m_timing,
+                       mutated.m_condition_type, mode_pool, random_source);
     }
     mutated.m_ltl = requirement_to_ltl(mutated);
     return mutated;
@@ -535,7 +649,8 @@ Specification add_assumption(const Specification& specification,
                              timing::eventually(), ConditionType::Continual,
                              /*weakenable=*/true);
     return Specification(std::move(assumptions), specification.m_guarantees,
-                         specification.m_in_atoms, specification.m_out_atoms);
+                         specification.m_in_atoms, specification.m_out_atoms,
+                         specification.m_modes);
 }
 
 // Guarantee slots that removal may take: weakenable, and not already removed.
@@ -566,7 +681,8 @@ Specification remove_guarantee(const Specification& specification,
         removable[random_source.next_index(removable.size())];
     guarantees[choice].m_removed = true;
     return Specification(specification.m_assumptions, std::move(guarantees),
-                         specification.m_in_atoms, specification.m_out_atoms);
+                         specification.m_in_atoms, specification.m_out_atoms,
+                         specification.m_modes);
 }
 
 }  // namespace
@@ -660,12 +776,13 @@ Specification mutate_specification(const Specification& specification,
     // form.
     std::vector<Requirement>& target = is_assumption ? assumptions : guarantees;
     const std::size_t local_idx = is_assumption ? idx : idx - n_assumptions;
-    target[local_idx] =
-        mutate_requirement(target[local_idx], mutation_atoms, condition_atoms,
-                           direction, timing_pool, random_source, cfg);
+    target[local_idx] = mutate_requirement(
+        target[local_idx], mutation_atoms, condition_atoms, direction,
+        timing_pool, specification.m_modes, random_source, cfg);
     if (creates_duplicate(target, local_idx)) {
         return specification;
     }
     return Specification(std::move(assumptions), std::move(guarantees),
-                         specification.m_in_atoms, specification.m_out_atoms);
+                         specification.m_in_atoms, specification.m_out_atoms,
+                         specification.m_modes);
 }

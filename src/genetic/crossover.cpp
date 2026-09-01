@@ -287,8 +287,12 @@ Specification crossover_specifications(const Specification& first_parent,
     // second parent's is, since the merge is written back into a slot of the
     // first. That is what lets an individual that has gained an assumption
     // still breed, which under index-for-index pairing it could not.
+    // Modes are signals too, and join the guard for the same reason: a scope
+    // grafted from a parent that declares a different mode set would name a
+    // mode the offspring has never declared.
     if (first_parent.m_in_atoms != second_parent.m_in_atoms ||
-        first_parent.m_out_atoms != second_parent.m_out_atoms) {
+        first_parent.m_out_atoms != second_parent.m_out_atoms ||
+        first_parent.m_modes != second_parent.m_modes) {
         return first_parent;
     }
     // Both calls draw, and the order in which arguments of one call are
@@ -300,7 +304,8 @@ Specification crossover_specifications(const Specification& first_parent,
     std::vector<Requirement> guarantees = crossover_req_lists(
         first_parent.m_guarantees, second_parent.m_guarantees, random_source);
     Specification offspring(std::move(assumptions), std::move(guarantees),
-                            first_parent.m_in_atoms, first_parent.m_out_atoms);
+                            first_parent.m_in_atoms, first_parent.m_out_atoms,
+                            first_parent.m_modes);
     // Specification constructor deduplicates; if dedup reduced the count the
     // offspring has a different structure than the parents and cannot safely
     // participate in future crossovers — fall back to first_parent.

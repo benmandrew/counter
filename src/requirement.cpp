@@ -105,6 +105,190 @@ std::string expand_after(const std::string& response, std::size_t ticks) {
     return inner;
 }
 
+// --- Scopes ---------------------------------------------------------------
+//
+// A scope restricts the interval over which a requirement is enforced, so a
+// bounded obligation that would run past the end of that interval is
+// discharged at the boundary instead of having to complete. Every function
+// below takes that boundary as a string, empty meaning "no boundary": either
+// the requirement is unscoped, or its scope runs to the end of the trace. The
+// empty case must reproduce the pre-scope output byte for byte, since every
+// archived run, every cache key and the determinism goldens are recorded
+// against it.
+//
+// The whole construction is validated against the vendored FRET formaliser
+// over the scope x condition x timing cross product; see
+// test_scope_agrees_with_formaliser.
+
+// The point immediately *before* the mode rises. FRET's start-of-mode marker.
+std::string start_of_mode(const std::string& mode) {
+    return "((!" + mode + ") & X" + mode + ")";
+}
+
+// The last point at which the mode still holds. FRET's end-of-mode marker.
+std::string end_of_mode(const std::string& mode) {
+    return "(" + mode + " & X(!" + mode + "))";
+}
+
+// F[0,ticks] response, discharged early at the boundary.
+std::string within_body(const std::string& response, std::size_t ticks,
+                        const std::string& boundary) {
+    std::string base = "(" + expand_within(response, ticks) + ")";
+    // The boundary disjunct spans [0, ticks-1], an empty interval at zero
+    // ticks: the obligation falls due at the very point the scope is entered,
+    // so there is no room for the boundary to pre-empt it. FRET prints this
+    // case as the degenerate `F[0,-1] ...`, which SPOT refuses to parse, so
+    // reproducing it would emit LTL no tool downstream can read.
+    if (boundary.empty() || ticks == 0) {
+        return base;
+    }
+    return "(" + base + " | (" + expand_within(boundary, ticks - 1) + "))";
+}
+
+// G[0,ticks] response, discharged early at the boundary.
+std::string for_body(const std::string& response, std::size_t ticks,
+                     const std::string& boundary) {
+    std::string base = "(" + expand_for(response, ticks) + ")";
+    if (boundary.empty()) {
+        return base;
+    }
+    return "(" + base + " | (" + boundary + " R " + response + "))";
+}
+
+// The timing obligation over @p response, discharged early at @p boundary.
+std::string timing_body(const Timing& timing, const std::string& response,
+                        const std::string& boundary) {
+    const bool bounded = !boundary.empty();
+    return std::visit(
+        [&](const auto& variant) -> std::string {
+            using T = std::decay_t<decltype(variant)>;
+            if constexpr (std::is_same_v<T, timing::Immediately>) {
+                return response;
+            } else if constexpr (std::is_same_v<T, timing::NextTimepoint>) {
+                return bounded ? "(" + boundary + " | X" + response + ")"
+                               : "X" + response;
+            } else if constexpr (std::is_same_v<T, timing::WithinTicks>) {
+                return within_body(response, variant.m_ticks, boundary);
+            } else if constexpr (std::is_same_v<T, timing::ForTicks>) {
+                return for_body(response, variant.m_ticks, boundary);
+            } else if constexpr (std::is_same_v<T, timing::AfterTicks>) {
+                if (!bounded) {
+                    return "(" + expand_after(response, variant.m_ticks) + ")";
+                }
+                // Both halves of FRET's "after n" have to relax separately,
+                // which the single X-chain expand_after builds cannot express.
+                return "(" +
+                       for_body("(!" + response + ")", variant.m_ticks,
+                                boundary) +
+                       " & " +
+                       within_body(response, variant.m_ticks + 1, boundary) +
+                       ")";
+            } else if constexpr (std::is_same_v<T, timing::Eventually>) {
+                return bounded ? "((!" + boundary + ") U " + response + ")"
+                               : "F" + response;
+            } else {
+                return bounded ? "(" + boundary + " R " + response + ")"
+                               : "G" + response;
+            }
+        },
+        timing);
+}
+
+// The timing whose obligation is the negation of @p timing's: within and for
+// swap, eventually and always swap, and the two unbounded ones are their own
+// duals. AfterTicks has no dual timing and is handled by its caller.
+Timing dual_timing(const Timing& timing) {
+    return std::visit(
+        [](const auto& variant) -> Timing {
+            using T = std::decay_t<decltype(variant)>;
+            if constexpr (std::is_same_v<T, timing::WithinTicks>) {
+                return timing::for_ticks(variant.m_ticks);
+            } else if constexpr (std::is_same_v<T, timing::ForTicks>) {
+                return timing::within_ticks(variant.m_ticks);
+            } else if constexpr (std::is_same_v<T, timing::Eventually>) {
+                return timing::always();
+            } else if constexpr (std::is_same_v<T, timing::Always>) {
+                return timing::eventually();
+            } else {
+                return variant;
+            }
+        },
+        timing);
+}
+
+// The negation of timing_body: the obligation that the response is *not*
+// delivered on this timing. The three "only" scopes constrain what happens
+// outside their interval, which is exactly this.
+std::string negated_timing_body(const Timing& timing,
+                                const std::string& response,
+                                const std::string& boundary) {
+    const std::string negated = "(!" + response + ")";
+    if (const auto* after = std::get_if<timing::AfterTicks>(&timing)) {
+        // !((for n !r) & (within n+1 r)) == (within n r) | (for n+1 !r).
+        return "(" + within_body(response, after->m_ticks, boundary) + " | " +
+               for_body(negated, after->m_ticks + 1, boundary) + ")";
+    }
+    return timing_body(dual_timing(timing), negated, boundary);
+}
+
+// The boundary marker whose truth ends the scope's interval, or the empty
+// string where the interval runs to the end of the trace and nothing is ever
+// discharged early.
+std::string scope_boundary(const Scope& scope) {
+    switch (scope.m_kind) {
+        case ScopeKind::Global:
+        case ScopeKind::After:
+        case ScopeKind::OnlyBefore:
+            return "";
+        case ScopeKind::In:
+        case ScopeKind::OnlyAfter:
+            return end_of_mode(scope.m_mode);
+        case ScopeKind::NotIn:
+        case ScopeKind::Before:
+        case ScopeKind::OnlyIn:
+            return start_of_mode(scope.m_mode);
+    }
+    assert(false);
+    __builtin_unreachable();
+}
+
+// Places the conditioned obligation @p inner at the start of the scope's
+// interval, and at every later re-entry where the interval repeats.
+std::string scope_wrap(const Scope& scope, const std::string& inner) {
+    const std::string& mode = scope.m_mode;
+    const std::string som = start_of_mode(mode);
+    const std::string eom = end_of_mode(mode);
+    switch (scope.m_kind) {
+        case ScopeKind::Global:
+        // "only after" constrains the prefix running up to the mode's last
+        // point, which starts at t=0, so the obligation needs no placing. Its
+        // boundary does all the work.
+        case ScopeKind::OnlyAfter:
+            return inner;
+        case ScopeKind::In:
+            return "(G((!" + som + ") | X(" + inner + ")) & (" + mode + " -> " +
+                   inner + "))";
+        // "only in" constrains everything outside the mode, which is the same
+        // interval "except in" enforces over, so the two share a wrapper and
+        // differ only in that this one negates the obligation.
+        case ScopeKind::NotIn:
+        case ScopeKind::OnlyIn:
+            return "(G((!" + eom + ") | X(" + inner + ")) & ((!" + mode +
+                   ") -> " + inner + "))";
+        case ScopeKind::Before:
+            return "(" + inner + " | " + mode + ")";
+        case ScopeKind::After:
+            return "(((!" + eom + ") U (" + eom + " & X(" + inner +
+                   "))) | G(!" + eom + "))";
+        case ScopeKind::OnlyBefore:
+            return "(((!" + mode + ") -> (((!" + som + ") U (" + som + " & X(" +
+                   inner + "))) | G(!" + som + "))) & (" + mode + " -> " +
+                   inner + "))";
+    }
+    assert(false);
+    __builtin_unreachable();
+}
+
 }  // namespace
 
 bool operator<(const Timing& lhs, const Timing& rhs) {
@@ -131,16 +315,46 @@ bool operator==(const Timing& lhs, const Timing& rhs) {
     return !(lhs < rhs) && !(rhs < lhs);
 }
 
+bool operator<(const Scope& lhs, const Scope& rhs) {
+    if (lhs.m_kind != rhs.m_kind) {
+        return lhs.m_kind < rhs.m_kind;
+    }
+    return lhs.m_mode < rhs.m_mode;
+}
+
+bool operator==(const Scope& lhs, const Scope& rhs) {
+    return lhs.m_kind == rhs.m_kind && lhs.m_mode == rhs.m_mode;
+}
+
+bool is_only_scope(ScopeKind kind) {
+    return kind == ScopeKind::OnlyIn || kind == ScopeKind::OnlyBefore ||
+           kind == ScopeKind::OnlyAfter;
+}
+
 Requirement::Requirement(Formula condition, Formula response,
                          const Timing& timing, ConditionType condition_type,
-                         bool weakenable, bool removed)
+                         bool weakenable, bool removed, Scope scope)
     : m_condition(std::move(condition)),
       m_response(std::move(response)),
       m_timing(timing),
       m_condition_type(condition_type),
+      // Ahead of m_ltl in the member order, and it has to stay there:
+      // requirement_to_ltl reads the scope off *this.
+      m_scope(std::move(scope)),
       m_ltl(requirement_to_ltl(*this)),
       m_weakenable(weakenable),
       m_removed(removed) {}
+
+std::vector<std::string> environment_signals(
+    const Specification& specification) {
+    if (specification.m_modes.empty()) {
+        return specification.m_in_atoms;
+    }
+    std::vector<std::string> signals = specification.m_in_atoms;
+    signals.insert(signals.end(), specification.m_modes.begin(),
+                   specification.m_modes.end());
+    return signals;
+}
 
 std::size_t count_live(const std::vector<Requirement>& reqs) {
     return static_cast<std::size_t>(
@@ -178,6 +392,12 @@ bool operator<(const Requirement& lhs, const Requirement& rhs) {
     if (lhs.m_condition_type != rhs.m_condition_type) {
         return lhs.m_condition_type < rhs.m_condition_type;
     }
+    if (lhs.m_scope < rhs.m_scope) {
+        return true;
+    }
+    if (rhs.m_scope < lhs.m_scope) {
+        return false;
+    }
     if (lhs.m_ltl != rhs.m_ltl) {
         return lhs.m_ltl < rhs.m_ltl;
     }
@@ -192,15 +412,19 @@ bool operator==(const Requirement& lhs, const Requirement& rhs) {
            lhs.m_condition == rhs.m_condition &&
            lhs.m_response == rhs.m_response &&
            lhs.m_condition_type == rhs.m_condition_type &&
-           lhs.m_ltl == rhs.m_ltl && lhs.m_weakenable == rhs.m_weakenable &&
+           lhs.m_scope == rhs.m_scope && lhs.m_ltl == rhs.m_ltl &&
+           lhs.m_weakenable == rhs.m_weakenable &&
            lhs.m_removed == rhs.m_removed;
 }
 
 Specification::Specification(std::vector<Requirement> assumptions,
                              std::vector<Requirement> guarantees,
                              std::vector<std::string> in_atoms,
-                             std::vector<std::string> out_atoms)
-    : m_in_atoms(std::move(in_atoms)), m_out_atoms(std::move(out_atoms)) {
+                             std::vector<std::string> out_atoms,
+                             std::vector<std::string> modes)
+    : m_in_atoms(std::move(in_atoms)),
+      m_out_atoms(std::move(out_atoms)),
+      m_modes(std::move(modes)) {
     auto deduplicate =
         [](std::vector<Requirement> reqs) -> std::vector<Requirement> {
         std::set<Requirement> seen;
@@ -217,18 +441,32 @@ Specification::Specification(std::vector<Requirement> assumptions,
     m_guarantees = deduplicate(std::move(guarantees));
 }
 
+// A mode is an atom of the lowered formula like any other, so it is tagged
+// alongside the condition and response atoms: an untagged mode named `Grant`
+// would lex as G applied to `rant`, which is the whole reason the tag exists.
+Scope rewrite_scope_mode(
+    const Scope& scope,
+    const std::function<std::string(const std::string&)>& transform) {
+    if (scope.is_global()) {
+        return scope;
+    }
+    return Scope{scope.m_kind, transform(scope.m_mode)};
+}
+
 Requirement add_atom_prefix(const Requirement& req) {
     return Requirement(rewrite_atom_names(req.m_condition, prefix_atom_name),
                        rewrite_atom_names(req.m_response, prefix_atom_name),
                        req.m_timing, req.m_condition_type, req.m_weakenable,
-                       req.m_removed);
+                       req.m_removed,
+                       rewrite_scope_mode(req.m_scope, prefix_atom_name));
 }
 
 Requirement strip_atom_prefix(const Requirement& req) {
     return Requirement(rewrite_atom_names(req.m_condition, unprefix_atom_name),
                        rewrite_atom_names(req.m_response, unprefix_atom_name),
                        req.m_timing, req.m_condition_type, req.m_weakenable,
-                       req.m_removed);
+                       req.m_removed,
+                       rewrite_scope_mode(req.m_scope, unprefix_atom_name));
 }
 
 Specification add_atom_prefix(const Specification& spec) {
@@ -243,7 +481,8 @@ Specification add_atom_prefix(const Specification& spec) {
     return Specification(
         map_prefix(spec.m_assumptions), map_prefix(spec.m_guarantees),
         transform_atom_vector(spec.m_in_atoms, prefix_atom_name),
-        transform_atom_vector(spec.m_out_atoms, prefix_atom_name));
+        transform_atom_vector(spec.m_out_atoms, prefix_atom_name),
+        transform_atom_vector(spec.m_modes, prefix_atom_name));
 }
 
 Specification strip_atom_prefix(const Specification& spec) {
@@ -258,7 +497,8 @@ Specification strip_atom_prefix(const Specification& spec) {
     return Specification(
         map_strip(spec.m_assumptions), map_strip(spec.m_guarantees),
         transform_atom_vector(spec.m_in_atoms, unprefix_atom_name),
-        transform_atom_vector(spec.m_out_atoms, unprefix_atom_name));
+        transform_atom_vector(spec.m_out_atoms, unprefix_atom_name),
+        transform_atom_vector(spec.m_modes, unprefix_atom_name));
 }
 
 bool operator<(const Specification& lhs, const Specification& rhs) {
@@ -272,7 +512,7 @@ bool operator==(const Specification& lhs, const Specification& rhs) {
     return lhs.m_assumptions == rhs.m_assumptions &&
            lhs.m_guarantees == rhs.m_guarantees &&
            lhs.m_in_atoms == rhs.m_in_atoms &&
-           lhs.m_out_atoms == rhs.m_out_atoms;
+           lhs.m_out_atoms == rhs.m_out_atoms && lhs.m_modes == rhs.m_modes;
 }
 
 std::string to_string(const Timing& timing) {
@@ -309,6 +549,36 @@ std::string to_string(ConditionType condition_type) {
     __builtin_unreachable();
 }
 
+std::string to_string(const Scope& scope) {
+    switch (scope.m_kind) {
+        case ScopeKind::Global:
+            return "";
+        case ScopeKind::In:
+            return "in " + scope.m_mode;
+        // FRET's grammar spells this one "except in" (or "unless in", or "when
+        // not in"). A bare "not in" is a parse error there, so the internal
+        // NotIn name and the FRETish text deliberately differ.
+        case ScopeKind::NotIn:
+            return "except in " + scope.m_mode;
+        case ScopeKind::Before:
+            return "before " + scope.m_mode;
+        case ScopeKind::After:
+            return "after " + scope.m_mode;
+        case ScopeKind::OnlyIn:
+            return "only in " + scope.m_mode;
+        case ScopeKind::OnlyBefore:
+            return "only before " + scope.m_mode;
+        case ScopeKind::OnlyAfter:
+            return "only after " + scope.m_mode;
+    }
+    assert(false);
+    __builtin_unreachable();
+}
+
+std::string Requirement::scope_to_string() const {
+    return ::to_string(m_scope);
+}
+
 std::string Requirement::condition_to_string() const {
     // requirement_to_ltl only drops the G(...) wrapper for a true condition
     // when m_condition_type is Trigger (a trigger on an always-true
@@ -325,7 +595,9 @@ std::string Requirement::condition_to_string() const {
 }
 
 std::string Requirement::to_string() const {
-    return condition_to_string() + " C shall " + ::to_string(m_timing) +
+    const std::string scope = scope_to_string();
+    return (scope.empty() ? std::string() : scope + " ") +
+           condition_to_string() + " C shall " + ::to_string(m_timing) +
            " satisfy " + m_response.to_string();
 }
 
@@ -368,43 +640,48 @@ std::string requirement_to_ltl(const Requirement& requirement) {
     assert(requirement.m_response.is_propositional());
     const std::string condition_str =
         "(" + requirement.m_condition.to_string() + ")";
-    std::string response_str = "(" + requirement.m_response.to_string() + ")";
+    const std::string response_str =
+        "(" + requirement.m_response.to_string() + ")";
 
-    // Compute the timing body — the same expansion used for both condition
-    // types; only the outer wrapper differs.
-    const std::string body = std::visit(
-        [&](const auto& variant) -> std::string {
-            using T = std::decay_t<decltype(variant)>;
-            if constexpr (std::is_same_v<T, timing::Immediately>) {
-                return response_str;
-            } else if constexpr (std::is_same_v<T, timing::NextTimepoint>) {
-                return "X" + response_str;
-            } else if constexpr (std::is_same_v<T, timing::WithinTicks>) {
-                return "(" + expand_within(response_str, variant.m_ticks) + ")";
-            } else if constexpr (std::is_same_v<T, timing::ForTicks>) {
-                return "(" + expand_for(response_str, variant.m_ticks) + ")";
-            } else if constexpr (std::is_same_v<T, timing::AfterTicks>) {
-                return "(" + expand_after(response_str, variant.m_ticks) + ")";
-            } else if constexpr (std::is_same_v<T, timing::Eventually>) {
-                return "F" + response_str;
-            } else {
-                return "G" + response_str;
-            }
-        },
-        requirement.m_timing);
+    const Scope& scope = requirement.m_scope;
+    const std::string boundary = scope_boundary(scope);
+    // An "only" scope says the response is delivered *only* inside its
+    // interval, so what it constrains is the interval's complement, and the
+    // obligation carried there is the negation of the timing's.
+    const std::string body =
+        is_only_scope(scope.m_kind)
+            ? negated_timing_body(requirement.m_timing, response_str, boundary)
+            : timing_body(requirement.m_timing, response_str, boundary);
 
+    const bool bounded = !boundary.empty();
     if (requirement.m_condition_type == ConditionType::Continual) {
-        return "G(" + condition_str + " -> " + body + ")";
+        const std::string obligation =
+            "(" + condition_str + " -> " + body + ")";
+        return scope_wrap(scope, bounded
+                                     ? "(" + boundary + " R " + obligation + ")"
+                                     : "G" + obligation);
     }
     // Trigger: fires on rising edge (!C & X(C)) -> X(body), plus bare (C ->
     // body) at t=0.  When C is the constant true the rising-edge clause is
     // vacuously true (!(true) is always false), so the formula collapses to
     // just the initial obligation.  Emitting the full G form causes black's
     // BMC to time out on deeply-nested X bodies even though it is trivially
-    // satisfied.
+    // satisfied.  The collapse survives a scope by the same algebra: the
+    // rising-edge half becomes `boundary R true`, which is true.
     if (requirement.m_condition.to_string() == "true") {
-        return condition_str + " -> " + body;
+        return scope_wrap(scope, condition_str + " -> " + body);
     }
-    return "G((!" + condition_str + " & X" + condition_str + ") -> X(" + body +
-           ")) & (" + condition_str + " -> " + body + ")";
+    if (!bounded) {
+        return scope_wrap(
+            scope, "G((!" + condition_str + " & X" + condition_str + ") -> X(" +
+                       body + ")) & (" + condition_str + " -> " + body + ")");
+    }
+    // Inside a bounded scope the rising edge itself has to be confined: an edge
+    // at the boundary belongs to the next interval, not this one, so the
+    // boundary is excluded from both the edge and the point the body lands on.
+    return scope_wrap(scope, "((" + boundary + " R (((!" + condition_str +
+                                 ") & (X" + condition_str + " & (!" + boundary +
+                                 "))) -> (X(" + body + ") & (!" + boundary +
+                                 ")))) & (" + condition_str + " -> " + body +
+                                 "))");
 }

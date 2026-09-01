@@ -102,7 +102,7 @@ namespace {
 // version it can also spend an offspring budget or pass a deadline, and only
 // stopped_by separates the three. individuals_bred is null wherever no budget
 // was active, an unbudgeted run not paying for the count.
-constexpr int k_schema_version = 21;
+constexpr int k_schema_version = 22;
 
 // The inverse of the spellings config_io.cpp parses. It has no table to
 // borrow -- it only ever goes string to enum -- so these must be kept in step
@@ -244,6 +244,7 @@ nlohmann::json config_json(const Config& cfg) {
          {{"p_trigger", cfg.p_trigger},
           {"p_response", cfg.p_response},
           {"p_timing", cfg.p_timing},
+          {"p_scope", cfg.p_scope},
           {"p_add_assumption", cfg.p_add_assumption},
           {"p_remove_guarantee", cfg.p_remove_guarantee},
           {"p_conditional_assumption", cfg.p_conditional_assumption},

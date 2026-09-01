@@ -382,6 +382,14 @@ Timing weaken_timing(const Timing& timing, const RandomSource& random_source) {
 // its condition, which are a subset of the timepoints where the condition
 // holds. So Continual is the strengthening and Trigger the weakening, and this
 // order needs no table.
+// The order has two elements, so the direction alone names the target and the
+// current value is not read: strengthening an already-Continual requirement
+// leaves it where it is, exactly as strengthen_timing does at Always.
+ConditionType mutate_condition_type(Direction direction) {
+    return direction == Direction::Strengthen ? ConditionType::Continual
+                                              : ConditionType::Trigger;
+}
+
 // The scope order depends on the timing and the condition type, because the
 // scope boundary relaxes a bounded obligation but *tightens* an unbounded one:
 // `in m ... eventually r` demands the response arrive before the mode ends,
@@ -525,10 +533,14 @@ Requirement mutate_requirement(const Requirement& requirement,
         mutated.m_timing = mutate_timing(requirement.m_timing, direction,
                                          timing_pool, random_source);
     }
-    // The arm tests its probability before touching the RandomSource, so at
-    // the default of 0 it costs no draw and the breeding stream is what it was
-    // before scopes existed -- the p_remove_guarantee discipline. The
-    // determinism goldens are recorded at that default and pin the key.
+    // Both arms test their probability before touching the RandomSource, so at
+    // the default of 0 neither costs a draw and the breeding stream is what it
+    // was before scopes existed -- the p_remove_guarantee discipline. The
+    // determinism goldens are recorded at that default and pin both keys.
+    if (cfg.p_condition_type > 0.0 &&
+        random_source.next_real() < cfg.p_condition_type) {
+        mutated.m_condition_type = mutate_condition_type(direction);
+    }
     if (cfg.p_scope > 0.0 && random_source.next_real() < cfg.p_scope) {
         // Read off the mutated timing and condition type, not the original's:
         // the order table is a fact about the requirement being written, and an

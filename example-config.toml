@@ -72,10 +72,11 @@ mrs_admission_order = "degree"  # or "spec"
 p_trigger  = 0.5
 p_response = 0.5
 p_timing   = 0.15
-# FRETISH only, off by default: at 0 the arm draws nothing from the RNG, so a
-# seeded run reproduces exactly what it did before scopes existed. It also needs
-# the specification to declare a mode to have anywhere to go.
-p_scope = 0.0
+# FRETISH only, and both off by default: at 0 neither arm draws from the RNG, so
+# a seeded run reproduces exactly what it did before scopes existed. p_scope
+# additionally needs the specification to declare a mode to have anywhere to go.
+p_condition_type = 0.0
+p_scope          = 0.0
 # Both modes: the probability that a mutation instead appends a new environment
 # assumption, and the fraction of those guarded by a random input atom rather
 # than by `true`.

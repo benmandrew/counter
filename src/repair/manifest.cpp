@@ -244,6 +244,7 @@ nlohmann::json config_json(const Config& cfg) {
          {{"p_trigger", cfg.p_trigger},
           {"p_response", cfg.p_response},
           {"p_timing", cfg.p_timing},
+          {"p_condition_type", cfg.p_condition_type},
           {"p_scope", cfg.p_scope},
           {"p_add_assumption", cfg.p_add_assumption},
           {"p_remove_guarantee", cfg.p_remove_guarantee},

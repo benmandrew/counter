@@ -429,6 +429,14 @@ struct Config {
     double p_trigger = 0.5;
     double p_response = 0.5;
     double p_timing = 0.15;
+    /// FRETISH only: per-requirement probability of moving the condition type
+    /// along its implication order. Continual implies Trigger for every scope
+    /// and every timing (strictly, except at `always` where the two coincide),
+    /// so strengthening picks Continual and weakening Trigger. Defaults to 0,
+    /// where the arm costs no RNG draw at all and the breeding stream is
+    /// byte-identical to the one before it existed -- the p_remove_guarantee
+    /// discipline. No campaign has measured it off 0.
+    double p_condition_type = 0.0;
     /// FRETISH only: per-requirement probability of moving the scope along its
     /// implication order. That order depends on the timing and the condition
     /// type, since a scope boundary relaxes a bounded obligation but tightens
@@ -436,9 +444,7 @@ struct Config {
     /// measured table. A move onto a non-Global scope needs a declared mode, so
     /// on a specification declaring none -- which is every example under
     /// examples/ -- the arm can only reach Global and is a no-op. Defaults to 0
-    /// where the arm costs no RNG draw at all and the breeding
-    /// stream is byte-identical to the one before it existed -- the
-    /// p_remove_guarantee discipline. No campaign has measured it off 0.
+    /// on the same terms as p_condition_type.
     double p_scope = 0.0;
     /// Low-probability structural mutation, shared by both modes: append a new
     /// environment assumption (over input atoms) rather than rewriting an

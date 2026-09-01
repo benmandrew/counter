@@ -139,8 +139,13 @@ def load_curves(path):
     from here.
     """
     if not Path(path).exists():
-        return None, None
+        return None, None, None
     curves = collections.defaultdict(lambda: collections.defaultdict(list))
+    # A blank value is a metric that could not be decided -- `compare` failed,
+    # so the run has no ideal count -- which is a different fact from a run
+    # that found none. Read as zero it drags every mean towards zero silently,
+    # so the pair is recorded and excluded from that metric's aggregate.
+    unknown = set()
     scalars = {}
     for row in load_rows(path):
         if not row.get("spec"):
@@ -155,12 +160,26 @@ def load_curves(path):
             )
         else:
             value = num_or_nan(row["value"])
-            if not math.isnan(value):
+            if math.isnan(value):
+                unknown.add((key, metric))
+                curves[key].setdefault(metric, [])
+            else:
                 curves[key][metric].append((float(row["elapsed_s"]), value))
+    # A run that found no ideal repair emits no `ideal_solutions` rows at all
+    # when it was also killed, since the terminal point `curve_rows` appends
+    # needs the manifest's wall_s and a killed run has none. That is a zero,
+    # not an absence. The scalar is what separates the two: its censoring flag
+    # is blank exactly where the event could not be decided.
+    for key, _ in list(scalars):
+        flag = scalars.get((key, "time_to_first_ideal_repair"), (None, 0))[1]
+        if flag is None:
+            unknown.add((key, "ideal_solutions"))
+            unknown.add((key, "maximal_ideal_solutions"))
+
     for metrics in curves.values():
         for points in metrics.values():
             points.sort()
-    return curves, scalars
+    return curves, scalars, unknown
 
 
 def step_at(points, moment):
@@ -401,31 +420,53 @@ def cost(results, censored):
 # -- curves --------------------------------------------------------------------
 
 
-def curve_table(curves, metric):
-    """Mean value of `metric` per arm at each shared cut."""
+def curve_table(curves, metric, unknown):
+    """Mean value of `metric` per arm at each shared cut.
+
+    A run whose value for this metric could not be decided is excluded rather
+    than counted as zero, and the count of exclusions is printed beside the
+    arm so a thin cell is visible rather than merely low.
+    """
     sub(f"{metric}: mean per run at each cut")
-    header = "   cut(s)  " + "".join(f"{arm:>22s}" for arm in ARMS)
-    print(header)
+    # An absent metric means different things on the two halves. A run with no
+    # `solutions` or `ideal_solutions` rows found none, and reads zero. A run
+    # with no `maximal_*` rows was never put through `maximal`, and is dropped
+    # rather than read as having no survivors.
+    computed = metric.startswith("maximal")
+    scored = {arm: [key for key, metrics in curves.items()
+                    if key[2] == arm and (key, metric) not in unknown
+                    and (metric in metrics or not computed)]
+              for arm in ARMS}
+    dropped = {arm: sum(1 for key in curves
+                        if key[2] == arm and (key, metric) in unknown)
+               for arm in ARMS}
+    print("   cut(s)  " + "".join(f"{arm:>22s}" for arm in ARMS))
+    print("   runs    " + "".join(f"{len(scored[arm]):>22d}" for arm in ARMS))
+    if any(dropped.values()):
+        print("   undecided" + "".join(f"{dropped[arm]:>21d}" for arm in ARMS))
     for moment in TIME_CUTS:
         cells = []
         for arm in ARMS:
-            values = [step_at(metrics.get(metric, []), moment)
-                      for (spec, seed, a), metrics in curves.items() if a == arm]
+            values = [step_at(curves[key].get(metric, []), moment)
+                      for key in scored[arm]]
             cells.append(f"{statistics.mean(values):22.2f}" if values
                          else f"{'n/a':>22s}")
         print(f"   {moment:6d}  " + "".join(cells))
 
 
-def curve_sections(curves):
+def curve_sections(curves, unknown):
     if curves is None:
         rule("CURVES -- SKIPPED, no curve CSV")
         return
     rule("CURVES -- counter, by arm")
+    print("Mean count per run at each cut, carrying a stopped run's last value")
+    print("forward: both tools stop at their own budget, and what a stopped run")
+    print("found by time t is what it had when it stopped.")
     for metric in ("solutions", "ideal_solutions",
                    "maximal_solutions", "maximal_ideal_solutions"):
         present = any(metric in m for m in curves.values())
         if present:
-            curve_table(curves, metric)
+            curve_table(curves, metric, unknown)
         else:
             print(f"\n-- {metric}: absent from the curve CSV "
                   f"(was it scored without --maximality?)")
@@ -648,13 +689,13 @@ def main():
     args = parser.parse_args()
 
     results = load_results(args.results)
-    curves, scalars = load_curves(args.curves)
+    curves, scalars, unknown = load_curves(args.curves)
     aurus_runs, _aurus_series = load_aurus()
 
     integrity(results, curves)
     censored = verification(results, curves) or []
     cost(results, censored)
-    curve_sections(curves)
+    curve_sections(curves, unknown)
     discovery(curves, scalars, aurus_runs)
     head_to_head(results, aurus_runs)
     posthoc(results)

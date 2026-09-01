@@ -1,0 +1,326 @@
+{
+  "campaign": "2026-08-29-aurus-matched",
+  "attribution": "recorded",
+  "generated_on": "2026-09-01",
+  "status": "analysis in progress -- the maximality pass for metrics 5 and 6 is still running",
+  "kind": "tool comparison (TLSF), 2x2 factorial, all four arms from one binary, run at AuRUS's own search budget",
+  "kind_note": "Counter's budget is a count of generations and AuRUS's is a count of individuals, so the two were never measured against a common currency. This campaign gives counter AuRUS's rule: stop at 1000 bred individuals, population 100, parallel 1, with generations 500 as a ceiling that must not bind. The 2026-08-14 head-to-head gave counter 10 generations at population 200, roughly twice the individuals.",
+  "question": "What counter's anytime behaviour looks like against AuRUS's when both search the same number of individuals, and what the selection scheme and the status grading cost inside that budget.",
+  "endpoint": "None registered. PLAN.md section 2 declares no primary endpoint, no alpha, no control arm and no decision rule. The deliverable is the six metrics of section 11: solutions, ideal_solutions, time_to_first_repair, time_to_first_ideal_repair, maximal_solutions and maximal_ideal_solutions.",
+  "decision_rule_firing": "There is no decision rule to fire. PLAN.md section 2 registers none, and says so against the practice of every other plan in this archive, which do bind one. This field is filled rather than left blank because a blank here would read as an unfinished close. Every p-value in REPORT.md and in this file is POST-HOC and labelled as such at the point it is written: a test chosen after the curves are drawn describes this sample and tests no hypothesis, the contrast and the metric and the time cut all having been free when the analyst picked them.",
+  "arms": {
+    "nsga2-apportion/mrs": "selection_scheme nsga2-apportion, status_grading mrs",
+    "nsga2-apportion/aurus": "selection_scheme nsga2-apportion, status_grading aurus",
+    "weighted/mrs": "selection_scheme weighted, status_grading mrs",
+    "weighted/aurus": "selection_scheme weighted, status_grading aurus",
+    "shared": "termination individuals, max_individuals 1000, generations 500 (ceiling), population_size 100, parallel 1, weights 0.1/0.2/0.7, log metric, weakening screen off, accumulate_repairs on, monolithic repair mode"
+  },
+  "corpus": "25 families, seeds 0-29, 3000 runs; 24 of the 25 overlap AuRUS's archived corpus",
+  "profile_commit": {
+    "sha": "ec0abe07fb68d0312cce20ecad48e612fe5e2542",
+    "short": "ec0abe0",
+    "branch": "campaign/aurus-matched",
+    "subject": "refactor(experiments): drop the long-deadline phase for 30 seeds",
+    "reachable_from_main": false,
+    "held_by_tag": "provenance/aurus-matched",
+    "held_by_tag_note": "The annotated tag was cut at ec0abe0 on 2026-09-01, before the branch moved, which is the order that does not depend on git reflog. Three analysis commits sit after it on the same branch: 0ee66ff, 00922eb and 5c9b7b8. Never delete the tag."
+  },
+  "binary_commit": {
+    "sha": "ec0abe07fb68d0312cce20ecad48e612fe5e2542",
+    "short": "ec0abe0",
+    "dirty": "0 on every one of the 3000 rows",
+    "source": "counter --version, read by run_experiments.py at startup and stamped onto every row",
+    "rows_agree": "All 3000 rows carry ec0abe0 and dirty=0; both hosts' launch manifests record the same commit for counter and for compare."
+  },
+  "hosts": {
+    "av2": {
+      "machine": "avlab12",
+      "seeds": "0-14",
+      "rows": 1500,
+      "started": "2026-08-29T13:45:04+0100",
+      "finished": "2026-08-31T03:09:18+0100",
+      "last_run_directory": "2026-08-31T01:54:20+0100",
+      "wall_h": 36.15
+    },
+    "av3": {
+      "machine": "av3",
+      "seeds": "15-29",
+      "rows": 1500,
+      "started": "2026-08-29T13:45:05+0100",
+      "finished": "2026-08-31T02:46:48+0100",
+      "last_run_directory": "2026-08-31T02:46:47+0100",
+      "wall_h": 37.03
+    },
+    "note": "The seed split comes from campaign.toml alone and was never chosen at a prompt. It is over seeds and never over the factors, so both arms of every contrast ran on one host and a host difference cancels inside the (spec, seed) cell."
+  },
+  "rows": {
+    "merged_total": 3000,
+    "planned_total": 3000,
+    "per_host": {
+      "av2": 1500,
+      "av3": 1500
+    },
+    "runs_per_arm": {
+      "nsga2-apportion/mrs": 750,
+      "nsga2-apportion/aurus": 750,
+      "weighted/mrs": 750,
+      "weighted/aurus": 750
+    },
+    "seeds": "0-29 on all four arms",
+    "duplicates": 0
+  },
+  "verification": {
+    "note": "The five checks of PLAN.md section 12, run before anything was drawn from these rows.",
+    "1_stopped_by": {
+      "result": "PASS",
+      "detail": "individuals on all 2685 manifests, generations on none. The 500-generation ceiling never bound; generations_run ran 25 to 31."
+    },
+    "2_individuals_bred": {
+      "result": "PASS",
+      "detail": "Exactly 1000 on every one of the 2685 manifests. Zero overshoot, where the between-slot check permits a small one."
+    },
+    "3_ideal_solutions_join": {
+      "result": "PASS",
+      "detail": "implies_ideal is 1403 of 3000 (46.8%) in the results CSV, so the endpoint is not flat zero and the curve join has a non-trivial target to agree with."
+    },
+    "4_cost_off_own_rows": {
+      "result": "the plan's estimate was low by 2.77x",
+      "detail": "Mean 1382.5 s a run against the 500 s PLAN.md section 13 assumed, median 296.0 s, max 7200.1 s. The campaign took 37.0 h against the estimated 13 h."
+    },
+    "5_censored_count": {
+      "result": "315 of 3000 (10.5%)",
+      "detail": "A censored run is a run directory holding accumulated/index.tsv with no run.json. Concentrated: humanoid-742 120/120, humanoid-531 93/120, pcar-v2-888 44/120, prioritized-arbiter-aurus 24/120, humanoid-503 20/120, full-arbiter-aurus 7/120, lift 7/120."
+    }
+  },
+  "cost": {
+    "finished_runs": 2685,
+    "finished_core_h": 522.1,
+    "censored_runs": 315,
+    "censored_core_h": 630.0,
+    "total_core_h": 1152.1,
+    "note": "54.7% of the campaign's machine time went on runs that were killed at the 7200 s cap. A killed run writes no manifest and scores as a failure in every column of the results CSV, so that share bought no scored row. Only the accumulator, which flushes as it goes, records what those runs actually found."
+  },
+  "section_11_measures": {
+    "nsga2-apportion/mrs": {
+      "runs": 750,
+      "yield": 0.907,
+      "implies_ideal": 0.484,
+      "timeout": 0.093,
+      "mean_wall_s": 1216.2,
+      "median_wall_s": 122.5
+    },
+    "nsga2-apportion/aurus": {
+      "runs": 750,
+      "yield": 0.896,
+      "implies_ideal": 0.484,
+      "timeout": 0.052,
+      "mean_wall_s": 827.0,
+      "median_wall_s": 93.9
+    },
+    "weighted/mrs": {
+      "runs": 750,
+      "yield": 0.823,
+      "implies_ideal": 0.46,
+      "timeout": 0.177,
+      "mean_wall_s": 2094.9,
+      "median_wall_s": 659.2
+    },
+    "weighted/aurus": {
+      "runs": 750,
+      "yield": 0.863,
+      "implies_ideal": 0.443,
+      "timeout": 0.097,
+      "mean_wall_s": 1392.0,
+      "median_wall_s": 416.8
+    }
+  },
+  "per_family_implies_ideal": {
+    "arbiter-aurus": {
+      "nsga2-apportion/aurus": "19/30",
+      "nsga2-apportion/mrs": "21/30",
+      "weighted/aurus": "17/30",
+      "weighted/mrs": "14/30"
+    },
+    "detector-aurus": {
+      "nsga2-apportion/aurus": "29/30",
+      "nsga2-apportion/mrs": "30/30",
+      "weighted/aurus": "27/30",
+      "weighted/mrs": "28/30"
+    },
+    "full-arbiter-aurus": {
+      "nsga2-apportion/aurus": "12/30",
+      "nsga2-apportion/mrs": "16/30",
+      "weighted/aurus": "12/30",
+      "weighted/mrs": "19/30"
+    },
+    "gyro-var1": {
+      "nsga2-apportion/aurus": "0/30",
+      "nsga2-apportion/mrs": "0/30",
+      "weighted/aurus": "1/30",
+      "weighted/mrs": "0/30"
+    },
+    "gyro-var2": {
+      "nsga2-apportion/aurus": "4/30",
+      "nsga2-apportion/mrs": "2/30",
+      "weighted/aurus": "4/30",
+      "weighted/mrs": "3/30"
+    },
+    "humanoid-458": {
+      "nsga2-apportion/aurus": "0/30",
+      "nsga2-apportion/mrs": "0/30",
+      "weighted/aurus": "0/30",
+      "weighted/mrs": "0/30"
+    },
+    "humanoid-503": {
+      "nsga2-apportion/aurus": "1/30",
+      "nsga2-apportion/mrs": "1/30",
+      "weighted/aurus": "0/30",
+      "weighted/mrs": "1/30"
+    },
+    "humanoid-531": {
+      "nsga2-apportion/aurus": "5/30",
+      "nsga2-apportion/mrs": "2/30",
+      "weighted/aurus": "0/30",
+      "weighted/mrs": "0/30"
+    },
+    "humanoid-742": {
+      "nsga2-apportion/aurus": "0/30",
+      "nsga2-apportion/mrs": "0/30",
+      "weighted/aurus": "0/30",
+      "weighted/mrs": "0/30"
+    },
+    "lift": {
+      "nsga2-apportion/aurus": "0/30",
+      "nsga2-apportion/mrs": "0/30",
+      "weighted/aurus": "0/30",
+      "weighted/mrs": "0/30"
+    },
+    "lily02": {
+      "nsga2-apportion/aurus": "30/30",
+      "nsga2-apportion/mrs": "30/30",
+      "weighted/aurus": "30/30",
+      "weighted/mrs": "30/30"
+    },
+    "lily11": {
+      "nsga2-apportion/aurus": "19/30",
+      "nsga2-apportion/mrs": "11/30",
+      "weighted/aurus": "24/30",
+      "weighted/mrs": "27/30"
+    },
+    "lily15": {
+      "nsga2-apportion/aurus": "0/30",
+      "nsga2-apportion/mrs": "0/30",
+      "weighted/aurus": "4/30",
+      "weighted/mrs": "2/30"
+    },
+    "lily16": {
+      "nsga2-apportion/aurus": "0/30",
+      "nsga2-apportion/mrs": "1/30",
+      "weighted/aurus": "0/30",
+      "weighted/mrs": "1/30"
+    },
+    "load-balancer-aurus": {
+      "nsga2-apportion/aurus": "26/30",
+      "nsga2-apportion/mrs": "30/30",
+      "weighted/aurus": "20/30",
+      "weighted/mrs": "25/30"
+    },
+    "ltl2dba-r-2": {
+      "nsga2-apportion/aurus": "30/30",
+      "nsga2-apportion/mrs": "30/30",
+      "weighted/aurus": "30/30",
+      "weighted/mrs": "30/30"
+    },
+    "ltl2dba-theta-2": {
+      "nsga2-apportion/aurus": "30/30",
+      "nsga2-apportion/mrs": "30/30",
+      "weighted/aurus": "30/30",
+      "weighted/mrs": "30/30"
+    },
+    "ltl2dba27": {
+      "nsga2-apportion/aurus": "30/30",
+      "nsga2-apportion/mrs": "30/30",
+      "weighted/aurus": "30/30",
+      "weighted/mrs": "30/30"
+    },
+    "minepump": {
+      "nsga2-apportion/aurus": "17/30",
+      "nsga2-apportion/mrs": "24/30",
+      "weighted/aurus": "10/30",
+      "weighted/mrs": "13/30"
+    },
+    "pcar-v2-888": {
+      "nsga2-apportion/aurus": "2/30",
+      "nsga2-apportion/mrs": "2/30",
+      "weighted/aurus": "0/30",
+      "weighted/mrs": "0/30"
+    },
+    "prioritized-arbiter-aurus": {
+      "nsga2-apportion/aurus": "18/30",
+      "nsga2-apportion/mrs": "12/30",
+      "weighted/aurus": "9/30",
+      "weighted/mrs": "4/30"
+    },
+    "rg1": {
+      "nsga2-apportion/aurus": "2/30",
+      "nsga2-apportion/mrs": "1/30",
+      "weighted/aurus": "0/30",
+      "weighted/mrs": "0/30"
+    },
+    "rg2": {
+      "nsga2-apportion/aurus": "30/30",
+      "nsga2-apportion/mrs": "30/30",
+      "weighted/aurus": "29/30",
+      "weighted/mrs": "29/30"
+    },
+    "round-robin-arbiter-aurus": {
+      "nsga2-apportion/aurus": "29/30",
+      "nsga2-apportion/mrs": "30/30",
+      "weighted/aurus": "26/30",
+      "weighted/mrs": "30/30"
+    },
+    "simple-arbiter-aurus": {
+      "nsga2-apportion/aurus": "30/30",
+      "nsga2-apportion/mrs": "30/30",
+      "weighted/aurus": "29/30",
+      "weighted/mrs": "29/30"
+    }
+  },
+  "caveats": {
+    "post_hoc": "Every p-value is post-hoc. See decision_rule_firing.",
+    "solution_means_two_things": "counter's curve counts candidates that passed its output gate, flushed by the accumulator with sub-second timestamps. AuRUS's counts the running length of ga.solutions read off its per-iteration log line, which moves only at a generation boundary and is dated to the second. A like-for-like reading has to be taken at cuts coarse enough for both.",
+    "a_kill_is_not_symmetric": "AuRUS writes its solution files in one batch when the run ends, so a run killed at the cap loses every one and can carry no verdict; counter's accumulator flushes as it goes, so a killed counter run keeps every candidate it found. The two biases run opposite ways: counter's kills score implies_ideal as zero, so humanoid-742 reads 0.000 on 120 of 120 killed runs, while AuRUS's kills drop out, so humanoid-503 left the comparison entirely on 30 of 30 killed runs. REPORT.md reads the head-to-head both ways and headlines neither.",
+    "aurus_rates_are_unfiltered": "analyse_aurus_h2h.py scored a well-separation-screened implies_genuine from validation-av2.csv and validation-av3.csv. Neither file survives on either host, so the hit column is used as-is. The archived record of that screen is that it moved 2 of 25 family rates -- lift 0.167 to 0.300, lily11 0.900 to 0.833 -- so it is a small correction in an unknown direction rather than a negligible one.",
+    "paper_gaps": "PLAN.md section 9 records three gaps between the AuRUS paper and its code -- the weights, the status ladder's six levels against the published five, and how an individual is counted. counter matches the code on all three, so the budget match is a code-level match and no claim here may be made against the paper's Table 2."
+  },
+  "vendored_scripts": {
+    "note": "Verbatim copies, each verified with git hash-object. The four that ran the campaign are taken from ec0abe0; the five that scored and analysed it are taken from 5c9b7b8, which carries the score_curves.py fix for runs that wrote no manifest. analysis_lib.py is vendored because analyse_matched.py imports it, and both run as python3 scripts/<name>.py so sys.path[0] resolves against these copies.",
+    "ran_the_campaign": {
+      "source_commit": "ec0abe07fb68d0312cce20ecad48e612fe5e2542",
+      "gen_configs.py": "cbf586a4663d882e10bdfbc09514477744747351",
+      "run_experiments.py": "bc32dc7a4819a86559def7dda8fc263ed54e5c54",
+      "merge_experiments.py": "5c1fa4cbc45e00d4d543e150a454e26503f015a5",
+      "campaign.py": "1297bcee6b873a498b82acd31f656b5d29aafca8"
+    },
+    "scored_and_analysed": {
+      "source_commit": "5c9b7b8716cff73aa4b34f6c5f866247b485345f",
+      "score_curves.py": "b04d4bffb596d6b2044aa0cbb1aec7a110aba8a1",
+      "analysis_lib.py": "5b3db5427a2d3b79ffed048e2f64a9ef9a9435d9",
+      "analyse_matched.py": "0b0dd9d013399343d4440a071ab609c259ff347c",
+      "aurus_series.py": "8ac217cfcbe8f9e5c45a7ca5f9da57ec2aa314f5",
+      "score_aurus_anytime.py": "187d64d1abfd6649d35774a49c22cb2bebd1722e"
+    }
+  },
+  "config_vintage": "No entry is owed in the 'Config vintage' note of experiments/README.md. The three termination keys this campaign turns arrived at no-op defaults and no C++ default moved for it, so an archived config omitting them means exactly what it always meant.",
+  "files": {
+    "results-matched.csv": "Merged results, 3000 rows, the source for every per-run figure here.",
+    "results-matched-manifest-avlab12.json": "av2's launch manifest.",
+    "results-matched-manifest-av3.json": "av3's launch manifest.",
+    "curves-matched.csv": "The six metrics in long format, from score_curves.py --maximality.",
+    "PLAN.md": "The pre-registration, including its statement that there is no decision rule.",
+    "REPORT.md": "The write-up.",
+    "campaign.toml": "The declaration the hosts read; the seed split lives here alone.",
+    "scripts/": "The nine vendored scripts, with blob shas above."
+  },
+  "reproduce": "Check out ec0abe0, build the release preset, and drive it with this directory's vendored scripts/gen_configs.py using the command campaign.toml carries. The AuRUS side is not reproducible from this repository: it comes from that tool's own archive on av2, extracted by the two vendored aurus scripts into experiments/aurus-reference/, which is gitignored."
+}

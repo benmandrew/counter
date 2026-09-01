@@ -182,6 +182,42 @@ def load_curves(path):
     return curves, scalars, unknown
 
 
+def curves_from_index(runs_dir):
+    """Derive `solutions` and `time_to_first_repair` from the accumulator alone.
+
+    Two of the six metrics need no solver call. The accumulator index already
+    holds every gate-passing candidate and the elapsed second it was found at,
+    so counting its rows by time is the whole computation, and it is available
+    for every run the moment the campaign ends. Only the two ideal metrics need
+    `compare`, and only the two maximal ones need `maximal`.
+
+    Reads the arm from the run directory the way score_curves.py does, so a run
+    killed at the cap -- which writes no manifest -- is identified here too.
+    """
+    sys.path.insert(0, str(Path(__file__).parent))
+    from score_curves import (cumulative_points, read_index,
+                              spec_from_dir_name, seed_from_dir_name,
+                              read_config)
+    curves = collections.defaultdict(lambda: collections.defaultdict(list))
+    scalars = {}
+    for run_dir in sorted(Path(runs_dir).iterdir()):
+        if not run_dir.is_dir():
+            continue
+        index = read_index(run_dir)
+        config = read_config(run_dir)
+        arm = (f"{config.get('selection_scheme', '')}/"
+               f"{config.get('status_grading', '')}")
+        seed = seed_from_dir_name(run_dir)
+        if arm == "/" or not seed:
+            continue
+        key = (spec_from_dir_name(run_dir), int(seed), arm)
+        times = sorted(row[2] for row in index)
+        curves[key]["solutions"] = cumulative_points(times)
+        scalars[(key, "time_to_first_repair")] = (
+            times[0] if times else float("nan"), int(not times))
+    return curves, scalars, set()
+
+
 def step_at(points, moment):
     """Value of a step function at `moment`, carrying the last point forward.
 
@@ -270,13 +306,31 @@ def integrity(results, curves):
     if curves is None:
         print("curves                ABSENT -- curve sections are skipped")
         return
-    covered = {(spec, seed, arm) for (spec, seed, arm) in curves}
+    covered = set(curves)
     wanted = {(r["spec"], int(r["seed"]), r["arm"]) for r in results}
-    print(f"curve runs covered    {len(covered)} of {len(wanted)}")
-    missing = wanted - covered
-    if missing:
-        print(f"  WARN: {len(missing)} runs have no curve rows, e.g. "
-              f"{sorted(missing)[:3]}")
+    print(f"curve runs covered    {len(covered)} of {len(wanted)} "
+          f"({pct(len(covered), len(wanted))})")
+    if covered == wanted:
+        return
+    # A partial curve set is not a random sample of the campaign. The scoring
+    # queues are ordered by accumulated size, so what has finished is skewed by
+    # run size, and run size tracks the family. Coverage per family is what
+    # says whether a partial figure can be read at all.
+    print("  PARTIAL. The scoring queue is ordered by accumulated size, so the")
+    print("  runs present are skewed by size and therefore by family. Read a")
+    print("  per-arm figure only where the four arms are covered alike.")
+    by_arm = collections.Counter(arm for _, _, arm in covered)
+    for arm in ARMS:
+        want = sum(1 for spec, seed, a in wanted if a == arm)
+        print(f"    {arm:28s} {by_arm.get(arm, 0):5d} of {want} "
+              f"({pct(by_arm.get(arm, 0), want)})")
+    by_family = collections.Counter(spec for spec, _, _ in covered)
+    want_family = collections.Counter(spec for spec, _, _ in wanted)
+    ranked = sorted(want_family, key=lambda f: by_family.get(f, 0) / want_family[f])
+    print("    least covered families:")
+    for family in ranked[:6]:
+        print(f"      {family:30s} {by_family.get(family, 0):4d} of "
+              f"{want_family[family]} ({pct(by_family.get(family, 0), want_family[family])})")
 
 
 # -- verification (PLAN section 12) --------------------------------------------
@@ -452,6 +506,23 @@ def curve_table(curves, metric, unknown):
             cells.append(f"{statistics.mean(values):22.2f}" if values
                          else f"{'n/a':>22s}")
         print(f"   {moment:6d}  " + "".join(cells))
+
+
+def aurus_solutions_table(series, families):
+    """AuRUS's own solutions(t), at the same cuts, over the shared families.
+
+    Free of any solver call: the series is the #Sol column of its run log. A
+    run killed at the cap keeps its series even though its solution files died
+    with the JVM, so this is the one AuRUS measure a kill does not destroy --
+    which makes it the fairest of the six to read across the two tools.
+    """
+    sub("AuRUS solutions: mean per run at each cut, shared families only")
+    keys = [k for k in series if k[0] in families]
+    print(f"   runs {len(keys)}")
+    for moment in TIME_CUTS:
+        values = [step_at(series[k], moment) for k in keys]
+        print(f"   {moment:6d}  {statistics.mean(values):10.2f}"
+              if values else f"   {moment:6d}         n/a")
 
 
 def curve_sections(curves, unknown):
@@ -686,16 +757,33 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--results", default=RESULTS_CSV)
     parser.add_argument("--curves", default=CURVES_CSV)
+    parser.add_argument("--from-index", action="store_true",
+                        help="derive solutions and time_to_first_repair from "
+                             "the accumulator alone, with no solver call")
     args = parser.parse_args()
 
     results = load_results(args.results)
-    curves, scalars, unknown = load_curves(args.curves)
-    aurus_runs, _aurus_series = load_aurus()
+    if args.from_index:
+        curves, scalars, unknown = curves_from_index(RUNS_DIR)
+        print("SOLVER-FREE READ: solutions and time_to_first_repair only, "
+              "derived from accumulated/index.tsv over every run.")
+        print("The two ideal metrics need compare and the two maximal ones "
+              "need maximal, so they are absent here by construction.")
+    else:
+        curves, scalars, unknown = load_curves(args.curves)
+    aurus_runs, aurus_series = load_aurus()
 
     integrity(results, curves)
     censored = verification(results, curves) or []
     cost(results, censored)
     curve_sections(curves, unknown)
+    if curves is not None and aurus_series is not None:
+        families = {spec for spec, _, _ in curves}
+        aurus_solutions_table(aurus_series, families)
+        print("   counter's cut is sub-second and AuRUS's moves only at a")
+        print("   generation boundary, dated to the second. The two columns")
+        print("   also count different things: counter's gate-passing")
+        print("   accumulator against AuRUS's accepted solution set.")
     discovery(curves, scalars, aurus_runs)
     head_to_head(results, aurus_runs)
     posthoc(results)

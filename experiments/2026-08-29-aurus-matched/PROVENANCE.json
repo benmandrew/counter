@@ -294,7 +294,7 @@
     "paper_gaps": "PLAN.md section 9 records three gaps between the AuRUS paper and its code -- the weights, the status ladder's six levels against the published five, and how an individual is counted. counter matches the code on all three, so the budget match is a code-level match and no claim here may be made against the paper's Table 2."
   },
   "vendored_scripts": {
-    "note": "Verbatim copies, each verified with git hash-object. The four that ran the campaign are taken from ec0abe0; the five that scored and analysed it are taken from 5c9b7b8, which carries the score_curves.py fix for runs that wrote no manifest. analysis_lib.py is vendored because analyse_matched.py imports it, and both run as python3 scripts/<name>.py so sys.path[0] resolves against these copies.",
+    "note": "Verbatim copies, each verified with git hash-object. The four that ran the campaign are taken from ec0abe0; the five that scored and analysed it are taken from the analysis tip, which carries the score_curves.py fix for runs that wrote no manifest and the survivor carry-forward that made the maximality pass 4.5x cheaper. analysis_lib.py is vendored because analyse_matched.py imports it, and both run as python3 scripts/<name>.py so sys.path[0] resolves against these copies.",
     "ran_the_campaign": {
       "source_commit": "ec0abe07fb68d0312cce20ecad48e612fe5e2542",
       "gen_configs.py": "cbf586a4663d882e10bdfbc09514477744747351",
@@ -303,14 +303,17 @@
       "campaign.py": "1297bcee6b873a498b82acd31f656b5d29aafca8"
     },
     "scored_and_analysed": {
-      "source_commit": "5c9b7b8716cff73aa4b34f6c5f866247b485345f",
-      "score_curves.py": "b04d4bffb596d6b2044aa0cbb1aec7a110aba8a1",
+      "source_commit": "8599c2552e09c868e178e04a3ec00778dc63c893",
+      "score_curves.py": "1d36e2e34a07d72ab7cc6ce4249a641cf7568115",
       "analysis_lib.py": "5b3db5427a2d3b79ffed048e2f64a9ef9a9435d9",
-      "analyse_matched.py": "0b0dd9d013399343d4440a071ab609c259ff347c",
+      "analyse_matched.py": "2ff568c3df8fa9591984a49684b2046017bd6208",
       "aurus_series.py": "8ac217cfcbe8f9e5c45a7ca5f9da57ec2aa314f5",
       "score_aurus_anytime.py": "187d64d1abfd6649d35774a49c22cb2bebd1722e"
     }
   },
+  "owed": [
+    "A pairwise-relation flag on `compare`, which would make the incremental maximal antichain reachable from a script. The curves here are scored by carrying each cut's survivors into the next, which is 4.5x cheaper than re-running `maximal` over the whole prefix -- 60.1M pairwise implication comparisons against 272.7M over this campaign's 546,282 accumulated candidates. The textbook algorithm is about 12x: keep one running antichain, test each arrival against it alone, remove what it dominates and discard it if anything dominates it. That needs an oracle answering whether one .tlsf file implies another, and neither binary exposes one although both compute it. `compare` walks the full repairs x ideals cross (src/compare.cpp:269-293) and then collapses it to the best relation per repair under the priority equivalent > stronger > weaker > incomparable > timeout, which is exactly what hides the domination the algorithm needs: a candidate stronger than one antichain member and weaker than another reports `strictly stronger`. `maximal` computes both directions per pair in compute_subsumed (src/filter/implication.cpp:39-42) and reports only the surviving antichain. So the smallest change is an output-format flag on `compare` printing every pair rather than the best, against a loop that already exists, rather than new logic in either binary. Not done here because the deployed 4.5x already took the pass from a day to a few hours, the remaining 2.7x is worth about four hours on a job that is now short, and a rebuild would put a third source commit into this file for an offline scoring binary."
+  ],
   "config_vintage": "No entry is owed in the 'Config vintage' note of experiments/README.md. The three termination keys this campaign turns arrived at no-op defaults and no C++ default moved for it, so an archived config omitting them means exactly what it always meant.",
   "files": {
     "results-matched.csv": "Merged results, 3000 rows, the source for every per-run figure here.",

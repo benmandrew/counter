@@ -72,6 +72,7 @@ MAXIMAL_BIN = Path(os.environ.get("MAXIMAL_BIN",
 ACCUMULATED_DIR = "accumulated"
 INDEX_NAME = "index.tsv"
 MANIFEST_NAME = "run.json"
+CONFIG_NAME = "config.toml"
 
 # src/compare.cpp classify(): a repair implies an ideal when it is equivalent to
 # it or strictly stronger. The other three verdicts (weaker, incomparable,
@@ -136,21 +137,73 @@ def read_index(run_dir: Path) -> list[tuple[str, int, float]]:
     return rows
 
 
-def spec_of(manifest: dict, override: str | None) -> str:
+SEED_SUFFIX = re.compile(r"_seed(\d+)$")
+
+# Read out of config.toml, which a censored run keeps where it has no manifest.
+# The file is flat enough that two anchored patterns beat a TOML parser, which
+# the lab hosts' Python 3.10 has none of in the standard library.
+CONFIG_KEY = {
+    "selection_scheme": re.compile(r'^\s*selection_scheme\s*=\s*"([^"]*)"',
+                                   re.MULTILINE),
+    "status_grading": re.compile(r'^\s*status_grading\s*=\s*"([^"]*)"',
+                                 re.MULTILINE),
+}
+
+
+def spec_from_dir_name(run_dir: Path) -> str:
+    """Name the family from the run directory, matching it against examples/.
+
+    A censored run has no manifest to read the input path out of, and those are
+    not the runs to drop: they hold 17.2% of the accumulated candidates and are
+    concentrated in the families counter finds hardest. Matching against the
+    example directories rather than splitting on "_" keeps a family name that
+    contains a separator readable, and reports nothing rather than a wrong
+    family when no name matches.
+    """
+    name = run_dir.name
+    candidates = [d.name for d in EXAMPLES_DIR.iterdir() if d.is_dir()] \
+        if EXAMPLES_DIR.is_dir() else []
+    matches = [c for c in candidates if f"_{c}_seed" in name]
+    return max(matches, key=len) if matches else ""
+
+
+def seed_from_dir_name(run_dir: Path) -> str:
+    match = SEED_SUFFIX.search(run_dir.name)
+    return str(int(match.group(1))) if match else ""
+
+
+def read_config(run_dir: Path) -> dict:
+    """Return the arm-identifying keys from a run's config.toml, or {}."""
+    try:
+        text = (run_dir / CONFIG_NAME).read_text()
+    except OSError:
+        return {}
+    found = {}
+    for key, pattern in CONFIG_KEY.items():
+        match = pattern.search(text)
+        if match:
+            found[key] = match.group(1)
+    return found
+
+
+def spec_of(manifest: dict, override: str | None, run_dir: Path) -> str:
     """Name the example family behind a run, from its manifest input path."""
     if override:
         return override
     source = manifest.get("input")
-    return Path(source).parent.name if source else ""
+    return Path(source).parent.name if source else spec_from_dir_name(run_dir)
 
 
-def run_columns(manifest: dict, spec: str) -> dict:
+def run_columns(manifest: dict, spec: str, run_dir: Path) -> dict:
     config = manifest.get("config", {})
+    fallback = read_config(run_dir) if not manifest else {}
     return {
         "spec": spec,
-        "seed": manifest.get("seed", ""),
-        "selection_scheme": config.get("genetic", {}).get("selection_scheme", ""),
-        "status_grading": config.get("fitness", {}).get("status_grading", ""),
+        "seed": manifest.get("seed", seed_from_dir_name(run_dir)),
+        "selection_scheme": config.get("genetic", {}).get(
+            "selection_scheme", fallback.get("selection_scheme", "")),
+        "status_grading": config.get("fitness", {}).get(
+            "status_grading", fallback.get("status_grading", "")),
         "stopped_by": manifest.get("stopped_by", ""),
         "generations_run": manifest.get("generations_run", ""),
         "run_wall_s": manifest.get("wall_s", ""),
@@ -305,8 +358,8 @@ def maximality_rows(base: dict, index: list[tuple[str, int, float]],
 def score_run(run_dir: Path, args) -> list[dict]:
     """Return every long-format row for one run directory."""
     manifest = read_manifest(run_dir)
-    spec = spec_of(manifest, args.spec)
-    base = run_columns(manifest, spec)
+    spec = spec_of(manifest, args.spec, run_dir)
+    base = run_columns(manifest, spec, run_dir)
     index = read_index(run_dir)
     accumulated = run_dir / ACCUMULATED_DIR
 

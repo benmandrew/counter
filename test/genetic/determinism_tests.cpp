@@ -32,6 +32,7 @@
 
 #include "config.hpp"
 #include "genetic/generation.hpp"
+#include "genetic/mutation.hpp"
 #include "genetic/random_source.hpp"
 #include "prop_formula.hpp"
 #include "requirement.hpp"
@@ -127,6 +128,12 @@ Config golden_config() {
     // rather than silently re-record it.
     cfg.p_remove_guarantee = 0.05;
     cfg.p_conditional_assumption = 0.25;
+    // Pinned at their shipping default of 0, where each arm returns before
+    // touching the RandomSource. That is what keeps the counts below equal to
+    // the ones recorded before scopes existed, so moving either default fails
+    // this suite rather than silently re-recording the goldens.
+    cfg.p_condition_type = 0.0;
+    cfg.p_scope = 0.0;
     // Pinned to the production default. It is also the value the goldens below
     // were recorded under: with it off, an assumption-side rewrite draws from
     // the inputs alone, so next_index sees a narrower bound and the trace hash
@@ -253,6 +260,56 @@ void test_trace_hash_distinguishes_order_and_bounds() {
            "trace hash: should be stable for an unchanged trace");
 }
 
+// The two arms default to 0 and cost no draw there, which is what keeps the
+// goldens above where they were. A guard written that way passes just as
+// happily when the arm is dead, so this counts the draws of a single
+// mutate_requirement call with each arm off and then on.
+//
+// One call rather than a whole evolution, because the evolution's draw count is
+// not monotone in the arm: a different condition type changes which offspring
+// deduplicate away, which changes how much later generations draw. Turning
+// p_condition_type on over the golden run reads 180 draws against 212, and
+// neither number says anything about whether the probability was read.
+void test_new_arms_cost_no_draw_at_zero() {
+    const Requirement req(Formula("a"), Formula("x"), timing::immediately(),
+                          ConditionType::Trigger);
+    const std::vector<std::string> atoms = {"a", "x"};
+    const std::vector<Timing> timings = {timing::immediately()};
+    const std::vector<std::string> modes = {"m"};
+
+    const auto count_draws = [&](const Config& cfg) {
+        auto trace = std::make_shared<DrawTrace>();
+        const RandomSource source = make_recording_source(k_seed, trace);
+        mutate_requirement(req, atoms, atoms, Direction::Weaken, timings, modes,
+                           source, cfg);
+        return trace->draws.size();
+    };
+
+    Config off;
+    off.p_response = 0.0;
+    off.p_trigger = 0.0;
+    off.p_timing = 0.0;
+    off.p_condition_type = 0.0;
+    off.p_scope = 0.0;
+    const std::size_t baseline = count_draws(off);
+
+    Config condition_type_on = off;
+    condition_type_on.p_condition_type = 0.5;
+    expect(count_draws(condition_type_on) == baseline + 1,
+           "p_condition_type: the arm must cost exactly one draw when on and "
+           "none at 0, got " +
+               std::to_string(count_draws(condition_type_on)) + " against " +
+               std::to_string(baseline));
+
+    Config scope_on = off;
+    scope_on.p_scope = 0.5;
+    expect(count_draws(scope_on) == baseline + 1,
+           "p_scope: the arm must cost exactly one draw when on and none at 0, "
+           "got " +
+               std::to_string(count_draws(scope_on)) + " against " +
+               std::to_string(baseline));
+}
+
 void test_generation_draw_sequence_is_pinned() {
     constexpr std::size_t k_expected_draws = 212;
     constexpr std::uint64_t k_expected_hash = 17684145107458942659ULL;
@@ -346,6 +403,7 @@ void run_determinism_tests() {
     test_recording_source_matches_production_stream();
     test_trace_hash_distinguishes_order_and_bounds();
     test_generation_draw_sequence_is_pinned();
+    test_new_arms_cost_no_draw_at_zero();
     test_evolved_population_is_pinned();
     test_same_seed_reproduces_evolution();
 }

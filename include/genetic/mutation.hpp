@@ -62,16 +62,24 @@ Timing mutate_timing(const Timing& timing, Direction direction,
 /// @p timing_pool argument of mutate_timing.
 std::vector<Timing> collect_timing_pool(const Specification& specification);
 
-/// Mutates a requirement. Each of trigger, response, and timing is mutated
-/// independently with probabilities from @p cfg. Response atoms are drawn from
-/// @p atoms; trigger (condition) atoms are drawn only from @p condition_atoms,
-/// so that output atoms never leak into a trigger.
+/// Mutates a requirement. Each of trigger, response, timing, condition type and
+/// scope is mutated independently with probabilities from @p cfg. Response
+/// atoms are drawn from @p atoms; trigger (condition) atoms are drawn only from
+/// @p condition_atoms, so that output atoms never leak into a trigger.
+///
+/// The condition-type and scope arms move along an implication order, as the
+/// timing arm does, and both are off by default. Each reads its probability
+/// before touching @p random_source, so at 0 neither costs a draw and the
+/// breeding stream is byte-identical to the one before they existed.
 ///
 /// @param requirement     The requirement to mutate
 /// @param atoms           Pool of atom names for response mutation
 /// @param condition_atoms Pool of atom names for trigger mutation (inputs only)
-/// @param direction       Direction applied to the timing field
+/// @param direction       Direction applied to the timing, condition type and
+///                        scope fields
 /// @param timing_pool     Timings donating tick counts to timing mutation
+/// @param mode_pool       Declared modes a scope may move onto. Empty leaves
+///                        `Global` as the only reachable scope.
 /// @param random_source   Random source for branch and selector choices
 /// @param cfg             Configuration providing mutation probabilities
 /// @return                A mutated requirement
@@ -80,6 +88,7 @@ Requirement mutate_requirement(const Requirement& requirement,
                                const std::vector<std::string>& condition_atoms,
                                Direction direction,
                                const std::vector<Timing>& timing_pool,
+                               const std::vector<std::string>& mode_pool,
                                const RandomSource& random_source,
                                const Config& cfg);
 

@@ -76,6 +76,47 @@ bool operator==(const Timing& lhs, const Timing& rhs);
 /// - Continual: requirement fires at every timepoint where the condition holds.
 enum class ConditionType : std::uint8_t { Trigger, Continual };
 
+/// FRET's scope field: the interval, relative to when a mode holds, over which
+/// a requirement is enforced. `Global` (the default, and what an omitted FRET
+/// scope means) enforces it over the whole execution.
+///
+/// The three `Only*` kinds are the "only" scopes: they constrain what happens
+/// *outside* the named interval, so the requirement's obligation is negated
+/// rather than restricted. See requirement_to_ltl for the lowering and
+/// `docs/` for the derivation.
+enum class ScopeKind : std::uint8_t {
+    Global,
+    In,
+    NotIn,
+    Before,
+    After,
+    OnlyIn,
+    OnlyBefore,
+    OnlyAfter,
+};
+
+/// A scope kind together with the mode it is relative to. `Global` carries an
+/// empty mode; every other kind requires one, and that mode must be declared in
+/// `Specification::m_modes`.
+struct Scope {
+    ScopeKind m_kind = ScopeKind::Global;
+    /// Name of the mode. Empty exactly when `m_kind` is `Global`.
+    std::string m_mode;
+
+    friend bool operator<(const Scope& lhs, const Scope& rhs);
+    friend bool operator==(const Scope& lhs, const Scope& rhs);
+
+    /// True when the scope names no mode, i.e. the requirement is enforced over
+    /// the whole execution.
+    [[nodiscard]] bool is_global() const { return m_kind == ScopeKind::Global; }
+};
+
+inline Scope global_scope() { return Scope{}; }
+
+/// True for the three "only" scopes, whose lowering negates the requirement's
+/// obligation and applies it outside the named interval.
+bool is_only_scope(ScopeKind kind);
+
 /// A FRET requirement specifying a system obligation. Consists of a condition
 /// and a response that must be satisfied according to the specified timing
 /// constraint. These are used as the basic units for repair and for computing
@@ -90,9 +131,13 @@ struct Requirement {
     /// Whether the condition is evaluated as a trigger (rising-edge) or
     /// continually (at every timepoint where it holds)
     ConditionType m_condition_type;
+    /// The interval, relative to a mode, over which the requirement is
+    /// enforced. Defaults to `Global`, which is what an omitted FRET scope
+    /// means and what every requirement carried before scopes existed.
+    Scope m_scope;
     /// The LTL formula equivalent to (m_condition, m_response, m_timing,
-    /// m_condition_type), derived automatically by the constructor via
-    /// requirement_to_ltl.
+    /// m_condition_type, m_scope), derived automatically by the constructor
+    /// via requirement_to_ltl.
     std::string m_ltl;
     /// When false, the genetic algorithm never mutates this requirement, uses
     /// it as a crossover source, or simplifies it. Defaults to true.
@@ -112,15 +157,17 @@ struct Requirement {
     explicit Requirement(
         Formula condition, Formula response, const Timing& timing,
         ConditionType condition_type = ConditionType::Continual,
-        bool weakenable = true, bool removed = false);
+        bool weakenable = true, bool removed = false, Scope scope = Scope{});
 
     /// Returns a one-line FRETish string of the form
-    /// "[upon|whenever <condition>] C shall <timing> satisfy <response>",
-    /// parseable by the FRET formaliser CLI (see runner/formaliser.hpp).
+    /// "[<scope>] [upon|whenever <condition>] C shall <timing> satisfy
+    /// <response>", parseable by the FRET formaliser CLI (see
+    /// runner/formaliser.hpp).
     [[nodiscard]] std::string to_string() const;
 
    private:
     [[nodiscard]] std::string condition_to_string() const;
+    [[nodiscard]] std::string scope_to_string() const;
 };
 
 struct Specification {
@@ -129,11 +176,25 @@ struct Specification {
 
     std::vector<std::string> m_in_atoms;
     std::vector<std::string> m_out_atoms;
+    /// Names of the modes a requirement's scope may be relative to. Its own
+    /// namespace: disjoint from `m_in_atoms` and `m_out_atoms`, and never drawn
+    /// from by the mutation atom pools, so no rewrite can put a mode into a
+    /// condition or a response.
+    ///
+    /// Modes are environment-driven — they join ltlsynt's input side. A mode on
+    /// the output side would let the synthesised system choose its own scope:
+    /// an `In`-scoped guarantee is implied by `G !mode`, and a `Before`-scoped
+    /// one is discharged by holding the mode at t=0, so every scope would have
+    /// a free gutting move. Nothing constrains the modes against each other;
+    /// mutual exclusion is written as an ordinary non-weakenable requirement,
+    /// as `examples/fsm-combined/spec.json` already does for its enum atoms.
+    std::vector<std::string> m_modes;
 
     explicit Specification(std::vector<Requirement> assumptions = {},
                            std::vector<Requirement> guarantees = {},
                            std::vector<std::string> in_atoms = {},
-                           std::vector<std::string> out_atoms = {});
+                           std::vector<std::string> out_atoms = {},
+                           std::vector<std::string> modes = {});
 
     friend bool operator<(const Specification& lhs, const Specification& rhs);
     friend bool operator==(const Specification& lhs, const Specification& rhs);
@@ -144,6 +205,15 @@ struct Specification {
     /// specification's meaning, not its storage.
     [[nodiscard]] std::string to_string() const;
 };
+
+/// The signals ltlsynt plays as the environment: the declared inputs followed
+/// by the declared modes. A mode is environment-driven (see
+/// `Specification::m_modes`), so every query that partitions a specification's
+/// alphabet goes through this rather than reading `m_in_atoms` directly.
+/// Returns `m_in_atoms` unchanged when no modes are declared, so a
+/// specification without them keeps the cache and subsumption keys it had.
+std::vector<std::string> environment_signals(
+    const Specification& specification);
 
 /// Number of requirements in @p reqs that have not been removed.
 std::size_t count_live(const std::vector<Requirement>& reqs);
@@ -180,6 +250,11 @@ bool specification_has_false_condition(const Specification& specification);
 
 /// Converts a Timing enum value to a human-readable string representation.
 std::string to_string(const Timing& timing);
+
+/// Renders a scope as its FRETish clause ("in m", "except in m", "only before
+/// m", ...), or the empty string for `Global`. The `except in` spelling is the
+/// one the FRET grammar accepts for `NotIn`; "not in" is a parse error there.
+std::string to_string(const Scope& scope);
 
 /// Converts a Requirement to an LTL formula string in SPOT syntax. For
 /// Continual condition type, bounded timing variants are expanded into X (next)
@@ -249,8 +324,12 @@ struct hash<Requirement> {
         seed = hash_combine(seed, std::hash<Timing>{}(req.m_timing));
         seed = hash_combine(seed, std::hash<bool>{}(req.m_condition_type ==
                                                     ConditionType::Trigger));
+        seed = hash_combine(seed,
+                            std::hash<std::uint8_t>{}(
+                                static_cast<std::uint8_t>(req.m_scope.m_kind)));
+        seed = hash_combine(seed, std::hash<std::string>{}(req.m_scope.m_mode));
         // m_ltl is deliberately absent: the constructor derives it from
-        // the four fields above via requirement_to_ltl, so scanning it adds a
+        // the five fields above via requirement_to_ltl, so scanning it adds a
         // string hash the length of a rendered LTL formula and no
         // discrimination. operator== still compares it, so two requirements
         // that somehow disagree on it collide rather than compare equal.
@@ -278,6 +357,9 @@ struct hash<Specification> {
         }
         for (const std::string& atom : spec.m_out_atoms) {
             seed = hash_combine(seed, std::hash<std::string>{}(atom));
+        }
+        for (const std::string& mode : spec.m_modes) {
+            seed = hash_combine(seed, std::hash<std::string>{}(mode));
         }
         return seed;
     }

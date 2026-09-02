@@ -1,0 +1,62 @@
+{
+  "assumptions": [
+    {
+      "condition": "true",
+      "condition-type": "continual",
+      "response": "!(degraded & maintenance)",
+      "timing": {
+        "type": "Always"
+      },
+      "weakenable": false
+    }
+  ],
+  "guarantees": [
+    {
+      "condition": "request & !maintenance",
+      "condition-type": "continual",
+      "response": "grant",
+      "timing": {
+        "type": "Immediately"
+      },
+      "scope": {
+        "type": "NotIn",
+        "mode": "degraded"
+      }
+    },
+    {
+      "condition": "request",
+      "condition-type": "continual",
+      "response": "grant",
+      "timing": {
+        "type": "WithinTicks",
+        "ticks": 2
+      },
+      "scope": {
+        "type": "In",
+        "mode": "degraded"
+      }
+    },
+    {
+      "condition": "true",
+      "condition-type": "continual",
+      "response": "!grant",
+      "timing": {
+        "type": "Always"
+      },
+      "scope": {
+        "type": "In",
+        "mode": "maintenance"
+      }
+    }
+  ],
+  "in_atoms": [
+    "request"
+  ],
+  "out_atoms": [
+    "grant"
+  ],
+  "modes": [
+    "degraded",
+    "maintenance"
+  ]
+}

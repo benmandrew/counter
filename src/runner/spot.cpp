@@ -416,7 +416,7 @@ std::optional<bool> RealizabilityChecker::check_realizability(
             sides.m_guarantees.push_back(requirement.m_ltl);
         }
     }
-    return check_realizability_ltl(conj_ltl, specification.m_in_atoms,
+    return check_realizability_ltl(conj_ltl, environment_signals(specification),
                                    specification.m_out_atoms, sides);
 }
 

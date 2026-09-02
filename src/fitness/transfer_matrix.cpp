@@ -55,6 +55,18 @@ std::size_t count_joint_atoms(const Requirement& req1,
     ins(req1.m_response);
     ins(req2.m_condition);
     ins(req2.m_response);
+    // A scope's mode is an atom of the lowered formula but sits in no Formula
+    // field, so it has to be added by hand. Leaving it out is not a rounding
+    // error in the count: the mode still reaches the automaton's atomic
+    // propositions, so n_mentioned in count_guard_models exceeds n_total_atoms
+    // and its unsigned subtraction wraps.
+    const auto add_mode = [&atoms](const Requirement& req) {
+        if (!req.m_scope.is_global()) {
+            atoms.insert(req.m_scope.m_mode);
+        }
+    };
+    add_mode(req1);
+    add_mode(req2);
     return atoms.size();
 }
 
@@ -158,6 +170,12 @@ Count count_guard_models(const std::string& label,
     // Ganak counts over the mentioned vars in the formula; we multiply by
     // 2^(n_total_atoms - n_mentioned) for all remaining free variables.
     const std::size_t n_mentioned = count_mentioned_aps(label, aps.size());
+    // n_total_atoms must cover every atom the formula mentions, or this
+    // subtraction wraps and mul_pow2 loops on a 64-bit exponent. That is how a
+    // Requirement field carrying an atom outside m_condition/m_response shows
+    // up -- a scope's mode was the first -- so it is asserted rather than
+    // clamped: a silently wrong free count is a silently wrong trace count.
+    assert(n_mentioned <= n_total_atoms);
     const std::size_t free_count = n_total_atoms - n_mentioned;
     const Count count = run_ganak_on_formula(hoa_label_to_formula(label, aps));
     return mul_pow2(count, free_count);

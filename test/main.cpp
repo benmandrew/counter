@@ -256,6 +256,10 @@ void run_suite(std::string_view suite_name,
         run_requirement_tests();
         return;
     }
+    if (suite_name == "scope") {
+        run_scope_tests();
+        return;
+    }
     if (suite_name == "serialisation") {
         run_serialisation_tests();
         return;
@@ -315,6 +319,7 @@ int main(int argc, const char* const argv[]) {
             run_vacuity_filter_tests();
             run_well_separation_filter_tests();
             run_requirement_tests();
+            run_scope_tests();
             run_serialisation_tests();
             run_config_io_tests();
             run_dashboard_tests();

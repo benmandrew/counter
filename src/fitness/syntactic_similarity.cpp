@@ -3,6 +3,8 @@
 #include <algorithm>
 #include <cassert>
 #include <cmath>
+#include <cstddef>
+#include <cstdint>
 #include <type_traits>
 #include <variant>
 #include <vector>
@@ -175,6 +177,109 @@ double timing_syntactic_similarity(const Timing& tim, const Timing& tim_other) {
     return mu_inter / mu_union;
 }
 
+// --- Condition type --------------------------------------------------------
+
+// Jaccard on downward closures, as the timing term is, over the two-element
+// implication order: Continual implies Trigger for every scope and every
+// timing, strictly except at `always` where the two coincide, because a
+// trigger fires on the rising edges of its condition and those are a subset of
+// the timepoints where the condition holds. So down-Continual is both values
+// and down-Trigger is itself alone, giving 1/2 for a pair that differs and 1
+// for a pair that agrees. Nothing is chosen here: the order fixes both values.
+double condition_type_syntactic_similarity(ConditionType lhs,
+                                           ConditionType rhs) {
+    return lhs == rhs ? 1.0 : 0.5;
+}
+
+// --- Scope -----------------------------------------------------------------
+//
+// A scope names the set of timepoints its requirement's obligation applies to,
+// and the similarity of two scopes is the overlap of those two sets. Relative
+// to one mode, a trace divides into four regions: the prefix before the mode
+// first holds, the points where it holds, the gaps between mode intervals, and
+// the suffix after it last holds. Every scope is a union of them.
+//
+// This is not the implication order the mutation arm walks (scope_order in
+// src/genetic/mutation.cpp). That order is timing-dependent, because a scope
+// boundary relaxes a bounded obligation and tightens an unbounded one, so it is
+// a property of the scope *and* the timing. A similarity between two scopes has
+// to be a property of the scopes alone, and their regions are exactly that.
+enum ScopeRegion : std::uint8_t {
+    k_region_before = 1U << 0U,   // before the mode first holds
+    k_region_in = 1U << 1U,       // where the mode holds
+    k_region_between = 1U << 2U,  // the gaps between mode intervals
+    k_region_after = 1U << 3U,    // after the mode last holds
+    k_region_all =
+        k_region_before | k_region_in | k_region_between | k_region_after,
+};
+
+// The regions a scope's obligation applies to. The three "only" scopes carry
+// the *negation* of the obligation, and they carry it outside their named
+// interval, which is why each is the complement of the plain scope it is named
+// after.
+std::uint8_t scope_regions(ScopeKind kind) {
+    switch (kind) {
+        case ScopeKind::Global:
+            return k_region_all;
+        case ScopeKind::In:
+            return k_region_in;
+        case ScopeKind::NotIn:
+        case ScopeKind::OnlyIn:
+            return k_region_all & ~k_region_in;
+        case ScopeKind::Before:
+            return k_region_before;
+        case ScopeKind::After:
+            return k_region_after;
+        case ScopeKind::OnlyBefore:
+            return k_region_all & ~k_region_before;
+        case ScopeKind::OnlyAfter:
+            return k_region_all & ~k_region_after;
+    }
+    assert(false);
+    __builtin_unreachable();
+}
+
+std::size_t popcount(unsigned bits) {
+    std::size_t count = 0;
+    for (; bits != 0U; bits >>= 1U) {
+        count += bits & 1U;
+    }
+    return count;
+}
+
+// The region bits of @p scope, shifted into the upper nibble for an "only"
+// scope so that a plain scope and an "only" one never share a bit.
+unsigned tagged_regions(const Scope& scope) {
+    const unsigned bits = scope_regions(scope.m_kind);
+    return is_only_scope(scope.m_kind) ? bits << 4U : bits;
+}
+
+// Jaccard overlap of the two region sets, with polarity folded in rather than
+// averaged alongside: an "only" scope's regions are tagged apart from a plain
+// scope's, so `except in m` and `only in m` share every region and still score
+// zero. They make opposite claims about the same timepoints, and crediting the
+// shared region would read them as near-identical.
+double region_similarity(const Scope& lhs, const Scope& rhs) {
+    const unsigned lhs_bits = tagged_regions(lhs);
+    const unsigned rhs_bits = tagged_regions(rhs);
+    const std::size_t union_size = popcount(lhs_bits | rhs_bits);
+    if (union_size == 0) {
+        return 1.0;
+    }
+    return static_cast<double>(popcount(lhs_bits & rhs_bits)) /
+           static_cast<double>(union_size);
+}
+
+// Jaccard on regions, averaged with whether the two scopes are relative to the
+// same mode. The mode is an opaque atom, so it is compared for equality rather
+// than for structure — there is nothing inside it to be partly similar to. Two
+// Global scopes name no mode and agree trivially, which is what makes this
+// read 1.0 across a specification that uses no scopes.
+double scope_syntactic_similarity(const Scope& lhs, const Scope& rhs) {
+    const double same_mode = lhs.m_mode == rhs.m_mode ? 1.0 : 0.0;
+    return (region_similarity(lhs, rhs) + same_mode) / 2.0;
+}
+
 Formula conjoin_field(const Specification& spec, Formula Requirement::* field) {
     std::optional<Formula> conj;
     auto accumulate = [&](const std::vector<Requirement>& reqs) {
@@ -253,6 +358,71 @@ double average_timing_similarity(const Specification& spec1,
 
 }  // namespace
 
+// The scope counterpart of average_timing_similarity, pairing by index on the
+// same terms and for the same reason: slot i of a candidate descends from slot
+// i of the original, so that is the only pairing that compares a requirement
+// with what it came from.
+double average_scope_similarity(const Specification& spec1,
+                                const Specification& spec2) {
+    const std::size_t common_assumptions =
+        std::min(spec1.m_assumptions.size(), spec2.m_assumptions.size());
+    const std::size_t common_guarantees =
+        std::min(spec1.m_guarantees.size(), spec2.m_guarantees.size());
+    const std::size_t total =
+        std::max(spec1.m_assumptions.size(), spec2.m_assumptions.size()) +
+        std::max(spec1.m_guarantees.size(), spec2.m_guarantees.size());
+    if (total == 0) {
+        return 0.0;
+    }
+    const auto pair_similarity = [](const Requirement& lhs,
+                                    const Requirement& rhs) {
+        if (lhs.m_removed || rhs.m_removed) {
+            return lhs.m_removed && rhs.m_removed ? 1.0 : 0.0;
+        }
+        return scope_syntactic_similarity(lhs.m_scope, rhs.m_scope);
+    };
+    double sum = 0.0;
+    for (std::size_t i = 0; i < common_assumptions; ++i) {
+        sum += pair_similarity(spec1.m_assumptions[i], spec2.m_assumptions[i]);
+    }
+    for (std::size_t i = 0; i < common_guarantees; ++i) {
+        sum += pair_similarity(spec1.m_guarantees[i], spec2.m_guarantees[i]);
+    }
+    return sum / static_cast<double>(total);
+}
+
+// The condition-type counterpart of average_timing_similarity, pairing by index
+// on the same terms and for the same reason.
+double average_condition_type_similarity(const Specification& spec1,
+                                         const Specification& spec2) {
+    const std::size_t common_assumptions =
+        std::min(spec1.m_assumptions.size(), spec2.m_assumptions.size());
+    const std::size_t common_guarantees =
+        std::min(spec1.m_guarantees.size(), spec2.m_guarantees.size());
+    const std::size_t total =
+        std::max(spec1.m_assumptions.size(), spec2.m_assumptions.size()) +
+        std::max(spec1.m_guarantees.size(), spec2.m_guarantees.size());
+    if (total == 0) {
+        return 0.0;
+    }
+    const auto pair_similarity = [](const Requirement& lhs,
+                                    const Requirement& rhs) {
+        if (lhs.m_removed || rhs.m_removed) {
+            return lhs.m_removed && rhs.m_removed ? 1.0 : 0.0;
+        }
+        return condition_type_syntactic_similarity(lhs.m_condition_type,
+                                                   rhs.m_condition_type);
+    };
+    double sum = 0.0;
+    for (std::size_t i = 0; i < common_assumptions; ++i) {
+        sum += pair_similarity(spec1.m_assumptions[i], spec2.m_assumptions[i]);
+    }
+    for (std::size_t i = 0; i < common_guarantees; ++i) {
+        sum += pair_similarity(spec1.m_guarantees[i], spec2.m_guarantees[i]);
+    }
+    return sum / static_cast<double>(total);
+}
+
 double syntactic_similarity(const Requirement& requirement,
                             const Requirement& other_requirement,
                             [[maybe_unused]] const Config& cfg) {
@@ -262,8 +432,13 @@ double syntactic_similarity(const Requirement& requirement,
         other_requirement.m_response);
     double timing_similarity = timing_syntactic_similarity(
         requirement.m_timing, other_requirement.m_timing);
-    return (condition_similarity + response_similarity + timing_similarity) /
-           3.0;
+    double scope_similarity = scope_syntactic_similarity(
+        requirement.m_scope, other_requirement.m_scope);
+    double condition_type_similarity = condition_type_syntactic_similarity(
+        requirement.m_condition_type, other_requirement.m_condition_type);
+    return (condition_similarity + response_similarity + timing_similarity +
+            scope_similarity + condition_type_similarity) /
+           5.0;
 }
 
 double syntactic_similarity(const Specification& specification,
@@ -282,5 +457,11 @@ double syntactic_similarity(const Specification& specification,
             .syntactic_similarity(conjoin_responses(other_specification));
     double timing_similarity =
         average_timing_similarity(specification, other_specification);
-    return (trigger_similarity + response_similarity + timing_similarity) / 3.0;
+    double scope_similarity =
+        average_scope_similarity(specification, other_specification);
+    double condition_type_similarity =
+        average_condition_type_similarity(specification, other_specification);
+    return (trigger_similarity + response_similarity + timing_similarity +
+            scope_similarity + condition_type_similarity) /
+           5.0;
 }

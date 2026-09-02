@@ -354,6 +354,133 @@ void test_scored_specification_with_fitness() {
            "ScoredSpecification: component weight round-trip should match");
 }
 
+// --- Scopes and modes ----------------------------------------------------
+
+// Absence means Global, so a specification written before scopes existed reads
+// back exactly as it did and writes back byte for byte.
+void test_scope_omitted_when_global() {
+    const Requirement req(Formula("a"), Formula("b"), timing::immediately());
+    nlohmann::json jobj;
+    to_json(jobj, req);
+    expect(!jobj.contains("scope"),
+           "to_json(Requirement): the scope key should be omitted for a global "
+           "requirement");
+}
+
+void test_scope_round_trip() {
+    for (const ScopeKind kind :
+         {ScopeKind::In, ScopeKind::NotIn, ScopeKind::Before, ScopeKind::After,
+          ScopeKind::OnlyIn, ScopeKind::OnlyBefore, ScopeKind::OnlyAfter}) {
+        const Requirement req(Formula("a"), Formula("b"), timing::immediately(),
+                              ConditionType::Continual, true, false,
+                              Scope{kind, "roll_hold"});
+        nlohmann::json jobj;
+        to_json(jobj, req);
+        expect(jobj.contains("scope"),
+               "to_json(Requirement): a non-global scope must be written");
+        expect(jobj.at("scope").at("mode") == "roll_hold",
+               "to_json(Requirement): the mode must survive serialisation");
+        const Requirement back = serialisation::requirement_from_json(jobj);
+        expect(back == req, "Requirement: a scope must survive a round trip");
+    }
+}
+
+void test_scope_defaults_to_global_when_absent() {
+    const nlohmann::json jobj = {{"condition", "a"},
+                                 {"condition-type", "continual"},
+                                 {"response", "b"},
+                                 {"timing", {{"type", "Immediately"}}}};
+    const Requirement req = serialisation::requirement_from_json(jobj);
+    expect(req.m_scope.is_global(),
+           "requirement_from_json: an absent scope must read as Global");
+}
+
+void test_modes_omitted_when_empty() {
+    const Specification spec({}, {}, {"a"}, {"b"});
+    nlohmann::json jobj;
+    to_json(jobj, spec);
+    expect(!jobj.contains("modes"),
+           "to_json(Specification): the modes key should be omitted when no "
+           "modes are declared");
+}
+
+void test_modes_round_trip() {
+    const Specification spec({}, {}, {"a"}, {"b"}, {"roll_hold", "nav"});
+    nlohmann::json jobj;
+    to_json(jobj, spec);
+    Specification back;
+    from_json(jobj, back);
+    const std::vector<std::string> expected = {"roll_hold", "nav"};
+    expect(back.m_modes == expected,
+           "Specification: the modes list must survive a round trip");
+}
+
+// A mode is not an atom of either side, so a scope naming one that was never
+// declared would fall through to the output half of ltlsynt's partition, where
+// the synthesised system can discharge the scope by never entering the mode.
+void test_undeclared_mode_is_rejected() {
+    const nlohmann::json jobj = {
+        {"assumptions", nlohmann::json::array()},
+        {"guarantees",
+         {{{"condition", "a"},
+           {"condition-type", "continual"},
+           {"response", "b"},
+           {"timing", {{"type", "Immediately"}}},
+           {"scope", {{"type", "In"}, {"mode", "roll_hold"}}}}}},
+        {"in_atoms", {"a"}},
+        {"out_atoms", {"b"}}};
+    const auto err = validate_specification_json(jobj);
+    expect(err.has_value(),
+           "validate_specification_json: a scope over an undeclared mode must "
+           "be rejected");
+}
+
+void test_mode_shared_with_an_atom_is_rejected() {
+    const nlohmann::json jobj = {{"assumptions", nlohmann::json::array()},
+                                 {"guarantees", nlohmann::json::array()},
+                                 {"in_atoms", {"roll_hold"}},
+                                 {"out_atoms", {"b"}},
+                                 {"modes", {"roll_hold"}}};
+    const auto err = validate_specification_json(jobj);
+    expect(err.has_value(),
+           "validate_specification_json: a name declared as both a mode and an "
+           "atom must be rejected");
+}
+
+void test_global_scope_with_a_mode_is_rejected() {
+    const nlohmann::json jobj = {
+        {"assumptions", nlohmann::json::array()},
+        {"guarantees",
+         {{{"condition", "a"},
+           {"condition-type", "continual"},
+           {"response", "b"},
+           {"timing", {{"type", "Immediately"}}},
+           {"scope", {{"type", "Global"}, {"mode", "roll_hold"}}}}}},
+        {"in_atoms", {"a"}},
+        {"out_atoms", {"b"}},
+        {"modes", {"roll_hold"}}};
+    const auto err = validate_specification_json(jobj);
+    expect(err.has_value(),
+           "validate_specification_json: a Global scope naming a mode must be "
+           "rejected rather than silently dropping it");
+}
+
+void test_scoped_requirement_needs_a_mode() {
+    const nlohmann::json jobj = {{"assumptions", nlohmann::json::array()},
+                                 {"guarantees",
+                                  {{{"condition", "a"},
+                                    {"condition-type", "continual"},
+                                    {"response", "b"},
+                                    {"timing", {{"type", "Immediately"}}},
+                                    {"scope", {{"type", "In"}}}}}},
+                                 {"in_atoms", {"a"}},
+                                 {"out_atoms", {"b"}}};
+    const auto err = validate_specification_json(jobj);
+    expect(err.has_value(),
+           "validate_specification_json: a non-Global scope with no mode must "
+           "be rejected");
+}
+
 }  // namespace
 
 void run_serialisation_tests() {
@@ -378,4 +505,13 @@ void run_serialisation_tests() {
     test_scored_specification_with_fitness();
     test_load_serialise_preserves_original_atom_names();
     test_load_tags_atoms_internally();
+    test_scope_omitted_when_global();
+    test_scope_round_trip();
+    test_scope_defaults_to_global_when_absent();
+    test_modes_omitted_when_empty();
+    test_modes_round_trip();
+    test_undeclared_mode_is_rejected();
+    test_mode_shared_with_an_atom_is_rejected();
+    test_global_scope_with_a_mode_is_rejected();
+    test_scoped_requirement_needs_a_mode();
 }

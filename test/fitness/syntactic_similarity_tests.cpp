@@ -49,8 +49,9 @@ void test_req_similarity_averages_component_scores() {
         syntactic_similarity(requirement, other_requirement, Config{});
     // condition: P vs P -> 1.0. response: Q vs P|Q -> shared=1, n(Q)=1,
     // n(P|Q)=3, harmonic mean = 2*1*(1/3)/(4/3) = 0.5. timing: identical ->
-    // 1.0. Average: (1.0 + 0.5 + 1.0) / 3 = 5/6.
-    expect(std::fabs(synsim - (5.0 / 6.0)) < 1e-12,
+    // 1.0. scope: both Global -> 1.0. condition type: both Continual -> 1.0.
+    // Average: (1.0 + 0.5 + 1.0 + 1.0 + 1.0) / 5 = 0.9.
+    expect(std::fabs(synsim - 0.9) < 1e-12,
            "syntactic-similarity: component averaging should produce the "
            "expected score for 'P'/'Q' versus 'P'/'P|Q'");
 }
@@ -66,23 +67,25 @@ void test_spec_similarity_identical_single_req() {
 }
 
 void test_spec_similarity_disjoint_atoms() {
-    // Triggers share no atoms, responses share no atoms.
-    // trigger_sim = 0, response_sim = 0, timing = 1 → (0+0+1)/3 = 1/3
+    // Triggers share no atoms, responses share no atoms. Both specs are
+    // unscoped and share a condition type, so those two terms read 1 alongside
+    // the timing term.
+    // trigger = 0, response = 0, timing = 1, scope = 1, ctype = 1 → 3/5
     const Specification spec_a = make_spec({{"p", "q"}});
     const Specification spec_b = make_spec({{"r", "s"}});
     const double result = syntactic_similarity(spec_a, spec_b, Config{});
-    expect(std::fabs(result - (1.0 / 3.0)) < 1e-12,
-           "spec-similarity: fully disjoint single-req specs should score 1/3");
+    expect(std::fabs(result - (3.0 / 5.0)) < 1e-12,
+           "spec-similarity: fully disjoint single-req specs should score 3/5");
 }
 
 void test_spec_similarity_same_trigger_different_response() {
-    // trigger_sim = 1, response_sim = 0, timing = 1 → (1+0+1)/3 = 2/3
+    // trigger = 1, response = 0, timing = 1, scope = 1, ctype = 1 → 4/5
     const Specification spec_a = make_spec({{"p", "q"}});
     const Specification spec_b = make_spec({{"p", "r"}});
     const double result = syntactic_similarity(spec_a, spec_b, Config{});
     expect(
-        std::fabs(result - (2.0 / 3.0)) < 1e-12,
-        "spec-similarity: same trigger, different response should score 2/3");
+        std::fabs(result - 0.8) < 1e-12,
+        "spec-similarity: same trigger, different response should score 4/5");
 }
 
 void test_spec_similarity_identical_multi_req() {
@@ -101,13 +104,15 @@ void test_spec_similarity_partial_match_multi_req() {
     // (p & r) vs (p & t): 3 nodes each, 1 shared (atom p) → 0.5*(1/3+1/3) =
     // 1/3.
     // (q & s) vs (q & u): same shape → 1/3.
-    // timing = 1 → (1/3 + 1/3 + 1) / 3 = (5/3) / 3 = 5/9.
+    // Both specs are unscoped and share a condition type, so those two terms
+    // read 1 alongside timing = 1, giving (1/3 + 1/3 + 1 + 1 + 1) / 5 =
+    // (11/3) / 5 = 11/15.
     const Specification spec_a = make_spec({{"p", "q"}, {"r", "s"}});
     const Specification spec_b = make_spec({{"p", "q"}, {"t", "u"}});
     const double result = syntactic_similarity(spec_a, spec_b, Config{});
-    expect(std::fabs(result - (5.0 / 9.0)) < 1e-12,
+    expect(std::fabs(result - (11.0 / 15.0)) < 1e-12,
            "spec-similarity: specs sharing one of two requirements should "
-           "score 5/9");
+           "score 11/15");
 }
 
 // Regression: the p_add_assumption mutation grows a candidate's assumption
@@ -195,15 +200,17 @@ void test_timing_identical_within_ticks() {
 //   μ(↓ForTicks{1}) = 3*0.01 + 0.5*(2-0.5)/0.5   = 0.03 + 1.5  = 1.53
 //   μ(↓ForTicks{2}) = 3*0.01 + 0.5*(2-0.25)/0.5  = 0.03 + 1.75 = 1.78
 //   synSim_timing = 1.53 / 1.78
-// Both requirements share the same formulas (p/p), so formula components = 1.0.
-// Overall = (1.0 + 1.0 + 1.53/1.78) / 3.0
+// Both requirements share the same formulas (p/p), are unscoped and share a
+// condition type, so every component but the timing one is 1.0.
+// Overall = (1.0 + 1.0 + 1.53/1.78 + 1.0 + 1.0) / 5.0
 void test_timing_comparable_for_ticks() {
     const Requirement req_strong{Formula("p"), Formula("p"),
                                  timing::for_ticks(2)};
     const Requirement req_weak{Formula("p"), Formula("p"),
                                timing::for_ticks(1)};
     const double timing_sim = 1.53 / 1.78;
-    const double expected = (1.0 + 1.0 + timing_sim) / 3.0;
+    // Both are unscoped and share a condition type, so those terms read 1.0.
+    const double expected = (1.0 + 1.0 + timing_sim + 1.0 + 1.0) / 5.0;
     const double result = syntactic_similarity(req_strong, req_weak, Config{});
     expect(std::fabs(result - expected) < 1e-9,
            "timing-sim: for_ticks{2} vs for_ticks{1} should give 1.53/1.78 "
@@ -218,7 +225,8 @@ void test_timing_for_ticks_vs_eventually() {
     const Requirement req_weak{Formula("p"), Formula("p"),
                                timing::eventually()};
     const double timing_sim = 0.01 / 1.53;
-    const double expected = (1.0 + 1.0 + timing_sim) / 3.0;
+    // Both are unscoped and share a condition type, so those terms read 1.0.
+    const double expected = (1.0 + 1.0 + timing_sim + 1.0 + 1.0) / 5.0;
     const double result = syntactic_similarity(req_strong, req_weak, Config{});
     expect(std::fabs(result - expected) < 1e-9,
            "timing-sim: for_ticks{1} vs eventually should give tiny timing "
@@ -235,7 +243,8 @@ void test_timing_immediately_vs_next_timepoint() {
     const Requirement req_n{Formula("p"), Formula("p"),
                             timing::next_timepoint()};
     const double timing_sim = 1.01 / 1.03;
-    const double expected = (1.0 + 1.0 + timing_sim) / 3.0;
+    // Both are unscoped and share a condition type, so those terms read 1.0.
+    const double expected = (1.0 + 1.0 + timing_sim + 1.0 + 1.0) / 5.0;
     const double result = syntactic_similarity(req_i, req_n, Config{});
     expect(std::fabs(result - expected) < 1e-9,
            "timing-sim: immediately vs next_timepoint should give 1.01/1.03 "
@@ -258,11 +267,171 @@ void test_timing_always_vs_eventually() {
     const Requirement req_weak{Formula("p"), Formula("p"),
                                timing::eventually()};
     const double timing_sim = 0.01 / 2.04;
-    const double expected = (1.0 + 1.0 + timing_sim) / 3.0;
+    // Both are unscoped and share a condition type, so those terms read 1.0.
+    const double expected = (1.0 + 1.0 + timing_sim + 1.0 + 1.0) / 5.0;
     const double result = syntactic_similarity(req_strong, req_weak, Config{});
     expect(std::fabs(result - expected) < 1e-9,
            "timing-sim: always vs eventually should give tiny timing "
            "component");
+}
+
+// --- scope ---
+
+// Only the scope differs, so the other four components read 1.0 and the score
+// is (4 + s) / 5 for a scope similarity of s. That is what lets each case below
+// be stated as the scope term alone.
+double scope_term(const Scope& lhs, const Scope& rhs) {
+    const Requirement left(Formula("p"), Formula("q"), timing::immediately(),
+                           ConditionType::Continual, true, false, lhs);
+    const Requirement right(Formula("p"), Formula("q"), timing::immediately(),
+                            ConditionType::Continual, true, false, rhs);
+    const double mean = syntactic_similarity(left, right, Config{});
+    return (5.0 * mean) - 4.0;
+}
+
+void test_scope_identical_is_one() {
+    expect(std::fabs(scope_term(Scope{}, Scope{}) - 1.0) < 1e-12,
+           "scope-similarity: two Global scopes should score 1.0, so the term "
+           "is inert on a specification that uses no scopes");
+    const Scope in_mode{ScopeKind::In, "m"};
+    expect(std::fabs(scope_term(in_mode, in_mode) - 1.0) < 1e-12,
+           "scope-similarity: a scope should score 1.0 against itself");
+}
+
+// Global applies over the whole trace and `in m` over one of its four regions,
+// so the regions overlap by a quarter; the modes differ (Global names none),
+// so that half of the term is zero.
+void test_scope_global_versus_in() {
+    const double term = scope_term(Scope{}, Scope{ScopeKind::In, "m"});
+    expect(
+        std::fabs(term - 0.125) < 1e-12,
+        "scope-similarity: Global versus `in m` should score (0.25 + 0) / 2");
+}
+
+// `before m` is contained in `except in m`: the points strictly before the mode
+// first holds are points where it does not hold. One of that scope's three
+// regions is shared, over the same mode.
+void test_scope_notin_versus_before() {
+    const double term =
+        scope_term(Scope{ScopeKind::NotIn, "m"}, Scope{ScopeKind::Before, "m"});
+    expect(std::fabs(term - (((1.0 / 3.0) + 1.0) / 2.0)) < 1e-12,
+           "scope-similarity: `except in m` versus `before m` should score "
+           "(1/3 + 1) / 2");
+}
+
+// The two make opposite claims about the same timepoints, so sharing every
+// region earns nothing. Without the polarity tag they would score as the most
+// similar pair of distinct scopes there is.
+void test_scope_notin_versus_onlyin_shares_nothing() {
+    const double term =
+        scope_term(Scope{ScopeKind::NotIn, "m"}, Scope{ScopeKind::OnlyIn, "m"});
+    expect(std::fabs(term - 0.5) < 1e-12,
+           "scope-similarity: `except in m` versus `only in m` should earn no "
+           "region credit, leaving only the shared mode");
+}
+
+void test_scope_same_kind_different_mode() {
+    const double term =
+        scope_term(Scope{ScopeKind::In, "m"}, Scope{ScopeKind::In, "n"});
+    expect(std::fabs(term - 0.5) < 1e-12,
+           "scope-similarity: the same kind over two modes should keep its "
+           "region credit and lose the mode credit");
+}
+
+void test_scope_similarity_is_symmetric_and_bounded() {
+    const std::vector<Scope> scopes = {Scope{},
+                                       Scope{ScopeKind::In, "m"},
+                                       Scope{ScopeKind::NotIn, "m"},
+                                       Scope{ScopeKind::Before, "m"},
+                                       Scope{ScopeKind::After, "m"},
+                                       Scope{ScopeKind::OnlyIn, "m"},
+                                       Scope{ScopeKind::OnlyBefore, "m"},
+                                       Scope{ScopeKind::OnlyAfter, "n"}};
+    for (const Scope& lhs : scopes) {
+        for (const Scope& rhs : scopes) {
+            const double forward = scope_term(lhs, rhs);
+            // The reversed argument order is the point of a symmetry check.
+            // NOLINTNEXTLINE(readability-suspicious-call-argument)
+            const double reversed = scope_term(rhs, lhs);
+            expect(std::fabs(forward - reversed) < 1e-12,
+                   "scope-similarity: should be symmetric");
+            expect(forward >= -1e-12 && forward <= 1.0 + 1e-12,
+                   "scope-similarity: should stay within [0, 1]");
+        }
+    }
+}
+
+// The specification-level term pairs by index, as the timing term does, so a
+// scope change in slot i is scored against slot i of the original.
+void test_spec_scope_similarity_pairs_by_index() {
+    const Requirement plain(Formula("p"), Formula("q"), timing::immediately());
+    const Requirement scoped(Formula("p"), Formula("q"), timing::immediately(),
+                             ConditionType::Continual, true, false,
+                             Scope{ScopeKind::In, "m"});
+    const Specification original({}, {plain, plain}, {"p"}, {"q"});
+    const Specification moved({}, {plain, scoped}, {"p"}, {"q"}, {"m"});
+    const double both_plain =
+        syntactic_similarity(original, original, Config{});
+    const double one_moved = syntactic_similarity(original, moved, Config{});
+    expect(one_moved < both_plain,
+           "scope-similarity: a scope change in one slot must lower the "
+           "specification-level score, or the search has no gradient on the "
+           "field the p_scope arm moves");
+}
+
+// --- condition type ---
+
+// The same trick as scope_term: every other component reads 1.0, so the score
+// isolates the condition-type one.
+double condition_type_term(ConditionType lhs, ConditionType rhs) {
+    const Requirement left(Formula("p"), Formula("q"), timing::immediately(),
+                           lhs);
+    const Requirement right(Formula("p"), Formula("q"), timing::immediately(),
+                            rhs);
+    const double mean = syntactic_similarity(left, right, Config{});
+    return (5.0 * mean) - 4.0;
+}
+
+// Jaccard on downsets in the two-element implication order: Continual implies
+// Trigger, so down-Continual holds both values and down-Trigger holds itself
+// alone. Nothing is chosen here, which is the point of deriving it rather than
+// picking a penalty.
+void test_condition_type_similarity_follows_the_implication_order() {
+    expect(std::fabs(condition_type_term(ConditionType::Continual,
+                                         ConditionType::Continual) -
+                     1.0) < 1e-12,
+           "condition-type-similarity: equal values should score 1.0");
+    expect(std::fabs(condition_type_term(ConditionType::Trigger,
+                                         ConditionType::Trigger) -
+                     1.0) < 1e-12,
+           "condition-type-similarity: equal values should score 1.0");
+    expect(std::fabs(condition_type_term(ConditionType::Continual,
+                                         ConditionType::Trigger) -
+                     0.5) < 1e-12,
+           "condition-type-similarity: a differing pair should score 1/2, the "
+           "Jaccard overlap of their downsets");
+    expect(std::fabs(condition_type_term(ConditionType::Continual,
+                                         ConditionType::Trigger) -
+                     condition_type_term(ConditionType::Trigger,
+                                         ConditionType::Continual)) < 1e-12,
+           "condition-type-similarity: should be symmetric");
+}
+
+// Without this the p_condition_type arm would move a field the syntactic
+// objective cannot see, so a candidate that flipped one requirement's
+// condition type would score identical to its parent on that objective.
+void test_spec_condition_type_similarity_pairs_by_index() {
+    const Requirement continual(Formula("p"), Formula("q"),
+                                timing::immediately(),
+                                ConditionType::Continual);
+    const Requirement trigger(Formula("p"), Formula("q"), timing::immediately(),
+                              ConditionType::Trigger);
+    const Specification original({}, {continual, continual}, {"p"}, {"q"});
+    const Specification moved({}, {continual, trigger}, {"p"}, {"q"});
+    expect(syntactic_similarity(original, moved, Config{}) <
+               syntactic_similarity(original, original, Config{}),
+           "condition-type-similarity: a condition-type change in one slot "
+           "must lower the specification-level score");
 }
 
 }  // namespace
@@ -283,4 +452,13 @@ void run_syntactic_similarity_tests() {
     test_timing_immediately_vs_next_timepoint();
     test_timing_identical_always();
     test_timing_always_vs_eventually();
+    test_scope_identical_is_one();
+    test_scope_global_versus_in();
+    test_scope_notin_versus_before();
+    test_scope_notin_versus_onlyin_shares_nothing();
+    test_scope_same_kind_different_mode();
+    test_scope_similarity_is_symmetric_and_bounded();
+    test_spec_scope_similarity_pairs_by_index();
+    test_condition_type_similarity_follows_the_implication_order();
+    test_spec_condition_type_similarity_pairs_by_index();
 }

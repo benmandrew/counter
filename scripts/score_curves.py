@@ -54,6 +54,7 @@ import os
 import re
 import subprocess
 import sys
+import time
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
@@ -341,7 +342,7 @@ def scalar_row(base: dict, metric: str, moment: float | None,
 def maximality_rows(base: dict, index: list[tuple[str, int, float]],
                     accumulated: Path, implying: set[str] | None,
                     n_cuts: int, jobs: int | None,
-                    timeout_s: int) -> list[dict]:
+                    timeout_s: int, deadline: float | None) -> list[dict]:
     """Run `maximal` over prefixes of the accumulated set at bounded cuts.
 
     Each cut is given the previous cut's survivors plus the candidates that
@@ -376,6 +377,14 @@ def maximality_rows(base: dict, index: list[tuple[str, int, float]],
     seen_prefix = -1
     consumed = 0
     for cut in time_cuts([row[2] for row in by_time], n_cuts):
+        # Stop adding cuts rather than being killed from outside holding
+        # nothing. The cuts are log-spaced, so the ones already computed are
+        # the early ones, which is where an anytime curve carries its
+        # information; a hard run yields a short curve instead of no curve.
+        if deadline is not None and time.monotonic() > deadline:
+            print(f"WARN: deadline reached after {len(rows) // 2} cut(s); "
+                  f"writing a partial curve", file=sys.stderr)
+            break
         prefix = [row for row in by_time if row[2] <= cut]
         if len(prefix) == seen_prefix:
             continue
@@ -399,7 +408,7 @@ def maximality_rows(base: dict, index: list[tuple[str, int, float]],
     return rows
 
 
-def score_run(run_dir: Path, args) -> list[dict]:
+def score_run(run_dir: Path, args, deadline: float | None = None) -> list[dict]:
     """Return every long-format row for one run directory."""
     manifest = read_manifest(run_dir)
     spec = spec_of(manifest, args.spec, run_dir)
@@ -438,7 +447,8 @@ def score_run(run_dir: Path, args) -> list[dict]:
                            implying is not None))
     if args.maximality and index:
         rows += maximality_rows(base, index, accumulated, implying,
-                                args.cuts, args.jobs, args.maximal_timeout)
+                                args.cuts, args.jobs, args.maximal_timeout,
+                                deadline)
     return rows
 
 
@@ -482,6 +492,10 @@ def main() -> int:
                         help="solver calls in flight for maximal")
     parser.add_argument("--spec", help="override the family name and ideals")
     parser.add_argument("--ideals", help="override the ideals directory")
+    parser.add_argument("--deadline-s", type=int, default=0,
+                        help="stop adding maximality cuts after this many "
+                             "seconds and write what was computed (0: no "
+                             "deadline)")
     parser.add_argument("--maximal-timeout", type=int, default=900,
                         help="wall budget for one `maximal` call, per cut "
                              "(default: 900)")
@@ -495,13 +509,18 @@ def main() -> int:
     if args.cuts < 1:
         parser.error("--cuts expects a positive integer")
 
+    # The deadline is per run directory, not per invocation: the launcher
+    # feeds one directory at a time, and a budget shared across many would
+    # spend it all on the first.
     long_rows: list[dict] = []
     summaries: list[dict] = []
     for run_dir in args.run_dir:
         if not run_dir.is_dir():
             print(f"WARN: no such run directory: {run_dir}", file=sys.stderr)
             continue
-        rows = score_run(run_dir, args)
+        deadline = (time.monotonic() + args.deadline_s
+                    if args.deadline_s > 0 else None)
+        rows = score_run(run_dir, args, deadline)
         long_rows += rows
         summaries.append(summarise(rows))
 

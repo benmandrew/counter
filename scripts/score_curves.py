@@ -235,12 +235,23 @@ def compare_relations(repairs_dir: Path, ideals_dir: Path,
     return relations
 
 
-def maximal_over(files: list[Path], jobs: int | None) -> set[str] | None:
+def maximal_over(files: list[Path], jobs: int | None,
+                 timeout_s: int) -> set[str] | None:
     """Return the file names surviving the implication filter over `files`.
 
     `maximal` collapses structural duplicates and prints one line per survivor
     naming the first file of each, so the survivors are distinct specifications
     — which is what both maximality metrics count.
+
+    The wall bound is what `compare_relations` beside it always had and this
+    did not. `maximal` bounds each black call at 20 seconds of its own accord,
+    but a batch of 169 files is 14,196 pairs decided in both directions, so
+    28,392 calls at that budget leave 39 hours of headroom on four jobs and
+    nothing capped the total. One humanoid-531 batch ran for 17.6 hours and
+    eight workers a host returned nothing in thirteen. Abandoning the cut
+    instead costs that cut alone: the caller keeps the survivors and the
+    consumed index from the last cut that succeeded, so the run goes on and
+    yields the cuts it can decide.
     """
     if not files:
         return set()
@@ -248,8 +259,12 @@ def maximal_over(files: list[Path], jobs: int | None) -> set[str] | None:
     if jobs:
         command += ["--jobs", str(jobs)]
     try:
-        result = subprocess.run(command, check=True, capture_output=True,
-                                text=True)
+        result = subprocess.run(command, check=True, timeout=timeout_s,
+                                capture_output=True, text=True)
+    except subprocess.TimeoutExpired:
+        print(f"WARN: maximal exceeded {timeout_s}s over {len(files)} file(s); "
+              f"this cut is skipped", file=sys.stderr)
+        return None
     except (OSError, subprocess.CalledProcessError) as exc:
         print(f"WARN: maximal failed over {len(files)} file(s) — {exc}",
               file=sys.stderr)
@@ -325,7 +340,8 @@ def scalar_row(base: dict, metric: str, moment: float | None,
 
 def maximality_rows(base: dict, index: list[tuple[str, int, float]],
                     accumulated: Path, implying: set[str] | None,
-                    n_cuts: int, jobs: int | None) -> list[dict]:
+                    n_cuts: int, jobs: int | None,
+                    timeout_s: int) -> list[dict]:
     """Run `maximal` over prefixes of the accumulated set at bounded cuts.
 
     Each cut is given the previous cut's survivors plus the candidates that
@@ -365,7 +381,8 @@ def maximality_rows(base: dict, index: list[tuple[str, int, float]],
             continue
         seen_prefix = len(prefix)
         batch = sorted(survivors) + [row[0] for row in prefix[consumed:]]
-        found = maximal_over([accumulated / name for name in batch], jobs)
+        found = maximal_over([accumulated / name for name in batch],
+                             jobs, timeout_s)
         if found is None:
             continue
         survivors = found
@@ -421,7 +438,7 @@ def score_run(run_dir: Path, args) -> list[dict]:
                            implying is not None))
     if args.maximality and index:
         rows += maximality_rows(base, index, accumulated, implying,
-                                args.cuts, args.jobs)
+                                args.cuts, args.jobs, args.maximal_timeout)
     return rows
 
 
@@ -465,6 +482,9 @@ def main() -> int:
                         help="solver calls in flight for maximal")
     parser.add_argument("--spec", help="override the family name and ideals")
     parser.add_argument("--ideals", help="override the ideals directory")
+    parser.add_argument("--maximal-timeout", type=int, default=900,
+                        help="wall budget for one `maximal` call, per cut "
+                             "(default: 900)")
     parser.add_argument("--compare-timeout", type=int,
                         default=COMPARE_TIMEOUT_S,
                         help="compare budget in seconds "

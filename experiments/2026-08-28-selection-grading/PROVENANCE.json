@@ -1,0 +1,312 @@
+{
+  "campaign": "2026-08-28-selection-grading",
+  "attribution": "recorded",
+  "generated_on": "2026-09-02",
+  "status": "closed",
+  "kind": "repair campaign (TLSF), 2x2 factorial, all four arms from one binary",
+  "kind_note": "Sweep G crosses selection_scheme (nsga2-apportion against weighted) with fitness.status_grading (mrs against aurus). Every arm runs generations = 500 under a 400 s genetic.max_wall_s, so the deadline rather than the generation count ends every run and each arm gets the same wall clock. The external harness cap is 3600 s.",
+  "question": "What each arm finds as a function of time, and how the two factors interact: status_grading changes what the status objective is, and the two schemes consume that objective differently -- one of three separately ranked objectives under NSGA-II, a number scaled by 0.7 into a scalar under weighted.",
+  "endpoint": "None registered. PLAN.md section 2 declares no primary endpoint, no alpha, no control arm and no decision rule. The deliverable is the six metrics of section 5.",
+  "decision_rule_firing": "There is no decision rule to fire. PLAN.md section 2 registers none and says so against the practice of every other plan in this archive, which do bind one. This field is filled rather than left blank because a blank here would read as an unfinished close. Every p-value in REPORT.md and in this file is POST-HOC and labelled as such at the point it is written.",
+  "arms": {
+    "nsga2-apportion/mrs": "nsga2-apportion/mrs",
+    "nsga2-apportion/aurus": "nsga2-apportion/aurus",
+    "weighted/mrs": "weighted/mrs",
+    "weighted/aurus": "weighted/aurus",
+    "shared": "generations 500, max_wall_s 400, parallel 1, weights 0.1/0.2/0.7, log metric, weakening screen off, accumulate_repairs true, monolithic repair mode, run_implication true"
+  },
+  "corpus": "25 families, seeds 0-5, 600 runs",
+  "profile_commit": {
+    "sha": "1816e27239b0e763908fe94691d51a7f2080578d",
+    "short": "1816e27",
+    "branch": "campaign/selection-grading",
+    "subject": "docs(experiments): declare the selection-grading ablation",
+    "reachable_from_main": false,
+    "held_by_tag": "provenance/selection-grading",
+    "held_by_tag_note": "The annotated tag holds the declaration commit, which is not an ancestor of main. Never delete it. Four scoring commits sit after it on this branch, cherry-picked from campaign/aurus-matched during the close."
+  },
+  "binary_commit": {
+    "sha": "1816e27239b0e763908fe94691d51a7f2080578d",
+    "short": "1816e27",
+    "dirty": "0 on every one of the 600 rows",
+    "source": "counter --version, read by run_experiments.py at startup and stamped onto every row"
+  },
+  "hosts": {
+    "av2": {
+      "seeds": "0-2"
+    },
+    "av3": {
+      "seeds": "3-5"
+    },
+    "note": "The seed split comes from campaign.toml alone. Both arms of every contrast ran on one host at the same seed, so a host difference cancels inside the (spec, seed) cell."
+  },
+  "rows": {
+    "merged_total": 600,
+    "planned_total": 600,
+    "runs_per_arm": {
+      "nsga2-apportion/mrs": 150,
+      "nsga2-apportion/aurus": 150,
+      "weighted/mrs": 150,
+      "weighted/aurus": 150
+    },
+    "seeds": "0-5 on all four arms",
+    "duplicates": 0
+  },
+  "verification": {
+    "note": "The two checks of PLAN.md section 12.",
+    "1_ideal_solutions_not_flat_zero": {
+      "result": "PASS",
+      "detail": "implies_ideal is 184 of 600 (30.7%) and no arm is flat zero: 79/150, 83/150, 5/150 and 17/150. The compare join is sound."
+    },
+    "2_stopped_by_reads_deadline": {
+      "result": "PASS",
+      "detail": "deadline on all 355 manifests, generations on none, so no family reached 500 generations inside 400 s and the arms share a time axis."
+    }
+  },
+  "censoring": {
+    "censored_runs": 245,
+    "of": 600,
+    "rate": "40.8%",
+    "cap_s": 3600,
+    "by_arm": {
+      "nsga2-apportion/mrs": 0.133,
+      "nsga2-apportion/aurus": 0.073,
+      "weighted/mrs": 0.84,
+      "weighted/aurus": 0.587
+    },
+    "note": "A censored run wrote no manifest, so its implies_ideal reads zero in the results CSV whatever it found. The censoring is not balanced across arms -- weighted was killed on 214 of 300 paired runs against nsga2-apportion's 31 -- so the endpoint contrast between the schemes is confounded with it and only the accumulator curves separate the two."
+  },
+  "section_5_measures": {
+    "nsga2-apportion/mrs": {
+      "runs": 150,
+      "yield": 0.86,
+      "implies_ideal": 0.527,
+      "killed_at_cap": 0.133,
+      "mean_wall_s": 1453.2,
+      "median_wall_s": 1053.6
+    },
+    "nsga2-apportion/aurus": {
+      "runs": 150,
+      "yield": 0.88,
+      "implies_ideal": 0.553,
+      "killed_at_cap": 0.073,
+      "mean_wall_s": 889.2,
+      "median_wall_s": 577.8
+    },
+    "weighted/mrs": {
+      "runs": 150,
+      "yield": 0.147,
+      "implies_ideal": 0.033,
+      "killed_at_cap": 0.84,
+      "mean_wall_s": 3177.7,
+      "median_wall_s": 3600.0
+    },
+    "weighted/aurus": {
+      "runs": 150,
+      "yield": 0.38,
+      "implies_ideal": 0.113,
+      "killed_at_cap": 0.587,
+      "mean_wall_s": 2526.9,
+      "median_wall_s": 3600.0
+    }
+  },
+  "per_family_implies_ideal": {
+    "arbiter-aurus": {
+      "nsga2-apportion/aurus": "6/6",
+      "nsga2-apportion/mrs": "6/6",
+      "weighted/aurus": "4/6",
+      "weighted/mrs": "0/6"
+    },
+    "detector-aurus": {
+      "nsga2-apportion/aurus": "6/6",
+      "nsga2-apportion/mrs": "6/6",
+      "weighted/aurus": "0/6",
+      "weighted/mrs": "0/6"
+    },
+    "full-arbiter-aurus": {
+      "nsga2-apportion/aurus": "4/6",
+      "nsga2-apportion/mrs": "1/6",
+      "weighted/aurus": "3/6",
+      "weighted/mrs": "3/6"
+    },
+    "gyro-var1": {
+      "nsga2-apportion/aurus": "0/6",
+      "nsga2-apportion/mrs": "0/6",
+      "weighted/aurus": "0/6",
+      "weighted/mrs": "0/6"
+    },
+    "gyro-var2": {
+      "nsga2-apportion/aurus": "1/6",
+      "nsga2-apportion/mrs": "0/6",
+      "weighted/aurus": "1/6",
+      "weighted/mrs": "0/6"
+    },
+    "humanoid-458": {
+      "nsga2-apportion/aurus": "0/6",
+      "nsga2-apportion/mrs": "0/6",
+      "weighted/aurus": "0/6",
+      "weighted/mrs": "0/6"
+    },
+    "humanoid-503": {
+      "nsga2-apportion/aurus": "0/6",
+      "nsga2-apportion/mrs": "0/6",
+      "weighted/aurus": "0/6",
+      "weighted/mrs": "0/6"
+    },
+    "humanoid-531": {
+      "nsga2-apportion/aurus": "0/6",
+      "nsga2-apportion/mrs": "0/6",
+      "weighted/aurus": "0/6",
+      "weighted/mrs": "0/6"
+    },
+    "humanoid-742": {
+      "nsga2-apportion/aurus": "1/6",
+      "nsga2-apportion/mrs": "1/6",
+      "weighted/aurus": "0/6",
+      "weighted/mrs": "1/6"
+    },
+    "lift": {
+      "nsga2-apportion/aurus": "0/6",
+      "nsga2-apportion/mrs": "0/6",
+      "weighted/aurus": "0/6",
+      "weighted/mrs": "0/6"
+    },
+    "lily02": {
+      "nsga2-apportion/aurus": "6/6",
+      "nsga2-apportion/mrs": "6/6",
+      "weighted/aurus": "0/6",
+      "weighted/mrs": "0/6"
+    },
+    "lily11": {
+      "nsga2-apportion/aurus": "6/6",
+      "nsga2-apportion/mrs": "6/6",
+      "weighted/aurus": "0/6",
+      "weighted/mrs": "0/6"
+    },
+    "lily15": {
+      "nsga2-apportion/aurus": "1/6",
+      "nsga2-apportion/mrs": "0/6",
+      "weighted/aurus": "0/6",
+      "weighted/mrs": "0/6"
+    },
+    "lily16": {
+      "nsga2-apportion/aurus": "0/6",
+      "nsga2-apportion/mrs": "2/6",
+      "weighted/aurus": "0/6",
+      "weighted/mrs": "0/6"
+    },
+    "load-balancer-aurus": {
+      "nsga2-apportion/aurus": "6/6",
+      "nsga2-apportion/mrs": "5/6",
+      "weighted/aurus": "4/6",
+      "weighted/mrs": "0/6"
+    },
+    "ltl2dba-r-2": {
+      "nsga2-apportion/aurus": "6/6",
+      "nsga2-apportion/mrs": "6/6",
+      "weighted/aurus": "0/6",
+      "weighted/mrs": "0/6"
+    },
+    "ltl2dba-theta-2": {
+      "nsga2-apportion/aurus": "6/6",
+      "nsga2-apportion/mrs": "6/6",
+      "weighted/aurus": "0/6",
+      "weighted/mrs": "0/6"
+    },
+    "ltl2dba27": {
+      "nsga2-apportion/aurus": "6/6",
+      "nsga2-apportion/mrs": "6/6",
+      "weighted/aurus": "0/6",
+      "weighted/mrs": "0/6"
+    },
+    "minepump": {
+      "nsga2-apportion/aurus": "6/6",
+      "nsga2-apportion/mrs": "6/6",
+      "weighted/aurus": "1/6",
+      "weighted/mrs": "0/6"
+    },
+    "pcar-v2-888": {
+      "nsga2-apportion/aurus": "0/6",
+      "nsga2-apportion/mrs": "0/6",
+      "weighted/aurus": "0/6",
+      "weighted/mrs": "0/6"
+    },
+    "prioritized-arbiter-aurus": {
+      "nsga2-apportion/aurus": "3/6",
+      "nsga2-apportion/mrs": "2/6",
+      "weighted/aurus": "4/6",
+      "weighted/mrs": "1/6"
+    },
+    "rg1": {
+      "nsga2-apportion/aurus": "1/6",
+      "nsga2-apportion/mrs": "2/6",
+      "weighted/aurus": "0/6",
+      "weighted/mrs": "0/6"
+    },
+    "rg2": {
+      "nsga2-apportion/aurus": "6/6",
+      "nsga2-apportion/mrs": "6/6",
+      "weighted/aurus": "0/6",
+      "weighted/mrs": "0/6"
+    },
+    "round-robin-arbiter-aurus": {
+      "nsga2-apportion/aurus": "6/6",
+      "nsga2-apportion/mrs": "6/6",
+      "weighted/aurus": "0/6",
+      "weighted/mrs": "0/6"
+    },
+    "simple-arbiter-aurus": {
+      "nsga2-apportion/aurus": "6/6",
+      "nsga2-apportion/mrs": "6/6",
+      "weighted/aurus": "0/6",
+      "weighted/mrs": "0/6"
+    }
+  },
+  "result": {
+    "headline": "The weighted arms do not fail to search. They search far more prolifically and then cannot deliver. weighted/mrs accumulates 3341 gate-passing candidates a run against nsga2-apportion/mrs's 314, 10.6x more, and reports implies_ideal on 5 of 150 runs against 79. 126 of its 150 runs were killed at the 3600 s external cap.",
+    "mechanism": "The post-deadline work is quadratic in what the search accumulated. compute_subsumed in src/filter/implication.cpp sweeps pairs over the accumulated pool at the final implication filter, so 3341 candidates is about 5.6M pairwise implication queries after the 400 s deadline has already passed -- and genetic.max_wall_s bounds the generation loop alone, interrupting neither the final realizability gate, the implication filter nor the scoring. The external cap is what ends those runs.",
+    "not_a_search_difference": "Time to first repair is flat across all four arms: 5.6 to 6.4 s median, reached on 95.3 to 99.3 percent of runs. The schemes differ in what they accumulate and what that costs afterwards, not in how quickly they find something.",
+    "posthoc_selection": "nsga2-apportion against weighted over 300 pairs: found_repair 191 to 9, implies_ideal 145 to 5, both exact McNemar p = 0.0000. Confounded with censoring (214 against 31 killed) and with the weights, which ride with the weighted arms by construction. POST-HOC.",
+    "posthoc_grading": "mrs against aurus over 300 pairs: found_repair 9 to 47 in aurus's favour, p = 0.0000; implies_ideal 7 to 23, p = 0.0052; killed 146 against 99. The aurus ladder finishes more runs inside the cap. POST-HOC."
+  },
+  "metrics_measured": {
+    "solutions": "all 600 runs, from the accumulator index, no solver call",
+    "time_to_first_repair": "all 600 runs, from the accumulator index, no solver call",
+    "ideal_solutions": "NOT MEASURED -- see owed",
+    "time_to_first_ideal_repair": "NOT MEASURED -- see owed",
+    "maximal_solutions": "NOT MEASURABLE -- see owed",
+    "maximal_ideal_solutions": "NOT MEASURABLE -- see owed"
+  },
+  "owed": [
+    "ideal_solutions and time_to_first_ideal_repair over the 600 runs, which need one `compare` call each and about 118 core-hours in total, scaled from the 2026-08-29 campaign's measured compare cost over its 546,282 candidates against this one's 863,531. They are worth having precisely because the endpoint is confounded with censoring: 245 runs read implies_ideal zero whatever they found, and these two metrics score what the accumulator holds instead. Not run at the close because both lab hosts were committed to the 2026-08-29 campaign's maximality pass.",
+    "maximal_solutions and maximal_ideal_solutions are infeasible on this campaign's data and the arithmetic is the reason rather than the budget. The 863,531 accumulated candidates give 5,706,083,502 pairwise implication comparisons at 20 log-spaced cuts, 20.9 times the 2026-08-29 campaign, which is itself a multi-day job on two 32-core hosts. 91.7% of those candidates sit in the weighted arms, so the arm that most needs a maximality reading is the one whose reading cannot be computed. A future curve campaign that expects prolific arms should cap `accumulate_repairs` or budget for this before it launches."
+  ],
+  "vendored_scripts": {
+    "note": "Verbatim copies, each verified with git hash-object. The four that ran the campaign come from 1816e27. score_curves.py comes from this branch's tip, which carries four fixes cherry-picked from campaign/aurus-matched during the close -- the first of them is why the 245 censored runs are readable at all, since the version that ran the campaign identified a run from its manifest and a censored run has none. analysis_lib.py is vendored because analyse_selection_grading.py imports it, and both run as python3 scripts/<name>.py so sys.path[0] resolves against these copies.",
+    "ran_the_campaign": {
+      "source_commit": "1816e27239b0e763908fe94691d51a7f2080578d",
+      "gen_configs.py": "6796ff2491a5b9094254c2e331475bebc79a9010",
+      "run_experiments.py": "19568d8dc041dfe957ec67242ddb5e9802ddf7cd",
+      "merge_experiments.py": "5c1fa4cbc45e00d4d543e150a454e26503f015a5",
+      "campaign.py": "1297bcee6b873a498b82acd31f656b5d29aafca8"
+    },
+    "scored_and_analysed": {
+      "source_commit": "a7cbb2885f5ea88f1a4151b68ad6ca1237834832",
+      "score_curves.py": "0ffc500dc4c5ec0437d8fb68316949f39e774a4e",
+      "analysis_lib.py": "5b3db5427a2d3b79ffed048e2f64a9ef9a9435d9",
+      "analyse_selection_grading.py": "32c1a53d2b68533e1aaae839b435587413390fc1"
+    }
+  },
+  "config_vintage": "No entry is owed in the 'Config vintage' note of experiments/README.md. gen_configs.py ran with --pin-vintage, so the four moved defaults are written into every archived config explicitly.",
+  "files": {
+    "results-curves.csv": "Merged results, 600 rows, the source for every per-run figure here.",
+    "results-curves-av2.csv": "av2's rows as collected, seeds 0-2.",
+    "results-curves-av3.csv": "av3's rows as collected, seeds 3-5.",
+    "PLAN.md": "The pre-registration, including its statement that there is no decision rule.",
+    "REPORT.md": "The write-up.",
+    "campaign.toml": "The declaration the hosts read; the seed split lives here alone.",
+    "scripts/": "The vendored scripts, with blob shas below."
+  },
+  "reproduce": "Check out 1816e27, build the release preset, and drive it with this directory's vendored gen_configs.py using the command campaign.toml carries.",
+  "close_note": "Closed retroactively on 2026-09-02, four days after the runs finished. The campaign had no PROVENANCE.json and no REPORT.md, and its 600 rows and 3.5 GB of run data were found in a git worktree that had been removed, in a directory git no longer lists. Nothing was lost: git leaves ignored files behind when it removes a worktree. The data now sits in the main checkout's experiments/ beside every other campaign's."
+}

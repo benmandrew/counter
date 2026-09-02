@@ -135,11 +135,16 @@ std::vector<FilterFunction> get_final_filter_functions(
     const GenerationProgressCallback& on_impl_progress) {
     std::vector<FilterFunction> filters;
     filters.push_back(make_dedup_filter());
+    // Built before the weakening filter, which moves `original` out.
+    SimilarityKey similarity = cfg.run_implication_filter
+                                   ? syntactic_similarity_key(original, cfg)
+                                   : SimilarityKey{};
     if (cfg.run_weakening_filter) {
         filters.push_back(make_weakening_filter(std::move(original), checker));
     }
     if (cfg.run_implication_filter) {
-        filters.push_back(make_implication_filter(checker, on_impl_progress));
+        filters.push_back(make_implication_filter(
+            checker, std::move(similarity), on_impl_progress));
     }
     return filters;
 }

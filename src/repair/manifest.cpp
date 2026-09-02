@@ -13,6 +13,7 @@
 #include <nlohmann/json.hpp>
 
 #include "filter/correctness.hpp"
+#include "filter/implication.hpp"
 #include "filter/well_separation.hpp"
 #include "fitness/function.hpp"
 #include "fitness/semantic_similarity.hpp"
@@ -102,7 +103,16 @@ namespace {
 // version it can also spend an offspring budget or pass a deadline, and only
 // stopped_by separates the three. individuals_bred is null wherever no budget
 // was active, an unbudgeted run not paying for the count.
-constexpr int k_schema_version = 22;
+//
+// 22 added mutation.p_condition_type and mutation.p_scope, the two directional
+// arms over a requirement's scope and condition type.
+//
+// 23 added the implication block. The pairwise sweep's counters reached no
+// field at all before it, so a run's diagnostics carried them and a campaign
+// reading run.json could not: n_equivalent_collapsed in particular is the only
+// record of how much of the output was one repair written twice, and it is
+// unreadable without n_comparisons beside it to say how many pairs were asked.
+constexpr int k_schema_version = 23;
 
 // The inverse of the spellings config_io.cpp parses. It has no table to
 // borrow -- it only ever goes string to enum -- so these must be kept in step
@@ -325,6 +335,21 @@ nlohmann::json tool_calls_json() {
 // rather than for the four that happened to share a name with a tool. The
 // counts are lookups, not execs: several of these sit in front of one tool and
 // a miss in one is not a subprocess in another.
+// The pairwise implication sweep's own counters. `comparisons` is the
+// denominator every other field is read against: `skipped` are the pairs an
+// earlier verdict already settled, `duplicates` the specs excluded from the
+// sweep outright, and `timeouts` the checks that gave no verdict and so read
+// as non-implication. `equivalent_collapsed` counts the pairs found mutually
+// equivalent, a class of k members contributing k-1.
+nlohmann::json implication_json() {
+    return {{"comparisons", ImplicationFilterStats::n_comparisons.load()},
+            {"skipped", ImplicationFilterStats::n_skipped.load()},
+            {"duplicates", ImplicationFilterStats::n_duplicates.load()},
+            {"timeouts", ImplicationFilterStats::n_timeouts.load()},
+            {"equivalent_collapsed",
+             ImplicationFilterStats::n_equivalent_collapsed.load()}};
+}
+
 nlohmann::json caches_json() {
     auto row = [](std::size_t hits, std::size_t misses) {
         return nlohmann::json{{"hits", hits}, {"misses", misses}};
@@ -437,7 +462,8 @@ void write_run_manifest(const std::string& output_dir,
         // undecided (the candidate is dropped) rather than propagating.
         {"n_well_separation_errors", WellSeparationStats::n_errors.load()},
         {"fitness_cache", fitness_cache_json()},
-        {"caches", caches_json()}};
+        {"caches", caches_json()},
+        {"implication", implication_json()}};
 
     const std::filesystem::path path = dir / k_run_manifest_name;
     std::ofstream out(path);

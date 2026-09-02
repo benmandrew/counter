@@ -251,6 +251,16 @@ nlohmann::json expect_run_manifest(const std::filesystem::path& dir,
                label + ": the " + std::string(name) +
                    " cache reports both hits and misses");
     }
+    // The pairwise sweep's counters, on the same argument as the caches above:
+    // they reached no field at all before schema 23, so a field silently
+    // dropped from this block fails nowhere else.
+    const nlohmann::json& implication = manifest.at("implication");
+    for (const char* name : {"comparisons", "skipped", "duplicates", "timeouts",
+                             "equivalent_collapsed"}) {
+        expect(
+            implication.contains(name),
+            label + ": the manifest reports implication." + std::string(name));
+    }
     // ltlfilt's exec count is over all three of its entry points, which is the
     // set its total_s is over; reporting one of them divided a tool's seconds
     // by a fraction of its calls.

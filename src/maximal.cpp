@@ -264,13 +264,17 @@ int main(int argc, const char* const argv[]) {
 
     std::size_t reported = 0;
     const std::vector<tlsf::Specification> maximal =
-        tlsf_make_implication_filter(checker, [&reported](std::size_t done,
-                                                          std::size_t total) {
-            reported = done;
-            if (done % 500 == 0 || done == total) {
-                std::cerr << "\r  pairs " << done << "/" << total << std::flush;
-            }
-        })(distinct);
+        // No original specification here -- `maximal` takes a bare directory
+        // of TLSF files -- so an equivalence class collapses on operator< with
+        // no similarity to rank it.
+        tlsf_make_implication_filter(
+            checker, nullptr, [&reported](std::size_t done, std::size_t total) {
+                reported = done;
+                if (done % 500 == 0 || done == total) {
+                    std::cerr << "\r  pairs " << done << "/" << total
+                              << std::flush;
+                }
+            })(distinct);
     if (reported > 0) {
         std::cerr << "\n";
     }

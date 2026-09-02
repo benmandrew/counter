@@ -2,6 +2,7 @@
 #include <utility>
 #include <vector>
 
+#include "config.hpp"
 #include "filter/implication.hpp"
 #include "filter/implication_check.hpp"
 #include "requirement.hpp"
@@ -60,14 +61,52 @@ void test_dominated_spec_removed() {
            "implication_filter: the stronger spec (G a) should survive");
 }
 
-void test_equivalent_specs_both_kept() {
-    // Two specs with identical LTL strings imply each other; neither strictly
-    // dominates the other, so both must be retained.
+void test_equivalent_specs_collapse_to_one() {
+    // Two specs with identical LTL strings imply each other. They are one
+    // repair written twice, so exactly one survives.
     SatisfiabilityChecker checker;
     FilterFunction filter = make_implication_filter(checker);
     const auto pop = filter({make_spec({g_req("a")}), make_spec({g_req("a")})});
-    expect(pop.size() == 2,
-           "implication_filter: equivalent specs should both be retained");
+    expect(pop.size() == 1,
+           "implication_filter: equivalent specs should collapse to one");
+}
+
+void test_equivalence_tie_break_prefers_similar() {
+    // "G(true -> a & a)" and "G(true -> a)" are logically equivalent and
+    // structurally distinct, so the survivor is decided by the tie-break
+    // rather than by duplicate collapsing. The original is "G(true -> a)", so
+    // the second is the more similar and must be the one kept -- and it must
+    // win from either input position, the tie-break being a property of the
+    // specs rather than of the order the sweep happens to visit them in.
+    SatisfiabilityChecker checker;
+    const Specification original = make_spec({g_req("a")});
+    const Config cfg;
+    for (const bool similar_first : {false, true}) {
+        FilterFunction filter = make_implication_filter(
+            checker, syntactic_similarity_key(original, cfg));
+        const Specification bulky = make_spec({g_req("a & a")});
+        const Specification lean = make_spec({g_req("a")});
+        const auto pop =
+            similar_first ? filter({lean, bulky}) : filter({bulky, lean});
+        expect(pop.size() == 1,
+               "implication_filter: equivalent specs should collapse to one");
+        expect(pop.size() == 1 && pop[0] == lean,
+               "implication_filter: the survivor should be the spec closest to "
+               "the original");
+    }
+}
+
+void test_equivalence_without_key_still_collapses() {
+    // With no similarity key the tie-break falls through to operator<, which
+    // is what the `maximal` tool relies on: it has no original to rank
+    // against, and must still not report one repair twice.
+    SatisfiabilityChecker checker;
+    FilterFunction filter = make_implication_filter(checker);
+    const auto pop =
+        filter({make_spec({g_req("a & a")}), make_spec({g_req("a")})});
+    expect(pop.size() == 1,
+           "implication_filter: equivalent specs should collapse with no "
+           "similarity key");
 }
 
 void test_chain_keeps_only_strongest() {
@@ -154,7 +193,9 @@ void run_implication_filter_tests() {
     test_single_spec_returned_unchanged();
     test_independent_specs_both_kept();
     test_dominated_spec_removed();
-    test_equivalent_specs_both_kept();
+    test_equivalent_specs_collapse_to_one();
+    test_equivalence_tie_break_prefers_similar();
+    test_equivalence_without_key_still_collapses();
     test_chain_keeps_only_strongest();
     test_mixed_population();
     test_weakening_response_implies();

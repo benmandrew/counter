@@ -45,10 +45,12 @@ std::vector<Scored<Specification>> keep_weakenings(
     const std::vector<Scored<Specification>>& survivors,
     const Specification& original, SatisfiabilityChecker& checker);
 
-// Keeps the survivors not strictly implied by another, mirroring the FRETISH
-// final implication filter.
+// Keeps the survivors not dominated by another, mirroring the FRETISH final
+// implication filter. Equivalent survivors collapse to the one closest to
+// @p original under syntactic similarity.
 std::vector<Scored<Specification>> keep_maximal(
     const std::vector<Scored<Specification>>& survivors,
+    const Specification& original, const Config& cfg,
     SatisfiabilityChecker& checker);
 
 }  // namespace tlsf::internal

@@ -15,11 +15,14 @@
 #include <vector>
 
 #include "bounded_async.hpp"
+#include "config.hpp"
+#include "filter/implication.hpp"
 #include "filter/well_separation.hpp"
 #include "prop_formula.hpp"
 #include "runner/black.hpp"
 #include "runner/spot.hpp"
 #include "thread_pool.hpp"
+#include "tlsf/fitness.hpp"
 #include "tlsf/specification.hpp"
 
 namespace {
@@ -111,11 +114,25 @@ bool any_formula_exceeds(const tlsf::Specification& spec, std::size_t cap) {
     return false;
 }
 
-// Marks whichever of the unordered pair of representative positions {a, b} is
-// strictly dominated, if any. Short-circuits once either endpoint is already
-// known subsumed.
+// Orders the two members of an equivalence class so exactly one survives. The
+// FRETISH twin in src/filter/implication.cpp carries the argument for the
+// tie-break being total rather than "whichever pair finished first".
+bool prefer_a(const tlsf::Specification& spec_a,
+              const tlsf::Specification& spec_b, double key_a, double key_b) {
+    if (key_a != key_b) {
+        return key_a > key_b;
+    }
+    return spec_b < spec_a;
+}
+
+// Marks the dominated side of the unordered pair of representative positions
+// {a, b}, if any: the weaker side under strict implication, or the side
+// `prefer_a` ranks lower when the two are equivalent. Short-circuits once
+// either endpoint is already known subsumed, which stays sound because the
+// combined relation is transitive (see the FRETISH twin).
 void check_pair(const std::vector<tlsf::Specification>& pop,
                 const std::vector<std::size_t>& representatives,
+                const std::vector<double>& keys,
                 std::vector<std::atomic<uint8_t>>& subsumed,
                 SatisfiabilityChecker& checker, std::size_t pos_a,
                 std::size_t pos_b) {
@@ -129,36 +146,45 @@ void check_pair(const std::vector<tlsf::Specification>& pop,
         tlsf_spec_implies(spec_a, spec_b, checker).value_or(false);
     const bool b_implies_a =
         tlsf_spec_implies(spec_b, spec_a, checker).value_or(false);
-    if (a_implies_b && !b_implies_a) {
+    if (a_implies_b && b_implies_a) {
+        const bool keep_a = prefer_a(spec_a, spec_b, keys[pos_a], keys[pos_b]);
+        subsumed[keep_a ? pos_b : pos_a].store(1, std::memory_order_relaxed);
+        ImplicationFilterStats::n_equivalent_collapsed.fetch_add(
+            1, std::memory_order_relaxed);
+    } else if (a_implies_b) {
         subsumed[pos_b].store(1, std::memory_order_relaxed);
-    } else if (b_implies_a && !a_implies_b) {
+    } else if (b_implies_a) {
         subsumed[pos_a].store(1, std::memory_order_relaxed);
     }
 }
 
-// Computes subsumed[j] = 1 iff some spec strictly dominates pop[j] (implies it
-// without being implied back). Exact duplicates relate identically to every
-// other spec (the implication check depends only on the lowered LTL formula),
-// so only one representative per group of equal specs is run through the
-// pairwise sweep; its verdict is copied to every member afterwards.
+// Computes subsumed[j] = 1 iff some spec dominates pop[j]: implies it without
+// being implied back, or is equivalent to it and outranks it under `prefer_a`.
+// Exact duplicates relate identically to every other spec (the implication
+// check depends only on the lowered LTL formula), so only one representative
+// per group of equal specs is run through the pairwise sweep, and only that
+// representative can survive the group.
 std::vector<uint8_t> compute_subsumed(
     const std::vector<tlsf::Specification>& pop, SatisfiabilityChecker& checker,
+    const TlsfSimilarityKey& similarity,
     const GenerationProgressCallback& on_progress) {
     const std::size_t pop_size = pop.size();
     std::unordered_map<tlsf::Specification, std::size_t> rep_position_of;
     std::vector<std::size_t> representatives;
-    std::vector<std::vector<std::size_t>> members;
     for (std::size_t i = 0; i < pop_size; ++i) {
-        const auto [iter, inserted] =
-            rep_position_of.try_emplace(pop[i], representatives.size());
-        if (inserted) {
+        if (rep_position_of.try_emplace(pop[i], representatives.size())
+                .second) {
             representatives.push_back(i);
-            members.push_back({i});
-        } else {
-            members[iter->second].push_back(i);
         }
     }
     const std::size_t n_reps = representatives.size();
+    // One similarity call per representative: the sweep below is quadratic.
+    std::vector<double> keys(n_reps, 0.0);
+    if (similarity) {
+        for (std::size_t rep_pos = 0; rep_pos < n_reps; ++rep_pos) {
+            keys[rep_pos] = similarity(pop[representatives[rep_pos]]);
+        }
+    }
     std::vector<std::pair<std::size_t, std::size_t>> pairs;
     pairs.reserve(n_reps * (n_reps - 1) / 2);
     for (std::size_t i = 0; i < n_reps; ++i) {
@@ -174,11 +200,13 @@ std::vector<uint8_t> compute_subsumed(
     std::size_t completed = 0;
     run_bounded_async(
         pairs.size(), max_in_flight,
-        [&checker, &pop, &representatives, &subsumed, &pairs](std::size_t idx) {
+        [&checker, &pop, &representatives, &keys, &subsumed,
+         &pairs](std::size_t idx) {
             const std::size_t pos_a = pairs[idx].first;
             const std::size_t pos_b = pairs[idx].second;
-            return [&checker, &pop, &representatives, &subsumed, pos_a, pos_b] {
-                check_pair(pop, representatives, subsumed, checker, pos_a,
+            return [&checker, &pop, &representatives, &keys, &subsumed, pos_a,
+                    pos_b] {
+                check_pair(pop, representatives, keys, subsumed, checker, pos_a,
                            pos_b);
             };
         },
@@ -187,13 +215,13 @@ std::vector<uint8_t> compute_subsumed(
                 on_progress(++completed, total);
             }
         });
-    std::vector<uint8_t> result(pop_size, 0);
+    std::vector<uint8_t> result(pop_size, 1);
     for (std::size_t rep_pos = 0; rep_pos < n_reps; ++rep_pos) {
-        const uint8_t status =
+        // Only the representative can survive a group of structurally equal
+        // specs; the rest are an equivalence class no solver call is needed to
+        // recognise.
+        result[representatives[rep_pos]] =
             subsumed[rep_pos].load(std::memory_order_relaxed);
-        for (const std::size_t idx : members[rep_pos]) {
-            result[idx] = status;
-        }
     }
     return result;
 }
@@ -464,16 +492,28 @@ FilterFunctionT<tlsf::Specification> tlsf_make_weakening_filter(
             }};
 }
 
+TlsfSimilarityKey tlsf_syntactic_similarity_key(tlsf::Specification original,
+                                                const Config& cfg) {
+    // Both captured by value: the key outlives this call.
+    return [original = std::move(original),
+            cfg](const tlsf::Specification& spec) mutable {
+        return tlsf_syntactic_similarity(spec, original, cfg);
+    };
+}
+
 FilterFunctionT<tlsf::Specification> tlsf_make_implication_filter(
-    SatisfiabilityChecker& checker,
+    SatisfiabilityChecker& checker, TlsfSimilarityKey similarity,
     const GenerationProgressCallback& on_progress) {
     return {"implication",
-            [&checker, on_progress](std::vector<tlsf::Specification> pop) {
+            [&checker, similarity = std::move(similarity),
+             on_progress](std::vector<tlsf::Specification> pop) {
+                ImplicationFilterStats::n_equivalent_collapsed.store(
+                    0, std::memory_order_relaxed);
                 if (pop.size() <= 1) {
                     return pop;
                 }
                 const std::vector<uint8_t> subsumed =
-                    compute_subsumed(pop, checker, on_progress);
+                    compute_subsumed(pop, checker, similarity, on_progress);
                 std::vector<tlsf::Specification> maximal;
                 for (std::size_t i = 0; i < pop.size(); ++i) {
                     if (subsumed[i] == 0U) {

@@ -12,9 +12,11 @@
 #include <functional>
 #include <iterator>
 #include <map>
+#include <optional>
 #include <stdexcept>
 #include <string>
 #include <type_traits>
+#include <unordered_map>
 #include <utility>
 #include <vector>
 
@@ -159,19 +161,220 @@ struct ScoringStats {
 
 namespace generation_detail {
 
-/// Outcome of one scoring task: the objectives and their weighted scalar, or
-/// the message from the fitness function that threw. Failure is carried back
-/// as a value rather than left in the future, so a task that fails on one
-/// formula cannot unwind the whole scoring pass.
-struct ScoreOutcome {
-    std::pair<std::vector<double>, double> result;
+/// One part's result: its value, or the message from the fitness function that
+/// threw. Failure is carried back as a value rather than left in the future, so
+/// a part that fails on one formula cannot unwind the whole scoring pass.
+struct PartOutcome {
+    double value = 0.0;
     std::string error;
 };
+
+/// Where one part of one candidate's score sits: which candidate, which of its
+/// objectives, and which part of that objective.
+struct PartAddress {
+    std::size_t candidate = 0;
+    std::size_t objective = 0;
+    std::size_t part = 0;
+};
+
+/// A candidate the cache could not answer, with the work its score decomposes
+/// into and the slots that work will fill.
+///
+/// One planned candidate answers for *every* population slot holding that
+/// specification. A population reaching the score stage is largely repeats --
+/// stage_pad cycles the survivors back up to the target size, and the whole
+/// point of the apportion scheme is replication -- and planning runs before any
+/// part is dispatched, so every repeat would otherwise miss the fitness cache
+/// together and dispatch its own copy of the same queries.
+template <typename Spec>
+struct PlannedCandidate {
+    std::vector<std::size_t> indices;
+    std::vector<ObjectiveWork> work;
+    std::vector<std::vector<double>> values;
+    std::size_t outstanding = 0;
+    std::string error;
+};
+
+/// Folds a finished candidate's part values back into an objective vector,
+/// stores it against the specification, and records the scored individual.
+///
+/// Values are folded in part order whatever order the parts ran in, so the
+/// result is a function of the candidate alone.
+template <typename Spec, typename Fitness>
+void commit_candidate(const PlannedCandidate<Spec>& candidate,
+                      const std::vector<Spec>& population,
+                      const Fitness& fitness_function,
+                      std::vector<Scored<Spec>>& scored,
+                      std::vector<bool>& succeeded) {
+    std::vector<double> objectives;
+    objectives.reserve(candidate.work.size());
+    for (std::size_t obj = 0; obj < candidate.work.size(); ++obj) {
+        objectives.push_back(
+            candidate.work[obj].combine(candidate.values[obj]));
+    }
+    auto [stored, fitness] = fitness_function.store(
+        population[candidate.indices.front()], std::move(objectives));
+    for (const std::size_t idx : candidate.indices) {
+        scored[idx].specification = population[idx];
+        scored[idx].objectives = stored;
+        scored[idx].fitness = fitness;
+        succeeded[idx] = true;
+    }
+}
+
+/// Records an already-cached score against the population slot it belongs to.
+template <typename Spec>
+void commit_cached(std::size_t idx, const std::vector<Spec>& population,
+                   std::pair<std::vector<double>, double> cached,
+                   std::vector<Scored<Spec>>& scored,
+                   std::vector<bool>& succeeded) {
+    scored[idx].specification = population[idx];
+    scored[idx].objectives = std::move(cached.first);
+    scored[idx].fitness = cached.second;
+    succeeded[idx] = true;
+}
+
+/// Plans the whole population: candidates the fitness cache can answer are
+/// recorded straight away, and the rest come back with the work their score
+/// decomposes into.
+///
+/// Nothing here touches an external tool, so the whole population is planned
+/// before a single part is dispatched. That is what lets one region hold every
+/// part of every candidate rather than one bounded window per candidate.
+template <typename Spec, typename Fitness>
+std::vector<PlannedCandidate<Spec>> plan_population(
+    const std::vector<Spec>& population, const Fitness& fitness_function,
+    std::vector<Scored<Spec>>& scored, std::vector<bool>& succeeded,
+    const std::function<void()>& report) {
+    std::vector<PlannedCandidate<Spec>> planned;
+    // The dispatched tasks hold references to the FitnessParts inside this
+    // vector, so nothing may grow it once planning has returned. Reserving the
+    // whole population up front also spares the planning loop its
+    // reallocations.
+    planned.reserve(population.size());
+    std::unordered_map<Spec, std::size_t> planned_by_spec;
+    planned_by_spec.reserve(population.size());
+    for (std::size_t idx = 0; idx < population.size(); ++idx) {
+        std::optional<std::vector<double>> cached =
+            fitness_function.cached_objectives(population[idx]);
+        if (cached.has_value()) {
+            // Paired with its scalar directly rather than handed back through
+            // store(), which would hash and compare the whole specification a
+            // second time to re-emplace a key it just answered from.
+            const double fitness = fitness_function.scalar(*cached);
+            commit_cached(idx, population, {std::move(*cached), fitness},
+                          scored, succeeded);
+            report();
+            continue;
+        }
+        const auto repeat = planned_by_spec.find(population[idx]);
+        if (repeat != planned_by_spec.end()) {
+            planned[repeat->second].indices.push_back(idx);
+            continue;
+        }
+        PlannedCandidate<Spec> candidate;
+        candidate.indices.push_back(idx);
+        candidate.work = fitness_function.plan(population[idx]);
+        candidate.values.reserve(candidate.work.size());
+        for (const ObjectiveWork& objective : candidate.work) {
+            candidate.values.emplace_back(objective.parts.size(), 0.0);
+            candidate.outstanding += objective.parts.size();
+        }
+        // A candidate every objective decomposed to nothing has an answer
+        // already -- a semantic-only score whose every slot matched, say -- and
+        // would otherwise never reach the collector that folds it.
+        if (candidate.outstanding == 0) {
+            commit_candidate(candidate, population, fitness_function, scored,
+                             succeeded);
+            report();
+            continue;
+        }
+        planned_by_spec.emplace(population[idx], planned.size());
+        planned.push_back(std::move(candidate));
+    }
+    return planned;
+}
+
+/// Files one finished part against the candidate it belongs to, folding that
+/// candidate's score once its last part has landed.
+///
+/// Returns how many population slots this part completed -- zero unless it was
+/// the candidate's last -- so the caller reports progress in individuals rather
+/// than in parts. Called from the dispatcher thread alone, so nothing here
+/// needs a lock.
+template <typename Spec, typename Fitness>
+std::size_t collect_part(const PartAddress& address, PartOutcome outcome,
+                         std::vector<PlannedCandidate<Spec>>& planned,
+                         const std::vector<Spec>& population,
+                         const Fitness& fitness_function,
+                         std::vector<Scored<Spec>>& scored,
+                         std::vector<bool>& succeeded,
+                         std::vector<std::string>& errors) {
+    PlannedCandidate<Spec>& candidate = planned[address.candidate];
+    if (outcome.error.empty()) {
+        candidate.values[address.objective][address.part] = outcome.value;
+    } else if (candidate.error.empty()) {
+        // The first message is kept and the rest discarded: a candidate is
+        // dropped whole however many of its parts failed, and both the failure
+        // tolerance and the progress report count individuals.
+        candidate.error = std::move(outcome.error);
+    }
+    if (--candidate.outstanding > 0) {
+        return 0;
+    }
+    if (candidate.error.empty()) {
+        commit_candidate(candidate, population, fitness_function, scored,
+                         succeeded);
+    } else {
+        // One error per slot the candidate answered for, so the failure
+        // tolerance counts individuals dropped rather than distinct
+        // specifications that failed.
+        errors.insert(errors.end(), candidate.indices.size(), candidate.error);
+    }
+    return candidate.indices.size();
+}
+
+/// Every part of every planned candidate, addressed so the dispatcher can hand
+/// a result back to the slot it belongs in.
+template <typename Spec>
+std::vector<PartAddress> part_addresses(
+    const std::vector<PlannedCandidate<Spec>>& planned) {
+    std::vector<PartAddress> addresses;
+    for (std::size_t slot = 0; slot < planned.size(); ++slot) {
+        for (std::size_t obj = 0; obj < planned[slot].work.size(); ++obj) {
+            const std::size_t n_parts = planned[slot].work[obj].parts.size();
+            for (std::size_t part = 0; part < n_parts; ++part) {
+                addresses.push_back({slot, obj, part});
+            }
+        }
+    }
+    return addresses;
+}
 
 }  // namespace generation_detail
 
 /// Scores each specification using a weighted average of all fitness functions:
 ///   fitness = sum(fn_i(spec) * w_i) / sum(w_i)
+///
+/// Every candidate's work goes into **one** dispatch region, split as far as
+/// each objective can split it: a term per changed requirement slot on the
+/// similarity objectives, a query per component plus the realizability walk on
+/// the status one. Scoring a candidate used to be a single task, and a single
+/// task is a serial chain of subprocess calls pinned to one pool worker, so the
+/// slowest candidate of a generation held one worker while the rest of the pool
+/// drained -- measured at 54% to 84% worker occupancy over the score stages of
+/// a 20-worker run, with up to a third of a stage spent with two parts left.
+/// Splitting the chain is the only thing that shortens it; more workers cannot.
+///
+/// Parts are launched longest-first (@ref cost_ordered_indices) over the whole
+/// region, so a candidate's synthesis walk goes out ahead of every cheap
+/// satisfiability query rather than behind whichever candidates happened to
+/// have a lower index.
+///
+/// None of this reaches the result. Parts are collected by address and folded
+/// in part order, candidates are compacted in population order, and no part
+/// draws from the RandomSource, so the output is what a serial sweep would
+/// give and a seeded run reproduces.
 ///
 /// An individual whose scoring throws is dropped: the returned population is
 /// shorter than @p population, in the same relative order. Above
@@ -182,8 +385,9 @@ struct ScoreOutcome {
 /// @param cfg               Algorithm configuration (max_scoring_failure_rate)
 /// @param population        The population to score
 /// @param fitness_function  Non-empty set of weighted fitness functions
-/// @param on_progress       Optional callback invoked after each individual is
-///                          scored; receives (done, total) counts
+/// @param on_progress       Optional callback invoked as individuals finish;
+///                          receives (done, total) counts of individuals, not
+///                          of parts
 /// @return                  Successfully scored population paired with their
 ///                          aggregated fitness scores
 /// @throws std::invalid_argument if fitness_function is empty or total weight
@@ -196,40 +400,58 @@ std::vector<Scored<Spec>> score_population(
     const Fitness& fitness_function,
     const GenerationProgressCallback& on_progress = nullptr) {
     assert(!fitness_function.empty());
-    const std::size_t max_in_flight = dispatch_window();
     std::vector<Scored<Spec>> scored(population.size());
     std::vector<bool> succeeded(population.size(), false);
     std::vector<std::string> errors;
     std::size_t done = 0;
+    const std::size_t total = population.size();
+    const std::function<void()> report = [&on_progress, &done, total] {
+        if (on_progress) {
+            on_progress(++done, total);
+        }
+    };
+
+    std::vector<generation_detail::PlannedCandidate<Spec>> planned =
+        generation_detail::plan_population(population, fitness_function, scored,
+                                           succeeded, report);
+    const std::vector<generation_detail::PartAddress> addresses =
+        generation_detail::part_addresses(planned);
+    // Stable for the whole region: planning is finished, so nothing reallocates
+    // the vector these reference into.
+    const auto part_at = [&addresses,
+                          &planned](std::size_t item) -> const FitnessPart& {
+        const generation_detail::PartAddress& address = addresses[item];
+        return planned[address.candidate]
+            .work[address.objective]
+            .parts[address.part];
+    };
+
     run_bounded_async(
-        population.size(), max_in_flight,
-        [&fitness_function, &population](std::size_t idx) {
-            return [&fitness_function, &spec = population[idx]] {
-                generation_detail::ScoreOutcome outcome;
+        addresses.size(), dispatch_window(),
+        [&part_at](std::size_t item) {
+            return [&part = part_at(item)] {
+                generation_detail::PartOutcome outcome;
                 try {
-                    outcome.result =
-                        fitness_function.objectives_and_fitness(spec);
+                    outcome.value = part.run();
                 } catch (const std::exception& exc) {
                     outcome.error = exc.what();
                 }
                 return outcome;
             };
         },
-        [&scored, &succeeded, &errors, &population, &on_progress, &done,
-         total = population.size()](std::size_t idx,
-                                    generation_detail::ScoreOutcome outcome) {
-            if (outcome.error.empty()) {
-                scored[idx].specification = population[idx];
-                scored[idx].objectives = std::move(outcome.result.first);
-                scored[idx].fitness = outcome.result.second;
-                succeeded[idx] = true;
-            } else {
-                errors.push_back(std::move(outcome.error));
+        [&addresses, &planned, &population, &fitness_function, &scored,
+         &succeeded, &errors,
+         &report](std::size_t item, generation_detail::PartOutcome outcome) {
+            const std::size_t finished = generation_detail::collect_part(
+                addresses[item], std::move(outcome), planned, population,
+                fitness_function, scored, succeeded, errors);
+            for (std::size_t i = 0; i < finished; ++i) {
+                report();
             }
-            if (on_progress) {
-                on_progress(++done, total);
-            }
-        });
+        },
+        cost_ordered_indices(addresses.size(), [&part_at](std::size_t item) {
+            return part_at(item).cost;
+        }));
 
     // A single failure is tolerated whatever the population size, so a small
     // population is not held to a stricter standard than a large one -- but

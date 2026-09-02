@@ -1,4 +1,5 @@
 #include <cmath>
+#include <functional>
 #include <string>
 #include <utility>
 #include <vector>
@@ -331,6 +332,48 @@ void test_semantic_similarity_metric_direct_vs_logarithmic() {
            "counts exactly 1");
 }
 
+// The split scoring path dispatches one term per changed slot and takes their
+// mean, so the two have to agree by construction rather than by inspection.
+void test_semantic_similarity_terms_mean_matches_the_score() {
+    const Requirement req_imm{Formula("P"), Formula("Q"),
+                              timing::immediately()};
+    const Requirement req_next{Formula("P"), Formula("Q"),
+                               timing::next_timepoint()};
+    const Requirement req_within{Formula("P"), Formula("Q"),
+                                 timing::within_ticks(3)};
+    const Requirement req_for{Formula("P"), Formula("Q"), timing::for_ticks(2)};
+    const Requirement req_after{Formula("P"), Formula("Q"),
+                                timing::after_ticks(2)};
+    const Specification spec1({}, {req_imm, req_within, req_for}, {"P"}, {"Q"});
+    const Specification spec2({}, {req_next, req_within, req_after}, {"P"},
+                              {"Q"});
+    const std::vector<std::function<double()>> terms =
+        semantic_similarity_terms(spec1, spec2, 1, SimilarityMetric::Direct);
+    expect(terms.size() == 2,
+           "semantic-similarity: one term per changed slot, and the unchanged "
+           "slot should contribute none");
+    double total = 0.0;
+    for (const std::function<double()>& term : terms) {
+        total += term();
+    }
+    const double mean = total / static_cast<double>(terms.size());
+    expect(
+        std::fabs(mean - semantic_similarity(spec1, spec2, 1,
+                                             SimilarityMetric::Direct)) < 1e-12,
+        "semantic-similarity: the mean of the terms must equal the score "
+        "the same arguments return, or the split scoring path grades "
+        "differently from the serial one");
+}
+
+void test_semantic_similarity_terms_are_empty_when_nothing_differs() {
+    const Requirement req{Formula("P"), Formula("Q"), timing::immediately()};
+    const Specification spec({}, {req}, {"P"}, {"Q"});
+    expect(semantic_similarity_terms(spec, spec, 1, SimilarityMetric::Direct)
+               .empty(),
+           "semantic-similarity: identical specifications should yield no "
+           "terms, which the fold reads as a perfect match");
+}
+
 }  // namespace
 
 void run_semantic_similarity_tests() {
@@ -349,4 +392,6 @@ void run_semantic_similarity_tests() {
     test_semantic_similarity_all_timings_in_range();
     test_semantic_similarity_propequiv_responses_score_equal();
     test_semantic_similarity_metric_direct_vs_logarithmic();
+    test_semantic_similarity_terms_mean_matches_the_score();
+    test_semantic_similarity_terms_are_empty_when_nothing_differs();
 }

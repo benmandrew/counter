@@ -18,6 +18,7 @@
 #include <string_view>
 #include <vector>
 
+#include "bounded_async.hpp"
 #include "cpu_limits.hpp"
 #include "test_suite.hpp"
 #include "test_support.hpp"
@@ -176,6 +177,48 @@ void test_dispatch_window_is_twice_the_pool() {
            "the dispatch window should be twice the pool's worker count");
 }
 
+// Longest-processing-time-first ordering, and the property that makes it safe
+// to apply anywhere: permuting the launch order changes which item goes out
+// first and nothing else.
+
+void test_cost_ordered_indices_is_longest_first() {
+    const std::vector<double> costs{1.0, 5.0, 3.0, 5.0, 0.0};
+    const std::vector<std::size_t> order = cost_ordered_indices(
+        costs.size(), [&costs](std::size_t idx) { return costs[idx]; });
+    const std::vector<std::size_t> expected{1, 3, 2, 0, 4};
+    expect(order == expected,
+           "cost order: items should launch by descending cost, with equal "
+           "costs keeping index order so the permutation is a function of the "
+           "estimates alone");
+}
+
+void test_cost_ordered_dispatch_pairs_results_with_their_own_index() {
+    constexpr std::size_t k_n_items = 64;
+    // Deliberately not monotone in the index, so index order and cost order
+    // disagree and a result filed under the launch slot would be caught.
+    const auto cost = [](std::size_t idx) {
+        return static_cast<double>((idx * 7) % 11);
+    };
+    std::vector<std::size_t> times_seen(k_n_items, 0);
+    std::vector<std::size_t> values(k_n_items, 0);
+    run_bounded_async(
+        k_n_items, dispatch_window(),
+        [](std::size_t idx) { return [idx] { return idx * 3; }; },
+        [&times_seen, &values](std::size_t idx, std::size_t value) {
+            ++times_seen[idx];
+            values[idx] = value;
+        },
+        cost_ordered_indices(k_n_items, cost));
+    for (std::size_t idx = 0; idx < k_n_items; ++idx) {
+        expect(times_seen[idx] == 1,
+               "cost order: every item should be launched and collected "
+               "exactly once whatever order it went out in");
+        expect(values[idx] == idx * 3,
+               "cost order: a result should be delivered under its own item "
+               "index, not under the slot it was launched from");
+    }
+}
+
 }  // namespace
 
 void run_thread_pool_tests() {
@@ -191,4 +234,6 @@ void run_thread_pool_tests() {
     test_cgroup_v1_cpu_quota_parses();
     test_every_submitted_task_runs();
     test_dispatch_window_is_twice_the_pool();
+    test_cost_ordered_indices_is_longest_first();
+    test_cost_ordered_dispatch_pairs_results_with_their_own_index();
 }

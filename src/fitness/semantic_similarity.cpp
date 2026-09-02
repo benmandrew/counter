@@ -4,6 +4,7 @@
 #include <cassert>
 #include <cmath>
 #include <cstddef>
+#include <functional>
 #include <limits>
 #include <mutex>
 #include <string>
@@ -199,15 +200,15 @@ double semantic_similarity(const Requirement& requirement,
                                cfg.similarity_metric);
 }
 
-double semantic_similarity(const Specification& specification,
-                           const Specification& other_specification,
-                           std::size_t step_count, SimilarityMetric metric) {
+std::vector<std::function<double()>> semantic_similarity_terms(
+    const Specification& specification,
+    const Specification& other_specification, std::size_t step_count,
+    SimilarityMetric metric) {
     assert(!specification.m_assumptions.empty() ||
            !specification.m_guarantees.empty());
     assert(!other_specification.m_assumptions.empty() ||
            !other_specification.m_guarantees.empty());
-    double total = 0.0;
-    std::size_t changed_count = 0;
+    std::vector<std::function<double()>> terms;
     // Requirement pairs that are identical contribute a trivial 1.0 and
     // dilute the average toward 1 as the specification grows, drowning out
     // the pairs that actually differ. Excluding them keeps the score
@@ -221,8 +222,9 @@ double semantic_similarity(const Specification& specification,
     // lockstep to reqs1.end() (as before) would run it past reqs2.end()
     // whenever reqs1 is longer, which is undefined behaviour once NDEBUG
     // disables the asserts that used to guard it.
-    auto accumulate = [&](const std::vector<Requirement>& reqs1,
-                          const std::vector<Requirement>& reqs2) {
+    const auto collect = [&terms, step_count, metric](
+                             const std::vector<Requirement>& reqs1,
+                             const std::vector<Requirement>& reqs2) {
         const std::size_t common = std::min(reqs1.size(), reqs2.size());
         for (std::size_t i = 0; i < common; ++i) {
             if (reqs1[i] == reqs2[i]) {
@@ -231,22 +233,37 @@ double semantic_similarity(const Specification& specification,
             // Removed on one side only: a real change, and the largest one the
             // slot admits, so it scores zero. There is no formula left to
             // count, and counting the survivor against nothing would charge a
-            // model count for an answer already known.
+            // model count for an answer already known. It is still a term
+            // rather than a skipped pair, because it counts toward the mean.
             if (reqs1[i].m_removed || reqs2[i].m_removed) {
-                ++changed_count;
+                terms.emplace_back([] { return 0.0; });
                 continue;
             }
-            total +=
-                semantic_similarity(reqs1[i], reqs2[i], step_count, metric);
-            ++changed_count;
+            terms.emplace_back([&first = reqs1[i], &second = reqs2[i],
+                                step_count, metric] {
+                return semantic_similarity(first, second, step_count, metric);
+            });
         }
     };
-    accumulate(specification.m_assumptions, other_specification.m_assumptions);
-    accumulate(specification.m_guarantees, other_specification.m_guarantees);
-    if (changed_count == 0) {
+    collect(specification.m_assumptions, other_specification.m_assumptions);
+    collect(specification.m_guarantees, other_specification.m_guarantees);
+    return terms;
+}
+
+double semantic_similarity(const Specification& specification,
+                           const Specification& other_specification,
+                           std::size_t step_count, SimilarityMetric metric) {
+    const std::vector<std::function<double()>> terms =
+        semantic_similarity_terms(specification, other_specification,
+                                  step_count, metric);
+    if (terms.empty()) {
         return 1.0;
     }
-    return total / static_cast<double>(changed_count);
+    double total = 0.0;
+    for (const std::function<double()>& term : terms) {
+        total += term();
+    }
+    return total / static_cast<double>(terms.size());
 }
 
 double semantic_similarity(const Specification& specification,

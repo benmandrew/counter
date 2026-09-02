@@ -5,14 +5,18 @@
 ///        collecting whichever completes first to avoid head-of-line blocking
 ///        on slow outliers.
 
+#include <algorithm>
+#include <cassert>
 #include <condition_variable>
 #include <cstddef>
 #include <deque>
 #include <exception>
 #include <memory>
 #include <mutex>
+#include <numeric>
 #include <type_traits>
 #include <utility>
+#include <vector>
 
 #include "profile.hpp"
 #include "thread_pool.hpp"
@@ -66,7 +70,61 @@ struct CompletionQueue {
 /// this instead of specialising the whole machinery.
 struct Unit {};
 
+/// Asserts @p launch_order is a permutation of the item indices, or empty. A
+/// partial or repeating one would silently drop or double-run items, so it is
+/// checked rather than trusted.
+inline void assert_permutation(const std::vector<std::size_t>& launch_order,
+                               std::size_t n_items) {
+#ifdef NDEBUG
+    (void)launch_order;
+    (void)n_items;
+#else
+    if (launch_order.empty()) {
+        return;
+    }
+    assert(launch_order.size() == n_items);
+    std::vector<bool> seen(n_items, false);
+    for (const std::size_t idx : launch_order) {
+        assert(idx < n_items && !seen[idx]);
+        seen[idx] = true;
+    }
+#endif
+}
+
 }  // namespace bounded_async_detail
+
+/// Items in longest-processing-time-first order: descending @p estimate_cost,
+/// ties broken on the index.
+///
+/// The launch order of a bounded-async region is free to be anything, since
+/// every call site collects verdicts by index and rebuilds its output in item
+/// order. What it is not free of is the makespan: index order launches a slow
+/// item last as readily as first, and a region ends when its last-launched item
+/// does. Launching the expensive items first bounds the makespan at
+/// (4/3 - 1/3m) of optimal for m workers, against an unbounded ratio for an
+/// adversarial index order.
+///
+/// The comparator is total on (cost, index) rather than merely stable, so the
+/// permutation is a function of the estimates alone. @p estimate_cost is a
+/// relative hint: only the order it induces is read, never the magnitudes.
+template <typename CostFn>
+std::vector<std::size_t> cost_ordered_indices(std::size_t n_items,
+                                              CostFn estimate_cost) {
+    std::vector<double> costs(n_items);
+    for (std::size_t idx = 0; idx < n_items; ++idx) {
+        costs[idx] = estimate_cost(idx);
+    }
+    std::vector<std::size_t> order(n_items);
+    std::iota(order.begin(), order.end(), 0);
+    std::sort(order.begin(), order.end(),
+              [&costs](std::size_t left, std::size_t right) {
+                  if (costs[left] != costs[right]) {
+                      return costs[left] > costs[right];
+                  }
+                  return left < right;
+              });
+    return order;
+}
 
 /// Runs up to @p max_in_flight of @p n_items tasks concurrently on the global
 /// thread pool.
@@ -77,13 +135,22 @@ struct Unit {};
 /// *any* of them to finish, not the oldest, so one slow outlier cannot stall
 /// the collection of tasks that already completed.
 ///
+/// @p launch_order permutes the order items are *launched* in, and nothing
+/// else: `make_task` and `on_complete` are both called with the item's own
+/// index whatever order it went out in. Empty means index order. See
+/// @ref cost_ordered_indices for what a non-trivial order buys. A partial or
+/// repeating permutation would silently drop or double-run items, so it is
+/// asserted to be one.
+///
 /// A task that throws has its exception rethrown here, after every other
 /// outstanding task has been waited for. Tasks capture references to
 /// caller-owned data, so propagating earlier would unwind past that data and
 /// free it while the remaining workers still read it.
 template <typename MakeTask, typename OnComplete>
 void run_bounded_async(std::size_t n_items, std::size_t max_in_flight,
-                       MakeTask make_task, OnComplete on_complete) {
+                       MakeTask make_task, OnComplete on_complete,
+                       const std::vector<std::size_t>& launch_order) {
+    bounded_async_detail::assert_permutation(launch_order, n_items);
     using Task = decltype(make_task(std::size_t{0}));
     using Result = std::invoke_result_t<Task>;
     constexpr bool is_void = std::is_void_v<Result>;
@@ -159,13 +226,22 @@ void run_bounded_async(std::size_t n_items, std::size_t max_in_flight,
         }
     } drain_guard{queue};
 
-    for (std::size_t idx = 0; idx < n_items; ++idx) {
+    for (std::size_t slot = 0; slot < n_items; ++slot) {
         if (queue->in_flight() >= max_in_flight) {
             collect_one();
         }
-        launch(idx);
+        launch(launch_order.empty() ? slot : launch_order[slot]);
     }
     while (queue->in_flight() > 0) {
         collect_one();
     }
+}
+
+/// run_bounded_async in index launch order.
+template <typename MakeTask, typename OnComplete>
+void run_bounded_async(std::size_t n_items, std::size_t max_in_flight,
+                       MakeTask make_task, OnComplete on_complete) {
+    static const std::vector<std::size_t> k_index_order;
+    run_bounded_async(n_items, max_in_flight, std::move(make_task),
+                      std::move(on_complete), k_index_order);
 }

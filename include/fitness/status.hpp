@@ -5,6 +5,7 @@
 ///        by the FRETISH and TLSF front ends.
 
 #include <cstddef>
+#include <cstdint>
 #include <functional>
 #include <string>
 #include <vector>
@@ -13,6 +14,16 @@
 #include "requirement.hpp"
 #include "runner/black.hpp"
 #include "runner/spot.hpp"
+
+/// Whether a status score tests its own components before grading, or takes
+/// that tier as already decided.
+///
+/// Skipped exists for the split scoring path, which runs each component's
+/// satisfiability query as a dispatch item of its own and applies the tier
+/// itself. Testing them twice would either duplicate the queries or serialise
+/// them behind the score that guards on them, and the two are the same tier
+/// either way.
+enum class ComponentCheck : std::uint8_t { Included, Skipped };
 
 /// Some component formula of the candidate is unsatisfiable on its own.
 inline constexpr double k_status_component_unsatisfiable = 0.0;
@@ -227,8 +238,24 @@ std::vector<std::size_t> conflict_degree_order(
 /// @param grading       Which scale to score on (see StatusGrading)
 /// @param slot_order    Guarantee slots in admission order; empty means index
 ///                      order. Read only under StatusGrading::Mrs
-double specification_status(const Specification& specification,
-                            SatisfiabilityChecker& sat,
-                            RealizabilityChecker& real,
-                            StatusGrading grading = StatusGrading::Tiered,
-                            const std::vector<std::size_t>& slot_order = {});
+/// @param component_check Whether to test the components here, or take that
+///                      tier as decided elsewhere; see ComponentCheck
+double specification_status(
+    const Specification& specification, SatisfiabilityChecker& sat,
+    RealizabilityChecker& real, StatusGrading grading = StatusGrading::Tiered,
+    const std::vector<std::size_t>& slot_order = {},
+    ComponentCheck component_check = ComponentCheck::Included);
+
+/// The components @ref specification_status tests individually: one
+/// `condition & response` conjunction per live requirement, assumptions before
+/// guarantees. Tombstoned requirements are skipped, being no longer part of the
+/// specification.
+///
+/// Exposed because each component is one independent `black` call, so a scoring
+/// pool can run them concurrently rather than leaving them to the sequential
+/// `all_of` inside the score. The score still tests them itself: they guard a
+/// walk that costs a synthesis query per guarantee, and hoisting the guard out
+/// would spend those queries on candidates it exists to spare. Running them
+/// alongside instead leaves the guard reading a warm satisfiability cache.
+std::vector<std::string> specification_status_components(
+    const Specification& specification);

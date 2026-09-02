@@ -5,7 +5,9 @@
 ///        bounded model counting of satisfying traces.
 
 #include <cstddef>
+#include <functional>
 #include <string>
+#include <vector>
 
 #include "config.hpp"
 #include "fitness/transfer_matrix.hpp"
@@ -123,3 +125,27 @@ double semantic_similarity(const Specification& specification,
 double semantic_similarity(const Specification& specification,
                            const Specification& other_specification,
                            const Config& cfg);
+
+/// The changed requirement pairs of the specification-level score, one callable
+/// per pair, in the order the score sums them: assumptions by index, then
+/// guarantees.
+///
+/// Each term is three bounded model counts -- a formula, its counterpart, and
+/// their conjunction -- and the pairs are independent of one another, so this
+/// is the level a scoring pool should dispatch at rather than the whole
+/// specification. Run the terms in any order on any thread; the mean of their
+/// values is exactly what @ref semantic_similarity returns for the same
+/// arguments, and an empty result means no pair differs, which scores 1.0.
+///
+/// The terms hold both specifications by reference, so neither may be destroyed
+/// before the last of them has run.
+///
+/// @param specification       The first specification to compare (non-empty)
+/// @param other_specification The second specification to compare (non-empty)
+/// @param step_count          The bound k on trace length for model counting
+/// @param metric              Whether to combine counts directly or via log
+/// @return                    One term per changed pair, each scoring in [0, 1]
+std::vector<std::function<double()>> semantic_similarity_terms(
+    const Specification& specification,
+    const Specification& other_specification, std::size_t step_count,
+    SimilarityMetric metric);

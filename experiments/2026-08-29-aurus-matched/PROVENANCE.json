@@ -317,6 +317,8 @@
   "config_vintage": "No entry is owed in the 'Config vintage' note of experiments/README.md. The three termination keys this campaign turns arrived at no-op defaults and no C++ default moved for it, so an archived config omitting them means exactly what it always meant.",
   "files": {
     "results-matched.csv": "Merged results, 3000 rows, the source for every per-run figure here.",
+    "results-matched-av2.csv": "av2's rows as collected, 1500, seeds 0-14.",
+    "results-matched-av3.csv": "av3's rows as collected, 1500, seeds 15-29.",
     "results-matched-manifest-avlab12.json": "av2's launch manifest.",
     "results-matched-manifest-av3.json": "av3's launch manifest.",
     "curves-matched.csv": "The six metrics in long format, from score_curves.py --maximality.",

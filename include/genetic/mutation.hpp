@@ -37,21 +37,23 @@ enum class Direction : std::uint8_t { Weaken, Strengthen };
 /// Mutates a timing constraint by taking a single step through the timing
 /// partial order in the direction @p direction.
 ///
-/// Always has no strengthening and Eventually no weakening: each is already
-/// the extreme of the order in that direction. Always is additionally never
-/// weakened, so it is a fixed point in both directions.
+/// Always has no strengthening and Eventually no weakening: each is already the
+/// extreme of the order in that direction.
 ///
-/// Eventually *is* strengthened, but only into a timing donated by
-/// @p timing_pool, never one conjured from nothing. Each quantified donor
-/// contributes `for n ticks` for its own tick count; a donated Immediately or
-/// NextTimepoint contributes itself. With no usable donor Eventually is
-/// returned unchanged. Timings are the same kind of resource as atom names in
-/// mutate_formula: drawn from the specification, not invented.
+/// In the other direction each moves, but only into a timing donated by
+/// @p timing_pool, never one conjured from nothing. Both take the same donated
+/// set, from opposite sides: each quantified donor contributes `for n ticks`
+/// for its own tick count, and a donated Immediately or NextTimepoint
+/// contributes itself. With no usable donor the extreme is returned unchanged,
+/// so a specification with no interior timing anywhere cannot acquire one.
+/// Timings are the same kind of resource as atom names in mutate_formula: drawn
+/// from the specification, not invented.
 ///
 /// @param timing        The timing value to mutate
 /// @param direction     Whether to weaken or strengthen the timing
 /// @param timing_pool   Timings occurring in the specification, donating the
-///                      tick counts a strengthened Eventually may take
+///                      timings a weakened Always or strengthened Eventually
+///                      may take
 /// @param random_source Random source for branch and selector choices
 /// @return              A mutated timing value
 Timing mutate_timing(const Timing& timing, Direction direction,

@@ -272,11 +272,15 @@ void sort_unique_timings(std::vector<Timing>& timings) {
                   timings.end());
 }
 
-// The strengthenings Eventually may take, derived from the timings the
-// specification already uses. A quantified donor lends only its tick count,
-// spent as `for n ticks`; Immediately and NextTimepoint lend themselves.
-std::vector<Timing> eventually_candidates(
-    const std::vector<Timing>& timing_pool) {
+// The timings a donor pool lends to the two extremes of the order, derived from
+// the timings the specification already uses. Always and Eventually take the
+// same set from opposite sides: everything here is strictly below Always and
+// strictly above Eventually, so it strengthens the one and weakens the other.
+// A quantified donor lends only its tick count, spent as `for n ticks`, never
+// its own kind — `within n` would be a second spelling of one count, and
+// `after n` is not comparable to Always at all, forbidding the response at the
+// ticks where Always demands it. Immediately and NextTimepoint lend themselves.
+std::vector<Timing> donated_candidates(const std::vector<Timing>& timing_pool) {
     std::vector<Timing> candidates;
     for (const Timing& donor : timing_pool) {
         std::visit(
@@ -302,11 +306,15 @@ std::vector<Timing> eventually_candidates(
     return candidates;
 }
 
-Timing strengthen_eventually(const std::vector<Timing>& timing_pool,
-                             const RandomSource& random_source) {
-    const std::vector<Timing> candidates = eventually_candidates(timing_pool);
+// Moves an extreme of the order inwards, into a timing the pool donates. With
+// nothing to donate it returns @p extreme unchanged, and costs no draw, so a
+// specification with no interior timing anywhere cannot acquire one.
+Timing move_off_extreme(const Timing& extreme,
+                        const std::vector<Timing>& timing_pool,
+                        const RandomSource& random_source) {
+    const std::vector<Timing> candidates = donated_candidates(timing_pool);
     if (candidates.empty()) {
-        return timing::eventually();
+        return extreme;
     }
     return candidates[random_source.next_index(candidates.size())];
 }
@@ -334,7 +342,8 @@ Timing strengthen_timing(const Timing& timing,
         } else if constexpr (std::is_same_v<T, timing::WithinTicks>) {
             return strengthen_within_timing(value, random_source);
         } else if constexpr (std::is_same_v<T, timing::Eventually>) {
-            return strengthen_eventually(timing_pool, random_source);
+            return move_off_extreme(timing::eventually(), timing_pool,
+                                    random_source);
         } else {
             assert(false);
             __builtin_unreachable();
@@ -343,15 +352,17 @@ Timing strengthen_timing(const Timing& timing,
     return std::visit(mutation_function, timing);
 }
 
-Timing weaken_timing(const Timing& timing, const RandomSource& random_source) {
+Timing weaken_timing(const Timing& timing,
+                     const std::vector<Timing>& timing_pool,
+                     const RandomSource& random_source) {
     const auto mutation_function = [&](const auto& value) -> Timing {
         using T = std::decay_t<decltype(value)>;
         if constexpr (std::is_same_v<T, timing::Immediately> ||
                       std::is_same_v<T, timing::NextTimepoint>) {
             return timing::within_ticks(1);
         } else if constexpr (std::is_same_v<T, timing::Always>) {
-            // Always must not be weakened.
-            return timing::always();
+            return move_off_extreme(timing::always(), timing_pool,
+                                    random_source);
         } else if constexpr (std::is_same_v<T, timing::ForTicks>) {
             return weaken_for_timing(value, random_source);
         } else if constexpr (std::is_same_v<T, timing::AfterTicks>) {
@@ -374,7 +385,7 @@ std::vector<Timing> collect_timing_pool(const Specification& specification) {
     std::vector<Timing> pool;
     pool.reserve(specification.m_assumptions.size() +
                  specification.m_guarantees.size());
-    // Removed requirements contribute no timings: strengthening draws from the
+    // Removed requirements contribute no timings: the extremes draw from the
     // shapes the specification actually uses, and a deleted requirement's is
     // not one of them.
     const auto add = [&pool](const std::vector<Requirement>& reqs) {
@@ -397,7 +408,7 @@ Timing mutate_timing(const Timing& timing, Direction direction,
     assert(random_source);
     return direction == Direction::Strengthen
                ? strengthen_timing(timing, timing_pool, random_source)
-               : weaken_timing(timing, random_source);
+               : weaken_timing(timing, timing_pool, random_source);
 }
 
 Requirement mutate_requirement(const Requirement& requirement,

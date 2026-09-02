@@ -130,11 +130,77 @@ void test_timing_mutation_eventually_is_unchanged() {
            "mutation: eventually has no weakening and should be unchanged");
 }
 
-void test_timing_mutation_always_is_unchanged() {
-    const Timing mutated = mutate_timing(timing::always(), Direction::Weaken,
-                                         {}, make_source({}, 0U));
-    expect(std::holds_alternative<timing::Always>(mutated),
-           "mutation: always must not be weakened and should be unchanged");
+// With nothing to donate an interior timing, always has no weakening and must
+// be left alone rather than acquiring an invented deadline. This was the whole
+// of the Always branch until the pool reached it: it weakened to a hard-coded
+// `for 10 ticks`, and was frozen rather than given a basis for the count.
+void test_timing_weaken_always_without_donor_is_unchanged() {
+    const std::vector<Timing> no_donors = {timing::always(),
+                                           timing::eventually()};
+    for (std::size_t draw = 0; draw < 6; ++draw) {
+        const Timing mutated =
+            mutate_timing(timing::always(), Direction::Weaken, no_donors,
+                          make_source({}, draw));
+        expect(std::holds_alternative<timing::Always>(mutated),
+               "weaken: always with no donor timing should be unchanged");
+    }
+    const Timing empty_pool = mutate_timing(timing::always(), Direction::Weaken,
+                                            {}, make_source({}, 0U));
+    expect(std::holds_alternative<timing::Always>(empty_pool),
+           "weaken: always with an empty pool should be unchanged");
+}
+
+// The mirror of the Eventually donation, from the other end of the order:
+// every quantified donor lends only its tick count, spent as `for n ticks`,
+// and Immediately and NextTimepoint lend themselves.
+void test_timing_weaken_always_takes_donated_timings() {
+    const std::vector<Timing> donors = {
+        timing::within_ticks(7),  timing::after_ticks(2), timing::immediately(),
+        timing::next_timepoint(), timing::eventually(),   timing::always()};
+    std::vector<std::size_t> seen_for_ticks;
+    bool seen_immediately = false;
+    bool seen_next_timepoint = false;
+    for (std::size_t draw = 0; draw < 40; ++draw) {
+        const Timing mutated = mutate_timing(
+            timing::always(), Direction::Weaken, donors, make_source({}, draw));
+        if (const auto* for_ticks = std::get_if<timing::ForTicks>(&mutated)) {
+            seen_for_ticks.push_back(for_ticks->m_ticks);
+            continue;
+        }
+        if (std::holds_alternative<timing::Immediately>(mutated)) {
+            seen_immediately = true;
+            continue;
+        }
+        if (std::holds_alternative<timing::NextTimepoint>(mutated)) {
+            seen_next_timepoint = true;
+            continue;
+        }
+        fail(
+            "weaken: always should only take for-ticks, immediately or "
+            "next-timepoint from the donor pool");
+    }
+    for (std::size_t ticks : seen_for_ticks) {
+        expect(ticks == 7 || ticks == 2,
+               "weaken: a donated tick count must come from the pool");
+    }
+    expect(!seen_for_ticks.empty() && seen_immediately && seen_next_timepoint,
+           "weaken: all three donor kinds should be reachable across 40 draws");
+}
+
+// `after n` forbids the response at exactly the ticks Always demands it, so it
+// is incomparable rather than weaker and must never be taken whole; the same
+// donor's count spent as `for n` is a genuine weakening. `within n` is one too,
+// but a donated count keeps a single spelling on both sides of the order.
+void test_timing_weaken_always_never_becomes_within_or_after() {
+    const std::vector<Timing> donors = {timing::within_ticks(4),
+                                        timing::after_ticks(9)};
+    for (std::size_t draw = 0; draw < 40; ++draw) {
+        const Timing mutated = mutate_timing(
+            timing::always(), Direction::Weaken, donors, make_source({}, draw));
+        expect(!std::holds_alternative<timing::WithinTicks>(mutated) &&
+                   !std::holds_alternative<timing::AfterTicks>(mutated),
+               "weaken: always must never take a donor's kind, only its count");
+    }
 }
 
 void test_timing_mutation_within_ticks_step_down() {
@@ -327,8 +393,9 @@ void test_timing_strengthen_after_ticks_is_unchanged() {
 
 // Neither direction may cross to the opposite extreme of the order: only a
 // spec that already sits at an extreme may come back out of the mutator still
-// sitting there. Sweeping the random source exercises every branch of both
-// directions.
+// sitting there. Sweeping the random source over both an empty and a populated
+// donor pool exercises every branch of both directions, the two extremes moving
+// only when the pool has something to lend them.
 void test_timing_mutation_directions_are_monotone() {
     const std::vector<Timing> starts = {
         timing::immediately(),   timing::next_timepoint(),
@@ -336,18 +403,22 @@ void test_timing_mutation_directions_are_monotone() {
         timing::for_ticks(1),    timing::for_ticks(4),
         timing::within_ticks(1), timing::within_ticks(4),
         timing::after_ticks(1),  timing::after_ticks(4)};
-    for (const Timing& start : starts) {
-        for (std::size_t draw = 0; draw < 12; ++draw) {
-            const Timing stronger = mutate_timing(start, Direction::Strengthen,
-                                                  {}, make_source({}, draw));
-            expect(!std::holds_alternative<timing::Eventually>(stronger) ||
-                       std::holds_alternative<timing::Eventually>(start),
-                   "strengthen: no branch may fall to the bottom of the order");
-            const Timing weaker = mutate_timing(start, Direction::Weaken, {},
-                                                make_source({}, draw));
-            expect(!std::holds_alternative<timing::Always>(weaker) ||
-                       std::holds_alternative<timing::Always>(start),
-                   "weaken: no branch may rise to the top of the order");
+    const std::vector<std::vector<Timing>> pools = {{}, starts};
+    for (const std::vector<Timing>& pool : pools) {
+        for (const Timing& start : starts) {
+            for (std::size_t draw = 0; draw < 12; ++draw) {
+                const Timing stronger = mutate_timing(
+                    start, Direction::Strengthen, pool, make_source({}, draw));
+                expect(!std::holds_alternative<timing::Eventually>(stronger) ||
+                           std::holds_alternative<timing::Eventually>(start),
+                       "strengthen: no branch may fall to the bottom of the "
+                       "order");
+                const Timing weaker = mutate_timing(
+                    start, Direction::Weaken, pool, make_source({}, draw));
+                expect(!std::holds_alternative<timing::Always>(weaker) ||
+                           std::holds_alternative<timing::Always>(start),
+                       "weaken: no branch may rise to the top of the order");
+            }
         }
     }
 }
@@ -906,7 +977,9 @@ void run_mutation_tests() {
     test_timing_mutation_non_parameterized_becomes_within_one_tick();
     test_timing_mutation_immediately_becomes_within_one_tick();
     test_timing_mutation_eventually_is_unchanged();
-    test_timing_mutation_always_is_unchanged();
+    test_timing_weaken_always_without_donor_is_unchanged();
+    test_timing_weaken_always_takes_donated_timings();
+    test_timing_weaken_always_never_becomes_within_or_after();
     test_timing_mutation_within_ticks_step_down();
     test_timing_mutation_within_ticks_double();
     test_timing_mutation_after_ticks_becomes_within_ticks();

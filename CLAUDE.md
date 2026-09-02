@@ -234,6 +234,18 @@ Manifest schema version 21 adds `stopped_by` (`generations`/`individuals`/`deadl
 
 The trap is that `max_wall_s` makes output depend on the machine, so a seeded run stops reproducing across hosts under it, the same property the `[runtime]` per-tool budgets already carry. Do not set it in a campaign that pins seeds for a paired comparison unless the pairing is on the arm rather than the seed.
 
+## Timing donation
+
+The two extremes of the FRETISH timing order move only into a timing the specification donates, never one conjured from nothing. `collect_timing_pool` gathers the distinct timings across both requirement lists, skipping tombstones, and `donated_candidates` (`src/genetic/mutation.cpp`) turns that pool into the set both extremes draw from: each quantified donor lends its tick count alone, spent as `for n ticks`, and a donated Immediately or NextTimepoint lends itself. With no usable donor the extreme is returned unchanged, so a specification with no interior timing anywhere cannot acquire one.
+
+It is one set because Always and Eventually sit at opposite ends and everything in it lies strictly between them, so the same candidates strengthen the one and weaken the other — `move_off_extreme` is the shared step. A donor's *kind* is never taken, only its count: `within n` would be a second spelling of one count, and `after n` is not comparable to Always at all, forbidding the response at the ticks Always demands it.
+
+Eventually gained this on `fa07f89`; Always followed. Always had been a fixed point in both directions since `f4968ab` (2026-07-08), which froze it after its weakening — a hard-coded `for 10 ticks` — produced a degenerate `fsm` repair. The invented constant was the objection, and the pool is what answers it. The freeze cost more than it looks: `mutate_specification` weakens guarantees and strengthens assumptions, Always is the top of the order, so an Always guarantee's timing field never moved at all, and 7 of the 9 guarantees across the three FRETISH input specs carry Always. Crossover was no escape either, `crossover_timing` picking between the two parents' timings, so on `fsm` — every guarantee at Always — no other timing existed in the population to pick.
+
+The risk to watch is the one `p_remove_guarantee` carries: weakening a guarantee's timing is monotonically good for realizability and pays nothing on the similarity objectives, so under NSGA-II a gutted timing sits on the front. That wants a campaign rather than an argument.
+
+The determinism goldens did not move. No golden specification carries an Always guarantee, and guarantees only ever weaken, so the new draw never fires there; `move_off_extreme` also reads the pool before touching the `RandomSource`, so an empty pool costs no draw either.
+
 ## Removable guarantees
 
 `p_remove_guarantee` deletes one guarantee, the mirror of `p_add_assumption` appending an assumption. Both paths have it: a FRETISH guarantee requirement, or a TLSF guarantee-side conjunct drawn from PRESET, ASSERT and GUARANTEE together. It exists because some repairs are reachable no other way — every `drop-*` ideal in `examples/` deletes a guarantee, and for amba, full-arbiter, load-balancer, prioritized-arbiter and round-robin-arbiter that is the only ideal there is, so PR #114's `lint-ideals` reported their `implies_ideal` as zero by construction. That PR's `reachable` check asserted the opposite bound and was inverted here: a guarantee side may now shrink, never grow, down to a floor of one.

@@ -73,6 +73,18 @@ jobs:
       # used. Spot's layer is the large one, and it is also the one that hits:
       # its stage copies cmake/spot.cmake and nothing else, so a change anywhere
       # else in the tree reuses it.
+      #
+      # Only a push writes that cache; a pull request reads it and exports
+      # nothing. `mode=max` exports every layer of every stage, and this
+      # Dockerfile is one stage per fetched dependency, so each export is a
+      # ~2.8GB generation per architecture -- which is what took the store past
+      # its limit when the arm64 matrix landed, and the eviction that followed
+      # fell on the CI third-party caches rather than here. Writing on pushes
+      # alone bounds how fast generations accumulate without giving up the Spot
+      # layer, which `mode=min` would drop and which is the reason the stages
+      # are split at all. A pull request still hits main's cache; only a branch
+      # that changes cmake/spot.cmake pays for Spot, which is the case that
+      # would miss either way.
       - name: Build and push by digest
         id: build
         uses: docker/build-push-action@v6
@@ -83,7 +95,9 @@ jobs:
             COUNTER_GIT_COMMIT=${{ github.sha }}
             COUNTER_GIT_DIRTY=false
           cache-from: type=gha,scope=${{ steps.platform.outputs.pair }}
-          cache-to: type=gha,mode=max,scope=${{ steps.platform.outputs.pair }}
+          cache-to: ${{ env.PUSH == 'true'
+            && format('type=gha,mode=max,scope={0}', steps.platform.outputs.pair)
+            || '' }}
           provenance: false
           outputs: type=image,name=${{ env.REGISTRY_IMAGE }},push-by-digest=true,name-canonical=true,push=${{ env.PUSH }}
 

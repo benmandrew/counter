@@ -6,10 +6,12 @@
 ///        weighted aggregate over tlsf::Specification.
 
 #include <cstddef>
+#include <string>
 #include <vector>
 
 #include "config.hpp"
 #include "fitness/function.hpp"
+#include "fitness/status.hpp"
 #include "tlsf/specification.hpp"
 
 /// Positional per-section syntactic similarity of @p spec against @p original.
@@ -45,8 +47,20 @@ double tlsf_semantic_similarity(const tlsf::Specification& spec,
 /// and is read only under StatusGrading::Mrs; empty means index order. It is
 /// projected onto the candidate's own part count, since mutation rewrites a
 /// formula into a different number of conjuncts.
+///
+/// @p component_check says whether the score tests its own components; the
+/// split scoring path runs each of those queries as a dispatch item of its own
+/// and passes ComponentCheck::Skipped so the same query is not asked twice.
 double tlsf_status(const tlsf::Specification& spec, const Config& cfg,
-                   const std::vector<std::size_t>& admission_order = {});
+                   const std::vector<std::size_t>& admission_order = {},
+                   ComponentCheck component_check = ComponentCheck::Included);
+
+/// The components @ref tlsf_status tests individually: the formula of every
+/// live entry of all six sections, in section order. Exposed so a scoring pool
+/// can run each one's `black` query concurrently rather than leaving them to
+/// the sequential fold inside the score.
+std::vector<std::string> tlsf_status_components(
+    const tlsf::Specification& spec);
 
 /// Builds the weighted aggregate of the three TLSF fitness components, gated on
 /// the same `cfg.fitness_weight_*` fields the FRETISH factory uses. Components

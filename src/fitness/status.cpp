@@ -231,10 +231,8 @@ std::vector<std::size_t> position_order_from_slots(
 
 }  // namespace
 
-double specification_status(const Specification& specification,
-                            SatisfiabilityChecker& sat,
-                            RealizabilityChecker& real, StatusGrading grading,
-                            const std::vector<std::size_t>& slot_order) {
+std::vector<std::string> specification_status_components(
+    const Specification& specification) {
     // Requirements are checked one at a time rather than conjoined across the
     // specification: they fire at different times (different conditions,
     // Trigger vs Continual), so their conditions and responses need not be
@@ -258,6 +256,20 @@ double specification_status(const Specification& specification,
     };
     add(specification.m_assumptions);
     add(specification.m_guarantees);
+    return components;
+}
+
+double specification_status(const Specification& specification,
+                            SatisfiabilityChecker& sat,
+                            RealizabilityChecker& real, StatusGrading grading,
+                            const std::vector<std::size_t>& slot_order,
+                            ComponentCheck component_check) {
+    // An empty component list passes the tier vacuously, which is exactly what
+    // ComponentCheck::Skipped asks for; both scales below already handle it.
+    const std::vector<std::string> components =
+        component_check == ComponentCheck::Included
+            ? specification_status_components(specification)
+            : std::vector<std::string>{};
 
     if (grading == StatusGrading::Mrs) {
         const std::vector<std::size_t> slots =

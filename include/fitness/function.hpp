@@ -8,6 +8,7 @@
 #include <functional>
 #include <memory>
 #include <mutex>
+#include <optional>
 #include <string>
 #include <unordered_map>
 #include <utility>
@@ -31,6 +32,47 @@ inline constexpr double k_default_fitness_weight =
 template <typename Spec>
 using FitnessFunctionT = std::function<double(const Spec&)>;
 
+/// Relative cost hints for ordering the launches of one scoring region, as the
+/// number of external-tool calls a part makes. Only the order these induce is
+/// read, never the magnitudes, so they are counts rather than times.
+inline constexpr double k_part_cost_in_process = 0.0;
+inline constexpr double k_part_cost_satisfiability = 1.0;
+inline constexpr double k_part_cost_model_count = 3.0;
+inline constexpr double k_part_cost_synthesis = 10.0;
+
+/// One independently schedulable piece of an objective's work for one
+/// candidate.
+struct FitnessPart {
+    std::function<double()> run;
+    /// Launched before cheaper parts; see @ref cost_ordered_indices.
+    double cost = k_part_cost_in_process;
+};
+
+/// An objective's work for one candidate: parts that may run in any order on
+/// any thread, and the fold that turns their results back into the objective's
+/// score.
+///
+/// This exists because scoring one candidate was a serial chain of subprocess
+/// calls on a single pool worker -- a semantic term per requirement slot, then
+/// a satisfiability call per component, then a synthesis walk -- so the last
+/// candidate of a generation held one worker while the rest of the pool sat
+/// idle, and no number of workers shortened it. The parts of every candidate
+/// go into one flat dispatch region instead.
+///
+/// The parts capture the candidate by reference, so the specification they were
+/// built from must outlive them. `combine` receives their results in part
+/// order, whatever order they actually ran in, so the score is a function of
+/// the candidate alone.
+struct ObjectiveWork {
+    std::vector<FitnessPart> parts;
+    std::function<double(const std::vector<double>&)> combine;
+};
+
+/// Splits an objective's work for one candidate into parts. An objective
+/// without one runs as a single part, which is what the aggregate substitutes.
+template <typename Spec>
+using FitnessDecompositionT = std::function<ObjectiveWork(const Spec&)>;
+
 /// A fitness function paired with a weight for weighted-average aggregation.
 /// The default weight is given by k_default_fitness_weight.
 template <typename Spec>
@@ -38,6 +80,11 @@ struct WeightedFitnessFunctionT {
     FitnessFunctionT<Spec> function;
     double weight = k_default_fitness_weight;
     std::string name;
+    /// Optional. Absent means `function` is indivisible and runs as one part.
+    /// Defaulted rather than merely default-constructible so that the many
+    /// three-field brace initialisations of this aggregate keep compiling under
+    /// -Wmissing-field-initializers.
+    FitnessDecompositionT<Spec> decompose = nullptr;
 };
 
 /// Aggregates multiple WeightedFitnessFunctionT instances into a single
@@ -157,12 +204,92 @@ class AggregateWeightedFitnessFunctionT {
         return {std::move(values), scalar};
     }
 
+    /// The cached objective vector for @p spec, or nothing when it has not
+    /// been scored yet. Counts against the same hit/miss totals the serial
+    /// path reports, so a split scoring run's cache rate stays comparable.
+    std::optional<std::vector<double>> cached_objectives(
+        const Spec& spec) const {
+        const std::scoped_lock lock(*m_cache_mutex);
+        const auto cache_iter = m_cache.find(spec);
+        if (cache_iter != m_cache.end()) {
+            FitnessCacheStats::n_hits++;
+            return cache_iter->second;
+        }
+        FitnessCacheStats::n_misses++;
+        return std::nullopt;
+    }
+
+    /// The work of scoring @p spec, one entry per objective in registration
+    /// order.
+    ///
+    /// Enumerates parts without running any of them, so a caller may plan a
+    /// whole population and dispatch every part of it as one region. The parts
+    /// hold @p spec by reference and must not outlive it.
+    ///
+    /// An objective with no decomposition contributes one part wrapping its
+    /// whole function, so a caller never has to ask which kind it got.
+    [[nodiscard]] std::vector<ObjectiveWork> plan(const Spec& spec) const {
+        std::vector<ObjectiveWork> work;
+        work.reserve(m_fitness_functions.size());
+        for (std::size_t i = 0; i < m_fitness_functions.size(); ++i) {
+            const WeightedFitnessFunctionT<Spec>& wff = m_fitness_functions[i];
+            ObjectiveWork objective;
+            if (wff.decompose) {
+                objective = wff.decompose(spec);
+            } else {
+                // Costed as a synthesis call: an undecomposed objective is
+                // opaque, and launching an unknown ahead of a known-cheap part
+                // is the safer half of the guess.
+                objective.parts.push_back(
+                    {[&wff, &spec] { return wff.function(spec); },
+                     k_part_cost_synthesis});
+                objective.combine = [](const std::vector<double>& values) {
+                    return values.front();
+                };
+            }
+            // Charged to the objective's own profiler site, as the serial path
+            // charges its one call, so the site still reports the objective's
+            // total wall rather than losing it to the dispatcher.
+            for (FitnessPart& part : objective.parts) {
+                part.run = [site = m_profile_sites[i],
+                            run = std::move(part.run)] {
+                    const profile::Scope scope(*site);
+                    return run();
+                };
+            }
+            work.push_back(std::move(objective));
+        }
+        return work;
+    }
+
+    /// Records @p objectives as @p spec's score and returns it with the
+    /// weighted scalar.
+    ///
+    /// A concurrent scorer that stored first keeps its entry, which is the
+    /// same value: the objectives are a function of the specification, and
+    /// duplicated work is the price the cache already pays for not holding its
+    /// mutex across a subprocess.
+    std::pair<std::vector<double>, double> store(
+        const Spec& spec, std::vector<double> values) const {
+        const std::scoped_lock lock(*m_cache_mutex);
+        const std::vector<double>& stored =
+            m_cache.emplace(spec, std::move(values)).first->second;
+        return {stored, weighted_average(stored)};
+    }
+
     /// Number of aggregated objectives (per-element vector length).
     [[nodiscard]] std::size_t n_objectives() const {
         return m_fitness_functions.size();
     }
 
     double total_weight() const { return m_total_weight; }
+
+    /// The weighted-average scalar of an objective vector. Exposed so a caller
+    /// holding a cached vector can pair it with its scalar without a second
+    /// pass through the cache.
+    [[nodiscard]] double scalar(const std::vector<double>& values) const {
+        return weighted_average(values);
+    }
 
     /// Checks if the collection of fitness functions is empty.
     [[nodiscard]] bool empty() const { return m_fitness_functions.empty(); }

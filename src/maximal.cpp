@@ -261,6 +261,16 @@ int main(int argc, const char* const argv[]) {
     apply_tool_timeouts(cfg);
     set_thread_pool_size(cfg.parallel);
     SatisfiabilityChecker& checker = global_sat_checker();
+    // Both measured over this tool's own queries, whole-spec implications of
+    // 1000-1600 characters. `ltlfilt --simplify` took 95.6% of solver wall
+    // time (1153.7s against 52.9s for the decision itself) and a 40-file batch
+    // went from 304s to 30s without it, with the same survivors; without the
+    // pass the unsimplified query runs about 2x longer, so the 500ms SPOT
+    // budget tuned for the search tips over under load and an undecided
+    // `ExpectUnsat` query keeps both sides. Giving SPOT black's budget instead
+    // restored agreement on 264 of 264 cut-values across a 10-run sample.
+    checker.set_simplify(false);
+    checker.set_spot_budget(cfg.black_timeout);
 
     std::size_t reported = 0;
     const std::vector<tlsf::Specification> maximal =

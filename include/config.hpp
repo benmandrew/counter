@@ -57,7 +57,14 @@ enum class RepairMode : std::uint8_t { Monolithic, Muc };
 /// in `examples/`, Tiered scores
 /// every one of them 0.5, where Mrs spreads them over 14 distinct values with a
 /// median of 6 grade levels per specification.
-enum class StatusGrading : std::uint8_t { Tiered, Mrs };
+/// Aurus is AuRUS's own six-level ladder, reproduced value for value (see
+/// @ref status_score_aurus). It exists so an ablation can cross counter's
+/// grading against the design this search derives from, which is why it is
+/// faithful rather than improved: it grades below realizability by which side
+/// of the specification survives on its own, and it is the one scale here that
+/// does *not* fold well-separation into its realizability query, AuRUS never
+/// asking that question anywhere in its search.
+enum class StatusGrading : std::uint8_t { Tiered, Mrs, Aurus };
 
 /// Which order the MRS walk admits guarantee-side parts in (see
 /// @ref status_score_mrs). Spec is the index order the walk shipped with;

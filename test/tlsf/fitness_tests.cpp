@@ -93,6 +93,51 @@ void test_status_jointly_unsatisfiable_guarantees_are_unrealizable() {
            "tier");
 }
 
+// The ladder is a shared scale, so this pins that the TLSF front end reaches
+// every level of it rather than re-testing status_score_aurus. The sides are
+// assumption_ltl() against guarantee_ltl(), which are AuRUS's own environment
+// and system formulae, so a side is unsatisfiable exactly where its own
+// conjuncts contradict.
+void test_status_aurus_grades_by_which_side_survives() {
+    Config cfg;
+    cfg.status_grading = StatusGrading::Aurus;
+    const std::string atoms = "INPUTS { r; } OUTPUTS { g; } ";
+    expect(tlsf_status(parse(atoms + "ASSUME { r; !r; } GUARANTEE { g; !g; }"),
+                       cfg) == k_status_component_unsatisfiable,
+           "aurus: neither side satisfiable scores the bottom level");
+    expect(tlsf_status(
+               parse(atoms + "ASSUME { r; !r; } GUARANTEE { G(g <-> r); }"),
+               cfg) == k_status_aurus_guarantees_only,
+           "aurus: only the guarantee side satisfiable scores 0.05");
+    expect(tlsf_status(parse(atoms + "GUARANTEE { g; !g; }"), cfg) ==
+               k_status_aurus_assumptions_only,
+           "aurus: only the assumption side satisfiable scores 0.1");
+    expect(tlsf_status(parse(atoms + "ASSUME { G r; } GUARANTEE { G !r; }"),
+                       cfg) == k_status_aurus_contradictory,
+           "aurus: two sides that hold alone but not together score 0.2");
+    expect(tlsf_status(parse(atoms + "GUARANTEE { G(g <-> r); }"), cfg) ==
+               k_status_realizable,
+           "aurus: a realizable spec scores 1.0");
+}
+
+// The divergence, on the TLSF path: `ASSUME { G F g }` is over the system's own
+// output, so the system defeats it by never asserting g. The shared scale caps
+// that at the unrealizable tier; the AuRUS ladder does not ask the question,
+// because AuRUS does not.
+void test_status_aurus_does_not_penalise_an_ill_separated_spec() {
+    Config cfg;
+    const tlsf::Specification spec = parse(
+        "INPUTS { r; } OUTPUTS { g; } ASSUME { G F g; } "
+        "GUARANTEE { G (r -> g); }");
+    cfg.status_grading = StatusGrading::Tiered;
+    expect(tlsf_status(spec, cfg) == k_status_unrealizable,
+           "aurus: the tiered scale caps an ill-separated spec at 0.5");
+    cfg.status_grading = StatusGrading::Aurus;
+    expect(tlsf_status(spec, cfg) == k_status_realizable,
+           "aurus: the AuRUS ladder scores an ill-separated but realizable "
+           "spec 1.0");
+}
+
 void test_aggregate_scores_in_unit_interval() {
     Config cfg;
     cfg.default_model_counting_bound = 4;
@@ -115,5 +160,7 @@ void run_tlsf_fitness_tests() {
     test_status_realizable_is_one();
     test_status_individually_unsatisfiable_formula_is_zero();
     test_status_jointly_unsatisfiable_guarantees_are_unrealizable();
+    test_status_aurus_grades_by_which_side_survives();
+    test_status_aurus_does_not_penalise_an_ill_separated_spec();
     test_aggregate_scores_in_unit_interval();
 }

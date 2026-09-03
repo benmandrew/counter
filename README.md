@@ -70,7 +70,3 @@ The full documentation is published at [benmandrew.com/docs/counter](https://ben
 | [TLSF specifications](https://benmandrew.com/docs/counter/tlsf.html) | TLSF mode and a worked repair |
 | [API reference](https://benmandrew.com/docs/counter/) | the `include/` headers |
 | [Experiment scripts](scripts/README.md) | parameter sweeps and result analysis |
-
-## Licence
-
-See [LICENCE](LICENCE).

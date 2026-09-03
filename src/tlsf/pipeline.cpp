@@ -119,7 +119,8 @@ int run_repair(const std::string& input_path, const std::string& output_dir,
                                               global_sat_checker());
     }
     if (cfg.run_implication_filter && survivors.size() > 1) {
-        survivors = internal::keep_maximal(survivors, global_sat_checker());
+        survivors = internal::keep_maximal(survivors, original, cfg,
+                                           global_sat_checker());
     }
     internal::write_survivors(survivors, fitness, output_dir);
     // budget.generations() rather than cfg.generations: the parameter is the

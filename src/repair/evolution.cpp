@@ -290,8 +290,9 @@ filter_maximal_specifications(
                   << ImplicationFilterStats::n_comparisons << " cmp, "
                   << ImplicationFilterStats::n_skipped << " skip, "
                   << ImplicationFilterStats::n_duplicates << " dup, "
-                  << ImplicationFilterStats::n_timeouts << " timeout)"
-                  << std::flush;
+                  << ImplicationFilterStats::n_equivalent_collapsed
+                  << " equiv, " << ImplicationFilterStats::n_timeouts
+                  << " timeout)" << std::flush;
     };
     const std::vector<FilterFunction> filters = get_final_filter_functions(
         cfg, original, global_sat_checker(), on_impl_progress);
@@ -318,7 +319,9 @@ filter_maximal_specifications(
                   << ImplicationFilterStats::n_comparisons << " cmp, "
                   << ImplicationFilterStats::n_skipped << " skip, "
                   << ImplicationFilterStats::n_duplicates << " dup, "
-                  << ImplicationFilterStats::n_timeouts << " timeout)\n";
+                  << ImplicationFilterStats::n_equivalent_collapsed
+                  << " equiv, " << ImplicationFilterStats::n_timeouts
+                  << " timeout)\n";
     }
     return {result, std::move(stats)};
 }

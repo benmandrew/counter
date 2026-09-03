@@ -79,13 +79,20 @@ std::vector<Scored<Specification>> keep_matching(
     const std::vector<Specification>& kept) {
     std::vector<Scored<Specification>> result;
     result.reserve(kept.size());
+    // Each kept spec claims one survivor, not every survivor equal to it. The
+    // implication filter collapses structurally equal specs to a single copy,
+    // so an any_of match would hand that copy to all of them and put the
+    // duplicates straight back. TLSF dedups per generation rather than at the
+    // end, and accumulate_repairs unions across generations, so duplicates do
+    // reach here.
+    std::vector<bool> claimed(kept.size(), false);
     for (const Scored<Specification>& scored : survivors) {
-        const bool matched = std::any_of(
-            kept.begin(), kept.end(), [&scored](const Specification& spec) {
-                return spec == scored.specification;
-            });
-        if (matched) {
-            result.push_back(scored);
+        for (std::size_t i = 0; i < kept.size(); ++i) {
+            if (!claimed[i] && kept[i] == scored.specification) {
+                claimed[i] = true;
+                result.push_back(scored);
+                break;
+            }
         }
     }
     return result;
@@ -176,10 +183,11 @@ std::vector<Scored<Specification>> keep_weakenings(
 
 std::vector<Scored<Specification>> keep_maximal(
     const std::vector<Scored<Specification>>& survivors,
+    const Specification& original, const Config& cfg,
     SatisfiabilityChecker& checker) {
     const std::vector<Specification> specs = specifications_of(survivors);
-    const std::vector<Specification> maximal =
-        tlsf_make_implication_filter(checker)(specs);
+    const std::vector<Specification> maximal = tlsf_make_implication_filter(
+        checker, tlsf_syntactic_similarity_key(original, cfg))(specs);
     return keep_matching(survivors, maximal);
 }
 

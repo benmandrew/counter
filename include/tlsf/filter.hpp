@@ -5,10 +5,12 @@
 ///        the FRETISH deduplication, vacuity, well-separation, bloat-cap,
 ///        weakening, and implication filters.
 
+#include <functional>
 #include <optional>
 #include <string>
 #include <vector>
 
+#include "config.hpp"
 #include "filter/correctness.hpp"
 #include "genetic/generation.hpp"
 #include "runner/black.hpp"
@@ -171,11 +173,26 @@ FilterFunctionT<tlsf::Specification> tlsf_make_bloat_cap_filter(
 FilterFunctionT<tlsf::Specification> tlsf_make_weakening_filter(
     tlsf::Specification original, SatisfiabilityChecker& checker);
 
+/// Ranks candidates within one equivalence class, higher surviving. Ties are
+/// broken on `tlsf::Specification::operator<`, so the survivor does not depend
+/// on the order the concurrent sweep finishes its pairs in.
+using TlsfSimilarityKey = std::function<double(const tlsf::Specification&)>;
+
+/// Returns a TlsfSimilarityKey scoring each candidate by syntactic similarity
+/// to @p original, so the member of an equivalence class that reads closest to
+/// the specification under repair is the one written out.
+TlsfSimilarityKey tlsf_syntactic_similarity_key(tlsf::Specification original,
+                                                const Config& cfg);
+
 /// Returns a filter keeping only the maximal specifications under the
 /// implication partial order: spec A strictly dominates B when A implies B but
-/// B does not imply A. Mutually equivalent specs are both kept. The TLSF
-/// counterpart of make_implication_filter. @p checker is captured by reference
-/// and must outlive the filter.
+/// B does not imply A. Mutually equivalent specs contribute exactly one
+/// survivor, chosen by @p similarity and, where that ties, by
+/// `tlsf::Specification::operator<`; an empty @p similarity leaves the
+/// tie-break to `operator<` alone. The TLSF counterpart of
+/// make_implication_filter, whose header carries the argument for collapsing
+/// rather than keeping the class. @p checker is captured by reference and must
+/// outlive the filter.
 FilterFunctionT<tlsf::Specification> tlsf_make_implication_filter(
-    SatisfiabilityChecker& checker,
+    SatisfiabilityChecker& checker, TlsfSimilarityKey similarity = nullptr,
     const GenerationProgressCallback& on_progress = nullptr);

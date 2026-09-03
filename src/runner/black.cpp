@@ -33,8 +33,6 @@ bool is_identifier_char(char chr) {
 // where the automaton construction would otherwise run unboundedly.
 // Deliberately not a config key: no campaign would sweep it, and the value
 // follows from the measured distribution rather than from a preference.
-constexpr std::chrono::milliseconds k_spot_budget{500};
-
 // This codebase spells its boolean constants as atoms named "true"/"false"
 // (see prop_formula.hpp). black parses those bare identifiers as free
 // variables, so it reports e.g. "G(false)" satisfiable by holding the variable
@@ -144,7 +142,11 @@ std::optional<bool> SatisfiabilityChecker::check_satisfiability(
     // that dropped it: black's inputs are single requirement formulae and
     // implication checks, not the deep nested-X conjunctions that make ltlfilt
     // --simplify blow up super-exponentially.
-    const std::string normalised = simplify_ltl(ltl_formula);
+    // Except on the implication sweep `maximal` runs, whose whole-spec
+    // queries are exactly those conjunctions, and where the pass was measured
+    // at 21.8x the cost of the decision it precedes.
+    const std::string normalised =
+        m_simplify ? simplify_ltl(ltl_formula) : ltl_formula;
     // A formula that SPOT reduces to a boolean constant is already decided:
     // "0" is unsatisfiable, "1" is valid and therefore satisfiable. The
     // genetic algorithm generates these constantly — mostly implication checks
@@ -184,15 +186,15 @@ std::optional<bool> SatisfiabilityChecker::check_satisfiability(
     // The formula handed over is the --simplify output rather than the
     // original. It is SPOT's own spelling, so SPOT reads it back, and it is
     // the smaller of the two whenever simplification fired at all.
-    // Bounded by the caller's own budget as well as by k_spot_budget, so a
+    // Bounded by the caller's own budget as well as by m_spot_budget, so a
     // configured timeout still bounds the whole query rather than the black
     // stage alone -- otherwise a 1000ms setting would admit a 1500ms query. A
     // zero budget disables black's timeout by convention; SPOT keeps its own
     // either way, since the unbounded automaton construction is the case
-    // k_spot_budget exists to stop.
+    // m_spot_budget exists to stop.
     const std::chrono::milliseconds spot_budget =
-        m_timeout.count() == 0 ? k_spot_budget
-                               : std::min(m_timeout, k_spot_budget);
+        m_timeout.count() == 0 ? m_spot_budget
+                               : std::min(m_timeout, m_spot_budget);
     if (const std::optional<bool> decided =
             spot_satisfiable(normalised, spot_budget)) {
         n_spot_decided++;

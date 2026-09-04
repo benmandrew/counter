@@ -17,7 +17,14 @@ configs = "python3 scripts/gen_configs.py --tlsf --schemes nsga2-apportion weigh
 # upper bound of unknown tightness and the main phase is not launched until the
 # 48 calibration runs have priced it. Phases run in order and stop at the first
 # failure, so declaring both here is safe.
+# `calib` carries its own hosts table and must. `run_experiments.py --seeds`
+# replaces a profile's seed list rather than intersecting with it, so the
+# campaign-level split would hand the calibration 15 seeds a host and run 720
+# rows where the design says 48 -- and `humanoid-742` alone, capped at 7200 s,
+# would cost more than the archive's whole control cell. One seed a host is
+# what the 2-seed profile means once the split is applied. A phase table may
+# only narrow, and both hosts named here are declared above.
 phases = [
-    { name = "calib", profile = "rematch-calib", jobs = 16 },
+    { name = "calib", profile = "rematch-calib", jobs = 16, hosts = { av2 = "0", av3 = "1" } },
     { name = "main",  profile = "rematch",       jobs = 16 },
 ]

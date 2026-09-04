@@ -259,6 +259,23 @@ DEFAULTS: dict = {
     # circuit breaker drops them, but at the smallest population the default 0.05
     # tolerance floors to 1 and aborts the run, so the campaign raises it.
     "max_scoring_failure_rate": 0.0,
+    # Wall-clock deadline for the whole run in seconds; 0 = no deadline,
+    # matching config.hpp. Emitted into [genetic] only when positive (see
+    # make_toml), so the standard grids stay byte-identical. A run past the
+    # deadline stops itself at the next generation boundary and writes its
+    # output normally, which is what separates it from the harness's external
+    # timeout_caps kill: a killed run leaves no run.json and is censored with
+    # nothing recorded. A campaign setting this must still leave the profile's
+    # cap well above it, the deadline interrupting neither the filters, the
+    # scoring, nor the final realizability gate.
+    "max_wall_s": 0,
+    # Scoring thread pool size. 0 is make_toml's "emit nothing" sentinel rather
+    # than a mirror of config.hpp, whose default is available_parallelism() and
+    # so has no literal to track. Emitted into [runtime] only when positive, so
+    # the standard grids stay byte-identical. A config that states it also keeps
+    # run_experiments.py's own per-run cap off it -- derive_config there fills in
+    # for a config that says nothing and defers to one that does not.
+    "parallel": 0,
     # Progress log + dashboard page, off by default in config.hpp and emitted
     # only when true. A campaign of many runs should leave it off; the
     # mechanism-check subset turns it on because progress.jsonl is where the
@@ -291,7 +308,9 @@ def make_toml(overrides: dict, defaults: dict = DEFAULTS) -> str:
     ] + ([f"elitism_rate    = {_fmt(d['elitism_rate'])}"]
          if "elitism_rate" in overrides else []) + (
         [f"accumulate_repairs = {_fmt(d['accumulate_repairs'])}"]
-        if "accumulate_repairs" in overrides else []) + [
+        if "accumulate_repairs" in overrides else []) + (
+        [f"max_wall_s      = {d['max_wall_s']}"]
+        if d.get("max_wall_s") else []) + [
         "",
         "[fitness]",
         f"weight_syntactic = {_fmt(d['weight_syntactic'])}",
@@ -330,8 +349,10 @@ def make_toml(overrides: dict, defaults: dict = DEFAULTS) -> str:
         "",
         "[runtime]",
         f"black_timeout_ms = {d['black_timeout_ms']}",
-    ] + ([f"max_concurrent_realizability = {d['max_concurrent_realizability']}"]
-         if d.get("max_concurrent_realizability") else []) + (
+    ] + ([f"parallel = {d['parallel']}"]
+         if d.get("parallel") else []) + (
+        [f"max_concurrent_realizability = {d['max_concurrent_realizability']}"]
+        if d.get("max_concurrent_realizability") else []) + (
         [f"ltlsynt_timeout_ms = {d['ltlsynt_timeout_ms']}"]
         if d.get("ltlsynt_timeout_ms") else []) + (
         [f"ltl2tgba_timeout_ms = {d['ltl2tgba_timeout_ms']}"]
@@ -707,9 +728,20 @@ TLSF_SWEEP_R: list[tuple[str, dict]] = list(SWEEP_R)
 # maximal-realizable-subset scale. level_value_of() reads a trailing number off
 # the level name and finds none in either, as with sweep C's default and
 # status-only, so both record a null level value.
+#
+# "aurus" was appended on 2026-08-28, after the ladder landed in config.hpp, and
+# is appended rather than ordered beside "tiered" for the reason SCHEMES is: the
+# closed `status-grading` profile pins levels ["tiered", "mrs"] and its archived
+# rows name those two, so the pair keeps the positions it was generated under.
+# AuRUS's own six-level scale (0, 0.05, 0.1, 0.2, 0.5, 1.0) grades by which side
+# of the specification is satisfiable on its own and never folds well-separation
+# into its realizability query, so crossing it against "mrs" ablates counter's
+# status objective against the design it derives from. It carries no trailing
+# number either, so it records a null level value like the other two.
 TLSF_SWEEP_G: list[tuple[str, dict]] = [
     ("tiered", {"status_grading": "tiered"}),
     ("mrs",    {"status_grading": "mrs"}),
+    ("aurus",  {"status_grading": "aurus"}),
 ]
 
 # TLSF sweep N: the cross-generation accumulator, off against on. counter
@@ -942,6 +974,25 @@ def parse_args() -> argparse.Namespace:
                              "from a future binary. A sweep that varies one of "
                              "these still wins. Recommended for any campaign "
                              "meant to be reproducible")
+    parser.add_argument("--max-wall-s", type=int, default=None, metavar="S",
+                        help="Per-run wall-clock deadline in seconds "
+                             "(genetic.max_wall_s). 0 = no deadline; the key is "
+                             "omitted from the emitted TOML when 0, keeping the "
+                             "standard grids byte-identical. Unlike the "
+                             "harness's own timeout_caps this stops the search "
+                             "from inside, so the run still writes run.json and "
+                             "its repairs instead of being censored -- set the "
+                             "profile's cap well above it, since the deadline "
+                             "does not interrupt filters, scoring or the final "
+                             "realizability gate")
+    parser.add_argument("--parallel", type=int, default=None, metavar="N",
+                        help="Scoring thread pool size (runtime.parallel). 0 = "
+                             "omit the key and take the binary's hardware "
+                             "concurrency, keeping the standard grids "
+                             "byte-identical. A stated value also stops "
+                             "run_experiments.py deriving its own per-run cap "
+                             "over it, so pass 1 for a campaign whose runs are "
+                             "meant to be single-threaded")
     parser.add_argument("--max-realizability", type=int, default=None,
                         metavar="N",
                         help="Cap concurrent ltlsynt processes "
@@ -1020,6 +1071,11 @@ def main() -> None:
             ltl2tgba_timeout = TLSF_LTL2TGBA_TIMEOUT_MS
         if max_scoring_failure_rate is None:
             max_scoring_failure_rate = TLSF_MAX_SCORING_FAILURE_RATE
+    # Neither of these gets a --tlsf default: a deadline and a thread-pool size
+    # belong to the campaign that measured them, not to the path, and silently
+    # bounding every TLSF grid at one would change what the archived ones mean.
+    defaults["max_wall_s"] = args.max_wall_s or 0
+    defaults["parallel"] = args.parallel or 0
     defaults["max_concurrent_realizability"] = max_realizability or 0
     defaults["ltlsynt_timeout_ms"] = ltlsynt_timeout or 0
     defaults["ltl2tgba_timeout_ms"] = ltl2tgba_timeout or 0

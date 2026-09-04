@@ -418,6 +418,7 @@ GEN_CONFIGS_FIELDS = {
     "p_remove_assumption": "tlsf_p_remove_assumption",
     "p_burst_continue": "tlsf_p_burst_continue",
     "max_concurrent_realizability": "max_concurrent_realizability",
+    "max_wall_s": "max_wall_s",
 }
 
 # Entries that deliberately do not track config.hpp, each with the reason it
@@ -455,6 +456,10 @@ GEN_CONFIGS_EXEMPT = {
     "dashboard":
         "False is make_toml's 'emit only when true' sentinel; it coincides with "
         "config.hpp rather than tracking it",
+    "parallel":
+        "0 is make_toml's 'emit only when positive' sentinel; config.hpp's "
+        "default is available_parallelism(), a call rather than a literal, so "
+        "there is nothing here to track",
 }
 
 

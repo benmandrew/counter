@@ -304,6 +304,27 @@ SELECTION_SMOKE_SPECS: list[str] = [
     s for s in H2H_TLSF_READY if s not in SELECTION_SMOKE_EXCLUDED
 ]
 
+# The cost-calibration subset of the 2026-08-28 selection x grading campaign:
+# 12 of the 25 H2H_TLSF_READY families, chosen to span the measured cost range
+# rather than to answer anything. All four SELECTION_SMOKE_EXCLUDED families are
+# in it deliberately -- they are the ones whose behaviour under an internal
+# deadline is unknown, that exclusion having been a cost rule and the deadline
+# being what retires it -- together with four upper-middle families, two middle
+# and two cheap ones, taken from the 2026-08-23-monotone `monoon` per-family
+# means the `selection-smoke` cap table quotes. A subset chosen on cost alone
+# says nothing about the response, which is what keeps it usable for sizing the
+# full run without selecting the corpus on the outcome.
+CURVES_CALIB_SPECS: list[str] = [
+    # the four the cost rule used to exclude (7200, 6149, 1643, 685 s)
+    "humanoid-742", "humanoid-531", "pcar-v2-888", "humanoid-503",
+    # upper-middle
+    "lift", "prioritized-arbiter-aurus", "gyro-var1", "humanoid-458",
+    # middle
+    "gyro-var2", "ltl2dba-theta-2",
+    # cheap
+    "minepump", "rg2",
+]
+
 # The corpus the 2026-07-24 head-to-head actually ran, frozen so that changing
 # the live list above cannot retroactively change what the `h2h-tlsf` profile
 # means. That profile is the July campaign's definition and nothing else runs
@@ -1234,6 +1255,118 @@ PROFILES: dict[str, dict] = {
         # campaign's wall times readable against theirs.
         "default_jobs": 8,
     },
+    # ── 2026-08-28 selection x grading ───────────────────────────────────────
+    #
+    # A 2x2 ablation on TLSF, measuring repair discovery over time rather than
+    # at a fixed generation count: selection_scheme (nsga2-apportion against
+    # weighted) crossed with fitness.status_grading (mrs, counter's own, against
+    # aurus, AuRUS's six-level ladder). Two schemes x two sweep-G levels is the
+    # whole cross -- the schemes are config directories and the grading arm
+    # rides in level_name, so both are already key columns and nothing here
+    # needs a new one.
+    #
+    # What makes it a curve rather than a point is genetic.max_wall_s: every arm
+    # runs generations = 500, far more than any of these families reaches, so
+    # the deadline is what ends every run and each arm gets the same wall clock
+    # instead of the same number of generations. counter stops itself at the
+    # next generation boundary past the deadline and writes run.json and its
+    # repairs normally, so a run that hits the budget is measured rather than
+    # censored -- which is exactly what the harness's own timeout_caps kill
+    # cannot do. accumulate_repairs is on (the binary's default), so each repair
+    # carries the generation it was found at and the response is readable as a
+    # function of elapsed budget.
+    #
+    # runtime.parallel = 1 for the same reason: a scoring pool whose size varies
+    # with --jobs makes wall time a property of the host's load rather than of
+    # the arm, and the endpoint here is wall time. gen_configs.py states the key
+    # in the config and derive_config leaves a stated value alone.
+    #
+    # The fitness weights are 0.1 / 0.2 / 0.7 (syntactic / semantic / status),
+    # AuRUS's published triple, passed through gen_configs.py's --weights. Only
+    # the weighted scheme reads them, so setting them globally is correct and
+    # inert for the two nsga2-apportion arms; stating them keeps the archived
+    # config self-describing instead of inheriting either the binary's
+    # 0.2/0.5/0.5 or the 0.33 triple gen_configs.py otherwise pins.
+    #
+    # The corpus is H2H_TLSF_READY, all 25 families -- not SELECTION_SMOKE_SPECS.
+    # That constant's four exclusions are a pure cost rule (families whose mean
+    # wall time ran past 600 s, humanoid-742 capping at 7200 s on every seed),
+    # and max_wall_s now bounds every run from inside, so the reason for the
+    # exclusion is gone and it is retired for this campaign.
+    #
+    # Two profiles: `curves-calib` sizes the run, `curves` is the run. They keep
+    # separate configs/results/CSV paths for the usual run_id-collision reason.
+    "curves-calib": {
+        "schemes": ["nsga2-apportion", "weighted"],
+        "weakenings": ["wkoff"],
+        "metrics": ["log"],
+        "repair_modes": None,
+        "sweeps": ["G"],
+        "levels": {"G": ["mrs", "aurus"]},
+        # 12 families spanning the cost range; see CURVES_CALIB_SPECS.
+        "specs": CURVES_CALIB_SPECS,
+        # 2 seeds: 12 families x 2 seeds x 4 arms = 96 runs, enough to read a
+        # per-family wall time and a jobs-level peak RSS and nothing else. The
+        # calibration is what fixes `curves`'s seed count.
+        "seeds": list(range(2)),
+        # 3600 s against the campaign's 1800 s internal deadline -- 2x headroom,
+        # because max_wall_s stops the *search* and interrupts neither the
+        # filters, the scoring, nor the final realizability gate, so a run
+        # overruns by whatever the generation it was in had left. The external
+        # cap is a backstop against a hung tool, not the budget; a run that hits
+        # it has lost its row, which is the outcome the deadline exists to
+        # avoid. Flat rather than per-family because the deadline, not the
+        # family, is what ends every run here.
+        "timeout_caps": {s: 3600 for s in CURVES_CALIB_SPECS},
+        # 1800 s, as monotone, aurus-h2h-ship and selection-smoke set it.
+        # accumulate_repairs is on and the budget is long, so a run emits far
+        # more repairs than the 600 s default was sized for and a compare
+        # timeout costs the row's implies_ideal silently.
+        "compare_timeout": 1800,
+        # Sweep G has no gen/pop axis, so there is no A/gen baseline to alias,
+        # and neither arm is a grid baseline.
+        "baseline_aliases": {},
+        "configs_dir": EXPERIMENTS_DIR / "configs-curves-calib",
+        "results_dir": EXPERIMENTS_DIR / "results-curves-calib",
+        "results_csv": EXPERIMENTS_DIR / "results-curves-calib.csv",
+        # 16 rather than the 1 the other TLSF profiles use. That 1 is a RAM
+        # argument -- ltlsynt is multi-GB resident per call and its concurrency
+        # cap is per counter process, so N jobs multiply the cap by N -- but it
+        # was sized for runs whose own thread pool was hardware concurrency.
+        # These runs are single-threaded (parallel = 1), so each holds one
+        # ltlsynt at a time and 16 jobs is 16 concurrent calls on a 32-core,
+        # 125 GB machine. Unverified: 16 is the proposal this profile exists to
+        # check, and the calibration's peak RSS is what confirms or lowers it
+        # before `curves` runs.
+        "default_jobs": 16,
+    },
+    "curves": {
+        "schemes": ["nsga2-apportion", "weighted"],
+        "weakenings": ["wkoff"],
+        "metrics": ["log"],
+        "repair_modes": None,
+        "sweeps": ["G"],
+        "levels": {"G": ["mrs", "aurus"]},
+        "specs": H2H_TLSF_READY,
+        # Six seeds, and the number is arithmetic rather than a power
+        # calculation: at generations = 500 no run finishes before its
+        # genetic.max_wall_s, so the campaign's cost is exactly
+        # specs x arms x seeds x cap, or 25 x 4 x 6 x 400 s = 66.7 h against a
+        # budget of 80 h. Must stay equal to the host split in
+        # experiments/2026-08-28-selection-grading/campaign.toml, the two being
+        # the same number written twice. Topping up is free -- the resume key
+        # is read off the results CSV, so added seeds re-run nothing.
+        "seeds": list(range(6)),
+        "timeout_caps": {s: 3600 for s in H2H_TLSF_READY},
+        "compare_timeout": 1800,
+        "baseline_aliases": {},
+        "configs_dir": EXPERIMENTS_DIR / "configs-curves",
+        "results_dir": EXPERIMENTS_DIR / "results-curves",
+        "results_csv": EXPERIMENTS_DIR / "results-curves.csv",
+        # See curves-calib: 16 on the single-threaded-run argument, unverified
+        # until the calibration reads back a peak RSS.
+        "default_jobs": 16,
+    },
     # nsga2 vs nsga2-replicate on FRETISH, at the gen40/pop1000 operating point
     # the cj-large and metric campaigns used — so the control arm is checkable
     # against their rows rather than being taken on trust. Three arms:
@@ -2061,15 +2194,27 @@ def derive_config(config_path: Path, output_dir: Path, parallel_k: int) -> Path:
 
     Caps counter's internal thread pool so that --jobs concurrent runs do not
     oversubscribe the machine (counter defaults to hardware_concurrency).
+
+    A config that already states `parallel` is copied through unchanged. The cap
+    exists to fill in for a config that says nothing, so that jobs * parallel
+    stays near the core count; a stated value is the campaign's own claim about
+    how each run is meant to execute, and overwriting it silently makes the
+    thread pool a function of --jobs rather than of the design. The rule is
+    general rather than a per-profile exemption because there is no config in
+    any grid this reads that states the key by accident: gen_configs.py emits it
+    only under --parallel, which a campaign passes deliberately (the `curves`
+    profiles pass 1, their runs being single-threaded on purpose). Before that
+    flag existed nothing emitted the key at all, so the rewrite branch this
+    replaces was never reached and no archived grid changes meaning.
     """
     text = config_path.read_text()
     line = f"parallel = {parallel_k}"
-    if re.search(r"(?m)^\s*parallel\s*=", text):
-        text = re.sub(r"(?m)^\s*parallel\s*=.*$", line, text)
-    elif re.search(r"(?m)^\[runtime\]\s*$", text):
-        text = re.sub(r"(?m)^\[runtime\]\s*$", f"[runtime]\n{line}", text, count=1)
-    else:
-        text = text.rstrip("\n") + f"\n\n[runtime]\n{line}\n"
+    if not re.search(r"(?m)^\s*parallel\s*=", text):
+        if re.search(r"(?m)^\[runtime\]\s*$", text):
+            text = re.sub(r"(?m)^\[runtime\]\s*$", f"[runtime]\n{line}",
+                          text, count=1)
+        else:
+            text = text.rstrip("\n") + f"\n\n[runtime]\n{line}\n"
     derived = output_dir / "config.toml"
     derived.write_text(text)
     return derived

@@ -481,5 +481,19 @@ int main(int argc, const char* const argv[]) {
         dir_has_extension(args.repairs_dir, ".tlsf") ||
         dir_has_extension(args.ideals_dir, ".tlsf");
 
+    if (tlsf) {
+        // The TLSF path asks the same whole-spec implication queries as
+        // maximal, and maximal.cpp records the measurement: the simplify pass
+        // is 95.6% of solver wall on them and decides nothing the
+        // satisfiability call cannot. Over this campaign's corpus the pass put
+        // 205 of 3000 runs past the harness's 600 s cap, 118 of 120 on
+        // humanoid-742, and a timed-out compare reads as no ideal relation at
+        // all. SPOT takes black's budget for the same reason as there: an
+        // undecided ExpectUnsat query is never escalated and classifies as
+        // Timeout. FRETISH queries are per requirement and were not measured,
+        // so that path keeps the pass.
+        checker.set_simplify(false);
+        checker.set_spot_budget(cfg.black_timeout);
+    }
     return tlsf ? run_tlsf(args, checker) : run_fretish(args, checker);
 }

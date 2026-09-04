@@ -1367,6 +1367,79 @@ PROFILES: dict[str, dict] = {
         # until the calibration reads back a peak RSS.
         "default_jobs": 16,
     },
+    # The same 2x2 as `curves`, budgeted in AuRUS's currency instead of seconds,
+    # so a speed claim between the two tools has a common denominator. AuRUS
+    # stops at GA_MAX_NUM_INDIVIDUALS = 1000 bred individuals at
+    # GA_POPULATION_SIZE = 100 -- confirmed three ways: the settings banner of
+    # all 679 archived h2h logs that carry one, the two
+    # `numberOfVisitedIndividuals++` sites in GeneticAlgorithm.java (per accepted
+    # mutant and per crossover offspring, both before the population is scored),
+    # and Brizzio et al., GECCO '23 sec. 6, "the termination criterion is reached
+    # either when 1000 individuals are generated or after 2hrs of execution
+    # time". It is not a cap on solutions: no archived run reached 1000 of those,
+    # the median being 486 and the maximum 741.
+    #
+    # `curves` measured the same four arms at a 400 s deadline, which is the
+    # wrong currency for this question in counter's favour -- its manifests read
+    # a median 81 generations at population 200 inside that deadline, about
+    # 16,200 offspring, or 16x what AuRUS is allowed. Here the budget is fixed
+    # and wall time becomes the measured outcome.
+    #
+    # generations = 500 rather than the ~12 that 1000 individuals needs at
+    # population 100 (offspring_n is population_size - elite_n = 90 a generation,
+    # and only an offspring differing from its parent counts). The generation
+    # limit must not be what stops the run, or the campaign silently measures
+    # something else; `stopped_by` must read `individuals` on every row and that
+    # is the first thing to check in the results.
+    #
+    # Generate with
+    #   python scripts/gen_configs.py --tlsf \
+    #       --schemes nsga2-apportion weighted --sweeps G --levels mrs,aurus \
+    #       --metric log --weakening off --weights 0.1 0.2 0.7 \
+    #       --termination individuals --max-individuals 1000 \
+    #       --generations 500 --population-size 100 --parallel 1 \
+    #       --out-dir experiments/configs-matched --pin-vintage
+    "matched": {
+        "schemes": ["nsga2-apportion", "weighted"],
+        "weakenings": ["wkoff"],
+        "metrics": ["log"],
+        "repair_modes": None,
+        "sweeps": ["G"],
+        "levels": {"G": ["mrs", "aurus"]},
+        "specs": H2H_TLSF_READY,
+        # 30 rather than the 6 `curves` ran, matching the 30 repeats a family
+        # AuRUS's archived corpus carries (15 per host on each of av2 and av3).
+        # The endpoint is a survival curve and 6 repeats per family per arm
+        # estimates one poorly, which is the whole reason to spend the budget
+        # here rather than on a longer deadline. A budget of 1000 individuals is
+        # what makes it affordable: the smoke run measured 210 s on minepump at
+        # this config, 73 s of it search and the rest the gate and the
+        # implication filter, against the 2012 s `curves` averaged at a 400 s
+        # search. At a mean of 500 s the 3000 runs are about 13 h of wall clock
+        # over the two hosts.
+        #
+        # Must stay consistent with the campaign-level host split, which is the
+        # same number written twice -- a host range wider than this list runs
+        # nothing for the excess. Topping up further is free either way: the
+        # resume key is read off the results CSV, so added seeds re-run nothing.
+        "seeds": list(range(30)),
+        # 7200 s rather than the 3600 `curves` used, and the reason is that
+        # campaign's own casualty rate: 245 of its 600 runs were killed at 3600 s
+        # and lost their manifests, because genetic.max_wall_s bounds the search
+        # and nothing after it -- the final realizability gate and the
+        # implication filter run past the deadline uncapped and cost about as
+        # much again. A budget of 1000 individuals leaves a far smaller
+        # accumulated set to filter, so this should not bind at all; it is here
+        # so that a family which surprises us is measured rather than censored.
+        # It also matches AuRUS's own GA_EXECUTION_TIMEOUT.
+        "timeout_caps": {s: 7200 for s in H2H_TLSF_READY},
+        "compare_timeout": 1800,
+        "baseline_aliases": {},
+        "configs_dir": EXPERIMENTS_DIR / "configs-matched",
+        "results_dir": EXPERIMENTS_DIR / "results-matched",
+        "results_csv": EXPERIMENTS_DIR / "results-matched.csv",
+        "default_jobs": 16,
+    },
     # nsga2 vs nsga2-replicate on FRETISH, at the gen40/pop1000 operating point
     # the cj-large and metric campaigns used — so the control arm is checkable
     # against their rows rather than being taken on trust. Three arms:

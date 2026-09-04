@@ -269,6 +269,20 @@ DEFAULTS: dict = {
     # cap well above it, the deadline interrupting neither the filters, the
     # scoring, nor the final realizability gate.
     "max_wall_s": 0,
+    # What ends the search. "generations" is config.hpp's default and make_toml's
+    # "emit nothing" sentinel, so the standard grids stay byte-identical;
+    # "individuals" caps the run at `max_individuals` bred offspring instead,
+    # reproducing AuRUS's own stopping rule (GA_MAX_NUM_INDIVIDUALS, 1000 in the
+    # drivers behind its published numbers). Only an offspring differing from the
+    # parent it was bred from counts, matching AuRUS's !chromosome.equals(mutated).
+    # config_io.cpp rejects "individuals" with max_individuals = 0, so the two
+    # keys are set together or not at all.
+    "termination": "generations",
+    # The cap for termination = "individuals". Emitted only when positive.
+    # Matching AuRUS means matching its population too: it breeds 1000 offspring
+    # at GA_POPULATION_SIZE = 100, so the cap alone at a different population
+    # buys a different number of generations for the same number of individuals.
+    "max_individuals": 0,
     # Scoring thread pool size. 0 is make_toml's "emit nothing" sentinel rather
     # than a mirror of config.hpp, whose default is available_parallelism() and
     # so has no literal to track. Emitted into [runtime] only when positive, so
@@ -310,7 +324,11 @@ def make_toml(overrides: dict, defaults: dict = DEFAULTS) -> str:
         [f"accumulate_repairs = {_fmt(d['accumulate_repairs'])}"]
         if "accumulate_repairs" in overrides else []) + (
         [f"max_wall_s      = {d['max_wall_s']}"]
-        if d.get("max_wall_s") else []) + [
+        if d.get("max_wall_s") else []) + (
+        [f'termination     = "{d["termination"]}"']
+        if d.get("termination", "generations") != "generations" else []) + (
+        [f"max_individuals = {d['max_individuals']}"]
+        if d.get("max_individuals") else []) + [
         "",
         "[fitness]",
         f"weight_syntactic = {_fmt(d['weight_syntactic'])}",
@@ -985,6 +1003,24 @@ def parse_args() -> argparse.Namespace:
                              "profile's cap well above it, since the deadline "
                              "does not interrupt filters, scoring or the final "
                              "realizability gate")
+    parser.add_argument("--termination", choices=("generations", "individuals"),
+                        default=None,
+                        help="What ends the search (genetic.termination). "
+                             "\"generations\" is the default and is omitted "
+                             "from the emitted TOML, keeping the standard grids "
+                             "byte-identical; \"individuals\" stops at "
+                             "--max-individuals bred offspring instead, which "
+                             "is AuRUS's own rule and the only way to give the "
+                             "two tools the same search budget. Requires "
+                             "--max-individuals, the binary rejecting the mode "
+                             "at a cap of 0")
+    parser.add_argument("--max-individuals", type=int, default=None, metavar="N",
+                        help="Offspring budget for --termination individuals "
+                             "(genetic.max_individuals). Only an offspring "
+                             "differing from its parent counts. AuRUS's "
+                             "published runs use 1000, at population 100 -- "
+                             "pass --population-size 100 with it, or the same "
+                             "cap buys a different number of generations")
     parser.add_argument("--parallel", type=int, default=None, metavar="N",
                         help="Scoring thread pool size (runtime.parallel). 0 = "
                              "omit the key and take the binary's hardware "
@@ -1030,7 +1066,12 @@ def parse_args() -> argparse.Namespace:
                              "byte-identical. The TLSF one-hot encodings produce "
                              "tautologies that ltl2tgba rejects, so --tlsf "
                              f"defaults to {TLSF_MAX_SCORING_FAILURE_RATE}")
-    return parser.parse_args()
+    args = parser.parse_args()
+    # The binary rejects the mode at a cap of 0, so refuse it here rather than
+    # emitting a grid of configs that every run exits 1 on.
+    if args.termination == "individuals" and not args.max_individuals:
+        parser.error("--termination individuals requires --max-individuals")
+    return args
 
 
 def main() -> None:
@@ -1075,6 +1116,8 @@ def main() -> None:
     # belong to the campaign that measured them, not to the path, and silently
     # bounding every TLSF grid at one would change what the archived ones mean.
     defaults["max_wall_s"] = args.max_wall_s or 0
+    defaults["termination"] = args.termination or "generations"
+    defaults["max_individuals"] = args.max_individuals or 0
     defaults["parallel"] = args.parallel or 0
     defaults["max_concurrent_realizability"] = max_realizability or 0
     defaults["ltlsynt_timeout_ms"] = ltlsynt_timeout or 0

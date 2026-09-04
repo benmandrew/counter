@@ -54,6 +54,7 @@ import os
 import re
 import subprocess
 import sys
+import time
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
@@ -235,12 +236,23 @@ def compare_relations(repairs_dir: Path, ideals_dir: Path,
     return relations
 
 
-def maximal_over(files: list[Path], jobs: int | None) -> set[str] | None:
+def maximal_over(files: list[Path], jobs: int | None,
+                 timeout_s: int) -> set[str] | None:
     """Return the file names surviving the implication filter over `files`.
 
     `maximal` collapses structural duplicates and prints one line per survivor
     naming the first file of each, so the survivors are distinct specifications
     — which is what both maximality metrics count.
+
+    The wall bound is what `compare_relations` beside it always had and this
+    did not. `maximal` bounds each black call at 20 seconds of its own accord,
+    but a batch of 169 files is 14,196 pairs decided in both directions, so
+    28,392 calls at that budget leave 39 hours of headroom on four jobs and
+    nothing capped the total. One humanoid-531 batch ran for 17.6 hours and
+    eight workers a host returned nothing in thirteen. Abandoning the cut
+    instead costs that cut alone: the caller keeps the survivors and the
+    consumed index from the last cut that succeeded, so the run goes on and
+    yields the cuts it can decide.
     """
     if not files:
         return set()
@@ -248,8 +260,12 @@ def maximal_over(files: list[Path], jobs: int | None) -> set[str] | None:
     if jobs:
         command += ["--jobs", str(jobs)]
     try:
-        result = subprocess.run(command, check=True, capture_output=True,
-                                text=True)
+        result = subprocess.run(command, check=True, timeout=timeout_s,
+                                capture_output=True, text=True)
+    except subprocess.TimeoutExpired:
+        print(f"WARN: maximal exceeded {timeout_s}s over {len(files)} file(s); "
+              f"this cut is skipped", file=sys.stderr)
+        return None
     except (OSError, subprocess.CalledProcessError) as exc:
         print(f"WARN: maximal failed over {len(files)} file(s) — {exc}",
               file=sys.stderr)
@@ -325,7 +341,8 @@ def scalar_row(base: dict, metric: str, moment: float | None,
 
 def maximality_rows(base: dict, index: list[tuple[str, int, float]],
                     accumulated: Path, implying: set[str] | None,
-                    n_cuts: int, jobs: int | None) -> list[dict]:
+                    n_cuts: int, jobs: int | None,
+                    timeout_s: int, deadline: float | None) -> list[dict]:
     """Run `maximal` over prefixes of the accumulated set at bounded cuts.
 
     Each cut is given the previous cut's survivors plus the candidates that
@@ -360,14 +377,28 @@ def maximality_rows(base: dict, index: list[tuple[str, int, float]],
     seen_prefix = -1
     consumed = 0
     for cut in time_cuts([row[2] for row in by_time], n_cuts):
+        # Stop adding cuts rather than being killed from outside holding
+        # nothing. The cuts are log-spaced, so the ones already computed are
+        # the early ones, which is where an anytime curve carries its
+        # information; a hard run yields a short curve instead of no curve.
+        if deadline is not None and time.monotonic() > deadline:
+            print(f"WARN: deadline reached after {len(rows) // 2} cut(s); "
+                  f"writing a partial curve", file=sys.stderr)
+            break
         prefix = [row for row in by_time if row[2] <= cut]
         if len(prefix) == seen_prefix:
             continue
         seen_prefix = len(prefix)
         batch = sorted(survivors) + [row[0] for row in prefix[consumed:]]
-        found = maximal_over([accumulated / name for name in batch], jobs)
+        found = maximal_over([accumulated / name for name in batch],
+                             jobs, timeout_s)
         if found is None:
-            continue
+            # Stop, rather than try the next cut: nothing was consumed, so
+            # the next batch is this one plus more and cannot do better in
+            # the same budget. Continuing burned the whole deadline on cuts
+            # that all failed -- 752 of them over the matched campaign, 48%
+            # of its worker-hours, yielding no row.
+            break
         survivors = found
         consumed = len(prefix)
         rows.append({**base, "metric": "maximal_solutions",
@@ -382,7 +413,7 @@ def maximality_rows(base: dict, index: list[tuple[str, int, float]],
     return rows
 
 
-def score_run(run_dir: Path, args) -> list[dict]:
+def score_run(run_dir: Path, args, deadline: float | None = None) -> list[dict]:
     """Return every long-format row for one run directory."""
     manifest = read_manifest(run_dir)
     spec = spec_of(manifest, args.spec, run_dir)
@@ -421,7 +452,8 @@ def score_run(run_dir: Path, args) -> list[dict]:
                            implying is not None))
     if args.maximality and index:
         rows += maximality_rows(base, index, accumulated, implying,
-                                args.cuts, args.jobs)
+                                args.cuts, args.jobs, args.maximal_timeout,
+                                deadline)
     return rows
 
 
@@ -465,6 +497,13 @@ def main() -> int:
                         help="solver calls in flight for maximal")
     parser.add_argument("--spec", help="override the family name and ideals")
     parser.add_argument("--ideals", help="override the ideals directory")
+    parser.add_argument("--deadline-s", type=int, default=0,
+                        help="stop adding maximality cuts after this many "
+                             "seconds and write what was computed (0: no "
+                             "deadline)")
+    parser.add_argument("--maximal-timeout", type=int, default=900,
+                        help="wall budget for one `maximal` call, per cut "
+                             "(default: 900)")
     parser.add_argument("--compare-timeout", type=int,
                         default=COMPARE_TIMEOUT_S,
                         help="compare budget in seconds "
@@ -475,13 +514,18 @@ def main() -> int:
     if args.cuts < 1:
         parser.error("--cuts expects a positive integer")
 
+    # The deadline is per run directory, not per invocation: the launcher
+    # feeds one directory at a time, and a budget shared across many would
+    # spend it all on the first.
     long_rows: list[dict] = []
     summaries: list[dict] = []
     for run_dir in args.run_dir:
         if not run_dir.is_dir():
             print(f"WARN: no such run directory: {run_dir}", file=sys.stderr)
             continue
-        rows = score_run(run_dir, args)
+        deadline = (time.monotonic() + args.deadline_s
+                    if args.deadline_s > 0 else None)
+        rows = score_run(run_dir, args, deadline)
         long_rows += rows
         summaries.append(summarise(rows))
 

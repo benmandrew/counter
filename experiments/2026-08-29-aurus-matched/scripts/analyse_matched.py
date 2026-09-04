@@ -139,7 +139,7 @@ def load_curves(path):
     from here.
     """
     if not Path(path).exists():
-        return None, None, None
+        return None, None, None, {}
     curves = collections.defaultdict(lambda: collections.defaultdict(list))
     # A blank value is a metric that could not be decided -- `compare` failed,
     # so the run has no ideal count -- which is a different fact from a run
@@ -179,7 +179,28 @@ def load_curves(path):
     for metrics in curves.values():
         for points in metrics.values():
             points.sort()
-    return curves, scalars, unknown
+    # A maximal curve that stopped short. score_curves.py abandons a cut the
+    # per-cut budget cannot decide and writes the cuts it has, with no marker:
+    # the rows simply end early. Carrying such a curve's last value forward
+    # would read a run that reached cut 6 of 20 as flat from there, so the
+    # last computed cut is recorded and later cuts are read as undecided. The
+    # test is against the last arrival rather than the run's end, which is
+    # where the cut schedule ends; the solutions curve's terminal point sits
+    # at wall_s and repeats the previous value, so only a rising point counts.
+    truncated = {}
+    for key, metrics in curves.items():
+        cuts = metrics.get("maximal_solutions")
+        if not cuts:
+            continue
+        last_arrival = None
+        previous = 0.0
+        for time, count in metrics.get("solutions", []):
+            if count != previous:
+                last_arrival = time
+            previous = count
+        if last_arrival is not None and cuts[-1][0] < last_arrival - 1e-6:
+            truncated[key] = cuts[-1][0]
+    return curves, scalars, unknown, truncated
 
 
 def curves_from_index(runs_dir):
@@ -215,7 +236,7 @@ def curves_from_index(runs_dir):
         curves[key]["solutions"] = cumulative_points(times)
         scalars[(key, "time_to_first_repair")] = (
             times[0] if times else float("nan"), int(not times))
-    return curves, scalars, set()
+    return curves, scalars, set(), {}
 
 
 def step_at(points, moment):
@@ -474,7 +495,7 @@ def cost(results, censored):
 # -- curves --------------------------------------------------------------------
 
 
-def curve_table(curves, metric, unknown):
+def curve_table(curves, metric, unknown, truncated):
     """Mean value of `metric` per arm at each shared cut.
 
     A run whose value for this metric could not be decided is excluded rather
@@ -494,17 +515,28 @@ def curve_table(curves, metric, unknown):
     dropped = {arm: sum(1 for key in curves
                         if key[2] == arm and (key, metric) in unknown)
                for arm in ARMS}
+    # Past a truncated maximal curve's last cut the run has no value, so it
+    # leaves the mean at that cut rather than being carried forward; the
+    # count leaving is printed per cut, since it grows with the cut.
+    short = ({key: last for key, last in truncated.items()}
+             if computed else {})
     print("   cut(s)  " + "".join(f"{arm:>22s}" for arm in ARMS))
     print("   runs    " + "".join(f"{len(scored[arm]):>22d}" for arm in ARMS))
     if any(dropped.values()):
         print("   undecided" + "".join(f"{dropped[arm]:>21d}" for arm in ARMS))
+    if short:
+        print("   (n) = runs whose maximal curve stopped before this cut")
     for moment in TIME_CUTS:
         cells = []
         for arm in ARMS:
+            keys = [key for key in scored[arm]
+                    if key not in short or short[key] >= moment]
             values = [step_at(curves[key].get(metric, []), moment)
-                      for key in scored[arm]]
-            cells.append(f"{statistics.mean(values):22.2f}" if values
-                         else f"{'n/a':>22s}")
+                      for key in keys]
+            cell = (f"{statistics.mean(values):.2f}" if values else "n/a")
+            if short:
+                cell += f" ({len(scored[arm]) - len(keys)})"
+            cells.append(f"{cell:>22s}")
         print(f"   {moment:6d}  " + "".join(cells))
 
 
@@ -525,7 +557,7 @@ def aurus_solutions_table(series, families):
               if values else f"   {moment:6d}         n/a")
 
 
-def curve_sections(curves, unknown):
+def curve_sections(curves, unknown, truncated):
     if curves is None:
         rule("CURVES -- SKIPPED, no curve CSV")
         return
@@ -537,7 +569,7 @@ def curve_sections(curves, unknown):
                    "maximal_solutions", "maximal_ideal_solutions"):
         present = any(metric in m for m in curves.values())
         if present:
-            curve_table(curves, metric, unknown)
+            curve_table(curves, metric, unknown, truncated)
         else:
             print(f"\n-- {metric}: absent from the curve CSV "
                   f"(was it scored without --maximality?)")
@@ -764,19 +796,19 @@ def main():
 
     results = load_results(args.results)
     if args.from_index:
-        curves, scalars, unknown = curves_from_index(RUNS_DIR)
+        curves, scalars, unknown, truncated = curves_from_index(RUNS_DIR)
         print("SOLVER-FREE READ: solutions and time_to_first_repair only, "
               "derived from accumulated/index.tsv over every run.")
         print("The two ideal metrics need compare and the two maximal ones "
               "need maximal, so they are absent here by construction.")
     else:
-        curves, scalars, unknown = load_curves(args.curves)
+        curves, scalars, unknown, truncated = load_curves(args.curves)
     aurus_runs, aurus_series = load_aurus()
 
     integrity(results, curves)
     censored = verification(results, curves) or []
     cost(results, censored)
-    curve_sections(curves, unknown)
+    curve_sections(curves, unknown, truncated)
     if curves is not None and aurus_series is not None:
         families = {spec for spec, _, _ in curves}
         aurus_solutions_table(aurus_series, families)

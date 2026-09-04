@@ -1440,6 +1440,44 @@ PROFILES: dict[str, dict] = {
         "results_csv": EXPERIMENTS_DIR / "results-matched.csv",
         "default_jobs": 16,
     },
+    # The `direct` half of a direct-against-logarithmic contrast on
+    # model_counting.metric. The `logarithmic` half is not run here: it is the
+    # `nsga2-apportion`/`mrs` cell of `2026-08-29-aurus-matched`, 750 archived
+    # rows at this same operating point, and the two are read paired on
+    # `(spec, seed)`. So this profile pins the scheme and the sweep level that
+    # cell used and varies the metric alone -- one arm, 750 rows, not a cross.
+    #
+    # Everything else is copied from `matched` deliberately rather than
+    # re-derived: the same 25 families, the same 30 seeds, the same 7200 s cap,
+    # the same 1800 s compare budget, the same 1000-individual budget at
+    # population 100. A pairing is only worth as much as the things held equal,
+    # and the campaign runs from `ec0abe0` for the same reason -- the archived
+    # rows were scored by that `compare`, and `11305f9` and `2defe77` since
+    # would score the two halves differently.
+    #
+    #   python scripts/gen_configs.py --tlsf \
+    #       --schemes nsga2-apportion --sweeps G --levels mrs \
+    #       --metric direct --weakening off --weights 0.1 0.2 0.7 \
+    #       --termination individuals --max-individuals 1000 \
+    #       --generations 500 --population-size 100 --parallel 1 \
+    #       --out-dir experiments/configs-metric-direct --pin-vintage
+    "metric-direct": {
+        "schemes": ["nsga2-apportion"],
+        "weakenings": ["wkoff"],
+        "metrics": ["direct"],
+        "repair_modes": None,
+        "sweeps": ["G"],
+        "levels": {"G": ["mrs"]},
+        "specs": H2H_TLSF_READY,
+        "seeds": list(range(30)),
+        "timeout_caps": {s: 7200 for s in H2H_TLSF_READY},
+        "compare_timeout": 1800,
+        "baseline_aliases": {},
+        "configs_dir": EXPERIMENTS_DIR / "configs-metric-direct",
+        "results_dir": EXPERIMENTS_DIR / "results-metric-direct",
+        "results_csv": EXPERIMENTS_DIR / "results-metric-direct.csv",
+        "default_jobs": 16,
+    },
     # nsga2 vs nsga2-replicate on FRETISH, at the gen40/pop1000 operating point
     # the cj-large and metric campaigns used — so the control arm is checkable
     # against their rows rather than being taken on trust. Three arms:

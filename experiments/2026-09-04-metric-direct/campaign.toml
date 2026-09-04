@@ -1,0 +1,25 @@
+name = "2026-09-04-metric-direct"
+branch = "campaign/metric-direct"
+profile = "metric-direct"
+
+description = "The direct half of a direct-against-logarithmic contrast on model_counting.metric, counter against counter, with no AuRUS arm. The logarithmic half already exists: the nsga2-apportion/mrs cell of 2026-08-29-aurus-matched is 750 archived rows at this operating point, so only direct is run here and the two are read paired on (spec, seed). One arm, 25 TLSF families at 30 seeds, 750 rows."
+
+# The same split aurus-matched used, and for the same reason: both halves of a
+# pair land on one host, so a host-level difference cannot enter the contrast.
+# Fifteen seeds a host over 25 families is 375 rows each.
+hosts = { av2 = "0-14", av3 = "15-29" }
+
+# Identical to the aurus-matched line except `--metric direct` in place of
+# `--metric log`, and the scheme and level narrowed to the one cell being
+# paired against. Everything else is held equal on purpose: the weights, the
+# 1000-individual budget, population 100, the weakening screen off, and
+# --pin-vintage, which is what stops a default that moved since ec0abe0 from
+# entering the config tree silently.
+configs = "python3 scripts/gen_configs.py --tlsf --schemes nsga2-apportion --sweeps G --levels mrs --metric direct --weakening off --weights 0.1 0.2 0.7 --termination individuals --max-individuals 1000 --generations 500 --population-size 100 --parallel 1 --out-dir experiments/configs-metric-direct --pin-vintage"
+
+# jobs = 16 on each of two hosts is what turned aurus-matched's 1152.1
+# core-hours into 37.0 h of wall clock, an effective concurrency of 31.1. The
+# archived logarithmic arm cost 253.4 core-hours, so this arm is about 260 and
+# lands near 8.4 h if the metric costs what the July ablation measured, where
+# direct ran 1.027x log over 382 paired cases.
+phases = [ { profile = "metric-direct", jobs = 16 } ]

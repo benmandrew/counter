@@ -66,6 +66,14 @@ Those six were 183.6 of the archive control cell's 253.4 core-hours, 72.5% of it
 
 Record what the calibration measures for the kill rate as well as the cost. If `humanoid-742` still caps on 8 of 8, the speedup did not reach the family this campaign exists to recover, and that is worth knowing before spending the rest.
 
+### Amendment, 2026-09-04, before any row existed
+
+The campaign was launched unattended, so **the gate above was not enforced and is recorded here as unenforced**. `campaign.py` runs a declaration's phases in order without pausing between them, and both phases were queued together, so `main` follows `calib` whatever the calibration says. The cost ceiling this gives up is bounded by the archive: 1152.1 core-hours at the old engine on the same design, about 37 h of wall clock over the two hosts, and the speedup can only reduce it.
+
+What the calibration still buys, and what to read first when the campaign is collected: whether `humanoid-742` and `humanoid-531` still cap, which is the question the whole campaign turns on, and whether the realised cost matches the archive or falls well under it. Both are answerable from `results-rematch-calib.csv` alone, and neither needed the gate to be useful. If the calibration shows the caps unmoved, the `main` rows will have been spent measuring a corpus the speedup did not reach, and that is a cost this amendment accepted in advance rather than a surprise to be explained afterwards.
+
+Nothing about the endpoint, the test, the decision rule or the corpus is changed by this amendment. It records a deviation in execution, not in analysis.
+
 ## 8. The maximality pass is a second campaign and is budgeted here
 
 `maximal_solutions` and `maximal_ideal_solutions` are not produced by the run. They come from an offline pass, `scripts/score_curves.py --maximality`, over every run directory, and in `2026-08-29-aurus-matched` that pass cost **716.2 worker-hours** after its rebuild alone, against 1152.1 core-hours for the campaign itself. It is not a rounding item and it is not optional: the RQ3 result — that the weighted arms' candidate surplus does not survive the maximal antichain — is entirely this pass.
@@ -105,6 +113,8 @@ python scripts/aurus_validate.py --aurus-out <aurus-out> \
 AuRUS at `3f6f01f`, its published settings, `-Max=1000 -Gen=1000 -Pop=100 -k=20 -addA -geneNUM=0 -factors=0.7,0.1,0.2`, with `-onlyInputsA` on the nine families `ONLY_INPUTS_A` names. `-k=20` is the published bound and the July arm's `-k=10` is the misconfiguration that inverted that campaign's verdict; check the archived settings banner says 20 before trusting a row. `GATO` is 7200 with a 300 s kill grace, matching counter's cap. AuRUS is not seedable, so repeats are its only replicate dimension and the ordering is repeat-major, which keeps the design balanced if the arm is cut short.
 
 Budget from the archive: 780 runs took about 47.9 machine-hours, 605 completing, 173 capped and 2 OOM-killed. Nothing about AuRUS has changed, so that estimate carries.
+
+**Not launched with the counter arm.** `aurus_campaign.py` cannot be a campaign phase and needs a hand at a terminal, so the unattended launch of 2026-09-04 started the counter arm alone. Until the AuRUS arm runs, this campaign has no primary endpoint: section 4's test is counter against AuRUS and half of it does not exist yet. Run it before collecting, and run it on the same hosts. The counter rows keep in the meantime, the archive's AuRUS rows are not a substitute, and section 3's three reasons for re-running the arm are unaffected by the delay.
 
 Run the well-separation screen over its output this time and keep the inputs. The archive lost them, which is why its AuRUS rates are unfiltered while counter's output gate rejects an ill-separated survivor unconditionally, and why the two sides are currently scored by different standards.
 

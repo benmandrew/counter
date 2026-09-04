@@ -54,6 +54,7 @@ import os
 import re
 import subprocess
 import sys
+import time
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
@@ -72,6 +73,7 @@ MAXIMAL_BIN = Path(os.environ.get("MAXIMAL_BIN",
 ACCUMULATED_DIR = "accumulated"
 INDEX_NAME = "index.tsv"
 MANIFEST_NAME = "run.json"
+CONFIG_NAME = "config.toml"
 
 # src/compare.cpp classify(): a repair implies an ideal when it is equivalent to
 # it or strictly stronger. The other three verdicts (weaker, incomparable,
@@ -136,21 +138,73 @@ def read_index(run_dir: Path) -> list[tuple[str, int, float]]:
     return rows
 
 
-def spec_of(manifest: dict, override: str | None) -> str:
+SEED_SUFFIX = re.compile(r"_seed(\d+)$")
+
+# Read out of config.toml, which a censored run keeps where it has no manifest.
+# The file is flat enough that two anchored patterns beat a TOML parser, which
+# the lab hosts' Python 3.10 has none of in the standard library.
+CONFIG_KEY = {
+    "selection_scheme": re.compile(r'^\s*selection_scheme\s*=\s*"([^"]*)"',
+                                   re.MULTILINE),
+    "status_grading": re.compile(r'^\s*status_grading\s*=\s*"([^"]*)"',
+                                 re.MULTILINE),
+}
+
+
+def spec_from_dir_name(run_dir: Path) -> str:
+    """Name the family from the run directory, matching it against examples/.
+
+    A censored run has no manifest to read the input path out of, and those are
+    not the runs to drop: they hold 17.2% of the accumulated candidates and are
+    concentrated in the families counter finds hardest. Matching against the
+    example directories rather than splitting on "_" keeps a family name that
+    contains a separator readable, and reports nothing rather than a wrong
+    family when no name matches.
+    """
+    name = run_dir.name
+    candidates = [d.name for d in EXAMPLES_DIR.iterdir() if d.is_dir()] \
+        if EXAMPLES_DIR.is_dir() else []
+    matches = [c for c in candidates if f"_{c}_seed" in name]
+    return max(matches, key=len) if matches else ""
+
+
+def seed_from_dir_name(run_dir: Path) -> str:
+    match = SEED_SUFFIX.search(run_dir.name)
+    return str(int(match.group(1))) if match else ""
+
+
+def read_config(run_dir: Path) -> dict:
+    """Return the arm-identifying keys from a run's config.toml, or {}."""
+    try:
+        text = (run_dir / CONFIG_NAME).read_text()
+    except OSError:
+        return {}
+    found = {}
+    for key, pattern in CONFIG_KEY.items():
+        match = pattern.search(text)
+        if match:
+            found[key] = match.group(1)
+    return found
+
+
+def spec_of(manifest: dict, override: str | None, run_dir: Path) -> str:
     """Name the example family behind a run, from its manifest input path."""
     if override:
         return override
     source = manifest.get("input")
-    return Path(source).parent.name if source else ""
+    return Path(source).parent.name if source else spec_from_dir_name(run_dir)
 
 
-def run_columns(manifest: dict, spec: str) -> dict:
+def run_columns(manifest: dict, spec: str, run_dir: Path) -> dict:
     config = manifest.get("config", {})
+    fallback = read_config(run_dir) if not manifest else {}
     return {
         "spec": spec,
-        "seed": manifest.get("seed", ""),
-        "selection_scheme": config.get("genetic", {}).get("selection_scheme", ""),
-        "status_grading": config.get("fitness", {}).get("status_grading", ""),
+        "seed": manifest.get("seed", seed_from_dir_name(run_dir)),
+        "selection_scheme": config.get("genetic", {}).get(
+            "selection_scheme", fallback.get("selection_scheme", "")),
+        "status_grading": config.get("fitness", {}).get(
+            "status_grading", fallback.get("status_grading", "")),
         "stopped_by": manifest.get("stopped_by", ""),
         "generations_run": manifest.get("generations_run", ""),
         "run_wall_s": manifest.get("wall_s", ""),
@@ -182,12 +236,23 @@ def compare_relations(repairs_dir: Path, ideals_dir: Path,
     return relations
 
 
-def maximal_over(files: list[Path], jobs: int | None) -> set[str] | None:
+def maximal_over(files: list[Path], jobs: int | None,
+                 timeout_s: int) -> set[str] | None:
     """Return the file names surviving the implication filter over `files`.
 
     `maximal` collapses structural duplicates and prints one line per survivor
     naming the first file of each, so the survivors are distinct specifications
     — which is what both maximality metrics count.
+
+    The wall bound is what `compare_relations` beside it always had and this
+    did not. `maximal` bounds each black call at 20 seconds of its own accord,
+    but a batch of 169 files is 14,196 pairs decided in both directions, so
+    28,392 calls at that budget leave 39 hours of headroom on four jobs and
+    nothing capped the total. One humanoid-531 batch ran for 17.6 hours and
+    eight workers a host returned nothing in thirteen. Abandoning the cut
+    instead costs that cut alone: the caller keeps the survivors and the
+    consumed index from the last cut that succeeded, so the run goes on and
+    yields the cuts it can decide.
     """
     if not files:
         return set()
@@ -195,8 +260,12 @@ def maximal_over(files: list[Path], jobs: int | None) -> set[str] | None:
     if jobs:
         command += ["--jobs", str(jobs)]
     try:
-        result = subprocess.run(command, check=True, capture_output=True,
-                                text=True)
+        result = subprocess.run(command, check=True, timeout=timeout_s,
+                                capture_output=True, text=True)
+    except subprocess.TimeoutExpired:
+        print(f"WARN: maximal exceeded {timeout_s}s over {len(files)} file(s); "
+              f"this cut is skipped", file=sys.stderr)
+        return None
     except (OSError, subprocess.CalledProcessError) as exc:
         print(f"WARN: maximal failed over {len(files)} file(s) — {exc}",
               file=sys.stderr)
@@ -272,24 +341,66 @@ def scalar_row(base: dict, metric: str, moment: float | None,
 
 def maximality_rows(base: dict, index: list[tuple[str, int, float]],
                     accumulated: Path, implying: set[str] | None,
-                    n_cuts: int, jobs: int | None) -> list[dict]:
+                    n_cuts: int, jobs: int | None,
+                    timeout_s: int, deadline: float | None) -> list[dict]:
     """Run `maximal` over prefixes of the accumulated set at bounded cuts.
 
-    The cheaper algorithm this is not: walk the set in timestamp order keeping
-    a running maximal antichain and compare each arrival against that antichain
-    alone, which is O(n * |antichain|) rather than this O(cuts * n^2). It needs
-    a pairwise implication oracle over two .tlsf files, and no binary exposes
-    one — `maximal` takes a whole set and reports its filter's verdict, not the
-    individual implications behind it. So the cut count, not the algorithm, is
-    the cost control here.
+    Each cut is given the previous cut's survivors plus the candidates that
+    arrived since, rather than the whole prefix again. That is sound because
+    domination is monotone under adding elements: if A was dominated by B in
+    the prefix at one cut, B is still present at the next, so A can never
+    re-enter the antichain. The maximal set of the whole prefix therefore
+    equals the maximal set of (previous survivors + new arrivals). Measured
+    over this campaign's 546,282 candidates it takes the pairwise sweep from
+    272.7M comparisons to 60.1M, 4.5x fewer, because a prefix of 186 is
+    replaced by a batch of about 40 survivors and the handful that are new.
+
+    `maximal` quotients its survivors by mutual implication and names one
+    representative per class, so carrying representatives forward keeps the
+    class count. It cannot change the ideal count either: every member of a
+    class implies exactly the same ideals as its representative, implication
+    being transitive through the equivalence.
+
+    Cuts landing on the same prefix are skipped rather than recomputed, which
+    removes 29% of the invocations over this campaign for no change in output.
+
+    The cheaper algorithm this is still not: walk the set in timestamp order
+    keeping a running maximal antichain and compare each arrival against that
+    antichain alone, which is O(n * |antichain|). It needs a pairwise
+    implication oracle over two .tlsf files, and no binary exposes one --
+    `maximal` takes a whole set and reports its filter's verdict, not the
+    individual implications behind it.
     """
     rows: list[dict] = []
     by_time = sorted(index, key=lambda row: row[2])
+    survivors: set[str] = set()
+    seen_prefix = -1
+    consumed = 0
     for cut in time_cuts([row[2] for row in by_time], n_cuts):
-        prefix = [accumulated / row[0] for row in by_time if row[2] <= cut]
-        survivors = maximal_over(prefix, jobs)
-        if survivors is None:
+        # Stop adding cuts rather than being killed from outside holding
+        # nothing. The cuts are log-spaced, so the ones already computed are
+        # the early ones, which is where an anytime curve carries its
+        # information; a hard run yields a short curve instead of no curve.
+        if deadline is not None and time.monotonic() > deadline:
+            print(f"WARN: deadline reached after {len(rows) // 2} cut(s); "
+                  f"writing a partial curve", file=sys.stderr)
+            break
+        prefix = [row for row in by_time if row[2] <= cut]
+        if len(prefix) == seen_prefix:
             continue
+        seen_prefix = len(prefix)
+        batch = sorted(survivors) + [row[0] for row in prefix[consumed:]]
+        found = maximal_over([accumulated / name for name in batch],
+                             jobs, timeout_s)
+        if found is None:
+            # Stop, rather than try the next cut: nothing was consumed, so
+            # the next batch is this one plus more and cannot do better in
+            # the same budget. Continuing burned the whole deadline on cuts
+            # that all failed -- 752 of them over the matched campaign, 48%
+            # of its worker-hours, yielding no row.
+            break
+        survivors = found
+        consumed = len(prefix)
         rows.append({**base, "metric": "maximal_solutions",
                      "elapsed_s": f"{cut:.6f}", "value": len(survivors),
                      "censored": 0})
@@ -302,11 +413,11 @@ def maximality_rows(base: dict, index: list[tuple[str, int, float]],
     return rows
 
 
-def score_run(run_dir: Path, args) -> list[dict]:
+def score_run(run_dir: Path, args, deadline: float | None = None) -> list[dict]:
     """Return every long-format row for one run directory."""
     manifest = read_manifest(run_dir)
-    spec = spec_of(manifest, args.spec)
-    base = run_columns(manifest, spec)
+    spec = spec_of(manifest, args.spec, run_dir)
+    base = run_columns(manifest, spec, run_dir)
     index = read_index(run_dir)
     accumulated = run_dir / ACCUMULATED_DIR
 
@@ -341,7 +452,8 @@ def score_run(run_dir: Path, args) -> list[dict]:
                            implying is not None))
     if args.maximality and index:
         rows += maximality_rows(base, index, accumulated, implying,
-                                args.cuts, args.jobs)
+                                args.cuts, args.jobs, args.maximal_timeout,
+                                deadline)
     return rows
 
 
@@ -385,6 +497,13 @@ def main() -> int:
                         help="solver calls in flight for maximal")
     parser.add_argument("--spec", help="override the family name and ideals")
     parser.add_argument("--ideals", help="override the ideals directory")
+    parser.add_argument("--deadline-s", type=int, default=0,
+                        help="stop adding maximality cuts after this many "
+                             "seconds and write what was computed (0: no "
+                             "deadline)")
+    parser.add_argument("--maximal-timeout", type=int, default=900,
+                        help="wall budget for one `maximal` call, per cut "
+                             "(default: 900)")
     parser.add_argument("--compare-timeout", type=int,
                         default=COMPARE_TIMEOUT_S,
                         help="compare budget in seconds "
@@ -395,13 +514,18 @@ def main() -> int:
     if args.cuts < 1:
         parser.error("--cuts expects a positive integer")
 
+    # The deadline is per run directory, not per invocation: the launcher
+    # feeds one directory at a time, and a budget shared across many would
+    # spend it all on the first.
     long_rows: list[dict] = []
     summaries: list[dict] = []
     for run_dir in args.run_dir:
         if not run_dir.is_dir():
             print(f"WARN: no such run directory: {run_dir}", file=sys.stderr)
             continue
-        rows = score_run(run_dir, args)
+        deadline = (time.monotonic() + args.deadline_s
+                    if args.deadline_s > 0 else None)
+        rows = score_run(run_dir, args, deadline)
         long_rows += rows
         summaries.append(summarise(rows))
 

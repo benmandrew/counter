@@ -1440,6 +1440,72 @@ PROFILES: dict[str, dict] = {
         "results_csv": EXPERIMENTS_DIR / "results-matched.csv",
         "default_jobs": 16,
     },
+    # The 2026-08-29-aurus-matched design re-run at the engine `main` carries
+    # after #170. Same 2x2, same 25 families, same 30 seeds, same 1000-individual
+    # budget at population 100, same 7200 s cap -- so the only declared
+    # difference from that archive is the binary, and the campaign is a
+    # measurement of the tool as it now stands rather than a re-scoring of the
+    # old one. Six commits move the search path between the two (0ef4d47,
+    # 20d83e6, 9d70449, ed3b5dd, 720b4a9, 332a621), so its rows are not
+    # comparable to the archive's row by row and nothing here pairs against
+    # them; `4ad290d` also collapses equivalent specs in the implication filter,
+    # which moves `n_repairs` and `n_implies` on their own.
+    #
+    # Sized by the `rematch-calib` phase rather than by the archive: no campaign
+    # has run at this engine, and #170 took the final filter stage from 264 s of
+    # a 312 s humanoid-531 run to a fraction of it, so the archive's 1152.1
+    # core-hours is an upper bound of unknown tightness.
+    #
+    #   python scripts/gen_configs.py --tlsf \
+    #       --schemes nsga2-apportion weighted --sweeps G --levels mrs,aurus \
+    #       --metric log --weakening off --weights 0.1 0.2 0.7 \
+    #       --termination individuals --max-individuals 1000 \
+    #       --generations 500 --population-size 100 --parallel 1 \
+    #       --out-dir experiments/configs-rematch --pin-vintage
+    "rematch": {
+        "schemes": ["nsga2-apportion", "weighted"],
+        "weakenings": ["wkoff"],
+        "metrics": ["log"],
+        "repair_modes": None,
+        "sweeps": ["G"],
+        "levels": {"G": ["mrs", "aurus"]},
+        "specs": H2H_TLSF_READY,
+        "seeds": list(range(30)),
+        "timeout_caps": {s: 7200 for s in H2H_TLSF_READY},
+        "compare_timeout": 1800,
+        "baseline_aliases": {},
+        "configs_dir": EXPERIMENTS_DIR / "configs-rematch",
+        "results_dir": EXPERIMENTS_DIR / "results-rematch",
+        "results_csv": EXPERIMENTS_DIR / "results-rematch.csv",
+        "default_jobs": 16,
+    },
+    # Calibration for `rematch`, and the only thing it decides is whether the
+    # main phase is affordable. Six families spanning the archive's measured
+    # cost range at 2 seeds and all four cells: the three that dominated the
+    # archive's bill (humanoid-742 at 60.0 core-hours in the control cell,
+    # humanoid-531 57.8, pcar-v2-888 41.4), one upper-middle (full-arbiter-aurus
+    # 23.3), and two cheap ones (minepump, rg2) so the light half is not
+    # extrapolated from the heavy. Chosen on the archive's cost and on nothing
+    # else -- picking families by how well an arm scored on them selects the
+    # corpus on the response, which is what PLAN.md section 6 forbids.
+    "rematch-calib": {
+        "schemes": ["nsga2-apportion", "weighted"],
+        "weakenings": ["wkoff"],
+        "metrics": ["log"],
+        "repair_modes": None,
+        "sweeps": ["G"],
+        "levels": {"G": ["mrs", "aurus"]},
+        "specs": ["humanoid-742", "humanoid-531", "pcar-v2-888",
+                  "full-arbiter-aurus", "minepump", "rg2"],
+        "seeds": list(range(2)),
+        "timeout_caps": {s: 7200 for s in H2H_TLSF_READY},
+        "compare_timeout": 1800,
+        "baseline_aliases": {},
+        "configs_dir": EXPERIMENTS_DIR / "configs-rematch",
+        "results_dir": EXPERIMENTS_DIR / "results-rematch-calib",
+        "results_csv": EXPERIMENTS_DIR / "results-rematch-calib.csv",
+        "default_jobs": 16,
+    },
     # nsga2 vs nsga2-replicate on FRETISH, at the gen40/pop1000 operating point
     # the cj-large and metric campaigns used — so the control arm is checkable
     # against their rows rather than being taken on trust. Three arms:

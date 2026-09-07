@@ -225,7 +225,18 @@ while IFS= read -r m; do
   cat "$m"
   echo "@M@ENDFILE"
 done
+echo "@M@SCOREMANIFESTS"
+find experiments -mindepth 2 -maxdepth 2 -type f -name 'score-manifest-*.json' 2>/dev/null |
+while IFS= read -r m; do
+  echo "@M@SFILE $m"
+  cat "$m"
+  echo "@M@ENDSFILE"
+done
 """ + QUEUE_BLOCK
+# A score phase's manifest sits inside its output directory rather than
+# beside a CSV, one level down, so it gets a sweep of its own: widening the
+# first to depth two would pull in the per-host manifests archived campaigns
+# keep under their own directories.
 # The manifest sweep goes through `find`, not a glob, because the lab login
 # shell is zsh: its default NOMATCH aborts the whole script where a glob matches
 # nothing, so on a host with no manifest every section after the loop vanishes.
@@ -262,6 +273,22 @@ def detail_script(root: str, campaigns: list[dict]) -> str:
     """
     lines = [f"cd {shlex.quote(root)} 2>/dev/null || exit 3"]
     for c in campaigns:
+        if c.get("kind") == "score":
+            # A score phase's progress is a directory listing: one CSV per
+            # scored run, moved into place whole, and the newest file under
+            # the output directory for staleness. No plan to ask for -- the
+            # queued count is in the manifest already.
+            q_out = shlex.quote(c["out"])
+            lines += [
+                f'echo "{MARK}CAMPAIGN {c["profile"]}"',
+                f"if [ -d {q_out} ]; then",
+                f'  echo "{MARK}CSVS $(find {q_out} -maxdepth 1 -type f '
+                "-name '*.csv' 2>/dev/null | wc -l)\"",
+                f'  echo "{MARK}OUTMTIME $(find {q_out} -maxdepth 1 -type f '
+                "-printf '%T@\\n' 2>/dev/null | sort -rn | head -1)\"",
+                "fi",
+            ]
+            continue
         q_csv = shlex.quote(c["results_csv"])
         q_dir = shlex.quote(c["results_dir"])
         lines += [
@@ -326,12 +353,13 @@ def run_shell(host: str, script: str, timeout: int = SSH_TIMEOUT_S):
 
 def parse_inventory(text: str) -> dict:
     """Split the inventory script's marker-delimited output into fields."""
-    out: dict = {"ps": [], "manifests": [], "queue": [], "hostname": "?",
-                 "epoch": None, "branch": "?", "head": "?", "dirty": None,
-                 "error": None}
+    out: dict = {"ps": [], "manifests": [], "score_manifests": [],
+                 "queue": [], "hostname": "?", "epoch": None, "branch": "?",
+                 "head": "?", "dirty": None, "error": None}
     section = None
     manifest_lines: list[str] = []
     queue_name = ""
+    score_name = ""
     buf: list[str] = []
 
     def flush() -> None:
@@ -357,6 +385,20 @@ def parse_inventory(text: str) -> dict:
                 pass
             section = "manifests"
             continue
+        if line.startswith(MARK + "SFILE "):
+            section = "sfile"
+            score_name = line[len(MARK) + 6:].strip()
+            manifest_lines = []
+            continue
+        if line.startswith(MARK + "ENDSFILE"):
+            try:
+                manifest = json.loads("\n".join(manifest_lines))
+                manifest["file"] = score_name
+                out["score_manifests"].append(manifest)
+            except (json.JSONDecodeError, TypeError):
+                pass
+            section = "scoremanifests"
+            continue
         if line.startswith(MARK + "QFILE "):
             section = "qfile"
             queue_name = line[len(MARK) + 6:].strip()
@@ -380,7 +422,7 @@ def parse_inventory(text: str) -> dict:
             continue
         if section == "ps":
             out["ps"].append(line)
-        elif section in ("file", "qfile"):
+        elif section in ("file", "qfile", "sfile"):
             manifest_lines.append(line)
         else:
             buf.append(line)
@@ -440,11 +482,15 @@ def parse_detail(text: str) -> dict:
             current["csv_rows"] = max(0, int(rest) - 1)
         elif tag == "CSVMTIME" and rest.isdigit():
             current["csv_mtime"] = int(rest)
-        elif tag == "LOGMTIME" and rest:
+        elif tag in ("LOGMTIME", "OUTMTIME") and rest:
+            # One staleness field for both kinds: the newest run.log under a
+            # results directory, or the newest file under a curves directory.
             try:
                 current["log_mtime"] = int(float(rest))
             except ValueError:
                 pass
+        elif tag == "CSVS" and rest.isdigit():
+            current["csvs"] = int(rest)
         elif tag == "RUNDIRS" and rest.isdigit():
             current["run_dirs"] = int(rest)
         elif tag == "PLAN":
@@ -453,6 +499,8 @@ def parse_detail(text: str) -> dict:
     for entry in per.values():
         if "rows_done_plan" in entry:
             entry["rows_done"] = entry["rows_done_plan"]
+        elif "csvs" in entry:
+            entry["rows_done"] = entry["csvs"]
         elif "csv_rows" in entry:
             entry["rows_done"] = entry["csv_rows"]
             entry["rows_from_csv"] = True
@@ -546,6 +594,46 @@ def campaigns_from_manifests(manifests: list[dict]) -> list[dict]:
     return out
 
 
+def campaigns_from_score_manifests(manifests: list[dict]) -> list[dict]:
+    """One record per score manifest, in the shape the run records take.
+
+    The output directory's name stands where a profile would, since a score
+    phase has none of its own, and ``label`` is what the table prints. The
+    planned count is the manifest's queued count -- the scorer wrote it
+    knowing this host's seeds -- and the done count comes from the detail
+    probe's listing of the directory, so a pass that is still running reads
+    live rather than from the counts its manifest froze at launch.
+    """
+    out = []
+    for m in manifests:
+        git = m.get("git") or {}
+        maximal = (m.get("binaries") or {}).get("maximal") or {}
+        counts = m.get("counts") or {}
+        out_dir = str(m.get("out") or Path(m.get("file", "?")).parent)
+        name = Path(out_dir).name
+        out.append({
+            "kind": "score",
+            "profile": name,
+            "label": f"score:{name}",
+            "out": out_dir,
+            "results": m.get("results", ""),
+            "manifest_host": m.get("hostname", "?"),
+            "started": m.get("started"),
+            "finished": m.get("finished"),
+            "branch": git.get("branch", "?"),
+            "head": (git.get("head") or "?")[:7],
+            "binary_commit": maximal.get("commit_short", "?"),
+            # A maximal built dirty, or a pass that overrode the gate: either
+            # way the curves name a commit they may not have come from.
+            "dirty_binary": (maximal.get("dirty") == "1"
+                             or bool(m.get("allow_stale_binary"))),
+            "rows_planned": counts.get("queued"),
+            "seeds": m.get("seeds") or [],
+        })
+    out.sort(key=lambda c: (c.get("started") or "", c["profile"]))
+    return out
+
+
 def gather_host(host: str, root: str, only: str | None, want_plan: bool,
                 show_all: bool) -> dict:
     """Everything status reports for one host.
@@ -580,7 +668,8 @@ def gather_host(host: str, root: str, only: str | None, want_plan: bool,
         "processes": live_processes(inv["ps"]),
         "queue": inv["queue"],
     })
-    campaigns = campaigns_from_manifests(inv["manifests"])
+    campaigns = (campaigns_from_manifests(inv["manifests"])
+                 + campaigns_from_score_manifests(inv["score_manifests"]))
     if only:
         campaigns = [c for c in campaigns if c["profile"] == only]
     elif not show_all:
@@ -632,8 +721,7 @@ def annotate(c: dict, host_report: dict) -> None:
     planned = c.get("rows_planned")
     c["pct"] = (100.0 * done / planned) if done is not None and planned else None
     c["stale_s"] = now - c["log_mtime"] if c.get("log_mtime") else None
-    c["running"] = any(p["profile"] and p["profile"] == c["profile"]
-                       for p in host_report["processes"])
+    c["running"] = any(claims_campaign(p, c) for p in host_report["processes"])
     started = parse_started(c.get("started"))
     c["elapsed_s"] = int(now - started) if started else None
 
@@ -658,6 +746,20 @@ def annotate(c: dict, host_report: dict) -> None:
         rate = done / c["elapsed_s"]
         if rate > 0:
             c["eta_s"] = int((planned - done) / rate)
+
+
+def claims_campaign(proc: dict, c: dict) -> bool:
+    """Whether a live process is this campaign's own.
+
+    A runner claims the campaign whose profile it names; a scorer claims the
+    score phase whose output directory it names, compared by name since the
+    manifest and the process may spell the path relative or absolute. Neither
+    claims the other's kind, and an engine process claims nothing.
+    """
+    if c.get("kind") == "score":
+        return (proc.get("kind") == "score" and bool(proc.get("out"))
+                and Path(proc["out"]).name == Path(c.get("out", "")).name)
+    return bool(proc.get("profile")) and proc["profile"] == c["profile"]
 
 
 def parse_started(value: str | None) -> float | None:
@@ -863,7 +965,7 @@ def status_rows(reports: list[dict]) -> list[list[str]]:
                 str(done) if done is not None else "?")
             rows.append([
                 r["host"],
-                c["profile"],
+                c.get("label") or c["profile"],
                 f"{done_cell}/{planned if planned is not None else '?'}",
                 # Truncated, not rounded: 797/800 reading "100%" is the one
                 # number a status poll must not get wrong.
@@ -889,8 +991,18 @@ def status_notes(reports: list[dict]) -> list[str]:
             if p["profile"]:
                 notes.append(f"{r['host']}: runner live on "
                              f"--profile {p['profile']}")
+            elif p.get("kind") == "score":
+                notes.append(f"{r['host']}: scorer live on "
+                             f"--out {p.get('out') or '?'}")
         for c in r["campaigns"]:
-            if c["state"] == "stuck":
+            if c["state"] == "stuck" and c.get("kind") == "score":
+                notes.append(
+                    f"{r['host']}/{c.get('label') or c['profile']}: a scorer "
+                    f"is alive on this output directory but nothing under it "
+                    f"has been touched for {human_duration(c['stale_s'])} — "
+                    f"longer than one run's scoring may take, so it is "
+                    f"producing nothing")
+            elif c["state"] == "stuck":
                 notes.append(
                     f"{r['host']}/{c['profile']}: a runner is alive on this "
                     f"profile but its newest run.log has not been touched for "
@@ -902,7 +1014,10 @@ def status_notes(reports: list[dict]) -> list[str]:
             if c.get("dirty_binary"):
                 notes.append(f"{r['host']}/{c['profile']}: launched off a "
                              f"binary built dirty (* on BINARY)")
-            if c.get("rows_planned") is None:
+            if c.get("rows_planned") is None and c.get("kind") == "score":
+                notes.append(f"{r['host']}/{c.get('label')}: the score "
+                             f"manifest records no queued count")
+            elif c.get("rows_planned") is None:
                 notes.append(f"{r['host']}/{c['profile']}: no plan — that "
                              f"checkout may no longer define the profile")
             if c.get("rows_from_csv"):
@@ -976,7 +1091,11 @@ def print_status(reports: list[dict]) -> None:
           "a runner names this profile and the log is fresher than\n"
           f"{human_duration(STALE_RUN_S)}; stuck means the runner is there and "
           "the log is not moving. ETA\nextrapolates rows-so-far over time "
-          "since the manifest was written, and is crude by\nconstruction.")
+          "since the manifest was written, and is crude by\nconstruction. "
+          "A score: row is a scoring pass: ROWS is curves written against "
+          "runs queued,\nfrom its score-manifest, STALE is the newest file "
+          "under its output directory, and\nrunning means a scorer names "
+          "that directory.")
 
 
 def cmd_status(args: argparse.Namespace) -> int:

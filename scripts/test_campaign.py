@@ -261,7 +261,8 @@ try:
         check_true("##END" in proc.stdout,
                    f"the inventory script must reach ##END under {shell} "
                    f"with no manifest present")
-        check_true("##MANIFESTS" in proc.stdout,
+        check_true("##MANIFESTS" in proc.stdout
+                   and "##SCOREMANIFESTS" in proc.stdout,
                    f"and still emit every section under {shell}")
 finally:
     shutil.rmtree(empty, ignore_errors=True)
@@ -418,6 +419,159 @@ check(C.status_rows([live])[0][8], "b093374*",
       "a campaign launched off a dirty binary is flagged")
 check_true(any("dirty" in n for n in C.status_notes([live])),
            "and the flag is explained in a note")
+
+
+# ── A score phase in the status table ─────────────────────────────────────────
+#
+# The scoring pass runs for days and must not read as `stalled` while it is
+# running, nor as `running` once it has stopped moving. Its manifest sits
+# inside its output directory, its progress is a count of curves in that
+# directory, and the process that claims it is score_campaign.py naming that
+# directory rather than a runner naming a profile.
+
+SCORE_MANIFEST = """{
+  "kind": "score",
+  "hostname": "av3",
+  "started": "2026-08-11T10:00:00+0100",
+  "finished": null,
+  "results": "experiments/results-rematch",
+  "out": "experiments/curves-rematch",
+  "seeds": [15, 16],
+  "git": {"branch": "campaign/aurus-rematch", "head": "abc1234def"},
+  "binaries": {"maximal": {"commit_short": "abc1234", "dirty": "0"},
+               "compare": {"commit_short": "abc1234", "dirty": "0"}},
+  "allow_stale_binary": false,
+  "counts": {"queued": 30, "already_scored": 0, "scored": 0, "failed": 0}
+}"""
+
+SCORE_INVENTORY = f"""##PS
+zsh -zsh
+python3 python3 scripts/score_campaign.py --results experiments/results-rematch --out experiments/curves-rematch --seeds 15 16
+maximal build-release/maximal --x
+##HOST
+av3
+1786460000
+##GIT
+campaign/aurus-rematch
+abc1234
+0
+##MANIFESTS
+##SCOREMANIFESTS
+##SFILE experiments/curves-rematch/score-manifest-av3.json
+{SCORE_MANIFEST}
+##ENDSFILE
+##END
+"""
+
+sinv = C.parse_inventory(SCORE_INVENTORY)
+check(len(sinv["score_manifests"]), 1, "a score manifest is parsed")
+check(sinv["score_manifests"][0]["file"],
+      "experiments/curves-rematch/score-manifest-av3.json",
+      "with the path it was read from")
+check(sinv["manifests"], [], "and is not mistaken for a run manifest")
+check(C.parse_inventory("##SCOREMANIFESTS\n##SFILE x\n{no\n##ENDSFILE\n##END\n")
+      ["score_manifests"], [], "an unparseable score manifest is skipped")
+
+sprocs = C.live_processes(sinv["ps"])
+check([p["comm"] for p in sprocs], ["python3", "maximal"],
+      "the scorer and maximal are live processes")
+check((sprocs[0].get("kind"), sprocs[0].get("out"), sprocs[0]["profile"]),
+      ("score", "experiments/curves-rematch", None),
+      "the scorer is read as a scorer naming its output directory, and no "
+      "profile")
+check(C.live_processes(["python3 python3 scripts/score_campaign.py --out x "
+                        "--dry-run"]), [],
+      "a --dry-run scorer is a probe, not a pass")
+
+srec = C.campaigns_from_score_manifests(sinv["score_manifests"])
+check(len(srec), 1, "one record per score manifest")
+s = srec[0]
+check((s["kind"], s["profile"], s["label"], s["out"]),
+      ("score", "curves-rematch", "score:curves-rematch",
+       "experiments/curves-rematch"),
+      "keyed on the output directory's name, labelled as a score phase")
+check((s["branch"], s["binary_commit"], s["rows_planned"]),
+      ("campaign/aurus-rematch", "abc1234", 30),
+      "carrying the branch, maximal's commit and the queued count")
+check(s["dirty_binary"], False, "a clean gate is not flagged")
+check(C.campaigns_from_score_manifests(
+    [dict(json.loads(SCORE_MANIFEST), allow_stale_binary=True)])[0]
+    ["dirty_binary"], True, "but an overridden gate is, like a dirty binary")
+
+sdetail = C.detail_script("/r", srec)
+check_true("##CAMPAIGN curves-rematch" in sdetail
+           and "experiments/curves-rematch -maxdepth 1 -type f -name '*.csv'"
+           in sdetail and "OUTMTIME" in sdetail,
+           f"the detail probe counts curves and the newest file: {sdetail}")
+check_true("run_experiments.py" not in sdetail,
+           "and asks the runner for no plan on a score phase")
+sparsed = C.parse_detail("##CAMPAIGN curves-rematch\n##CSVS 12\n"
+                         "##OUTMTIME 1786459940.5\n##END\n")["curves-rematch"]
+check((sparsed["rows_done"], sparsed["log_mtime"]), (12, 1786459940),
+      "curves written is the done count, and the newest file the staleness")
+check_true("rows_from_csv" not in sparsed,
+           "which is not a whole-CSV fallback and is not marked as one")
+
+
+def score_annotated(csvs, mtime, procs, finished=None, epoch=1786460000):
+    record = dict(s, rows_done=csvs, log_mtime=mtime, finished=finished)
+    C.annotate(record, {"epoch": epoch, "processes": procs})
+    return record
+
+
+scorer_proc = {"comm": "python3", "profile": None, "kind": "score",
+               "out": "experiments/curves-rematch"}
+check(score_annotated(12, 1786459940, [scorer_proc])["state"], "running",
+      "a scorer naming this output directory means running")
+check(score_annotated(12, 1786459940, [scorer_proc, {"comm": "maximal",
+                                                      "profile": None}])
+      ["state"], "running", "with or without its maximal beside it")
+check(score_annotated(12, 1786459940, [dict(scorer_proc, out="/abs/path/to/"
+                                             "curves-rematch")])["state"],
+      "running", "matched by name, so an absolute --out still claims it")
+check(score_annotated(12, 1786459940, [dict(scorer_proc, out="experiments/"
+                                             "curves-other")])["state"],
+      "stalled", "a scorer on another directory is not this pass")
+check(score_annotated(12, 1786459940,
+                      [{"comm": "python3", "profile": "curves-rematch"}])
+      ["state"], "stalled",
+      "and a runner is never a scorer, whatever its profile is called")
+check(score_annotated(12, 1786459940, [])["state"], "stalled",
+      "no scorer and 12 of 30 is stalled")
+check(score_annotated(30, 1786459940, [])["state"], "done",
+      "every queued run with a curve is done")
+check(score_annotated(12, 1786460000 - C.STALE_RUN_S - 60, [scorer_proc])
+      ["state"], "stuck", "a scorer over a directory nothing has touched for "
+                           "longer than one run's scoring is stuck")
+check_true(score_annotated(12, 1786459940, [scorer_proc])["eta_s"] is not None,
+           "and a running pass gets an ETA off its curve rate")
+
+shost = {"host": "av3", "reachable": True, "hostname": "av3",
+         "branch": "campaign/aurus-rematch", "head": "abc1234", "dirty": False,
+         "hidden": 0, "processes": [scorer_proc],
+         "campaigns": [score_annotated(12, 1786459940, [scorer_proc])]}
+srow = C.status_rows([shost])[0]
+check(srow[1], "score:curves-rematch", "the row is labelled as a score phase")
+check(srow[2], "12/30", "curves written against runs queued")
+check((srow[3], srow[4], srow[7], srow[8]), ("40%", "running",
+                                               "campaign/aurus-rematch",
+                                               "abc1234"),
+      "with its percentage, state, branch and maximal's commit")
+check_true(any("scorer live on --out experiments/curves-rematch" in n
+               for n in C.status_notes([shost])),
+           "and the scorer is noted as live")
+stuck_host = dict(shost, campaigns=[score_annotated(
+    12, 1786460000 - C.STALE_RUN_S - 60, [scorer_proc])])
+check_true(any("scorer is alive" in n and "producing nothing" in n
+               for n in C.status_notes([stuck_host])),
+           "a stuck pass is explained in the scorer's own words")
+stale_host = dict(shost, campaigns=[dict(score_annotated(
+    12, 1786459940, [scorer_proc]), dirty_binary=True)])
+check(C.status_rows([stale_host])[0][8], "abc1234*",
+      "a pass that overrode the freshness gate is flagged on BINARY")
+check(C.status_rows([dict(shost, campaigns=[score_annotated(
+    None, None, [scorer_proc])])])[0][2], "?/30",
+      "a pass whose output directory is not there yet has no curve count")
 
 
 # ── collect: merge and verification against local fixtures ────────────────────

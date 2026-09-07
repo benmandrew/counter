@@ -843,6 +843,129 @@ phases = [ { profile = "full", hosts = { av2 = "9-0" } } ]
 """)
     check_true("backwards" in phase_bad,
                f"and a malformed phase range is refused: {phase_bad!r}")
+
+    # ── score phases ──────────────────────────────────────────────────────────
+    #
+    # A second phase kind: the offline maximality pass two campaigns needed
+    # after their search, hand-rolled both times. Every declaration written
+    # before the key existed has to load exactly as it did, so `kind` absent
+    # means `run` and the run-phase records above carry that spelled out.
+    check(narrowed["phases"][0]["kind"], "run",
+          "a phase that names no kind is a run phase")
+
+    write_declaration(decl_root, "scored", """
+name = "scored"
+branch = "feat/scored"
+profile = "tlsf"
+hosts = { av2 = "0-9", av3 = "10-19" }
+
+[[phases]]
+jobs = 4
+
+[[phases]]
+kind = "score"
+
+[[phases]]
+kind = "score"
+name = "old"
+results = "experiments/results-old"
+out = "experiments/curves-again"
+workers = 2
+cores = 8
+cuts = 5
+maximal_timeout = 60
+compare_timeout = 30
+deadline_s = 100
+hosts = { av2 = "0-4" }
+""")
+    scored = C.load_campaign("scored", decl_root)
+    run, score, old = scored["phases"]
+    check(run["kind"], "run", "the first phase is the search")
+    check(score["kind"], "score", "the second is a score phase")
+    check(score["results"], C.profile_results_dir("tlsf"),
+          "which scores the campaign profile's results directory by default")
+    check(score["results"], "experiments/results-tlsf",
+          "relative to the checkout, as the configs directory is")
+    check(score["out"], "experiments/curves-tlsf",
+          "and writes to curves-<stem> beside it")
+    check(score["name"], "curves-tlsf", "named after its output by default")
+    check({k: score[k] for k in C.SCORE_BUDGET_KEYS},
+          {"workers": 8, "cores": 4, "cuts": 20, "maximal_timeout": 900,
+           "compare_timeout": 600, "deadline_s": 4500, "wall_cap_s": 5400},
+          "every budget defaults to the scorer's own value, and the wall cap "
+          "sits 900s past the deadline")
+    check(C.score_defaults(),
+          __import__("score_campaign").DEFAULTS,
+          "the defaults come from score_campaign.py, not from a copy")
+    check((old["results"], old["out"], old["name"], old["profile"]),
+          ("experiments/results-old", "experiments/curves-again", "old",
+           "tlsf"),
+          "an explicit results and out are carried through")
+    check({k: old[k] for k in C.SCORE_BUDGET_KEYS},
+          {"workers": 2, "cores": 8, "cuts": 5, "maximal_timeout": 60,
+           "compare_timeout": 30, "deadline_s": 100, "wall_cap_s": 1000},
+          "and so is every budget it states")
+    check(old["hosts"], {"av2": list(range(5))},
+          "a score phase narrows the split exactly as a run phase does")
+    check(scored["config_dirs"], [C.profile_configs_dir("tlsf")],
+          "score phases add no configs directory to the stage check")
+    check(scored["results_dirs"], ["experiments/results-old"],
+          "and the stage check wants only the results directory no earlier "
+          "run phase of this campaign writes")
+    check(C.curves_dir_for("experiments/results"), "experiments/curves",
+          "the bare `results` directory scores into `curves`")
+    check(C.curves_dir_for("results-x"), "curves-x",
+          "and a bare name stays bare")
+
+    write_declaration(decl_root, "dironly", """
+name = "dironly"
+branch = "feat/x"
+hosts = { av2 = "0-1" }
+phases = [ { kind = "score", results = "experiments/results-rematch" } ]
+""")
+    dironly = C.load_campaign("dironly", decl_root)
+    check(dironly["phases"][0]["profile"], None,
+          "a score phase naming a directory needs no profile at all")
+    check(dironly["phases"][0]["out"], "experiments/curves-rematch",
+          "results-rematch scores into curves-rematch")
+    check(dironly["config_dirs"], [],
+          "and a campaign of score phases alone checks no configs directory")
+    check(dironly["results_dirs"], ["experiments/results-rematch"],
+          "but does check the results directory it reads")
+
+    for text, expect_in, why in (
+        ('phases = [ { kind = "score" } ]', "neither",
+         "a score phase with no results and no profile"),
+        ('phases = [ { kind = "score", profile = "nope" } ]',
+         "defines no profile", "a score phase on an unknown profile"),
+        ('phases = [ { kind = "score", results = "x", jobs = 2 } ]',
+         "unknown key(s) jobs on a score phase", "jobs on a score phase"),
+        ('phases = [ { kind = "score", results = "x", sweeps = ["R"] } ]',
+         "unknown key(s) sweeps on a score phase", "sweeps on a score phase"),
+        ('phases = [ { kind = "score", results = "x", specs = ["a"] } ]',
+         "unknown key(s) specs on a score phase", "specs on a score phase"),
+        ('phases = [ { profile = "full", workers = 2 } ]',
+         "unknown key(s) workers on a run phase", "a budget on a run phase"),
+        ('phases = [ { kind = "grade", profile = "full" } ]',
+         "kind must be one of", "an unknown kind"),
+        ('phases = [ { kind = "score", results = "x", workers = 0 } ]',
+         "workers must be a positive integer", "zero workers"),
+        ('phases = [ { kind = "score", results = "x", cores = true } ]',
+         "cores must be a positive integer", "a boolean core count"),
+        ('phases = [ { kind = "score", results = "x", deadline_s = "1" } ]',
+         "deadline_s must be a positive integer", "a string deadline"),
+        ('phases = [ { kind = "score", results = "" } ]',
+         "results must be a non-empty string", "an empty results"),
+        ('phases = [ { kind = "score", results = "x", out = 3 } ]',
+         "out must be a non-empty string", "a numeric out"),
+    ):
+        got = declaration_error(decl_root, "badscore", f"""
+name = "badscore"
+branch = "feat/x"
+hosts = {{ av2 = "0-1" }}
+{text}
+""")
+        check_true(expect_in in got, f"{why} must be refused ({got!r})")
 finally:
     shutil.rmtree(decl_root, ignore_errors=True)
 
@@ -859,6 +982,27 @@ check(C.phase_args(phase, [0, 1, 2]),
       ["--profile", "tlsf", "--jobs", "4", "--sweeps", "R",
        "--seeds", "0", "1", "2"],
       "a phase becomes runner arguments, seeds last")
+check_true(C.phase_command(phase, [0, 1]).startswith(C.RUNNER_CMD + " "),
+           "and a run phase's command is the runner's")
+
+score_phase = {"name": "curves", "kind": "score", "profile": None,
+               "results": "experiments/results-x", "out": "experiments/curves-x",
+               "workers": 3, "cores": 2, "cuts": 5, "maximal_timeout": 60,
+               "compare_timeout": 30, "deadline_s": 100, "wall_cap_s": 1000}
+check(C.phase_args(score_phase, [0, 1]),
+      ["--results", "experiments/results-x", "--out", "experiments/curves-x",
+       "--workers", "3", "--cores", "2", "--cuts", "5",
+       "--maximal-timeout", "60", "--compare-timeout", "30",
+       "--deadline-s", "100", "--wall-cap-s", "1000", "--seeds", "0", "1"],
+      "a score phase becomes scorer arguments, every budget stated, seeds last")
+check(C.phase_command(score_phase, [0, 1]),
+      C.SCORER_CMD + " --results experiments/results-x --out "
+      "experiments/curves-x --workers 3 --cores 2 --cuts 5 "
+      "--maximal-timeout 60 --compare-timeout 30 --deadline-s 100 "
+      "--wall-cap-s 1000 --seeds 0 1",
+      "and its command is the scorer's, not the runner's")
+check(C.phase_launcher({"profile": "tlsf"}), C.RUNNER_CMD,
+      "a phase record with no kind at all launches the runner")
 
 # The freeze has to reach the overrides. Freezing the campaign range alone
 # would pin the phases that do not narrow it and leave every phase that does
@@ -1624,6 +1768,33 @@ try:
     check_true("--profile full" in printed, "with the declared profile")
     check(code, 0, "a staged host is ready to be launched on")
 
+    # A score phase joins the chain like any other, after the run phase that
+    # writes what it scores, on the same host seeds. The declaration is
+    # edited in place and put back: start reads the working tree and refuses
+    # on nothing a dirty tree would trip.
+    write_declaration(repo, "fixture", FIXTURE_DECL.replace(
+        'phases = [ { profile = "full", jobs = 2 } ]',
+        'phases = [ { profile = "full", jobs = 2 }, '
+        '{ kind = "score", profile = "full", workers = 2, cores = 1 } ]'))
+    started = io.StringIO()
+    with contextlib.redirect_stdout(started):
+        code = C.cmd_start(start_args())
+    printed = started.getvalue()
+    check(code, 0, f"a campaign with a score phase is launchable: {printed}")
+    chain = [ln for ln in printed.splitlines() if " && " in ln]
+    check(len(chain), 2, "one chain per host")
+    check_true(all(ln.strip().startswith(C.RUNNER_CMD) and
+                   f" && {C.SCORER_CMD} --results experiments/results --out "
+                   f"experiments/curves --workers 2 --cores 1 " in ln
+                   for ln in chain),
+               f"the runner first, then the scorer over the same results "
+               f"directory: {chain}")
+    check_true("--seeds 0 1 --seeds" not in printed
+               and any("--seeds 0 1 && " in ln and ln.rstrip().endswith(
+                   "--seeds 0 1") for ln in chain),
+               "with av2's seeds on both of av2's phases")
+    write_declaration(repo, "fixture", FIXTURE_DECL)
+
     # The runner's own freshness gate, asked one step early: a launch that
     # dies on the far side of a nohup leaves its message in a log nobody is
     # reading yet.
@@ -1745,6 +1916,17 @@ branch = "feat/other"
 build = "true"
 hosts = { local = "4-5" }
 phases = [ { profile = "full", jobs = 1 } ]
+"""
+
+SCORED_DECL = """
+name = "scored"
+branch = "feat/scored"
+build = "true"
+hosts = { local = "6-7" }
+phases = [
+  { profile = "full", jobs = 1 },
+  { kind = "score", profile = "full", workers = 2, cores = 1, deadline_s = 10 },
+]
 """
 
 queue_root = Path(tempfile.mkdtemp(prefix="campaign-queue-"))
@@ -2083,6 +2265,90 @@ try:
     check(rows[0][4], "done", "beside its state")
     check(rows[0][5], "1/1", "and the next phase against the total")
 
+    # ── a score phase in the queue ────────────────────────────────────────────
+    #
+    # The offline pass after the search, as a phase: the tick runs it in the
+    # foreground under the lock exactly as a run phase, against the scorer
+    # rather than the runner, and refuses it by name where the results
+    # directory it would read is not on this host.
+    scorer_dir = queue_root / "scorer"
+    scorer_dir.mkdir()
+    stub_scorer = scorer_dir / "stub_scorer.py"
+    stub_scorer.write_text(STUB_RUNNER)
+    scorer_calls = scorer_dir / "calls.txt"
+    C.SCORER_CMD = f"{sys.executable} {stub_scorer}"
+    calls.unlink() if calls.exists() else None
+
+    git(repo, "checkout", "-q", "-b", "feat/scored")
+    write_declaration(repo, "scored", SCORED_DECL)
+    git(repo, "add", "-A")
+    git(repo, "commit", "-q", "--no-verify", "-m", "scored campaign")
+    with contextlib.redirect_stdout(io.StringIO()):
+        code = C.cmd_enqueue(argparse.Namespace(
+            campaign="scored", host=["local"], max_attempts=3, again=False,
+            dry_run=False))
+    check(code, 0, "a campaign with a score phase is enqueued")
+    git(repo, "checkout", "-q", "feat/other")
+
+    def last_entry() -> dict:
+        return C.queue_entries(repo)[-1]
+
+    check(last_entry()["phase_seeds"], ["6-7", "6-7"],
+          "the score phase's seeds are frozen beside the run phase's")
+    code, printed = tick()
+    check(code, 0, f"the run phase runs first: {printed}")
+    check((last_entry()["state"], last_entry()["phase"]), ("queued", 1),
+          "leaving the score phase queued")
+    check_true("--profile full --jobs 1 --seeds 6 7" in calls.read_text(),
+               "having run the search over this host's seeds")
+    check_true(not scorer_calls.exists(), "and not the scorer")
+
+    # The results directory the phase reads does not exist on this host: the
+    # search above was a stub, and wrote nothing. A dry run says what it
+    # would run and what blocks it, and spends nothing.
+    code, printed = tick(dry_run=True)
+    check(code, 0, "a dry run of the score phase exits 0")
+    check_true(f"would run: {C.SCORER_CMD} --results experiments/results "
+               f"--out experiments/curves --workers 2 --cores 1 --cuts 20 "
+               f"--maximal-timeout 900 --compare-timeout 600 --deadline-s 10 "
+               f"--wall-cap-s 910 --seeds 6 7" in printed,
+               f"printing the scorer command it would run: {printed!r}")
+    check_true("blocked: no results directory" in printed,
+               "and the missing results directory that blocks it")
+    check((last_entry()["state"], last_entry()["attempts"]), ("queued", 0),
+          "without spending an attempt")
+
+    code, printed = tick()
+    check(code, 1, "a score phase whose results directory is missing fails")
+    entry = last_entry()
+    check_true("no results directory" in entry["last_error"]
+               and "experiments/results" in entry["last_error"]
+               and "curves" in entry["last_error"],
+               f"with the directory and the phase named in the entry: "
+               f"{entry['last_error']!r}")
+    check((entry["state"], entry["attempts"], entry["phase"]),
+          ("queued", 1, 1), "costing an attempt, not the phase")
+    check_true(not scorer_calls.exists(),
+               "and the scorer never reached, so the reason is the "
+               "directory rather than an exit status")
+
+    (repo / "experiments" / "results").mkdir(parents=True)
+    entry.update({"state": "queued", "attempts": 0})
+    C.write_entry(entry["path"], entry)
+    code, printed = tick()
+    check(code, 0, f"with the directory in place the score phase runs: "
+                   f"{printed}")
+    check(last_entry()["state"], "done", "and finishes the entry")
+    check(scorer_calls.read_text().strip(),
+          "--results experiments/results --out experiments/curves "
+          "--workers 2 --cores 1 --cuts 20 --maximal-timeout 900 "
+          "--compare-timeout 600 --deadline-s 10 --wall-cap-s 910 "
+          "--seeds 6 7",
+          "the scorer got every budget and this host's seeds, and nothing "
+          "from the runner's vocabulary")
+    check(calls.read_text().count("\n"), 1,
+          "and the runner was not invoked a second time")
+
     line = C.cron_line("av2", "/home/benandrew/projects/counter")
     check_true("tick --host av2" in line, "the crontab line names its host")
     # Regression: the line carried `flock -n` on the queue lock until
@@ -2097,6 +2363,245 @@ try:
 finally:
     C.run_shell = REAL_RUN_SHELL
     shutil.rmtree(queue_root, ignore_errors=True)
+
+
+# ── score_campaign.py ─────────────────────────────────────────────────────────
+#
+# The scorer itself, against a fake results tree, a stub score_curves.py and
+# two stub binaries, run as the tick runs it: a subprocess with the overrides
+# in its environment. What matters is the bookkeeping around the scorer --
+# which runs are queued and in what order, what a failure leaves behind, what
+# a rerun repeats -- since the pass costs hundreds of worker-hours and a resume
+# that re-scores a finished run, or skips a failed one, is invisible until the
+# bill arrives.
+
+SCORE_CAMPAIGN_PY = Path(__file__).resolve().parent / "score_campaign.py"
+
+STUB_CURVES = '''#!/usr/bin/env python3
+"""Stands in for score_curves.py: writes a curve, or fails as its run says."""
+import os, sys, time
+out = sys.argv[sys.argv.index("--out") + 1]
+run = os.path.basename(sys.argv[-1])
+with open(os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                       "calls.txt"), "a") as handle:
+    handle.write(" ".join(sys.argv[1:]) + "\\n")
+if "fail" in run:
+    sys.exit(3)
+if "slow" in run:
+    time.sleep(10)
+if "empty" in run:
+    open(out, "w").close()
+    sys.exit(0)
+with open(out, "w") as handle:
+    handle.write("spec,seed,metric,value\\n" + run + ",0,solutions,1\\n")
+print("scored", run)
+'''
+
+HEAD_SHA = "f" * 40
+
+
+def fake_binary(path: Path, commit: str = HEAD_SHA, dirty: str = "0") -> None:
+    path.write_text(f"#!/bin/sh\necho commit={commit}\necho commit_short="
+                    f"{commit[:7]}\necho dirty={dirty}\n")
+    path.chmod(0o755)
+
+
+score_root = Path(tempfile.mkdtemp(prefix="campaign-score-"))
+try:
+    bins = score_root / "bin"
+    bins.mkdir()
+    for name in ("maximal", "compare"):
+        fake_binary(bins / name)
+    stub_dir = score_root / "stub"
+    stub_dir.mkdir()
+    stub_curves = stub_dir / "stub_curves.py"
+    stub_curves.write_text(STUB_CURVES)
+    curve_calls = stub_dir / "calls.txt"
+    results = score_root / "results-x"
+    # Five runs on this host's seeds, one on another host's, and one
+    # directory that is not a run at all. Index sizes chosen so the
+    # smallest-first order differs from the alphabetical one.
+    for run, lines in (("b_seed1", 4), ("a_seed2", 2), ("c_seed3", 0),
+                       ("fail_seed1", 1), ("empty_seed2", 1),
+                       ("other_seed9", 0), ("accumulated", 0)):
+        (results / run).mkdir(parents=True)
+        if lines:
+            (results / run / "accumulated").mkdir()
+            (results / run / "accumulated" / "index.tsv").write_text(
+                "header\n" + "row\n" * (lines - 1))
+    (results / "notes.txt").write_text("not a run\n")
+    out = score_root / "curves-x"
+
+    # The gate compares against the HEAD of the checkout the scorer lives in,
+    # which is this one, so the fake binaries report that -- the position a
+    # freshly staged host is in.
+    real_head = git(SCORE_CAMPAIGN_PY.parent.parent, "rev-parse", "HEAD")
+    for name in ("maximal", "compare"):
+        fake_binary(bins / name, real_head)
+
+    def scorer(*extra: str, env_extra: dict | None = None,
+               seeds=("1", "2", "3")) -> subprocess.CompletedProcess:
+        env = dict(os.environ, COUNTER_BIN_DIR=str(bins),
+                   COUNTER_SCORE_CURVES_CMD=f"{sys.executable} {stub_curves}",
+                   **(env_extra or {}))
+        return subprocess.run(
+            [sys.executable, str(SCORE_CAMPAIGN_PY), "--results", str(results),
+             "--out", str(out), "--seeds", *seeds, "--cores", "1",
+             "--deadline-s", "1", "--wall-cap-s", "2", *extra],
+            cwd=str(score_root), env=env, capture_output=True, text=True)
+
+    proc = scorer("--dry-run", "--workers", "1")
+    check(proc.returncode, 0, f"a dry run exits 0: {proc.stderr}")
+    check_true("5 run(s)" in proc.stdout and "5 to score" in proc.stdout,
+               f"and counts this host's runs alone: {proc.stdout}")
+    check_true("other_seed9" not in proc.stdout,
+               "another host's seed is not queued here")
+    check_true("accumulated" not in proc.stdout.split("queue:")[1]
+               and "notes.txt" not in proc.stdout,
+               "nor a directory or file that is not a run")
+    check_true("--maximality --cuts 20 --jobs 1 --deadline-s 1 "
+               "--maximal-timeout 900 --compare-timeout 600 --out "
+               "<out>/<run>.csv.part <run-dir>" in proc.stdout,
+               f"the command template is printed: {proc.stdout}")
+    check_true(not out.exists() and not curve_calls.exists(),
+               "and a dry run writes nothing and scores nothing")
+
+    # The gate: a binary from another commit refuses, --allow-stale-binary
+    # lets it through and is recorded.
+    fake_binary(bins / "maximal", "a" * 40)
+    proc = scorer("--workers", "1", "--dry-run")
+    check(proc.returncode, 0, "a dry run reports a stale binary and exits 0")
+    proc = scorer("--workers", "1")
+    check(proc.returncode, 1, "a stale maximal refuses to score")
+    check_true("STALE BINARY" in proc.stdout and "maximal" in proc.stdout
+               and "Refusing" in proc.stderr,
+               f"naming the binary: {proc.stdout} {proc.stderr}")
+    check_true(not out.exists(), "before writing anything")
+    fake_binary(bins / "maximal", real_head)
+    fake_binary(bins / "compare", real_head, dirty="1")
+    proc = scorer("--workers", "1")
+    check(proc.returncode, 1, "and a compare built dirty refuses too")
+    check_true("compare" in proc.stdout and "modified working tree"
+               in proc.stdout, "saying which and why")
+    fake_binary(bins / "compare", real_head)
+
+    # A run with everything in it, one worker so the order is observable.
+    proc = scorer("--workers", "1")
+    check(proc.returncode, 1, "a pass with failures exits 1")
+    calls = [ln.split()[-1].rsplit("/", 1)[-1]
+             for ln in curve_calls.read_text().splitlines()]
+    check(calls, ["c_seed3", "empty_seed2", "fail_seed1", "a_seed2", "b_seed1"],
+          "smallest index first, ties on the name")
+    check(sorted(p.name for p in out.glob("*.csv")),
+          ["a_seed2.csv", "b_seed1.csv", "c_seed3.csv"],
+          "the runs that scored have their curve in place")
+    check(list(out.glob("*.part")), [], "and no .part file is left behind")
+    check_true("empty_seed2" in (out / "failures.txt").read_text()
+               and "3 " in (out / "failures.txt").read_text(),
+               "an empty output is a failure, as is a non-zero exit")
+    failures = {ln.split()[1].rsplit("/", 1)[-1]: ln.split()[0]
+                for ln in (out / "failures.txt").read_text().splitlines()}
+    check(failures, {"fail_seed1": "3", "empty_seed2": "0"},
+          "failures.txt carries the exit status and the run")
+    timings = [ln.split() for ln in (out / "timings.txt").read_text()
+               .splitlines()]
+    check([t[3] for t in timings], calls,
+          "timings.txt has one line per attempt, in order")
+    check([t[0] for t in timings], ["0", "0", "0", "1", "3"],
+          "carrying the accumulated count, the index less its header")
+    check({t[4] for t in timings}, {"900/600/1"},
+          "and the budgets the run was scored under")
+    check_true(all(t[2] in ("0", "3") for t in timings),
+               "with the exit status per line")
+    check_true("scored c_seed3" in (out / "warnings.log").read_text(),
+               "the scorers' output lands in warnings.log")
+
+    manifests = list(out.glob("score-manifest-*.json"))
+    check(len(manifests), 1, "one manifest, named for the host")
+    manifest = json.loads(manifests[0].read_text())
+    check(manifest["counts"],
+          {"queued": 5, "already_scored": 0, "scored": 3, "failed": 2},
+          "the manifest counts the pass")
+    check(manifest["seeds"], [1, 2, 3], "and records the seeds")
+    check((manifest["workers"], manifest["cores"], manifest["cuts"],
+           manifest["maximal_timeout"], manifest["compare_timeout"],
+           manifest["deadline_s"], manifest["wall_cap_s"]),
+          (1, 1, 20, 900, 600, 1, 2), "every budget")
+    check(manifest["binaries"]["maximal"]["commit"], real_head,
+          "both scoring binaries' commits")
+    check(manifest["binaries"]["compare"]["dirty"], "0", "and their dirty flag")
+    check(manifest["git"]["head"], real_head, "the checkout's head")
+    check(manifest["allow_stale_binary"], False,
+          "whether the gate was overridden")
+    check_true(manifest["finished"] is not None and manifest["started"],
+               "and both timestamps")
+    check_true(manifest["python_version"].startswith("3."),
+               "and the interpreter")
+    check_true(manifest["invocation"].endswith(
+        "--out <out>/<run>.csv.part <run-dir>"), "and the invocation template")
+    check(manifest["pinned"], shutil.which("taskset") is not None,
+          "and whether the workers were pinned")
+
+    # Resume: the failures are retried, the curves are not.
+    curve_calls.unlink()
+    proc = scorer("--workers", "2")
+    check(proc.returncode, 1, "still failing, so still 1")
+    calls = sorted(ln.split()[-1].rsplit("/", 1)[-1]
+                   for ln in curve_calls.read_text().splitlines())
+    check(calls, ["empty_seed2", "fail_seed1"],
+          "a rerun scores only the runs with no curve")
+    manifest = json.loads(manifests[0].read_text())
+    check(manifest["counts"],
+          {"queued": 5, "already_scored": 3, "scored": 0, "failed": 2},
+          "and the manifest says which were already there")
+    check(len((out / "timings.txt").read_text().splitlines()), 7,
+          "timings.txt keeps every attempt")
+
+    # Every run has a curve: exit 0, so a tick moves the entry on.
+    (results / "fail_seed1").rename(results / "fixed_seed1")
+    (results / "empty_seed2").rename(results / "full_seed2")
+    (out / "failures.txt").write_text("")
+    proc = scorer("--workers", "2")
+    check(proc.returncode, 0, f"a complete pass exits 0: {proc.stdout}")
+    check_true("5/5 curves present" in proc.stdout, "saying so")
+    check(json.loads(manifests[0].read_text())["counts"]["scored"], 2,
+          "with the two new curves counted")
+
+    # The outer wall cap: a scorer that overruns is killed and recorded as
+    # coreutils timeout records it, and the run has no curve.
+    (results / "slow_seed3").mkdir()
+    proc = scorer("--workers", "1", seeds=("3",))
+    check(proc.returncode, 1, "a run killed by the wall cap fails the pass")
+    check_true("124 " in (out / "failures.txt").read_text()
+               and "slow_seed3" in (out / "failures.txt").read_text(),
+               f"and lands in failures.txt as exit 124: "
+               f"{(out / 'failures.txt').read_text()!r}")
+    check_true(not (out / "slow_seed3.csv").exists()
+               and not (out / "slow_seed3.csv.part").exists(),
+               "leaving neither a curve nor a .part")
+
+    # Unpinned where taskset is absent: an empty PATH has no taskset and no
+    # timeout, and the manifest says so rather than pretending.
+    proc = scorer("--workers", "1", seeds=("2",),
+                  env_extra={"PATH": str(score_root / "nowhere")})
+    check(proc.returncode, 0, f"an unpinned pass still scores: {proc.stderr}")
+    manifest = json.loads(manifests[0].read_text())
+    check(manifest["pinned"], False, "and records that it was unpinned")
+    check_true("no taskset" in manifest["pinning"], "in words")
+
+    for bad, why in ((["--workers", "0"], "zero workers"),
+                     (["--cuts", "-1"], "negative cuts"),
+                     (["--wall-cap-s", "0"], "a zero wall cap")):
+        proc = scorer(*bad)
+        check(proc.returncode, 2, f"{why} is an argument error")
+    proc = subprocess.run(
+        [sys.executable, str(SCORE_CAMPAIGN_PY), "--results",
+         str(score_root / "absent"), "--out", str(out), "--seeds", "1"],
+        capture_output=True, text=True)
+    check_true(proc.returncode != 0 and "no results directory" in proc.stderr,
+               "a missing results directory is refused by name")
+finally:
+    shutil.rmtree(score_root, ignore_errors=True)
 
 
 # ── The configs check, locally ────────────────────────────────────────────────

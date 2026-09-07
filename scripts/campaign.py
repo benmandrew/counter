@@ -150,6 +150,12 @@ def render_script(template: str, **subs: str) -> str:
 # the same reason it is used everywhere else -- av2's ssh shell has no `python`.
 RUNNER_CMD = os.environ.get("COUNTER_RUNNER_CMD",
                             f"{REMOTE_PYTHON} scripts/run_experiments.py")
+# The scoring twin, for a `kind = "score"` phase: one score_curves.py per run
+# directory over this host's seeds, driven by scripts/score_campaign.py. The
+# same override pattern, so a tick running a score phase can be tested against
+# a stub exactly as a run phase is.
+SCORER_CMD = os.environ.get("COUNTER_SCORER_CMD",
+                            f"{REMOTE_PYTHON} scripts/score_campaign.py")
 
 # Rebuilt by stage. The lab machines have no Nix, so this is the incremental
 # build against an already-configured preset directory, not a configure step;
@@ -455,16 +461,23 @@ def parse_detail(text: str) -> dict:
 
 # -- Process detection --------------------------------------------------------
 
-ENGINE_COMMS = ("counter", "compare", "ltlsynt", "black")
+# `maximal` is here for the scoring pass, which runs it under score_curves.py
+# beside `compare`; both are engine processes a stage must not reset under.
+ENGINE_COMMS = ("counter", "compare", "maximal", "ltlsynt", "black")
 
 
 def live_processes(ps_lines: list[str]) -> list[dict]:
-    """Runner and engine processes, from a ``comm args`` process listing.
+    """Runner, scorer and engine processes, from a ``comm args`` listing.
 
     Matched on ``comm``, never on the whole command line. ``pgrep -f
     run_experiments.py`` would match this script's own ssh command, whose text
     names it; the comm of that process is the login shell, so keying on comm
     excludes it by construction.
+
+    A scorer (score_campaign.py, the score phase's twin of the runner) is
+    reported with ``kind = "score"`` and the ``--out`` directory it writes,
+    which is what a score phase's status row is matched against; it names no
+    profile, so nothing that keys on one mistakes it for a run.
     """
     found = []
     for line in ps_lines:
@@ -477,20 +490,29 @@ def live_processes(ps_lines: list[str]) -> list[dict]:
                 continue
             found.append({"comm": comm, "profile": profile_of_args(args),
                           "args": args})
+        elif comm.startswith("python") and "score_campaign.py" in args:
+            if "--dry-run" in args:
+                continue
+            found.append({"comm": comm, "profile": None, "kind": "score",
+                          "out": option_of_args(args, "--out"), "args": args})
     return found
 
 
-def profile_of_args(args: str) -> str:
+def option_of_args(args: str, option: str):
     try:
         words = shlex.split(args)
     except ValueError:
         words = args.split()
     for i, word in enumerate(words):
-        if word == "--profile" and i + 1 < len(words):
+        if word == option and i + 1 < len(words):
             return words[i + 1]
-        if word.startswith("--profile="):
+        if word.startswith(option + "="):
             return word.split("=", 1)[1]
-    return "full"
+    return None
+
+
+def profile_of_args(args: str) -> str:
+    return option_of_args(args, "--profile") or "full"
 
 
 # -- Gathering ----------------------------------------------------------------
@@ -1497,7 +1519,19 @@ class CampaignError(Exception):
 
 CAMPAIGN_KEYS = {"name", "branch", "profile", "hosts", "phases", "build",
                  "configs", "description"}
-PHASE_KEYS = {"name", "profile", "jobs", "sweeps", "specs", "hosts"}
+# A phase is a search run (`kind = "run"`, the default and what every phase
+# was before the key existed) or an offline scoring pass over a results
+# directory (`kind = "score"`). Each kind reads its own keys: the runner's
+# selection keys mean nothing to the scorer, and the scorer's budgets mean
+# nothing to the runner, so a key from the other kind is refused by name
+# rather than carried along unread.
+PHASE_KINDS = ("run", "score")
+RUN_PHASE_KEYS = {"name", "kind", "profile", "jobs", "sweeps", "specs", "hosts"}
+SCORE_BUDGET_KEYS = ("workers", "cores", "cuts", "maximal_timeout",
+                     "compare_timeout", "deadline_s", "wall_cap_s")
+SCORE_PHASE_KEYS = {"name", "kind", "profile", "results", "out", "hosts",
+                    *SCORE_BUDGET_KEYS}
+PHASE_KEYS = RUN_PHASE_KEYS | SCORE_PHASE_KEYS
 
 # `describe` prints a declaration for a campaign that has already closed. It
 # is not one of these: the factor cross below is what the results CSV carries,
@@ -1607,14 +1641,48 @@ def profile_configs_dir(profile: str) -> str:
     same thing on both sides, since the script has already cd'd to the host's
     checkout before it looks.
     """
+    return profile_dir(profile, "configs_dir", "configs")
+
+
+def profile_results_dir(profile: str) -> str:
+    """A profile's results directory, relative to the repo root.
+
+    What a score phase scores when it names a profile rather than a
+    directory: the runner wrote that profile's runs there, on this host, in
+    the phase before.
+    """
+    return profile_dir(profile, "results_dir", "results")
+
+
+def profile_dir(profile: str, key: str, what: str) -> str:
     import run_experiments  # noqa: PLC0415
-    path = Path(run_experiments.PROFILES[profile]["configs_dir"])
+    path = Path(run_experiments.PROFILES[profile][key])
     try:
         return str(path.relative_to(run_experiments.REPO_ROOT))
     except ValueError:
         raise CampaignError(
-            f"profile {profile!r} puts its configs at {path}, outside the "
+            f"profile {profile!r} puts its {what} at {path}, outside the "
             f"checkout — stage cannot name that path on a host") from None
+
+
+def curves_dir_for(results: str) -> str:
+    """Default output directory for a score phase: ``curves-<stem>``, the stem
+    being the results directory's name without its ``results-`` prefix, so
+    ``results-rematch`` scores into ``curves-rematch`` beside it."""
+    stem = Path(results).name
+    if stem.startswith("results-"):
+        stem = stem[len("results-"):]
+    elif stem == "results":
+        stem = ""
+    parent = str(Path(results).parent)
+    name = f"curves-{stem}" if stem else "curves"
+    return name if parent in ("", ".") else f"{parent}/{name}"
+
+
+def score_defaults() -> dict:
+    """The scorer's own defaults, read from it rather than copied here."""
+    import score_campaign  # noqa: PLC0415
+    return dict(score_campaign.DEFAULTS)
 
 
 def campaign_path(name: str, root: Path | None = None) -> Path:
@@ -1663,19 +1731,56 @@ def load_campaign(name: str, root: Path | None = None) -> dict:
         where = f"{path}: phases[{index}]"
         if not isinstance(phase, dict):
             raise CampaignError(f"{where} is not a table")
-        unknown = sorted(set(phase) - PHASE_KEYS)
+        kind = phase.get("kind", "run")
+        if kind not in PHASE_KINDS:
+            raise CampaignError(f"{where}: kind must be one of "
+                                f"{', '.join(PHASE_KINDS)}, not {kind!r}")
+        allowed = SCORE_PHASE_KEYS if kind == "score" else RUN_PHASE_KEYS
+        unknown = sorted(set(phase) - allowed)
         if unknown:
-            raise CampaignError(f"{where}: unknown key(s) {', '.join(unknown)}")
+            raise CampaignError(f"{where}: unknown key(s) {', '.join(unknown)} "
+                                f"on a {kind} phase; known: "
+                                f"{', '.join(sorted(allowed))}")
         profile = phase.get("profile", raw.get("profile"))
-        if not isinstance(profile, str) or not profile:
-            raise CampaignError(f"{where}: no profile, and no top-level "
-                                f"profile to fall back on")
-        if profile not in profiles:
-            raise CampaignError(
-                f"{where}: run_experiments.py in this checkout defines no "
-                f"profile {profile!r}. A campaign names a profile the runner "
-                f"defines; it does not declare one. Known: "
-                f"{', '.join(sorted(profiles))}")
+        if kind == "score":
+            results = phase.get("results")
+            if results is not None and (not isinstance(results, str)
+                                        or not results):
+                raise CampaignError(f"{where}: results must be a non-empty "
+                                    f"string naming a directory under the "
+                                    f"checkout")
+            if results is None and profile is None:
+                raise CampaignError(
+                    f"{where}: a score phase needs `results` (a results "
+                    f"directory) or `profile` (whose results directory it "
+                    f"scores), and has neither")
+        # A score phase naming a results directory needs no profile. Every
+        # other phase does, and a profile named anywhere must be one this
+        # checkout's runner defines.
+        if profile is not None or kind == "run":
+            if not isinstance(profile, str) or not profile:
+                raise CampaignError(f"{where}: no profile, and no top-level "
+                                    f"profile to fall back on")
+            if profile not in profiles:
+                raise CampaignError(
+                    f"{where}: run_experiments.py in this checkout defines "
+                    f"no profile {profile!r}. A campaign names a profile the "
+                    f"runner defines; it does not declare one. Known: "
+                    f"{', '.join(sorted(profiles))}")
+        phase_hosts = None
+        if phase.get("hosts") is not None:
+            phase_hosts = parse_host_split(phase["hosts"], f"{where}: hosts")
+            extra = sorted(set(phase_hosts) - set(seeds_by_host))
+            if extra:
+                raise CampaignError(
+                    f"{where}: hosts {', '.join(extra)} are not declared at "
+                    f"the campaign level. A phase narrows the split; it "
+                    f"cannot add a host, which stage never staged and the "
+                    f"other phases would never run on.")
+        if kind == "score":
+            normalised.append(normalise_score_phase(phase, where, profile,
+                                                    phase_hosts))
+            continue
         jobs = phase.get("jobs")
         if jobs is not None and (isinstance(jobs, bool) or not isinstance(jobs, int)
                                  or jobs < 1):
@@ -1687,17 +1792,7 @@ def load_campaign(name: str, root: Path | None = None) -> dict:
                     and all(isinstance(v, str) for v in value)):
                 raise CampaignError(f"{where}: {key} must be an array of "
                                     f"strings")
-        phase_hosts = None
-        if phase.get("hosts") is not None:
-            phase_hosts = parse_host_split(phase["hosts"], f"{where}: hosts")
-            extra = sorted(set(phase_hosts) - set(seeds_by_host))
-            if extra:
-                raise CampaignError(
-                    f"{where}: hosts {', '.join(extra)} are not declared at "
-                    f"the campaign level. A phase narrows the split; it "
-                    f"cannot add a host, which stage never staged and the "
-                    f"other phases would never run on.")
-        normalised.append({"name": phase.get("name", profile),
+        normalised.append({"name": phase.get("name", profile), "kind": "run",
                            "profile": profile, "jobs": jobs,
                            "sweeps": phase.get("sweeps"),
                            "specs": phase.get("specs"),
@@ -1709,16 +1804,81 @@ def load_campaign(name: str, root: Path | None = None) -> dict:
     configs = raw.get("configs")
     if configs is not None and (not isinstance(configs, str) or not configs):
         raise CampaignError(f"{path}: configs must be a non-empty string")
-    # Every profile the phases name, not just the campaign-level one: a
+    # Every profile the run phases name, not just the campaign-level one: a
     # campaign whose phases straddle two profiles reads two configs
     # directories, and checking only the default leaves the second phase to
-    # fail on the host, hours after the stage said the host was ready.
+    # fail on the host, hours after the stage said the host was ready. A score
+    # phase reads no configs; what it reads is a results directory, checked
+    # separately below.
     config_dirs = sorted({profile_configs_dir(phase["profile"])
-                          for phase in normalised})
+                          for phase in normalised if phase_kind(phase) == "run"})
     return {"name": name, "branch": branch, "build": build, "path": path,
             "configs": configs, "config_dirs": config_dirs,
+            "results_dirs": staged_results_dirs(normalised),
             "hosts": seeds_by_host, "phases": normalised,
             "description": raw.get("description", "")}
+
+
+def normalise_score_phase(phase: dict, where: str, profile,
+                          phase_hosts) -> dict:
+    """A score phase's record: where it reads, where it writes, its budgets.
+
+    ``results`` defaults to the named profile's results directory, made
+    relative the way the configs directory is, since the same host-side
+    check reads it; ``out`` defaults to ``curves-<stem>`` beside it. Every
+    budget defaults to the scorer's own value and is carried explicitly to the
+    command line, so the manifest the host writes names what the declaration
+    meant rather than what the scorer happened to default to.
+    """
+    # `results` and the profile were checked by the caller; one of the two is
+    # present by the time this runs.
+    results = phase.get("results") or profile_results_dir(profile)
+    out = phase.get("out", curves_dir_for(results))
+    if not isinstance(out, str) or not out:
+        raise CampaignError(f"{where}: out must be a non-empty string naming "
+                            f"a directory under the checkout")
+    budgets = score_defaults()
+    for key in SCORE_BUDGET_KEYS:
+        value = phase.get(key)
+        if value is None:
+            continue
+        if isinstance(value, bool) or not isinstance(value, int) or value < 1:
+            raise CampaignError(f"{where}: {key} must be a positive integer")
+        budgets[key] = value
+    if "wall_cap_s" not in budgets:
+        import score_campaign  # noqa: PLC0415
+        budgets["wall_cap_s"] = score_campaign.wall_cap_default(
+            budgets["deadline_s"])
+    return {"name": phase.get("name", Path(out).name), "kind": "score",
+            "profile": profile, "jobs": None, "sweeps": None, "specs": None,
+            "hosts": phase_hosts, "results": results, "out": out, **budgets}
+
+
+def phase_kind(phase: dict) -> str:
+    """`run` unless the phase says otherwise. A phase record built before
+    the key existed carries none, and every one of those is a run."""
+    return phase.get("kind") or "run"
+
+
+def staged_results_dirs(phases: list) -> list:
+    """The results directories `stage` has to find on the host already.
+
+    A score phase reads a results directory the way a run phase reads a
+    configs directory, and an absent one fails the phase on the host after
+    the stage said the host was ready. But the common case is a score phase
+    scoring the run phase declared before it in the same campaign, whose
+    results directory does not exist until that phase has run, so those are
+    not demanded at stage time: only a directory no earlier run phase of this
+    campaign produces is.
+    """
+    produced: set = set()
+    wanted: list = []
+    for phase in phases:
+        if phase_kind(phase) == "run":
+            produced.add(profile_results_dir(phase["profile"]))
+        elif phase["results"] not in produced and phase["results"] not in wanted:
+            wanted.append(phase["results"])
+    return sorted(wanted)
 
 
 def campaign_hosts(campaign: dict, only: list | None) -> list:
@@ -1774,6 +1934,8 @@ def phase_args(phase: dict, seeds: list) -> list:
     argument typed at launch time: a hand-typed range is how two hosts end up
     running the same seeds.
     """
+    if phase_kind(phase) == "score":
+        return score_phase_args(phase, seeds)
     args = ["--profile", phase["profile"]]
     if phase.get("jobs"):
         args += ["--jobs", str(phase["jobs"])]
@@ -1784,9 +1946,27 @@ def phase_args(phase: dict, seeds: list) -> list:
     return args + ["--seeds", *[str(s) for s in seeds]]
 
 
+def score_phase_args(phase: dict, seeds: list) -> list:
+    """The scorer's arguments: every budget stated, then the seeds.
+
+    Stated rather than left to the scorer's defaults so the two never
+    disagree about what a phase ran under, and so the manifest the scorer
+    writes on the host records the declaration's values.
+    """
+    args = ["--results", phase["results"], "--out", phase["out"]]
+    for key in SCORE_BUDGET_KEYS:
+        args += [f"--{key.replace('_', '-')}", str(phase[key])]
+    return args + ["--seeds", *[str(s) for s in seeds]]
+
+
+def phase_launcher(phase: dict) -> str:
+    """The command a phase's arguments follow: the runner, or the scorer."""
+    return SCORER_CMD if phase_kind(phase) == "score" else RUNNER_CMD
+
+
 def phase_command(phase: dict, seeds: list) -> str:
-    return " ".join([RUNNER_CMD] + [shlex.quote(a)
-                                    for a in phase_args(phase, seeds)])
+    return " ".join([phase_launcher(phase)]
+                    + [shlex.quote(a) for a in phase_args(phase, seeds)])
 
 
 # -- describe -----------------------------------------------------------------
@@ -2383,26 +2563,49 @@ done
 # version check two lines later.
 
 
-def configs_block(configs: str | None, config_dirs: list) -> str:
+# A score phase's counterpart: the results directory it reads has to be on
+# the host already, unless a run phase of the same campaign writes it first,
+# in which case staged_results_dirs leaves it out and the tick checks it when
+# the phase's turn comes. A directory rather than a file test, since a results
+# tree is thousands of run directories and the question is whether it exists.
+RESULTS_CHECK = r"""for resdir in @RESULTS_DIRS@; do
+  if [ ! -d "$resdir" ]; then
+    echo "@M@ERR no results directory at $(pwd)/$resdir for a score phase — run the campaign that writes it on this host first, or fix results = ... in campaign.toml"
+    exit 11
+  fi
+done
+"""
+
+
+def configs_block(configs: str | None, config_dirs: list,
+                  results_dirs: list = ()) -> str:
     """The configs section: the declared command, then the check, or just the
     check. The check is never conditional — a campaign that declares no command
-    is the case that broke, not the case to trust."""
+    is the case that broke, not the case to trust. A score phase's results
+    directory is checked the same way, after it."""
     step = (CONFIGS_STEP.replace("@CONFIGS_CMD@", configs) if configs else "")
+    # A campaign of score phases alone names no configs directory, and a
+    # `for` over an empty list is one shell dialect away from a syntax error.
     check = CONFIGS_CHECK.replace(
-        "@CONFIG_DIRS@", " ".join(shlex.quote(d) for d in config_dirs))
-    return step + check
+        "@CONFIG_DIRS@", " ".join(shlex.quote(d) for d in config_dirs)
+    ) if config_dirs else ""
+    results = ""
+    if results_dirs:
+        results = RESULTS_CHECK.replace(
+            "@RESULTS_DIRS@", " ".join(shlex.quote(d) for d in results_dirs))
+    return step + check + results
 
 
 def stage_apply_script(root: str, branch: str, sha: str, build: str,
                        configs: str | None, config_dirs: list,
-                       force: bool) -> str:
+                       force: bool, results_dirs: list = ()) -> str:
     # CONFIGS first, and the marker last inside render_script: the configs
     # block is itself a script fragment carrying markers of its own.
     # BUILD and BIN go in unquoted -- the first is a command line, the second
     # is spliced into `./@BIN@`.
     return render_script(
         STAGE_APPLY_SCRIPT,
-        CONFIGS=configs_block(configs, config_dirs),
+        CONFIGS=configs_block(configs, config_dirs, results_dirs),
         ROOT=shlex.quote(root),
         BRANCH=shlex.quote(branch),
         SHA=shlex.quote(sha),
@@ -2537,7 +2740,8 @@ def cmd_stage(args: argparse.Namespace) -> int:
         text, err = run_shell(
             host, stage_apply_script(source_path(host), branch, sha,
                                      campaign["build"], campaign["configs"],
-                                     campaign["config_dirs"], args.force),
+                                     campaign["config_dirs"], args.force,
+                                     campaign.get("results_dirs", ())),
             timeout=args.build_timeout)
         result = parse_sections(text or "")
         if err or "err" in result or "end" not in result:
@@ -2638,6 +2842,9 @@ def start_refusals(probe: HostProbe, campaign: dict, sha: str,
         if proc.get("profile"):
             out.append(f"a runner is already live on --profile "
                        f"{proc['profile']}")
+        elif proc.get("kind") == "score":
+            out.append(f"a scorer is already live on --out "
+                       f"{proc.get('out') or '?'}")
     if not ignore_queue:
         for entry in pending_queue_entries(probe, campaign["name"]):
             out.append(
@@ -3000,8 +3207,25 @@ def run_step(root: Path, command, log_path: Path, shell: bool = False) -> int:
 
 
 def run_phase(root: Path, phase: dict, seeds: list, log_path: Path) -> int:
-    return run_step(root, shlex.split(RUNNER_CMD) + phase_args(phase, seeds),
-                    log_path)
+    return run_step(root, shlex.split(phase_launcher(phase))
+                    + phase_args(phase, seeds), log_path)
+
+
+def results_dir_missing(root: Path, phase: dict):
+    """Why a score phase cannot run here, or None.
+
+    The scorer's own check, asked before the attempt is spent: the results
+    directory is produced by an earlier phase or an earlier campaign, and a
+    host that never ran either has nothing to score. Named in the entry's
+    `last_error`, in the words the stage check uses.
+    """
+    directory = root / phase["results"]
+    if directory.is_dir():
+        return None
+    return (f"no results directory at {directory} for score phase "
+            f"{phase['name']} — the run phase that writes it has not run on "
+            f"this host, or `results` in campaign.toml names the wrong "
+            f"directory")
 
 
 def entry_log_path(entry: dict, root: Path) -> Path:
@@ -3334,6 +3558,16 @@ def tick_entry(entry: dict, campaign: dict, root: Path,
         return 0
     seeds = parse_seed_range(text, f"{entry['file']}: phase {index} seeds")
     log_path = entry_log_path(entry, root)
+    # A score phase over a results directory the host does not hold cannot
+    # run, and the scorer would say so an attempt later; the refusal is here
+    # so the entry names the directory rather than an exit status.
+    blocked = (results_dir_missing(root, phase)
+               if phase_kind(phase) == "score" else None)
+    if blocked is not None and not args.dry_run:
+        fail_or_requeue(entry, blocked)
+        write_entry(entry["path"], entry)
+        print(f"tick: {entry['file']} {entry['state']}: {entry['last_error']}")
+        return 1
 
     entry["state"] = "running"
     entry["pid"] = os.getpid()
@@ -3346,6 +3580,8 @@ def tick_entry(entry: dict, campaign: dict, root: Path,
         log_line(entry, "dry run, phase not executed")
         write_entry(entry["path"], entry)
         print(f"  would run: {phase_command(phase, seeds)}")
+        if blocked is not None:
+            print(f"  blocked: {blocked}")
         return 0
 
     code = run_phase(root, phase, seeds, log_path)

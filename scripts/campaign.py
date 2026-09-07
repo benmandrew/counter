@@ -1338,9 +1338,227 @@ def collect_dry_run(hosts: list[str], csv_name: str, result_dir: str | None,
     return 0 if ok else 1
 
 
+# -- collect --curves ---------------------------------------------------------
+#
+# A score phase leaves one CSV per run under <out>/ on each host, beside the
+# timings, failures and warnings files and the host's score manifest. Each
+# host's directory is pulled whole into experiments/<out>/<host>/ -- the raw
+# per-host record, which is what an archive's maximality_pass block is
+# assembled from -- and the per-run CSVs are then joined into
+# experiments/<out>.csv, header once. The join is a union by run name, as the
+# results merge is a union by key: two hosts on disjoint seeds share no run
+# name, and a run scored on both is a split violation worth reporting.
+
+CURVES_SIDE_FILES = ("timings.txt", "failures.txt", "warnings.log")
+
+
+def curves_dir_local(out_name: str) -> Path:
+    return REPO_ROOT / "experiments" / out_name
+
+
+def host_curves(directory: Path) -> dict:
+    """``{run name: path}`` for the per-run CSVs under one host's pull."""
+    return {p.name[:-len(".csv")]: p for p in sorted(directory.glob("*.csv"))
+            if p.is_file() and p.stat().st_size > 0}
+
+
+def csv_header(path: Path) -> str:
+    with open(path, newline="") as handle:
+        return handle.readline().rstrip("\r\n")
+
+
+def count_csv_rows(path: Path) -> int:
+    if not path.is_file():
+        return 0
+    with open(path, newline="") as handle:
+        return max(0, sum(1 for _ in handle) - 1)
+
+
+def pull_curves(host: str, out_name: str, dry_run: bool) -> dict:
+    """rsync one host's ``<out>/`` into ``experiments/<out>/<host>/``.
+
+    The whole directory, not the CSVs alone: the timings, failures and
+    warnings files and the score manifest are the record of how each curve
+    was produced, and they travel with it. Returns rsync's verdict; a dry run
+    reports the transfer it would make and moves nothing.
+    """
+    src = f"{source_root(host)}/experiments/{out_name}/"
+    dst = curves_dir_local(out_name) / host
+    if not dry_run:
+        dst.mkdir(parents=True, exist_ok=True)
+    cmd = ["rsync", "-a", "-e", " ".join(["ssh", *SSH_OPTS])]
+    if dry_run:
+        cmd += ["--dry-run", "--stats"]
+    proc = subprocess.run([*cmd, src, f"{dst}/"], capture_output=True,
+                          text=True)
+    out: dict = {"ok": proc.returncode == 0, "dest": dst}
+    for line in proc.stdout.splitlines():
+        if line.startswith("Number of regular files transferred:"):
+            out["files"] = int(line.split(":")[1].strip().replace(",", ""))
+        elif line.startswith("Total transferred file size:"):
+            out["bytes"] = int(line.split(":")[1].split()[0].replace(",", ""))
+    if not out["ok"]:
+        tail = [ln.strip() for ln in proc.stderr.splitlines() if ln.strip()]
+        out["error"] = tail[-1] if tail else f"exit {proc.returncode}"
+    return out
+
+
+def merge_curves(per_host: dict, merged_csv: Path) -> tuple:
+    """Join every host's per-run CSVs into one file, header once.
+
+    Returns ``(union, problems)``: the run names written, and the reasons the
+    join is not clean. A run present on two hosts is written once, from the
+    first host, and reported unless the two copies are byte-identical -- the
+    seeds are split, so two differing copies of one run mean two hosts
+    scored it, under budgets that may differ. A header from another vintage
+    of score_curves.py is refused rather than concatenated under the wrong
+    columns.
+    """
+    problems: list = []
+    chosen: dict = {}
+    for host, curves in per_host.items():
+        for run, path in curves.items():
+            if run in chosen:
+                other = chosen[run][1]
+                if path.read_bytes() != other.read_bytes():
+                    problems.append(f"{run} scored on both {chosen[run][0]} "
+                                    f"and {host}, and the two curves differ")
+                continue
+            chosen[run] = (host, path)
+    if not chosen:
+        return [], problems
+    ordered = sorted(chosen)
+    header = csv_header(chosen[ordered[0]][1])
+    tmp = merged_csv.with_name(merged_csv.name + ".tmp")
+    with open(tmp, "w", newline="") as out:
+        out.write(header + "\n")
+        for run in ordered:
+            path = chosen[run][1]
+            with open(path, newline="") as handle:
+                first = handle.readline().rstrip("\r\n")
+                if first != header:
+                    problems.append(f"{run} ({chosen[run][0]}) has a "
+                                    f"different header from {ordered[0]}")
+                    continue
+                for line in handle:
+                    if line.strip():
+                        out.write(line if line.endswith("\n") else line + "\n")
+    os.replace(tmp, merged_csv)
+    return ordered, problems
+
+
+def verify_curves(merged_csv: Path, before_rows: int, per_host: dict,
+                  union: list, problems: list, missing: list,
+                  host_dirs: dict) -> bool:
+    """The results merge's verification, over run names rather than keys.
+
+    Every per-run row is expected in the merged file exactly once, so the
+    merged row count must equal the sum over the union of each chosen
+    curve's rows. A host that answered nothing is INCOMPLETE, for the reason
+    verify_merge gives: arithmetic over the hosts that did answer agrees
+    with itself.
+    """
+    ok = not missing and not problems
+    print("\nVerification")
+    if missing:
+        print(f"  INCOMPLETE: no curves from {', '.join(missing)} — the "
+              f"merged file is missing that host's share of the pass.")
+        print("  Everything below is over the hosts that did answer, so it "
+              "cannot detect that.")
+    for problem in problems:
+        print(f"  MISMATCH: {problem}")
+    merged_rows = count_csv_rows(merged_csv)
+    print(f"  merged rows:    {merged_rows}")
+    print(f"  curves merged:  {len(union)}")
+    print(f"  local before:   {before_rows} rows")
+    for host, curves in per_host.items():
+        failures = host_dirs[host] / "failures.txt"
+        failed = (len([ln for ln in failures.read_text().splitlines()
+                       if ln.strip()]) if failures.is_file() else 0)
+        print(f"  {host}: {len(curves)} curves"
+              + (f", {failed} failed attempt(s) in failures.txt"
+                 if failed else ""))
+    pairs = list(per_host.items())
+    for i, (h1, c1) in enumerate(pairs):
+        for h2, c2 in pairs[i + 1:]:
+            shared = set(c1) & set(c2)
+            if shared:
+                print(f"  overlap {h1}/{h2}: {len(shared)} run(s) scored on "
+                      f"both")
+    # Each run counted once: the first host holding it is the one written.
+    seen: set = set()
+    expected = 0
+    for host, curves in per_host.items():
+        for run, path in curves.items():
+            if run in union and run not in seen:
+                seen.add(run)
+                expected += count_csv_rows(path)
+    print(f"  expected rows:  {expected}")
+    if merged_rows != expected:
+        ok = False
+        print(f"  MISMATCH: the merged file holds {merged_rows} rows against "
+              f"{expected} across the chosen curves")
+    if ok:
+        print("  OK: every curve is present exactly once.")
+    return ok
+
+
+def collect_curves(hosts: list, out_name: str, dry_run: bool) -> int:
+    local_out = curves_dir_local(out_name)
+    merged_csv = REPO_ROOT / "experiments" / f"{out_name}.csv"
+    print(f"Collecting curves: experiments/{out_name}/ from each host into "
+          f"experiments/{out_name}/<host>/, joined into "
+          f"experiments/{out_name}.csv")
+    print(f"Hosts:             {', '.join(hosts)}\n")
+    if dry_run:
+        rows, ok = [], True
+        for host in hosts:
+            pending = pull_curves(host, out_name, True)
+            if not pending["ok"]:
+                ok = False
+                rows.append([host, f"(rsync probe failed: "
+                                   f"{pending.get('error')})", "-"])
+                continue
+            rows.append([host, f"experiments/{out_name}/{host}/",
+                         f"{pending.get('files', 0)} files / "
+                         f"{human_bytes(pending.get('bytes'))}"])
+        print(render_table(rows, ["HOST", "INTO", "WOULD TRANSFER"]))
+        print("\nDry run — nothing transferred, nothing written.")
+        return 0 if ok else 1
+
+    before_rows = count_csv_rows(merged_csv)
+    per_host: dict = {}
+    host_dirs: dict = {}
+    missing: list = []
+    for host in hosts:
+        pulled = pull_curves(host, out_name, False)
+        if not pulled["ok"]:
+            print(f"  ERROR: {host} transfer failed ({pulled.get('error')})")
+            missing.append(host)
+            continue
+        curves = host_curves(pulled["dest"])
+        if not curves:
+            print(f"  ERROR: {host} contributed no curves under "
+                  f"experiments/{out_name}/")
+            missing.append(host)
+            continue
+        print(f"  {host}: {len(curves)} curve(s) pulled")
+        per_host[host] = curves
+        host_dirs[host] = pulled["dest"]
+    if not per_host:
+        print(f"\nNo curves found on any host — nothing merged.")
+        return 1
+    union, problems = merge_curves(per_host, merged_csv)
+    print(f"\nMerged {len(union)} curve(s) → {merged_csv}")
+    return 0 if verify_curves(merged_csv, before_rows, per_host, union,
+                              problems, missing, host_dirs) else 1
+
+
 def cmd_collect(args: argparse.Namespace) -> int:
-    csv_name, result_dir = resolve_profile(args)
     hosts = [args.host] if args.host else list(HOSTS)
+    if getattr(args, "curves", None):
+        return collect_curves(hosts, args.curves, args.dry_run)
+    csv_name, result_dir = resolve_profile(args)
     results_csv = REPO_ROOT / "experiments" / csv_name
     # Named for what actually chose the file: --csv bypasses --profile
     # entirely, and a banner reading "Profile: full" over an arbiter-probe
@@ -3934,6 +4152,12 @@ def build_parser() -> argparse.ArgumentParser:
                               "this checkout does not define.")
     collect.add_argument("--results-dir", metavar="NAME",
                          help="Per-run directory name, alongside --csv.")
+    collect.add_argument("--curves", metavar="NAME",
+                         help="Collect a score phase's curves instead: pull "
+                              "each host's experiments/NAME/ into "
+                              "experiments/NAME/<host>/ and join the per-run "
+                              "CSVs into experiments/NAME.csv. --profile, "
+                              "--csv and --results-dir are not read.")
     add_colour_flag(collect)
     collect.set_defaults(func=cmd_collect)
 

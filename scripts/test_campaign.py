@@ -700,6 +700,145 @@ try:
     write_csv(lossy, [row(0)])
     check(C.verify_merge(lossy, {merge.key_of(row(9))}, {}), False,
           "a row present before the merge and absent after must fail")
+
+    # ── collect --curves ──────────────────────────────────────────────────────
+    #
+    # A score phase's output is one CSV per run under <out>/ on each host,
+    # beside the timings, failures and warnings files and the host's score
+    # manifest. Each host's directory comes across whole, and the per-run
+    # CSVs are joined into one file by run name: disjoint seeds give disjoint
+    # run names, so a run on both hosts is a split violation, and a host that
+    # answers nothing is the same silent loss the results merge guards.
+    CURVE_HEADER = "spec,seed,metric,elapsed_s,value,censored"
+
+    def curve(host: str, run: str, rows: int = 2, value: int = 1) -> Path:
+        path = hosts[host] / "experiments" / "curves-fixture" / f"{run}.csv"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        spec, seed = run.rsplit("_seed", 1)
+        path.write_text(CURVE_HEADER + "\n" + "".join(
+            f"{spec},{seed},solutions,{i * 10},{value},0\n"
+            for i in range(rows)))
+        return path
+
+    def side_files(host: str, failed: int = 0) -> None:
+        out = hosts[host] / "experiments" / "curves-fixture"
+        (out / "timings.txt").write_text("3 10 0 amba_seed0 900/600/4500\n")
+        (out / "failures.txt").write_text("3 x/fail_seed0\n" * failed)
+        (out / "warnings.log").write_text("scored amba_seed0\n")
+        (out / f"score-manifest-{host}.json").write_text(
+            json.dumps({"kind": "score", "counts": {"queued": 2}}))
+
+    for run in ("amba_seed0", "amba_seed1"):
+        curve("h1", run)
+    for run in ("amba_seed2", "amba_seed3"):
+        curve("h2", run, rows=3)
+    side_files("h1")
+    side_files("h2", failed=1)
+    merged_curves = dest / "experiments" / "curves-fixture.csv"
+
+    buffer = io.StringIO()
+    with contextlib.redirect_stdout(buffer):
+        code = C.cmd_collect(collect_args(curves="curves-fixture",
+                                          dry_run=True))
+    check(code, 0, f"a curves dry run verifies: {buffer.getvalue()}")
+    check_true(not merged_curves.exists()
+               and not (dest / "experiments" / "curves-fixture").exists(),
+               "and transfers nothing and writes nothing")
+    check_true("WOULD TRANSFER" in buffer.getvalue(),
+               "while reporting what it would move")
+
+    buffer = io.StringIO()
+    with contextlib.redirect_stdout(buffer):
+        code = C.cmd_collect(collect_args(curves="curves-fixture"))
+    printed = buffer.getvalue()
+    check(code, 0, f"a clean two-host curves collect verifies: {printed}")
+    check(C.count_csv_rows(merged_curves), 10,
+          "every per-run row lands in the joined file, header once")
+    check(merged_curves.read_text().count(CURVE_HEADER), 1,
+          "with the header written exactly once")
+    check(merged_curves.read_text().splitlines()[1].split(","),
+          ["amba", "0", "solutions", "0", "1", "0"],
+          "and the runs in name order")
+    for host in ("h1", "h2"):
+        pulled = dest / "experiments" / "curves-fixture" / host
+        check(sorted(p.name for p in pulled.iterdir()),
+              sorted([f"amba_seed{s}.csv" for s in
+                      ((0, 1) if host == "h1" else (2, 3))]
+                     + ["timings.txt", "failures.txt", "warnings.log",
+                        f"score-manifest-{host}.json"]),
+              f"{host}'s whole directory is kept under its own name")
+    check_true("OK: every curve is present exactly once" in printed,
+               "and the verification passes")
+    check_true("h2: 2 curves, 1 failed attempt(s)" in printed,
+               "noting each host's failures.txt")
+
+    check(C.cmd_collect(collect_args(curves="curves-fixture")), 0,
+          "re-collecting still verifies")
+    check(C.count_csv_rows(merged_curves), 10, "and adds no rows")
+
+    # A run scored on both hosts is a seed split violation. Byte-identical
+    # copies are one curve and pass; differing ones are reported.
+    curve("h2", "amba_seed1")
+    buffer = io.StringIO()
+    with contextlib.redirect_stdout(buffer):
+        code = C.cmd_collect(collect_args(curves="curves-fixture"))
+    check(code, 0, "an identical curve on both hosts is one curve")
+    check_true("overlap h1/h2: 1 run(s)" in buffer.getvalue(),
+               "and the overlap is reported")
+    check(C.count_csv_rows(merged_curves), 10, "written once")
+    # A different size as well as a different value: rsync's quick check is
+    # size and mtime, and the two writes land inside one second.
+    curve("h2", "amba_seed1", rows=3, value=7)
+    buffer = io.StringIO()
+    with contextlib.redirect_stdout(buffer):
+        code = C.cmd_collect(collect_args(curves="curves-fixture"))
+    check(code, 1, "two differing curves for one run fail the collect")
+    check_true("MISMATCH" in buffer.getvalue()
+               and "amba_seed1" in buffer.getvalue(),
+               "naming the run")
+    (hosts["h2"] / "experiments" / "curves-fixture" / "amba_seed1.csv").unlink()
+    (dest / "experiments" / "curves-fixture" / "h2" / "amba_seed1.csv").unlink()
+
+    # A curve from another vintage of score_curves.py carries a different
+    # header and must not be concatenated under this one's columns.
+    odd = curve("h2", "amba_seed3")
+    odd.write_text("spec,seed,other\namba,3,1\n")
+    buffer = io.StringIO()
+    with contextlib.redirect_stdout(buffer):
+        code = C.cmd_collect(collect_args(curves="curves-fixture"))
+    check(code, 1, "a curve with another header fails the collect")
+    check_true("different header" in buffer.getvalue(), "and says so")
+    curve("h2", "amba_seed3", rows=3)
+
+    # A host that contributes nothing is INCOMPLETE, whether the transfer
+    # failed or the directory holds no curve.
+    for label, sabotage in (
+        ("rsync fails", lambda: shutil.rmtree(
+            hosts["h2"] / "experiments" / "curves-fixture")),
+        ("no curves", lambda: [p.unlink() for p in (
+            hosts["h2"] / "experiments" / "curves-fixture").glob("*.csv")]),
+    ):
+        shutil.rmtree(dest / "experiments" / "curves-fixture" / "h2",
+                      ignore_errors=True)
+        sabotage()
+        buffer = io.StringIO()
+        with contextlib.redirect_stdout(buffer):
+            code = C.cmd_collect(collect_args(curves="curves-fixture"))
+        check(code, 1, f"a curves collect losing a host exits non-zero "
+                       f"({label})")
+        check_true("INCOMPLETE" in buffer.getvalue()
+                   and "h2" in buffer.getvalue(),
+                   f"and names the host it lost ({label})")
+        check_true("OK: every curve" not in buffer.getvalue(),
+                   f"and does not print the OK line ({label})")
+        for run in ("amba_seed2", "amba_seed3"):
+            curve("h2", run, rows=3)
+        side_files("h2")
+    check(C.count_csv_rows(merged_curves), 4,
+          "what did arrive was still joined")
+    check(C.cmd_collect(collect_args(curves="curves-fixture")), 0,
+          "and the recovered host collects clean afterwards")
+    check(C.count_csv_rows(merged_curves), 10, "restoring every row")
 finally:
     merge.REPO_ROOT = real_merge_root
     shutil.rmtree(tmp, ignore_errors=True)

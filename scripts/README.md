@@ -875,6 +875,17 @@ a results directory in counter's own shape. `score_campaign.py` and
 their own, and a `kind = "score"` phase in `campaign.toml` points its
 `results` key at that directory.
 
+`experiments/aurus-curves/campaign.toml` declares that phase over the
+2026-08-14 head-to-head, splitting the repeats the way the head-to-head split
+them: av2 ran 0-14 and av3 ran 15-29, and each host holds only the solution
+files it wrote, so neither can materialise the other's repeats whatever the
+split says. The adapter is the campaign's `configs` command, which `stage`
+runs on each host after the build and before the version check, and the
+results directory it writes is then checked there as a score phase's results
+directory always is. A tick does not run it. `ensure_configs` returns early on
+a campaign that names no configs directory and a campaign of score phases
+alone names none, so this one is staged before it is enqueued.
+
 A *repeat* becomes a seed. Each run directory is named
 `aurus_<spec>_seed<NN>`, which is what the scorer's seed split, its
 smallest-first queue and its resume already key on, so the scorer needs no

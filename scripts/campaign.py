@@ -170,6 +170,12 @@ COUNTER_BINARY = "build-release/counter"
 QUEUE_DIR = "experiments/queue"
 QUEUE_LOCK = "~/.counter-queue.lock"
 QUEUE_STATES = ("queued", "running", "done", "failed")
+# ensure_staged's third answer, beside None (go on) and an exit code (stop):
+# the checkout moved and took the tick's own sources with it, so the rest of
+# this tick belongs to a process that has read them. See restart_after_stage.
+RESTART = "restart"
+TICK_RESTART_ENV = "COUNTER_TICK_RESTARTED"
+TICK_LOCK_FD_ENV = "COUNTER_TICK_LOCK_FD"
 DEFAULT_MAX_ATTEMPTS = 3
 # Kept in the entry so a state history survives the ticks that wrote it.
 QUEUE_LOG_LINES = 20
@@ -3549,6 +3555,64 @@ def acquire_lock(path: Path):
     return handle
 
 
+def adopted_lock():
+    """The queue lock carried across the tick's own re-exec, or None.
+
+    The restarted process inherits the locked descriptor rather than taking
+    the lock again. flock is per open file description, so a lock dropped for
+    the length of an exec would let a hand-typed tick in between the two
+    processes and both would then run the same entry -- the failure the lock
+    exists to prevent, reached through the mechanism that prevents it.
+    """
+    raw = os.environ.pop(TICK_LOCK_FD_ENV, "")
+    if not raw:
+        return None
+    try:
+        return os.fdopen(int(raw), "a+")
+    except (ValueError, OSError) as exc:
+        print(f"tick: cannot adopt the queue lock on fd {raw} — {exc}")
+        return None
+
+
+def restart_after_stage(lock, entry: dict):
+    """Re-exec this tick so the rest of it runs the sources just checked out.
+
+    A tick reads the campaign declaration only after staging the checkout,
+    the declaration being tracked on the campaign's own branch, and the
+    running process keeps the campaign.py it imported before the checkout
+    moved. A declaration using keys that older revision does not define fails
+    to parse, and a phase kind it does not define cannot be rendered even
+    where it does parse -- both of which read as a bad declaration rather
+    than as a stale parser, and the obvious response, editing the file, is
+    wrong.
+
+    ensure_staged has already put the entry back in `queued`, so the
+    restarted tick picks it up as it would any other and the restart spends
+    no attempt. An exec that fails is not fatal: the tick carries on with the
+    sources it has, which is what it did before this existed.
+    """
+    os.set_inheritable(lock.fileno(), True)
+    env = dict(os.environ)
+    env[TICK_RESTART_ENV] = "1"
+    env[TICK_LOCK_FD_ENV] = str(lock.fileno())
+    print(f"tick: {entry['file']} restarting on the staged scripts")
+    sys.stdout.flush()
+    sys.stderr.flush()
+    try:
+        os.execve(sys.executable,
+                  [sys.executable, str(Path(__file__).resolve()),
+                   *sys.argv[1:]], env)
+    except OSError as exc:
+        # Not fatal: the tick carries on with the sources it has, which is
+        # what it did before this existed.
+        print(f"tick: could not restart ({exc}); carrying on unstaged")
+        return None
+    # Unreachable where the exec worked, that call having replaced this
+    # process. It is here so that a stubbed exec stops the tick the way the
+    # real one does, rather than falling through into the phase.
+    return 0
+
+
 def run_step(root: Path, command, log_path: Path, shell: bool = False) -> int:
     """Run one command in the checkout, appending everything it says to a log.
 
@@ -3752,7 +3816,22 @@ def ensure_staged(entry: dict, root: Path, args: argparse.Namespace):
     log_line(entry, f"staged {want}")
     write_entry(entry["path"], entry)
     print(f"tick: {entry['file']} staged {want}")
-    return None
+    # Only where the checkout moved this tick's own sources. A campaign that
+    # merely sits on another branch of the same scripts is the common case,
+    # and restarting for it would cost every such tick a five-minute cycle
+    # for nothing.
+    changed, _ = git_output(["diff", "--name-only", head, "HEAD", "--",
+                             "scripts"], root)
+    if not changed.strip():
+        return None
+    if os.environ.get(TICK_RESTART_ENV):
+        # Restarted once already and the scripts moved again. Going round
+        # again is the loop this guard exists for, so this tick runs on what
+        # it has and the next one starts from the staged sources anyway.
+        print(f"tick: {entry['file']} scripts moved again after a restart; "
+              f"running on the sources this tick was started with")
+        return None
+    return RESTART
 
 
 def config_dirs_missing(root: Path, config_dirs: list) -> list:
@@ -3842,7 +3921,7 @@ def cmd_tick(args: argparse.Namespace) -> int:
     root = Path(args.root).resolve() if args.root else REPO_ROOT
     lock_path = Path(args.lock).expanduser() if args.lock else Path(
         os.path.expanduser(QUEUE_LOCK))
-    lock = acquire_lock(lock_path)
+    lock = adopted_lock() or acquire_lock(lock_path)
     if lock is None:
         print(f"tick: {lock_path} is held; another tick is mid-phase.")
         return 0
@@ -3865,6 +3944,8 @@ def cmd_tick(args: argparse.Namespace) -> int:
         # campaign's own branch, so a checkout standing on another one cannot
         # read it until this has moved it.
         code = ensure_staged(entry, root, args)
+        if code == RESTART:
+            code = restart_after_stage(lock, entry)
         if code is not None:
             return code
         try:

@@ -2501,6 +2501,84 @@ try:
     check_true("--profile full" in calls.read_text(),
                "then runs the phase it was staged for")
 
+    # ── a stage that moves the tick's own sources restarts the tick ───────────
+    # The tick reads the declaration only after staging, and the running
+    # process keeps the campaign.py it imported before the checkout moved: a
+    # declaration using keys that older revision does not define fails to
+    # parse, which reads as a bad declaration rather than as a stale parser.
+    # aurus-curves spent an attempt on exactly that. The phase does not run in
+    # the staging tick any more, the restarted one runs it.
+    calls.unlink()
+    git(repo, "checkout", "-q", "feat/queued")
+    moved = repo / "scripts" / "campaign.py"
+    moved.parent.mkdir(parents=True, exist_ok=True)
+    moved.write_text("# a revision this tick has not read\n")
+    git(repo, "add", "scripts/campaign.py")
+    git(repo, "-c", "user.email=t@t", "-c", "user.name=t",
+        "commit", "-q", "-m", "scripts move")
+    moved_sha = git(repo, "rev-parse", "HEAD")
+    git(repo, "checkout", "-q", default_branch)
+    entry = only_entry()
+    entry.update({"state": "queued", "phase": 0, "attempts": 0,
+                  "commit": moved_sha})
+    C.write_entry(entry["path"], entry)
+
+    execs = []
+    real_execve = os.execve
+    os.execve = lambda path, argv, env: execs.append((path, argv, env))
+    try:
+        code, printed = tick()
+    finally:
+        os.execve = real_execve
+    check(code, 0, "a restart is not a failure")
+    check(len(execs), 1, "the tick re-execs itself once")
+    check(execs[0][0], sys.executable, "through this interpreter")
+    check(Path(execs[0][1][1]).name, "campaign.py",
+          "running campaign.py from the staged checkout's own path")
+    check(execs[0][2].get(C.TICK_RESTART_ENV), "1",
+          "the restart marks itself, so it cannot loop")
+    check_true(execs[0][2].get(C.TICK_LOCK_FD_ENV, "").isdigit(),
+               "and hands the queue lock's descriptor on rather than "
+               "dropping it for the length of the exec")
+    check(calls.exists(), False,
+          "the staging tick runs no phase: its own code is the stale half")
+    entry = only_entry()
+    check(entry["state"], "queued",
+          "the entry is back in the queue for the restarted tick")
+    check(entry["attempts"], 0, "and the restart spends no attempt")
+
+    # Restarted once and the scripts moved again: it runs on what it has
+    # rather than exec'ing a second time.
+    git(repo, "checkout", "-q", default_branch)
+    entry.update({"state": "queued", "phase": 0, "attempts": 0})
+    C.write_entry(entry["path"], entry)
+    execs.clear()
+    os.environ[C.TICK_RESTART_ENV] = "1"
+    os.execve = lambda path, argv, env: execs.append((path, argv, env))
+    try:
+        code, printed = tick()
+    finally:
+        os.execve = real_execve
+        os.environ.pop(C.TICK_RESTART_ENV, None)
+    check(len(execs), 0, "a tick that has already restarted does not again")
+    check(code, 0, "and runs the phase on the sources it has")
+    check_true("--profile full" in calls.read_text(),
+               "which is the old behaviour, not a refusal")
+
+    # The lock is adopted from the descriptor rather than taken again.
+    check(C.adopted_lock(), None, "no descriptor named, no lock adopted")
+    handle = C.acquire_lock(lock)
+    # Duplicated, standing in for the descriptor a real restart inherits: the
+    # exec'd process is new and owns the one it is handed, where here both
+    # objects live in this process and would close the same descriptor twice.
+    os.environ[C.TICK_LOCK_FD_ENV] = str(os.dup(handle.fileno()))
+    adopted = C.adopted_lock()
+    check_true(adopted is not None, "a named descriptor is adopted")
+    check(os.environ.get(C.TICK_LOCK_FD_ENV), None,
+          "and the variable is consumed, so a child cannot adopt it twice")
+    adopted.close()
+    handle.close()
+
     # A staging that cannot finish costs an attempt and holds the reason,
     # exactly as a failed phase does. A build that half ran is the case worth
     # catching: it leaves the previous commit's binary in place, and every row

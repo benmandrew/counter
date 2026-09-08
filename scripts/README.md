@@ -659,6 +659,20 @@ carries something no fetch brings back, and `stage --force` — which names what
 it will discard and wants the host name typed back — stays the only way past
 them. `tick --no-stage` restores the old refusal for a host driven by hand.
 
+A stage that moves `scripts/` restarts the tick. The declaration is tracked on
+the campaign's own branch, so it can only be read after the checkout has moved,
+and the running process keeps the `campaign.py` it imported before that: a
+declaration using keys the older revision does not define fails to parse, and a
+phase kind it does not define cannot be rendered even where it does parse. Both
+read as a bad declaration rather than as a stale parser, which sends the reader
+to edit a file that is correct. The tick therefore re-execs itself once the
+stage lands, carrying the queue lock's descriptor across the exec rather than
+dropping it, and the restarted process runs the phase. `ensure_staged` has put
+the entry back in `queued` by then, so the restart spends no attempt. It fires
+only where the two commits differ under `scripts/`; a campaign that merely sits
+on another branch of the same scripts runs its phase in the staging tick as
+before.
+
 ### Polling a running campaign
 
 ```sh

@@ -10,6 +10,7 @@ The sections below cover the harness in depth. This table is the index, so that 
 |---|---|
 | `campaign.py` | The operating surface for a campaign: `stage`, `start`, `enqueue`, `tick`, `status`, `queue`, `collect`, `describe`. Everything that acts on a campaign goes through it. See `CLAUDE.md` for the state each verb leaves behind. |
 | `run_experiments.py` | Runs one phase of a sweep on one host and appends rows to the results CSV. Vendored into every campaign archive. |
+| `score_campaign.py` | The runner's scoring twin: one `score_curves.py --maximality` per run directory over one host's seeds, under a pinned worker pool, with a manifest of the budgets and binaries. What a `kind = "score"` phase runs. |
 | `gen_configs.py` | Writes the config tree a sweep runs over. Vendored likewise. |
 | `merge_experiments.py` | Joins per-host CSVs on `KEY_FIELDS`, keeping one row per key. Vendored likewise. |
 | `check_config_schema.py` | Lint, wired into CI and the pre-commit hook. Holds `config_io.cpp`, `config-schema.json`, `example-config.toml` and `gen_configs.DEFAULTS` against `include/config.hpp`. |
@@ -499,6 +500,31 @@ A phase takes `profile`, `jobs`, and optionally `name`, `sweeps`, `specs` and
 inclusive and may be comma-separated (`"0-9,20-29"`). Phases run in order and
 stop at the first failure.
 
+A phase's `kind` is `run`, the default, or `score`. A score phase is the
+offline maximality pass over a results directory, run after the search that
+wrote it, and takes keys of its own in place of `jobs`, `sweeps` and `specs`,
+which it refuses by name:
+
+```toml
+[[phases]]
+kind = "score"
+results = "experiments/results-rematch"   # default: the profile's results directory
+out = "experiments/curves-rematch"        # default: curves-<stem>, beside it
+workers = 8            # scorers in flight, each pinned to `cores` cores
+cores = 4              # cores per scorer, also score_curves.py --jobs
+cuts = 20
+maximal_timeout = 900  # seconds per maximal call, per cut
+compare_timeout = 600  # seconds for the compare call
+deadline_s = 4500      # score_curves.py stops adding cuts after this
+wall_cap_s = 5400      # outer timeout on one scorer; default deadline_s + 900
+```
+
+Either `results` or a profile (the phase's own, or the campaign's) must be
+present. Every budget defaults to `score_campaign.DEFAULTS` and is stated on
+the scorer's command line whatever the declaration said, so the manifest the
+host writes records the declaration's values. `hosts` narrows a score phase
+as it narrows a run phase, and each host scores its own seeds alone.
+
 A phase's own `hosts` table overrides the campaign-level split for that phase
 alone, and may only narrow it — every host it names must already be declared at
 the top level, since `stage` staged no other one. A host the table omits runs
@@ -538,7 +564,9 @@ python scripts/campaign.py stage arbiter-probe --force     # asks before it does
 Pushes the branch, then per host fetches it, checks it out at the pushed commit,
 runs the build command, runs the `configs` command and checks the configs
 directories, and reads `build-release/counter --version` back to confirm the
-binary carries that commit with `dirty=0`.
+binary carries that commit with `dirty=0`. A score phase's results directory
+is checked the same way, unless an earlier run phase of the campaign writes
+it, in which case the tick checks it when the phase's turn comes.
 
 It refuses by default on three readings, all three reported at once: a dirty
 checkout, a live `counter` or `run_experiments.py` process, and a checkout on
@@ -561,7 +589,43 @@ still run, and launches that host's phases as one detached `nohup` chain joined
 with `&&`. `--ignore-queue` overrides the last of those and names the entry it
 is racing. Each launch is appended to `experiments/<name>/launches.jsonl`.
 Neither `start` nor `enqueue` accepts a seed range: both read the split from
-`campaign.toml`, which is the only place it is written down.
+`campaign.toml`, which is the only place it is written down. A score phase
+joins the chain like any other phase, as a `score_campaign.py` command over
+the same seeds, and `start --dry-run` and `tick --dry-run` print it.
+
+### Scoring a finished search
+
+```sh
+# What a score phase runs on the host, over that host's seeds
+python3 scripts/score_campaign.py --results experiments/results-rematch \
+    --out experiments/curves-rematch --seeds 0 1 2 --workers 8 --cores 4 \
+    --cuts 20 --maximal-timeout 900 --compare-timeout 600 --deadline-s 4500
+python3 scripts/score_campaign.py ... --dry-run   # the queue and the command
+```
+
+`score_campaign.py` queues the run directories under `--results` whose name
+ends `_seed<N>` with N in `--seeds`, smallest first by the line count of
+`accumulated/index.tsv`, and runs one `score_curves.py --maximality` per
+directory from `--workers` threads, each pinned with `taskset` to a block of
+`--cores` cores and each invocation under coreutils `timeout --wall-cap-s`.
+A curve is written to `<out>/<run>.csv.part` and moved into place on a zero
+exit with a non-empty file; a failed attempt lands as `rc run` in
+`<out>/failures.txt`, every attempt appends its budgets and elapsed time to
+`<out>/timings.txt`, and every scorer's output goes to `<out>/warnings.log`.
+`<out>/score-manifest-<host>.json` records the seeds, the budgets, the
+invocation template, both scoring binaries' commits and the counts, and is
+what an archive's `maximality_pass` block is assembled from.
+
+It reads `build-release/maximal --version` and `build-release/compare
+--version` before it starts and refuses, as `run_experiments.py` does, a
+binary built from another commit, a dirty tree, or none; `--allow-stale-binary`
+downgrades that to a warning and is recorded in the manifest. It exits 0
+only when every queued run has a curve, and a rerun skips the runs that
+already have one, so a requeued phase re-scores only what failed. The three
+budgets and the wall cap are the two campaigns' values: 900 s per `maximal`
+call, 600 s for `compare`, a 4500 s deadline and a cap 900 s past it.
+`COUNTER_SCORE_CURVES_CMD`, `COUNTER_BIN_DIR`, `MAXIMAL_BIN` and
+`COMPARE_BIN` override what it runs, for a worktree or a test.
 
 ### The queue
 
@@ -687,6 +751,14 @@ from the checkout's current branch is flagged with `!`, and one launched off a
 binary built dirty — which needs `--allow-stale-binary`, so its rows name a
 commit they did not come from — is flagged with `*` on BINARY.
 
+A score phase is a `score:<out>` row, read from the `score-manifest-<host>.json`
+inside its output directory. ROWS is the count of curve CSVs under that
+directory against the queued count the manifest froze, STALE is the age of
+the newest file under it, BINARY is `maximal`'s commit (flagged `*` where the
+gate was overridden), and STATE follows the same three-hour rule with a
+`score_campaign.py` naming that directory in place of a runner naming a
+profile. `--campaign <out>` selects it.
+
 An unreachable host prints a row saying so rather than aborting the poll, and
 sets a non-zero exit status, so a wrapper can tell a full poll from a partial
 one.
@@ -709,7 +781,22 @@ python scripts/campaign.py collect --profile tlsf
 # One host, or the CSV without the per-run trees
 python scripts/campaign.py collect --profile tlsf --host av2
 python scripts/campaign.py collect --profile tlsf --no-results
+
+# A score phase's curves
+python scripts/campaign.py collect --curves curves-rematch --dry-run
+python scripts/campaign.py collect --curves curves-rematch
 ```
+
+`collect --curves NAME` is the score phase's half and reads none of
+`--profile`, `--csv` or `--results-dir`. It pulls each host's
+`experiments/NAME/` whole into `experiments/NAME/<host>/`, so the timings,
+failures and warnings files and the host's score manifest stay beside the
+curves and apart per host, then joins every per-run CSV into
+`experiments/NAME.csv` with the header written once. The verification is the
+one below over run names rather than keys: a run on both hosts is written
+once where the two copies are byte-identical and reported as MISMATCH where
+they differ, a curve whose header comes from another `score_curves.py`
+vintage is refused, and a host that answers nothing is INCOMPLETE.
 
 `collect` supersedes running `merge_experiments.py` by hand. It rsyncs each
 host's per-run tree and results CSV back and merges them on the same natural

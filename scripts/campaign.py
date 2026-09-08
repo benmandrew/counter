@@ -150,6 +150,12 @@ def render_script(template: str, **subs: str) -> str:
 # the same reason it is used everywhere else -- av2's ssh shell has no `python`.
 RUNNER_CMD = os.environ.get("COUNTER_RUNNER_CMD",
                             f"{REMOTE_PYTHON} scripts/run_experiments.py")
+# The scoring twin, for a `kind = "score"` phase: one score_curves.py per run
+# directory over this host's seeds, driven by scripts/score_campaign.py. The
+# same override pattern, so a tick running a score phase can be tested against
+# a stub exactly as a run phase is.
+SCORER_CMD = os.environ.get("COUNTER_SCORER_CMD",
+                            f"{REMOTE_PYTHON} scripts/score_campaign.py")
 
 # Rebuilt by stage. The lab machines have no Nix, so this is the incremental
 # build against an already-configured preset directory, not a configure step;
@@ -219,7 +225,18 @@ while IFS= read -r m; do
   cat "$m"
   echo "@M@ENDFILE"
 done
+echo "@M@SCOREMANIFESTS"
+find experiments -mindepth 2 -maxdepth 2 -type f -name 'score-manifest-*.json' 2>/dev/null |
+while IFS= read -r m; do
+  echo "@M@SFILE $m"
+  cat "$m"
+  echo "@M@ENDSFILE"
+done
 """ + QUEUE_BLOCK
+# A score phase's manifest sits inside its output directory rather than
+# beside a CSV, one level down, so it gets a sweep of its own: widening the
+# first to depth two would pull in the per-host manifests archived campaigns
+# keep under their own directories.
 # The manifest sweep goes through `find`, not a glob, because the lab login
 # shell is zsh: its default NOMATCH aborts the whole script where a glob matches
 # nothing, so on a host with no manifest every section after the loop vanishes.
@@ -256,6 +273,22 @@ def detail_script(root: str, campaigns: list[dict]) -> str:
     """
     lines = [f"cd {shlex.quote(root)} 2>/dev/null || exit 3"]
     for c in campaigns:
+        if c.get("kind") == "score":
+            # A score phase's progress is a directory listing: one CSV per
+            # scored run, moved into place whole, and the newest file under
+            # the output directory for staleness. No plan to ask for -- the
+            # queued count is in the manifest already.
+            q_out = shlex.quote(c["out"])
+            lines += [
+                f'echo "{MARK}CAMPAIGN {c["profile"]}"',
+                f"if [ -d {q_out} ]; then",
+                f'  echo "{MARK}CSVS $(find {q_out} -maxdepth 1 -type f '
+                "-name '*.csv' 2>/dev/null | wc -l)\"",
+                f'  echo "{MARK}OUTMTIME $(find {q_out} -maxdepth 1 -type f '
+                "-printf '%T@\\n' 2>/dev/null | sort -rn | head -1)\"",
+                "fi",
+            ]
+            continue
         q_csv = shlex.quote(c["results_csv"])
         q_dir = shlex.quote(c["results_dir"])
         lines += [
@@ -320,12 +353,13 @@ def run_shell(host: str, script: str, timeout: int = SSH_TIMEOUT_S):
 
 def parse_inventory(text: str) -> dict:
     """Split the inventory script's marker-delimited output into fields."""
-    out: dict = {"ps": [], "manifests": [], "queue": [], "hostname": "?",
-                 "epoch": None, "branch": "?", "head": "?", "dirty": None,
-                 "error": None}
+    out: dict = {"ps": [], "manifests": [], "score_manifests": [],
+                 "queue": [], "hostname": "?", "epoch": None, "branch": "?",
+                 "head": "?", "dirty": None, "error": None}
     section = None
     manifest_lines: list[str] = []
     queue_name = ""
+    score_name = ""
     buf: list[str] = []
 
     def flush() -> None:
@@ -351,6 +385,20 @@ def parse_inventory(text: str) -> dict:
                 pass
             section = "manifests"
             continue
+        if line.startswith(MARK + "SFILE "):
+            section = "sfile"
+            score_name = line[len(MARK) + 6:].strip()
+            manifest_lines = []
+            continue
+        if line.startswith(MARK + "ENDSFILE"):
+            try:
+                manifest = json.loads("\n".join(manifest_lines))
+                manifest["file"] = score_name
+                out["score_manifests"].append(manifest)
+            except (json.JSONDecodeError, TypeError):
+                pass
+            section = "scoremanifests"
+            continue
         if line.startswith(MARK + "QFILE "):
             section = "qfile"
             queue_name = line[len(MARK) + 6:].strip()
@@ -374,7 +422,7 @@ def parse_inventory(text: str) -> dict:
             continue
         if section == "ps":
             out["ps"].append(line)
-        elif section in ("file", "qfile"):
+        elif section in ("file", "qfile", "sfile"):
             manifest_lines.append(line)
         else:
             buf.append(line)
@@ -434,11 +482,15 @@ def parse_detail(text: str) -> dict:
             current["csv_rows"] = max(0, int(rest) - 1)
         elif tag == "CSVMTIME" and rest.isdigit():
             current["csv_mtime"] = int(rest)
-        elif tag == "LOGMTIME" and rest:
+        elif tag in ("LOGMTIME", "OUTMTIME") and rest:
+            # One staleness field for both kinds: the newest run.log under a
+            # results directory, or the newest file under a curves directory.
             try:
                 current["log_mtime"] = int(float(rest))
             except ValueError:
                 pass
+        elif tag == "CSVS" and rest.isdigit():
+            current["csvs"] = int(rest)
         elif tag == "RUNDIRS" and rest.isdigit():
             current["run_dirs"] = int(rest)
         elif tag == "PLAN":
@@ -447,6 +499,8 @@ def parse_detail(text: str) -> dict:
     for entry in per.values():
         if "rows_done_plan" in entry:
             entry["rows_done"] = entry["rows_done_plan"]
+        elif "csvs" in entry:
+            entry["rows_done"] = entry["csvs"]
         elif "csv_rows" in entry:
             entry["rows_done"] = entry["csv_rows"]
             entry["rows_from_csv"] = True
@@ -455,16 +509,23 @@ def parse_detail(text: str) -> dict:
 
 # -- Process detection --------------------------------------------------------
 
-ENGINE_COMMS = ("counter", "compare", "ltlsynt", "black")
+# `maximal` is here for the scoring pass, which runs it under score_curves.py
+# beside `compare`; both are engine processes a stage must not reset under.
+ENGINE_COMMS = ("counter", "compare", "maximal", "ltlsynt", "black")
 
 
 def live_processes(ps_lines: list[str]) -> list[dict]:
-    """Runner and engine processes, from a ``comm args`` process listing.
+    """Runner, scorer and engine processes, from a ``comm args`` listing.
 
     Matched on ``comm``, never on the whole command line. ``pgrep -f
     run_experiments.py`` would match this script's own ssh command, whose text
     names it; the comm of that process is the login shell, so keying on comm
     excludes it by construction.
+
+    A scorer (score_campaign.py, the score phase's twin of the runner) is
+    reported with ``kind = "score"`` and the ``--out`` directory it writes,
+    which is what a score phase's status row is matched against; it names no
+    profile, so nothing that keys on one mistakes it for a run.
     """
     found = []
     for line in ps_lines:
@@ -477,20 +538,29 @@ def live_processes(ps_lines: list[str]) -> list[dict]:
                 continue
             found.append({"comm": comm, "profile": profile_of_args(args),
                           "args": args})
+        elif comm.startswith("python") and "score_campaign.py" in args:
+            if "--dry-run" in args:
+                continue
+            found.append({"comm": comm, "profile": None, "kind": "score",
+                          "out": option_of_args(args, "--out"), "args": args})
     return found
 
 
-def profile_of_args(args: str) -> str:
+def option_of_args(args: str, option: str):
     try:
         words = shlex.split(args)
     except ValueError:
         words = args.split()
     for i, word in enumerate(words):
-        if word == "--profile" and i + 1 < len(words):
+        if word == option and i + 1 < len(words):
             return words[i + 1]
-        if word.startswith("--profile="):
+        if word.startswith(option + "="):
             return word.split("=", 1)[1]
-    return "full"
+    return None
+
+
+def profile_of_args(args: str) -> str:
+    return option_of_args(args, "--profile") or "full"
 
 
 # -- Gathering ----------------------------------------------------------------
@@ -519,6 +589,46 @@ def campaigns_from_manifests(manifests: list[dict]) -> list[dict]:
             "specs": sweep.get("specs") or [],
             "seeds": sweep.get("seeds") or [],
             "jobs": sweep.get("jobs"),
+        })
+    out.sort(key=lambda c: (c.get("started") or "", c["profile"]))
+    return out
+
+
+def campaigns_from_score_manifests(manifests: list[dict]) -> list[dict]:
+    """One record per score manifest, in the shape the run records take.
+
+    The output directory's name stands where a profile would, since a score
+    phase has none of its own, and ``label`` is what the table prints. The
+    planned count is the manifest's queued count -- the scorer wrote it
+    knowing this host's seeds -- and the done count comes from the detail
+    probe's listing of the directory, so a pass that is still running reads
+    live rather than from the counts its manifest froze at launch.
+    """
+    out = []
+    for m in manifests:
+        git = m.get("git") or {}
+        maximal = (m.get("binaries") or {}).get("maximal") or {}
+        counts = m.get("counts") or {}
+        out_dir = str(m.get("out") or Path(m.get("file", "?")).parent)
+        name = Path(out_dir).name
+        out.append({
+            "kind": "score",
+            "profile": name,
+            "label": f"score:{name}",
+            "out": out_dir,
+            "results": m.get("results", ""),
+            "manifest_host": m.get("hostname", "?"),
+            "started": m.get("started"),
+            "finished": m.get("finished"),
+            "branch": git.get("branch", "?"),
+            "head": (git.get("head") or "?")[:7],
+            "binary_commit": maximal.get("commit_short", "?"),
+            # A maximal built dirty, or a pass that overrode the gate: either
+            # way the curves name a commit they may not have come from.
+            "dirty_binary": (maximal.get("dirty") == "1"
+                             or bool(m.get("allow_stale_binary"))),
+            "rows_planned": counts.get("queued"),
+            "seeds": m.get("seeds") or [],
         })
     out.sort(key=lambda c: (c.get("started") or "", c["profile"]))
     return out
@@ -558,7 +668,8 @@ def gather_host(host: str, root: str, only: str | None, want_plan: bool,
         "processes": live_processes(inv["ps"]),
         "queue": inv["queue"],
     })
-    campaigns = campaigns_from_manifests(inv["manifests"])
+    campaigns = (campaigns_from_manifests(inv["manifests"])
+                 + campaigns_from_score_manifests(inv["score_manifests"]))
     if only:
         campaigns = [c for c in campaigns if c["profile"] == only]
     elif not show_all:
@@ -610,8 +721,7 @@ def annotate(c: dict, host_report: dict) -> None:
     planned = c.get("rows_planned")
     c["pct"] = (100.0 * done / planned) if done is not None and planned else None
     c["stale_s"] = now - c["log_mtime"] if c.get("log_mtime") else None
-    c["running"] = any(p["profile"] and p["profile"] == c["profile"]
-                       for p in host_report["processes"])
+    c["running"] = any(claims_campaign(p, c) for p in host_report["processes"])
     started = parse_started(c.get("started"))
     c["elapsed_s"] = int(now - started) if started else None
 
@@ -636,6 +746,20 @@ def annotate(c: dict, host_report: dict) -> None:
         rate = done / c["elapsed_s"]
         if rate > 0:
             c["eta_s"] = int((planned - done) / rate)
+
+
+def claims_campaign(proc: dict, c: dict) -> bool:
+    """Whether a live process is this campaign's own.
+
+    A runner claims the campaign whose profile it names; a scorer claims the
+    score phase whose output directory it names, compared by name since the
+    manifest and the process may spell the path relative or absolute. Neither
+    claims the other's kind, and an engine process claims nothing.
+    """
+    if c.get("kind") == "score":
+        return (proc.get("kind") == "score" and bool(proc.get("out"))
+                and Path(proc["out"]).name == Path(c.get("out", "")).name)
+    return bool(proc.get("profile")) and proc["profile"] == c["profile"]
 
 
 def parse_started(value: str | None) -> float | None:
@@ -841,7 +965,7 @@ def status_rows(reports: list[dict]) -> list[list[str]]:
                 str(done) if done is not None else "?")
             rows.append([
                 r["host"],
-                c["profile"],
+                c.get("label") or c["profile"],
                 f"{done_cell}/{planned if planned is not None else '?'}",
                 # Truncated, not rounded: 797/800 reading "100%" is the one
                 # number a status poll must not get wrong.
@@ -867,8 +991,18 @@ def status_notes(reports: list[dict]) -> list[str]:
             if p["profile"]:
                 notes.append(f"{r['host']}: runner live on "
                              f"--profile {p['profile']}")
+            elif p.get("kind") == "score":
+                notes.append(f"{r['host']}: scorer live on "
+                             f"--out {p.get('out') or '?'}")
         for c in r["campaigns"]:
-            if c["state"] == "stuck":
+            if c["state"] == "stuck" and c.get("kind") == "score":
+                notes.append(
+                    f"{r['host']}/{c.get('label') or c['profile']}: a scorer "
+                    f"is alive on this output directory but nothing under it "
+                    f"has been touched for {human_duration(c['stale_s'])} — "
+                    f"longer than one run's scoring may take, so it is "
+                    f"producing nothing")
+            elif c["state"] == "stuck":
                 notes.append(
                     f"{r['host']}/{c['profile']}: a runner is alive on this "
                     f"profile but its newest run.log has not been touched for "
@@ -880,7 +1014,10 @@ def status_notes(reports: list[dict]) -> list[str]:
             if c.get("dirty_binary"):
                 notes.append(f"{r['host']}/{c['profile']}: launched off a "
                              f"binary built dirty (* on BINARY)")
-            if c.get("rows_planned") is None:
+            if c.get("rows_planned") is None and c.get("kind") == "score":
+                notes.append(f"{r['host']}/{c.get('label')}: the score "
+                             f"manifest records no queued count")
+            elif c.get("rows_planned") is None:
                 notes.append(f"{r['host']}/{c['profile']}: no plan — that "
                              f"checkout may no longer define the profile")
             if c.get("rows_from_csv"):
@@ -954,7 +1091,11 @@ def print_status(reports: list[dict]) -> None:
           "a runner names this profile and the log is fresher than\n"
           f"{human_duration(STALE_RUN_S)}; stuck means the runner is there and "
           "the log is not moving. ETA\nextrapolates rows-so-far over time "
-          "since the manifest was written, and is crude by\nconstruction.")
+          "since the manifest was written, and is crude by\nconstruction. "
+          "A score: row is a scoring pass: ROWS is curves written against "
+          "runs queued,\nfrom its score-manifest, STALE is the newest file "
+          "under its output directory, and\nrunning means a scorer names "
+          "that directory.")
 
 
 def cmd_status(args: argparse.Namespace) -> int:
@@ -1197,9 +1338,243 @@ def collect_dry_run(hosts: list[str], csv_name: str, result_dir: str | None,
     return 0 if ok else 1
 
 
+# -- collect --curves ---------------------------------------------------------
+#
+# A score phase leaves one CSV per run under <out>/ on each host, beside the
+# timings, failures and warnings files and the host's score manifest. Each
+# host's directory is pulled whole into experiments/<out>/<host>/ -- the raw
+# per-host record, which is what an archive's maximality_pass block is
+# assembled from -- and the per-run CSVs are then joined into
+# experiments/<out>.csv, header once. The join is a union by run name, as the
+# results merge is a union by key: two hosts on disjoint seeds share no run
+# name, and a run scored on both is a split violation worth reporting.
+
+CURVES_SIDE_FILES = ("timings.txt", "failures.txt", "warnings.log")
+
+
+def curves_dir_local(out_name: str) -> Path:
+    return REPO_ROOT / "experiments" / out_name
+
+
+def host_curves(directory: Path) -> dict:
+    """``{run name: path}`` for the per-run CSVs under one host's pull."""
+    return {p.name[:-len(".csv")]: p for p in sorted(directory.glob("*.csv"))
+            if p.is_file() and p.stat().st_size > 0}
+
+
+def csv_header(path: Path) -> str:
+    with open(path, newline="") as handle:
+        return handle.readline().rstrip("\r\n")
+
+
+def count_csv_rows(path: Path) -> int:
+    if not path.is_file():
+        return 0
+    with open(path, newline="") as handle:
+        return max(0, sum(1 for _ in handle) - 1)
+
+
+def pull_curves(host: str, out_name: str, dry_run: bool) -> dict:
+    """rsync one host's ``<out>/`` into ``experiments/<out>/<host>/``.
+
+    The whole directory, not the CSVs alone: the timings, failures and
+    warnings files and the score manifest are the record of how each curve
+    was produced, and they travel with it. Returns rsync's verdict; a dry run
+    reports the transfer it would make and moves nothing.
+    """
+    src = f"{source_root(host)}/experiments/{out_name}/"
+    dst = curves_dir_local(out_name) / host
+    if not dry_run:
+        dst.mkdir(parents=True, exist_ok=True)
+    cmd = ["rsync", "-a", "-e", " ".join(["ssh", *SSH_OPTS])]
+    if dry_run:
+        cmd += ["--dry-run", "--stats"]
+    proc = subprocess.run([*cmd, src, f"{dst}/"], capture_output=True,
+                          text=True)
+    out: dict = {"ok": proc.returncode == 0, "dest": dst}
+    for line in proc.stdout.splitlines():
+        if line.startswith("Number of regular files transferred:"):
+            out["files"] = int(line.split(":")[1].strip().replace(",", ""))
+        elif line.startswith("Total transferred file size:"):
+            out["bytes"] = int(line.split(":")[1].split()[0].replace(",", ""))
+    if not out["ok"]:
+        tail = [ln.strip() for ln in proc.stderr.splitlines() if ln.strip()]
+        out["error"] = tail[-1] if tail else f"exit {proc.returncode}"
+    return out
+
+
+def merge_curves(per_host: dict, merged_csv: Path) -> tuple:
+    """Join every host's per-run CSVs into one file, header once.
+
+    Returns ``(union, problems)``: the run names that would be written, and
+    the reasons the join is not clean. A run present on two hosts is written
+    once, from the first host, and reported unless the two copies are
+    byte-identical -- the seeds are split, so two differing copies of one
+    run mean two hosts scored it, under budgets that may differ. Two
+    distinct headers among the curves mean two vintages of score_curves.py,
+    and the join refuses naming both rather than concatenating one set of
+    rows under the other's columns.
+
+    The merged file is written only when every curve was accepted. A join
+    with any problem leaves whatever ``merged_csv`` held before, so a bad
+    collect cannot overwrite a good file with a partial one.
+    """
+    problems: list = []
+    chosen: dict = {}
+    for host, curves in per_host.items():
+        for run, path in curves.items():
+            if run in chosen:
+                other = chosen[run][1]
+                if path.read_bytes() != other.read_bytes():
+                    problems.append(f"{run} scored on both {chosen[run][0]} "
+                                    f"and {host}, and the two curves differ")
+                continue
+            chosen[run] = (host, path)
+    if not chosen:
+        return [], problems
+    ordered = sorted(chosen)
+    headers: dict = {}
+    for run in ordered:
+        headers.setdefault(csv_header(chosen[run][1]), []).append(run)
+    if len(headers) > 1:
+        shown = "; ".join(f"{header!r} on {len(runs)} curve(s) e.g. {runs[0]}"
+                          for header, runs in headers.items())
+        problems.append(f"{len(headers)} different headers among the curves, "
+                        f"which is more than one score_curves.py vintage: "
+                        f"{shown}")
+    if problems:
+        return ordered, problems
+    header = next(iter(headers))
+    tmp = merged_csv.with_name(merged_csv.name + ".tmp")
+    with open(tmp, "w", newline="") as out:
+        out.write(header + "\n")
+        for run in ordered:
+            with open(chosen[run][1], newline="") as handle:
+                handle.readline()
+                for line in handle:
+                    if line.strip():
+                        out.write(line if line.endswith("\n") else line + "\n")
+    os.replace(tmp, merged_csv)
+    return ordered, problems
+
+
+def verify_curves(merged_csv: Path, before_rows: int, per_host: dict,
+                  union: list, problems: list, missing: list,
+                  host_dirs: dict) -> bool:
+    """The results merge's verification, over run names rather than keys.
+
+    Every per-run row is expected in the merged file exactly once, so the
+    merged row count must equal the sum over the union of each chosen
+    curve's rows. A host that answered nothing is INCOMPLETE, for the reason
+    verify_merge gives: arithmetic over the hosts that did answer agrees
+    with itself.
+    """
+    ok = not missing and not problems
+    print("\nVerification")
+    if missing:
+        print(f"  INCOMPLETE: no curves from {', '.join(missing)} — the "
+              f"merged file is missing that host's share of the pass.")
+        print("  Everything below is over the hosts that did answer, so it "
+              "cannot detect that.")
+    for problem in problems:
+        print(f"  MISMATCH: {problem}")
+    merged_rows = count_csv_rows(merged_csv)
+    print(f"  merged rows:    {merged_rows}")
+    print(f"  curves merged:  {len(union)}")
+    print(f"  local before:   {before_rows} rows")
+    for host, curves in per_host.items():
+        failures = host_dirs[host] / "failures.txt"
+        failed = (len([ln for ln in failures.read_text().splitlines()
+                       if ln.strip()]) if failures.is_file() else 0)
+        print(f"  {host}: {len(curves)} curves"
+              + (f", {failed} failed attempt(s) in failures.txt"
+                 if failed else ""))
+    pairs = list(per_host.items())
+    for i, (h1, c1) in enumerate(pairs):
+        for h2, c2 in pairs[i + 1:]:
+            shared = set(c1) & set(c2)
+            if shared:
+                print(f"  overlap {h1}/{h2}: {len(shared)} run(s) scored on "
+                      f"both")
+    if problems:
+        print(f"  the merged file was not written; {merged_csv} holds what "
+              f"it held before ({before_rows} rows)")
+        return False
+    # Each run counted once: the first host holding it is the one written.
+    seen: set = set()
+    expected = 0
+    for host, curves in per_host.items():
+        for run, path in curves.items():
+            if run in union and run not in seen:
+                seen.add(run)
+                expected += count_csv_rows(path)
+    print(f"  expected rows:  {expected}")
+    if merged_rows != expected:
+        ok = False
+        print(f"  MISMATCH: the merged file holds {merged_rows} rows against "
+              f"{expected} across the chosen curves")
+    if ok:
+        print("  OK: every curve is present exactly once.")
+    return ok
+
+
+def collect_curves(hosts: list, out_name: str, dry_run: bool) -> int:
+    local_out = curves_dir_local(out_name)
+    merged_csv = REPO_ROOT / "experiments" / f"{out_name}.csv"
+    print(f"Collecting curves: experiments/{out_name}/ from each host into "
+          f"experiments/{out_name}/<host>/, joined into "
+          f"experiments/{out_name}.csv")
+    print(f"Hosts:             {', '.join(hosts)}\n")
+    if dry_run:
+        rows, ok = [], True
+        for host in hosts:
+            pending = pull_curves(host, out_name, True)
+            if not pending["ok"]:
+                ok = False
+                rows.append([host, f"(rsync probe failed: "
+                                   f"{pending.get('error')})", "-"])
+                continue
+            rows.append([host, f"experiments/{out_name}/{host}/",
+                         f"{pending.get('files', 0)} files / "
+                         f"{human_bytes(pending.get('bytes'))}"])
+        print(render_table(rows, ["HOST", "INTO", "WOULD TRANSFER"]))
+        print("\nDry run — nothing transferred, nothing written.")
+        return 0 if ok else 1
+
+    before_rows = count_csv_rows(merged_csv)
+    per_host: dict = {}
+    host_dirs: dict = {}
+    missing: list = []
+    for host in hosts:
+        pulled = pull_curves(host, out_name, False)
+        if not pulled["ok"]:
+            print(f"  ERROR: {host} transfer failed ({pulled.get('error')})")
+            missing.append(host)
+            continue
+        curves = host_curves(pulled["dest"])
+        if not curves:
+            print(f"  ERROR: {host} contributed no curves under "
+                  f"experiments/{out_name}/")
+            missing.append(host)
+            continue
+        print(f"  {host}: {len(curves)} curve(s) pulled")
+        per_host[host] = curves
+        host_dirs[host] = pulled["dest"]
+    if not per_host:
+        print(f"\nNo curves found on any host — nothing merged.")
+        return 1
+    union, problems = merge_curves(per_host, merged_csv)
+    if not problems:
+        print(f"\nMerged {len(union)} curve(s) → {merged_csv}")
+    return 0 if verify_curves(merged_csv, before_rows, per_host, union,
+                              problems, missing, host_dirs) else 1
+
+
 def cmd_collect(args: argparse.Namespace) -> int:
-    csv_name, result_dir = resolve_profile(args)
     hosts = [args.host] if args.host else list(HOSTS)
+    if getattr(args, "curves", None):
+        return collect_curves(hosts, args.curves, args.dry_run)
+    csv_name, result_dir = resolve_profile(args)
     results_csv = REPO_ROOT / "experiments" / csv_name
     # Named for what actually chose the file: --csv bypasses --profile
     # entirely, and a banner reading "Profile: full" over an arbiter-probe
@@ -1497,7 +1872,19 @@ class CampaignError(Exception):
 
 CAMPAIGN_KEYS = {"name", "branch", "profile", "hosts", "phases", "build",
                  "configs", "description"}
-PHASE_KEYS = {"name", "profile", "jobs", "sweeps", "specs", "hosts"}
+# A phase is a search run (`kind = "run"`, the default and what every phase
+# was before the key existed) or an offline scoring pass over a results
+# directory (`kind = "score"`). Each kind reads its own keys: the runner's
+# selection keys mean nothing to the scorer, and the scorer's budgets mean
+# nothing to the runner, so a key from the other kind is refused by name
+# rather than carried along unread.
+PHASE_KINDS = ("run", "score")
+RUN_PHASE_KEYS = {"name", "kind", "profile", "jobs", "sweeps", "specs", "hosts"}
+SCORE_BUDGET_KEYS = ("workers", "cores", "cuts", "maximal_timeout",
+                     "compare_timeout", "deadline_s", "wall_cap_s")
+SCORE_PHASE_KEYS = {"name", "kind", "profile", "results", "out", "hosts",
+                    *SCORE_BUDGET_KEYS}
+PHASE_KEYS = RUN_PHASE_KEYS | SCORE_PHASE_KEYS
 
 # `describe` prints a declaration for a campaign that has already closed. It
 # is not one of these: the factor cross below is what the results CSV carries,
@@ -1607,14 +1994,48 @@ def profile_configs_dir(profile: str) -> str:
     same thing on both sides, since the script has already cd'd to the host's
     checkout before it looks.
     """
+    return profile_dir(profile, "configs_dir", "configs")
+
+
+def profile_results_dir(profile: str) -> str:
+    """A profile's results directory, relative to the repo root.
+
+    What a score phase scores when it names a profile rather than a
+    directory: the runner wrote that profile's runs there, on this host, in
+    the phase before.
+    """
+    return profile_dir(profile, "results_dir", "results")
+
+
+def profile_dir(profile: str, key: str, what: str) -> str:
     import run_experiments  # noqa: PLC0415
-    path = Path(run_experiments.PROFILES[profile]["configs_dir"])
+    path = Path(run_experiments.PROFILES[profile][key])
     try:
         return str(path.relative_to(run_experiments.REPO_ROOT))
     except ValueError:
         raise CampaignError(
-            f"profile {profile!r} puts its configs at {path}, outside the "
+            f"profile {profile!r} puts its {what} at {path}, outside the "
             f"checkout — stage cannot name that path on a host") from None
+
+
+def curves_dir_for(results: str) -> str:
+    """Default output directory for a score phase: ``curves-<stem>``, the stem
+    being the results directory's name without its ``results-`` prefix, so
+    ``results-rematch`` scores into ``curves-rematch`` beside it."""
+    stem = Path(results).name
+    if stem.startswith("results-"):
+        stem = stem[len("results-"):]
+    elif stem == "results":
+        stem = ""
+    parent = str(Path(results).parent)
+    name = f"curves-{stem}" if stem else "curves"
+    return name if parent in ("", ".") else f"{parent}/{name}"
+
+
+def score_defaults() -> dict:
+    """The scorer's own defaults, read from it rather than copied here."""
+    import score_campaign  # noqa: PLC0415
+    return dict(score_campaign.DEFAULTS)
 
 
 def campaign_path(name: str, root: Path | None = None) -> Path:
@@ -1663,19 +2084,56 @@ def load_campaign(name: str, root: Path | None = None) -> dict:
         where = f"{path}: phases[{index}]"
         if not isinstance(phase, dict):
             raise CampaignError(f"{where} is not a table")
-        unknown = sorted(set(phase) - PHASE_KEYS)
+        kind = phase.get("kind", "run")
+        if kind not in PHASE_KINDS:
+            raise CampaignError(f"{where}: kind must be one of "
+                                f"{', '.join(PHASE_KINDS)}, not {kind!r}")
+        allowed = SCORE_PHASE_KEYS if kind == "score" else RUN_PHASE_KEYS
+        unknown = sorted(set(phase) - allowed)
         if unknown:
-            raise CampaignError(f"{where}: unknown key(s) {', '.join(unknown)}")
+            raise CampaignError(f"{where}: unknown key(s) {', '.join(unknown)} "
+                                f"on a {kind} phase; known: "
+                                f"{', '.join(sorted(allowed))}")
         profile = phase.get("profile", raw.get("profile"))
-        if not isinstance(profile, str) or not profile:
-            raise CampaignError(f"{where}: no profile, and no top-level "
-                                f"profile to fall back on")
-        if profile not in profiles:
-            raise CampaignError(
-                f"{where}: run_experiments.py in this checkout defines no "
-                f"profile {profile!r}. A campaign names a profile the runner "
-                f"defines; it does not declare one. Known: "
-                f"{', '.join(sorted(profiles))}")
+        if kind == "score":
+            results = phase.get("results")
+            if results is not None and (not isinstance(results, str)
+                                        or not results):
+                raise CampaignError(f"{where}: results must be a non-empty "
+                                    f"string naming a directory under the "
+                                    f"checkout")
+            if results is None and profile is None:
+                raise CampaignError(
+                    f"{where}: a score phase needs `results` (a results "
+                    f"directory) or `profile` (whose results directory it "
+                    f"scores), and has neither")
+        # A score phase naming a results directory needs no profile. Every
+        # other phase does, and a profile named anywhere must be one this
+        # checkout's runner defines.
+        if profile is not None or kind == "run":
+            if not isinstance(profile, str) or not profile:
+                raise CampaignError(f"{where}: no profile, and no top-level "
+                                    f"profile to fall back on")
+            if profile not in profiles:
+                raise CampaignError(
+                    f"{where}: run_experiments.py in this checkout defines "
+                    f"no profile {profile!r}. A campaign names a profile the "
+                    f"runner defines; it does not declare one. Known: "
+                    f"{', '.join(sorted(profiles))}")
+        phase_hosts = None
+        if phase.get("hosts") is not None:
+            phase_hosts = parse_host_split(phase["hosts"], f"{where}: hosts")
+            extra = sorted(set(phase_hosts) - set(seeds_by_host))
+            if extra:
+                raise CampaignError(
+                    f"{where}: hosts {', '.join(extra)} are not declared at "
+                    f"the campaign level. A phase narrows the split; it "
+                    f"cannot add a host, which stage never staged and the "
+                    f"other phases would never run on.")
+        if kind == "score":
+            normalised.append(normalise_score_phase(phase, where, profile,
+                                                    phase_hosts))
+            continue
         jobs = phase.get("jobs")
         if jobs is not None and (isinstance(jobs, bool) or not isinstance(jobs, int)
                                  or jobs < 1):
@@ -1687,17 +2145,7 @@ def load_campaign(name: str, root: Path | None = None) -> dict:
                     and all(isinstance(v, str) for v in value)):
                 raise CampaignError(f"{where}: {key} must be an array of "
                                     f"strings")
-        phase_hosts = None
-        if phase.get("hosts") is not None:
-            phase_hosts = parse_host_split(phase["hosts"], f"{where}: hosts")
-            extra = sorted(set(phase_hosts) - set(seeds_by_host))
-            if extra:
-                raise CampaignError(
-                    f"{where}: hosts {', '.join(extra)} are not declared at "
-                    f"the campaign level. A phase narrows the split; it "
-                    f"cannot add a host, which stage never staged and the "
-                    f"other phases would never run on.")
-        normalised.append({"name": phase.get("name", profile),
+        normalised.append({"name": phase.get("name", profile), "kind": "run",
                            "profile": profile, "jobs": jobs,
                            "sweeps": phase.get("sweeps"),
                            "specs": phase.get("specs"),
@@ -1709,16 +2157,88 @@ def load_campaign(name: str, root: Path | None = None) -> dict:
     configs = raw.get("configs")
     if configs is not None and (not isinstance(configs, str) or not configs):
         raise CampaignError(f"{path}: configs must be a non-empty string")
-    # Every profile the phases name, not just the campaign-level one: a
+    # Every profile the run phases name, not just the campaign-level one: a
     # campaign whose phases straddle two profiles reads two configs
     # directories, and checking only the default leaves the second phase to
-    # fail on the host, hours after the stage said the host was ready.
+    # fail on the host, hours after the stage said the host was ready. A score
+    # phase reads no configs; what it reads is a results directory, checked
+    # separately below.
     config_dirs = sorted({profile_configs_dir(phase["profile"])
-                          for phase in normalised})
+                          for phase in normalised if phase_kind(phase) == "run"})
     return {"name": name, "branch": branch, "build": build, "path": path,
             "configs": configs, "config_dirs": config_dirs,
+            "results_dirs": staged_results_dirs(normalised, seeds_by_host),
             "hosts": seeds_by_host, "phases": normalised,
             "description": raw.get("description", "")}
+
+
+def normalise_score_phase(phase: dict, where: str, profile,
+                          phase_hosts) -> dict:
+    """A score phase's record: where it reads, where it writes, its budgets.
+
+    ``results`` defaults to the named profile's results directory, made
+    relative the way the configs directory is, since the same host-side
+    check reads it; ``out`` defaults to ``curves-<stem>`` beside it. Every
+    budget defaults to the scorer's own value and is carried explicitly to the
+    command line, so the manifest the host writes names what the declaration
+    meant rather than what the scorer happened to default to.
+    """
+    # `results` and the profile were checked by the caller; one of the two is
+    # present by the time this runs.
+    results = phase.get("results") or profile_results_dir(profile)
+    out = phase.get("out", curves_dir_for(results))
+    if not isinstance(out, str) or not out:
+        raise CampaignError(f"{where}: out must be a non-empty string naming "
+                            f"a directory under the checkout")
+    budgets = score_defaults()
+    for key in SCORE_BUDGET_KEYS:
+        value = phase.get(key)
+        if value is None:
+            continue
+        if isinstance(value, bool) or not isinstance(value, int) or value < 1:
+            raise CampaignError(f"{where}: {key} must be a positive integer")
+        budgets[key] = value
+    if "wall_cap_s" not in budgets:
+        import score_campaign  # noqa: PLC0415
+        budgets["wall_cap_s"] = score_campaign.wall_cap_default(
+            budgets["deadline_s"])
+    return {"name": phase.get("name", Path(out).name), "kind": "score",
+            "profile": profile, "jobs": None, "sweeps": None, "specs": None,
+            "hosts": phase_hosts, "results": results, "out": out, **budgets}
+
+
+def phase_kind(phase: dict) -> str:
+    """`run` unless the phase says otherwise. A phase record built before
+    the key existed carries none, and every one of those is a run."""
+    return phase.get("kind") or "run"
+
+
+def staged_results_dirs(phases: list, seeds_by_host: dict) -> dict:
+    """Per host, the results directories `stage` has to find there already.
+
+    A score phase reads a results directory the way a run phase reads a
+    configs directory, and an absent one fails the phase on the host after
+    the stage said the host was ready. But the common case is a score phase
+    scoring the run phase declared before it in the same campaign, whose
+    results directory does not exist until that phase has run, so those are
+    not demanded at stage time: only a directory no earlier run phase of this
+    campaign produces is, and only on the hosts the phase runs on, since a
+    phase narrowed away from a host reads nothing there.
+    """
+    out: dict = {}
+    for host, seeds in seeds_by_host.items():
+        produced: set = set()
+        wanted: list = []
+        for phase in phases:
+            if not phase_seeds(phase, host, seeds):
+                continue
+            if phase_kind(phase) == "run":
+                produced.add(profile_results_dir(phase["profile"]))
+            elif (phase["results"] not in produced
+                  and phase["results"] not in wanted):
+                wanted.append(phase["results"])
+        out[host] = sorted(wanted)
+    return out
 
 
 def campaign_hosts(campaign: dict, only: list | None) -> list:
@@ -1774,6 +2294,8 @@ def phase_args(phase: dict, seeds: list) -> list:
     argument typed at launch time: a hand-typed range is how two hosts end up
     running the same seeds.
     """
+    if phase_kind(phase) == "score":
+        return score_phase_args(phase, seeds)
     args = ["--profile", phase["profile"]]
     if phase.get("jobs"):
         args += ["--jobs", str(phase["jobs"])]
@@ -1784,9 +2306,27 @@ def phase_args(phase: dict, seeds: list) -> list:
     return args + ["--seeds", *[str(s) for s in seeds]]
 
 
+def score_phase_args(phase: dict, seeds: list) -> list:
+    """The scorer's arguments: every budget stated, then the seeds.
+
+    Stated rather than left to the scorer's defaults so the two never
+    disagree about what a phase ran under, and so the manifest the scorer
+    writes on the host records the declaration's values.
+    """
+    args = ["--results", phase["results"], "--out", phase["out"]]
+    for key in SCORE_BUDGET_KEYS:
+        args += [f"--{key.replace('_', '-')}", str(phase[key])]
+    return args + ["--seeds", *[str(s) for s in seeds]]
+
+
+def phase_launcher(phase: dict) -> str:
+    """The command a phase's arguments follow: the runner, or the scorer."""
+    return SCORER_CMD if phase_kind(phase) == "score" else RUNNER_CMD
+
+
 def phase_command(phase: dict, seeds: list) -> str:
-    return " ".join([RUNNER_CMD] + [shlex.quote(a)
-                                    for a in phase_args(phase, seeds)])
+    return " ".join([phase_launcher(phase)]
+                    + [shlex.quote(a) for a in phase_args(phase, seeds)])
 
 
 # -- describe -----------------------------------------------------------------
@@ -2383,26 +2923,49 @@ done
 # version check two lines later.
 
 
-def configs_block(configs: str | None, config_dirs: list) -> str:
+# A score phase's counterpart: the results directory it reads has to be on
+# the host already, unless a run phase of the same campaign writes it first,
+# in which case staged_results_dirs leaves it out and the tick checks it when
+# the phase's turn comes. A directory rather than a file test, since a results
+# tree is thousands of run directories and the question is whether it exists.
+RESULTS_CHECK = r"""for resdir in @RESULTS_DIRS@; do
+  if [ ! -d "$resdir" ]; then
+    echo "@M@ERR no results directory at $(pwd)/$resdir for a score phase — run the campaign that writes it on this host first, or fix results = ... in campaign.toml"
+    exit 11
+  fi
+done
+"""
+
+
+def configs_block(configs: str | None, config_dirs: list,
+                  results_dirs: list | None = None) -> str:
     """The configs section: the declared command, then the check, or just the
     check. The check is never conditional — a campaign that declares no command
-    is the case that broke, not the case to trust."""
+    is the case that broke, not the case to trust. A score phase's results
+    directory is checked the same way, after it."""
     step = (CONFIGS_STEP.replace("@CONFIGS_CMD@", configs) if configs else "")
+    # A campaign of score phases alone names no configs directory, and a
+    # `for` over an empty list is one shell dialect away from a syntax error.
     check = CONFIGS_CHECK.replace(
-        "@CONFIG_DIRS@", " ".join(shlex.quote(d) for d in config_dirs))
-    return step + check
+        "@CONFIG_DIRS@", " ".join(shlex.quote(d) for d in config_dirs)
+    ) if config_dirs else ""
+    results = ""
+    if results_dirs:
+        results = RESULTS_CHECK.replace(
+            "@RESULTS_DIRS@", " ".join(shlex.quote(d) for d in results_dirs))
+    return step + check + results
 
 
 def stage_apply_script(root: str, branch: str, sha: str, build: str,
                        configs: str | None, config_dirs: list,
-                       force: bool) -> str:
+                       force: bool, results_dirs: list | None = None) -> str:
     # CONFIGS first, and the marker last inside render_script: the configs
     # block is itself a script fragment carrying markers of its own.
     # BUILD and BIN go in unquoted -- the first is a command line, the second
     # is spliced into `./@BIN@`.
     return render_script(
         STAGE_APPLY_SCRIPT,
-        CONFIGS=configs_block(configs, config_dirs),
+        CONFIGS=configs_block(configs, config_dirs, results_dirs),
         ROOT=shlex.quote(root),
         BRANCH=shlex.quote(branch),
         SHA=shlex.quote(sha),
@@ -2537,7 +3100,9 @@ def cmd_stage(args: argparse.Namespace) -> int:
         text, err = run_shell(
             host, stage_apply_script(source_path(host), branch, sha,
                                      campaign["build"], campaign["configs"],
-                                     campaign["config_dirs"], args.force),
+                                     campaign["config_dirs"], args.force,
+                                     (campaign.get("results_dirs") or {})
+                                     .get(host)),
             timeout=args.build_timeout)
         result = parse_sections(text or "")
         if err or "err" in result or "end" not in result:
@@ -2638,6 +3203,9 @@ def start_refusals(probe: HostProbe, campaign: dict, sha: str,
         if proc.get("profile"):
             out.append(f"a runner is already live on --profile "
                        f"{proc['profile']}")
+        elif proc.get("kind") == "score":
+            out.append(f"a scorer is already live on --out "
+                       f"{proc.get('out') or '?'}")
     if not ignore_queue:
         for entry in pending_queue_entries(probe, campaign["name"]):
             out.append(
@@ -3000,8 +3568,25 @@ def run_step(root: Path, command, log_path: Path, shell: bool = False) -> int:
 
 
 def run_phase(root: Path, phase: dict, seeds: list, log_path: Path) -> int:
-    return run_step(root, shlex.split(RUNNER_CMD) + phase_args(phase, seeds),
-                    log_path)
+    return run_step(root, shlex.split(phase_launcher(phase))
+                    + phase_args(phase, seeds), log_path)
+
+
+def results_dir_missing(root: Path, phase: dict):
+    """Why a score phase cannot run here, or None.
+
+    The scorer's own check, asked before the attempt is spent: the results
+    directory is produced by an earlier phase or an earlier campaign, and a
+    host that never ran either has nothing to score. Named in the entry's
+    `last_error`, in the words the stage check uses.
+    """
+    directory = root / phase["results"]
+    if directory.is_dir():
+        return None
+    return (f"no results directory at {directory} for score phase "
+            f"{phase['name']} — the run phase that writes it has not run on "
+            f"this host, or `results` in campaign.toml names the wrong "
+            f"directory")
 
 
 def entry_log_path(entry: dict, root: Path) -> Path:
@@ -3334,6 +3919,16 @@ def tick_entry(entry: dict, campaign: dict, root: Path,
         return 0
     seeds = parse_seed_range(text, f"{entry['file']}: phase {index} seeds")
     log_path = entry_log_path(entry, root)
+    # A score phase over a results directory the host does not hold cannot
+    # run, and the scorer would say so an attempt later; the refusal is here
+    # so the entry names the directory rather than an exit status.
+    blocked = (results_dir_missing(root, phase)
+               if phase_kind(phase) == "score" else None)
+    if blocked is not None and not args.dry_run:
+        fail_or_requeue(entry, blocked)
+        write_entry(entry["path"], entry)
+        print(f"tick: {entry['file']} {entry['state']}: {entry['last_error']}")
+        return 1
 
     entry["state"] = "running"
     entry["pid"] = os.getpid()
@@ -3346,6 +3941,8 @@ def tick_entry(entry: dict, campaign: dict, root: Path,
         log_line(entry, "dry run, phase not executed")
         write_entry(entry["path"], entry)
         print(f"  would run: {phase_command(phase, seeds)}")
+        if blocked is not None:
+            print(f"  blocked: {blocked}")
         return 0
 
     code = run_phase(root, phase, seeds, log_path)
@@ -3579,6 +4176,12 @@ def build_parser() -> argparse.ArgumentParser:
                               "this checkout does not define.")
     collect.add_argument("--results-dir", metavar="NAME",
                          help="Per-run directory name, alongside --csv.")
+    collect.add_argument("--curves", metavar="NAME",
+                         help="Collect a score phase's curves instead: pull "
+                              "each host's experiments/NAME/ into "
+                              "experiments/NAME/<host>/ and join the per-run "
+                              "CSVs into experiments/NAME.csv. --profile, "
+                              "--csv and --results-dir are not read.")
     add_colour_flag(collect)
     collect.set_defaults(func=cmd_collect)
 

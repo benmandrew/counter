@@ -79,6 +79,7 @@ HARNESS_CAP_S = 7200.0
 TIME_CUTS = (1, 2, 5, 10, 20, 50, 100, 200, 500, 1000, 2000, 5000, 7200)
 
 POSTHOC = "POST-HOC (PLAN section 2 registers no decision rule)"
+POSTHOC_LONG = "PLAN section 2 registers no decision rule and no primary endpoint."
 
 
 def wilcoxon_exact_p(differences):
@@ -631,7 +632,7 @@ def discovery(curves, scalars, aurus_runs):
 # -- head to head --------------------------------------------------------------
 
 
-def head_to_head(results, aurus_runs):
+def head_to_head(results, aurus_runs, title=None, note=None):
     """Per-family ideal rate, read two ways that bracket the truth.
 
     A killed run is the whole difficulty. counter's kills score `implies_ideal`
@@ -649,10 +650,10 @@ def head_to_head(results, aurus_runs):
     counter run on what it actually found, and nothing on the AuRUS side can
     do the same.
     """
-    rule("HEAD TO HEAD -- per-family ideal rate, counter against AuRUS")
+    rule(title or "HEAD TO HEAD -- per-family ideal rate, counter against AuRUS")
     if aurus_runs is None:
         print("AuRUS reference absent; skipped")
-        return
+        return None
 
     # `no-ideals-dir` is unscorable rather than zero: there was nothing to
     # compare against, so the family carries no AuRUS rate at all.
@@ -713,7 +714,8 @@ def head_to_head(results, aurus_runs):
               f"{counter_killed[family]:5d}   {a_all:8.3f} {a_cell} "
               f"{aurus_killed[family]:5d}   {c_all - a_all:+7.3f} {d_cell}")
 
-    print(f"\n   {POSTHOC}")
+    print(f"\n   {note or POSTHOC}")
+    reads = {}
     for label, differences, families in (
             ("all runs, a kill is a failure", all_differences, shared),
             ("scorable runs only", scorable_differences, scorable_families)):
@@ -724,13 +726,53 @@ def head_to_head(results, aurus_runs):
         print(f"\n   {label}: {len(families)} families")
         print(f"     counter higher on {higher}, lower on {lower}, "
               f"tied on {len(differences) - higher - lower}")
+        p_value = wilcoxon_exact_p(differences)
+        reads[label] = (statistics.mean(differences), p_value, higher, lower)
         print(f"     mean difference {statistics.mean(differences):+.3f}, "
-              f"exact two-sided Wilcoxon p = "
-              f"{wilcoxon_exact_p(differences):.4f}")
+              f"exact two-sided Wilcoxon p = {p_value:.4f}")
     print("\n   The 2026-08-21 ship campaign read this contrast at counter's "
           "own budget as 0.502 against 0.504, Wilcoxon p = 0.7549.")
     print("   This campaign reads it at AuRUS's budget, which is the whole "
           "point of the matched cross.")
+    return reads
+
+
+def registered_primary(results, aurus_runs, cell):
+    """PLAN section 4 of the rematch: one named counter cell against AuRUS.
+
+    The pooled head-to-head above averages four cells, three of which the
+    plan names as secondary. The primary is the shipped configuration alone,
+    named before the run, read with the kill-is-a-failure rule first and the
+    scorable-only rule beside it, and section 5's outcome follows from the
+    first read at alpha 0.05.
+    """
+    selection, grading = cell.split("/")
+    subset = [row for row in results
+              if row["selection"] == selection
+              and row["level_value"] == grading]
+    reads = head_to_head(
+        subset, aurus_runs,
+        title=f"REGISTERED PRIMARY -- {cell} against AuRUS, PLAN section 4",
+        note=f"REGISTERED (PLAN section 5): exact two-sided Wilcoxon over "
+             f"families at alpha 0.05, over {len(subset)} counter runs")
+    if not reads:
+        return
+    mean, p_value, higher, lower = reads["all runs, a kill is a failure"]
+    if p_value < 0.05 and mean > 0:
+        outcome = "Outcome 1: counter higher on the primary"
+    elif p_value < 0.05 and mean < 0:
+        outcome = "Outcome 2: AuRUS higher on the primary"
+    else:
+        outcome = "Outcome 3: null, reported as parity"
+    print(f"\n   DECISION RULE (PLAN section 5): {outcome} "
+          f"(p = {p_value:.4f}, counter higher on {higher}, lower on {lower})")
+    secondary = reads.get("scorable runs only")
+    if secondary:
+        s_mean, s_p, s_higher, s_lower = secondary
+        print(f"   Registered secondary, scorable runs only: mean "
+              f"{s_mean:+.3f}, p = {s_p:.4f}, counter higher on {s_higher}, "
+              f"lower on {s_lower}; reported beside the primary, never "
+              f"substituted for it.")
 
 
 # -- post-hoc factor contrasts -------------------------------------------------
@@ -774,7 +816,7 @@ def arm_side(row, value):
 
 def posthoc(results):
     rule("POST-HOC FACTOR CONTRASTS -- the 2x2, read after the fact")
-    print("PLAN section 2 registers no decision rule and no primary endpoint.")
+    print(POSTHOC_LONG)
     print("Nothing below is a test of a hypothesis; it describes this sample.")
     contrast(results, "selection", "nsga2-apportion", "weighted",
              lambda r: r["level_value"])
@@ -786,13 +828,28 @@ def posthoc(results):
 
 
 def main():
+    global RUNS_DIR, POSTHOC, POSTHOC_LONG
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--results", default=RESULTS_CSV)
     parser.add_argument("--curves", default=CURVES_CSV)
+    parser.add_argument("--runs-dir", default=RUNS_DIR, type=Path,
+                        help="per-run directories, for the manifest checks "
+                             "and --from-index (default: results-matched)")
+    parser.add_argument("--primary", metavar="SELECTION/GRADING",
+                        help="the counter cell registered as the primary "
+                             "endpoint against AuRUS (the rematch's PLAN "
+                             "section 4 names nsga2-apportion/mrs); the "
+                             "pooled read is then printed as secondary")
     parser.add_argument("--from-index", action="store_true",
                         help="derive solutions and time_to_first_repair from "
                              "the accumulator alone, with no solver call")
     args = parser.parse_args()
+    RUNS_DIR = args.runs_dir
+    if args.primary:
+        POSTHOC = ("SECONDARY (PLAN section 5: the 2x2 and the per-family "
+                   "numbers carry no rule)")
+        POSTHOC_LONG = ("PLAN section 5 registers the 2x2 as secondary; "
+                        "nothing below carries a rule.")
 
     results = load_results(args.results)
     if args.from_index:
@@ -817,7 +874,11 @@ def main():
         print("   also count different things: counter's gate-passing")
         print("   accumulator against AuRUS's accepted solution set.")
     discovery(curves, scalars, aurus_runs)
-    head_to_head(results, aurus_runs)
+    head_to_head(results, aurus_runs,
+                 title=("HEAD TO HEAD, POOLED OVER THE FOUR CELLS -- "
+                        "secondary" if args.primary else None))
+    if args.primary:
+        registered_primary(results, aurus_runs, args.primary)
     posthoc(results)
 
     rule("READING THESE NUMBERS")

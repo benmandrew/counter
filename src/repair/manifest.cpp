@@ -121,7 +121,7 @@ namespace {
 // assume it names one of two scales that do; from this version it may name a
 // third that does not, so the status objective of two runs is comparable only
 // where the field agrees.
-constexpr int k_schema_version = 24;
+constexpr int k_schema_version = 25;
 
 // The inverse of the spellings config_io.cpp parses. It has no table to
 // borrow -- it only ever goes string to enum -- so these must be kept in step
@@ -250,6 +250,7 @@ nlohmann::json config_json(const Config& cfg) {
           {"crossover_rate", cfg.crossover_rate},
           {"mutation_rate", cfg.mutation_rate},
           {"selection_scheme", scheme_name(cfg.selection_scheme)},
+          {"constrained_domination", cfg.constrained_domination},
           {"termination", termination_name(cfg.termination)},
           {"max_individuals", cfg.max_individuals},
           {"max_wall_s", cfg.max_wall_s},

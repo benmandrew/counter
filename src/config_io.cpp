@@ -111,8 +111,9 @@ const KeySpec& config_key_spec() {
         {{"genetic",
           section({"generations", "population_size", "selection_rate",
                    "elitism_rate", "crossover_rate", "mutation_rate",
-                   "selection_scheme", "accumulate_repairs", "termination",
-                   "max_individuals", "max_wall_s"})},
+                   "selection_scheme", "constrained_domination",
+                   "accumulate_repairs", "termination", "max_individuals",
+                   "max_wall_s"})},
          {"fitness",
           section({"weight_syntactic", "weight_semantic", "weight_status",
                    "status_grading", "mrs_admission_order"})},
@@ -263,6 +264,9 @@ void apply_genetic(const toml::table& tbl, Config& cfg) {
                 "must be \"weighted\", \"nsga2-truncate\", or "
                 "\"nsga2-apportion\"");
         }
+    }
+    if (auto val = tbl["constrained_domination"].value<bool>()) {
+        cfg.constrained_domination = *val;
     }
     // Elites are a subset of the selected parents, so elitism must be strictly
     // smaller than selection. Checked against the final values (either may come

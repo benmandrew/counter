@@ -11,6 +11,7 @@
 /// population by reading each element's per-objective vector.
 
 #include <algorithm>
+#include <cassert>
 #include <cstddef>
 #include <vector>
 
@@ -21,14 +22,37 @@
 /// vectors must have the same length.
 bool dominates(const std::vector<double>& lhs, const std::vector<double>& rhs);
 
+/// True iff @p lhs constrained-dominates @p rhs (Deb et al. 2002, sec. VI-A),
+/// given each side's constraint violation: zero for a feasible candidate and
+/// positive for an infeasible one, larger being further from feasible.
+///
+/// The smaller violation wins whenever the two differ, which covers feasible
+/// against infeasible; equal violations fall through to @ref dominates. With
+/// both violations zero this is exactly @ref dominates, which is what lets one
+/// code path serve both rankings.
+///
+/// Deb leaves two equally infeasible candidates incomparable. Falling through
+/// is deliberate here: the violation is the status objective, which takes 3 to
+/// 7 values on this corpus, so an incomparable tier would put every candidate
+/// sharing a status score on one front -- the degenerate front the constraint
+/// exists to break up.
+bool constrained_dominates(const std::vector<double>& lhs,
+                           const std::vector<double>& rhs, double lhs_violation,
+                           double rhs_violation);
+
 /// Deb's fast non-dominated sort. Returns the 0-based non-domination front
 /// index of each individual (0 = the Pareto front, higher = increasingly
 /// dominated). O(k * N^2) in the objective count k and population size N.
 ///
 /// @param objectives One equal-length objective vector per individual;
 ///                   must be non-empty with a common non-zero width.
+/// @param violations Constraint violation per individual, or empty for the
+///                   unconstrained sort. When given it must be the same length
+///                   as @p objectives, and an all-zero vector reproduces the
+///                   unconstrained ranking exactly.
 std::vector<std::size_t> non_domination_ranks(
-    const std::vector<std::vector<double>>& objectives);
+    const std::vector<std::vector<double>>& objectives,
+    const std::vector<double>& violations = {});
 
 /// Crowding distance of each individual (Deb et al. 2002), computed within its
 /// own front. For each objective the front is ordered and interior members
@@ -49,17 +73,25 @@ std::vector<double> crowding_distances(
 /// the crowded-comparison operator: front rank ascending, then crowding
 /// distance descending. The sort is stable so a fixed RNG seed yields a
 /// deterministic order.
+///
+/// @p violations selects the ranking: empty for plain Pareto domination, or one
+/// constraint violation per individual for the constrained sort. Crowding
+/// distance is computed from the objectives either way, since it orders within
+/// a front and every member of a front is equally feasible by then.
 template <typename Spec>
-void nsga2_sort(std::vector<Scored<Spec>>& population) {
+void nsga2_sort(std::vector<Scored<Spec>>& population,
+                const std::vector<double>& violations = {}) {
     if (population.empty()) {
         return;
     }
+    assert(violations.empty() || violations.size() == population.size());
     std::vector<std::vector<double>> objectives;
     objectives.reserve(population.size());
     for (const Scored<Spec>& scored : population) {
         objectives.push_back(scored.objectives);
     }
-    const std::vector<std::size_t> ranks = non_domination_ranks(objectives);
+    const std::vector<std::size_t> ranks =
+        non_domination_ranks(objectives, violations);
     const std::vector<double> distances = crowding_distances(objectives, ranks);
     for (std::size_t i = 0; i < population.size(); ++i) {
         population[i].rank = ranks[i];

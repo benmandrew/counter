@@ -191,6 +191,70 @@ void test_nsga2_sort_is_deterministic() {
     }
 }
 
+// --- constrained domination ---
+
+void test_constrained_feasible_beats_infeasible() {
+    // The measured pathology: the original specification scores 1.0 on both
+    // similarity objectives by construction and 0.0 on status, so plain
+    // domination leaves it on the rank-0 front forever.
+    const std::vector<double> original = {1.0, 1.0, 0.0};
+    const std::vector<double> repair = {0.5, 0.9, 1.0};
+    expect(!dominates(repair, original),
+           "constrained: plain domination cannot displace the original");
+    expect(constrained_dominates(repair, original, 0.0, 1.0),
+           "constrained: a feasible candidate displaces the original");
+    expect(!constrained_dominates(original, repair, 1.0, 0.0),
+           "constrained: the original does not displace a feasible candidate");
+}
+
+void test_constrained_infeasible_pair_compares_on_violation() {
+    // Worse on every objective, but closer to feasible, so it wins.
+    expect(constrained_dominates({0.1, 0.1}, {0.9, 0.9}, 0.25, 0.5),
+           "constrained: the smaller violation wins between two infeasible");
+    expect(!constrained_dominates({0.9, 0.9}, {0.1, 0.1}, 0.5, 0.25),
+           "constrained: the larger violation loses whatever it scores");
+}
+
+void test_constrained_equal_violation_falls_through_to_dominance() {
+    expect(constrained_dominates({0.6, 0.7}, {0.5, 0.5}, 0.5, 0.5),
+           "constrained: equal violations compare by plain dominance");
+    expect(!constrained_dominates({0.6, 0.4}, {0.5, 0.5}, 0.5, 0.5),
+           "constrained: equal violations keep incomparable pairs apart");
+}
+
+void test_constrained_ranks_put_every_feasible_above_every_infeasible() {
+    const std::vector<std::vector<double>> objectives = {
+        {1.0, 1.0},  // the original: maximal, infeasible
+        {0.5, 0.9},  // feasible
+        {0.9, 0.5},  // feasible
+        {0.8, 0.8},  // infeasible, closer than the original
+    };
+    const std::vector<double> violations = {1.0, 0.0, 0.0, 0.5};
+    const std::vector<std::size_t> ranks =
+        non_domination_ranks(objectives, violations);
+    expect(ranks[1] == 0 && ranks[2] == 0,
+           "constrained ranks: both feasible candidates hold the front");
+    expect(ranks[3] > 0 && ranks[0] > ranks[3],
+           "constrained ranks: infeasible members order by violation");
+
+    const std::vector<std::size_t> plain = non_domination_ranks(objectives);
+    expect(plain[0] == 0,
+           "constrained ranks: plain domination puts the original on the "
+           "front, which is what the constraint exists to undo");
+}
+
+void test_empty_violations_reproduce_the_unconstrained_ranking() {
+    const std::vector<std::vector<double>> objectives = {
+        {1.0, 0.2}, {0.2, 1.0}, {0.5, 0.5}, {0.1, 0.1}};
+    const std::vector<std::size_t> plain = non_domination_ranks(objectives);
+    const std::vector<std::size_t> absent =
+        non_domination_ranks(objectives, {});
+    const std::vector<std::size_t> zeroed =
+        non_domination_ranks(objectives, {0.0, 0.0, 0.0, 0.0});
+    expect(plain == absent && plain == zeroed,
+           "constrained ranks: no violations is the unconstrained ranking");
+}
+
 }  // namespace
 
 void run_nsga2_tests() {
@@ -208,4 +272,9 @@ void run_nsga2_tests() {
     test_crowding_zero_range_objective_adds_no_infinities();
     test_nsga2_sort_orders_by_rank_then_crowding();
     test_nsga2_sort_is_deterministic();
+    test_constrained_feasible_beats_infeasible();
+    test_constrained_infeasible_pair_compares_on_violation();
+    test_constrained_equal_violation_falls_through_to_dominance();
+    test_constrained_ranks_put_every_feasible_above_every_infeasible();
+    test_empty_violations_reproduce_the_unconstrained_ranking();
 }

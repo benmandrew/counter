@@ -21,10 +21,38 @@ bool dominates(const std::vector<double>& lhs, const std::vector<double>& rhs) {
     return strictly_better;
 }
 
+bool constrained_dominates(const std::vector<double>& lhs,
+                           const std::vector<double>& rhs, double lhs_violation,
+                           double rhs_violation) {
+    // Unequal violations decide without consulting the objectives, which is the
+    // whole point: an infeasible candidate cannot buy its way past a less
+    // infeasible one with a similarity score. Zero against positive is the
+    // feasible-against-infeasible case, so it needs no branch of its own.
+    if (lhs_violation != rhs_violation) {
+        return lhs_violation < rhs_violation;
+    }
+    // Deb leaves two equally infeasible candidates incomparable. Falling
+    // through to plain dominance instead is deliberate: violation here is the
+    // status objective, which takes 3 to 7 values on this corpus, so leaving a
+    // tier internally incomparable would put every candidate sharing a status
+    // score on one front and rebuild the degenerate front the constraint exists
+    // to break up. Equal violations include two feasible candidates, where this
+    // is unconditionally the right rule.
+    return dominates(lhs, rhs);
+}
+
 std::vector<std::size_t> non_domination_ranks(
-    const std::vector<std::vector<double>>& objectives) {
+    const std::vector<std::vector<double>>& objectives,
+    const std::vector<double>& violations) {
     assert(!objectives.empty());
+    assert(violations.empty() || violations.size() == objectives.size());
     const std::size_t count = objectives.size();
+
+    // An absent violation vector reads as all-zero, under which
+    // constrained_dominates is dominates, so there is one loop rather than two.
+    const auto violation = [&violations](std::size_t index) {
+        return violations.empty() ? 0.0 : violations[index];
+    };
 
     // dominated_by[i] = solutions i dominates; domination_count[i] = number of
     // solutions that dominate i (Deb et al. 2002, "fast non-dominated sort").
@@ -34,10 +62,12 @@ std::vector<std::size_t> non_domination_ranks(
 
     for (std::size_t i = 0; i < count; ++i) {
         for (std::size_t j = i + 1; j < count; ++j) {
-            if (dominates(objectives[i], objectives[j])) {
+            if (constrained_dominates(objectives[i], objectives[j],
+                                      violation(i), violation(j))) {
                 dominated_by[i].push_back(j);
                 ++domination_count[j];
-            } else if (dominates(objectives[j], objectives[i])) {
+            } else if (constrained_dominates(objectives[j], objectives[i],
+                                             violation(j), violation(i))) {
                 dominated_by[j].push_back(i);
                 ++domination_count[i];
             }

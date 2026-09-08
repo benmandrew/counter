@@ -340,6 +340,31 @@ struct Config {
     /// 280 that stop matching an ideal, against 14 more that find a repair at
     /// all. docs/configuration.rst records both sides and the untested ground.
     SelectionScheme selection_scheme = SelectionScheme::Nsga2Apportion;
+    /// Rank the two NSGA-II schemes by Deb's *constrained* domination rather
+    /// than by plain Pareto domination: a candidate at the top status tier
+    /// precedes one below it whatever their similarity scores say, and two
+    /// candidates below it are ordered by how far below they sit.
+    ///
+    /// It exists because the original specification is permanently
+    /// non-dominated. Both similarity objectives are measured against it, so it
+    /// scores 1.0 on each by construction, and nothing dominates a point
+    /// maximal in two of three objectives. Instrumenting the rank-0 front over
+    /// 21 runs (7 families x 3 seeds, generation 10) found it there in 21 of
+    /// 21, holding a front slot and breeding every generation. The smallest
+    /// epsilon-dominance margin that would displace it ranges from 0.0010 on
+    /// `fsm-timing` to 0.3636 on `lily11`, a factor of 364, so no single
+    /// margin covers the corpus; a constraint needs no margin at all.
+    ///
+    /// The cost is that it removes the similarity-against-status trade from
+    /// the front, which is what the `2026-07-24-ablation` and
+    /// `2026-08-29-aurus-matched` campaigns credit NSGA-II's quality edge to.
+    /// So this defaults **false** and is a campaign arm rather than a
+    /// recommendation.
+    ///
+    /// Reads nothing from the RandomSource and changes no query, so at false
+    /// the breeding stream and the ranking are byte-identical to what they
+    /// were before the key existed.
+    bool constrained_domination = false;
     /// Report every candidate that passed the output gate in *any* generation,
     /// not only those the final population still holds. A candidate that was
     /// gate-passing in generation 3 and was not selected into generation 4 is

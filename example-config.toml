@@ -32,6 +32,15 @@ mutation_rate   = 1.0  # per offspring, unlike the per-requirement rates in [mut
 # wall time on FRETISH and 13% less on TLSF, and is the arm to reach for when
 # throughput matters more than how many repairs come back.
 selection_scheme = "nsga2-apportion"
+# Rank the NSGA-II schemes by constrained domination rather than plain Pareto
+# domination: a candidate at the top status tier precedes one below it whatever
+# their similarity scores say, and two below it are ordered by how far below.
+# The original specification scores 1.0 on both similarity objectives by
+# construction, so plain domination leaves it permanently on the rank-0 front --
+# measured there in 21 of 21 runs over 7 families and 3 seeds. Off by default:
+# it also removes the similarity-against-status trade the front carries, which
+# is what two campaigns credit NSGA-II's quality edge to.
+constrained_domination = false
 # Report every candidate that passed the output gate in any generation, not only
 # the ones the final population still holds. On since 2026-08-25, on 200 paired
 # TLSF runs: implies_ideal gained on 6 pairs and lost on none (McNemar

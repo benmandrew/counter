@@ -131,6 +131,37 @@ class SearchBudget {
     std::size_t m_generations = 0;
 };
 
+/// The status score a feasible candidate holds: realizable, well-separated and
+/// keeping every guarantee part. Spelled here rather than taken from
+/// fitness/status.hpp, which this generic header does not depend on; it is
+/// k_status_realizable, and every objective in this project scores in [0, 1].
+inline constexpr double k_status_feasible = 1.0;
+
+/// Constraint violations for constrained non-dominated sorting: how far each
+/// candidate's status objective falls below the top tier. Empty when
+/// Config::constrained_domination is off, which is the unconstrained ranking.
+///
+/// Status is the last objective both front ends register, and it is registered
+/// only when its weight is positive, so a run that weights status at zero
+/// leaves the ranking unconstrained rather than constraining it on whichever
+/// objective happens to be last.
+template <typename Spec>
+std::vector<double> constraint_violations(
+    const Config& cfg, const std::vector<Scored<Spec>>& population) {
+    if (!cfg.constrained_domination || cfg.fitness_weight_status <= 0.0) {
+        return {};
+    }
+    std::vector<double> violations;
+    violations.reserve(population.size());
+    for (const Scored<Spec>& scored : population) {
+        const double status = scored.objectives.empty()
+                                  ? k_status_feasible
+                                  : scored.objectives.back();
+        violations.push_back(std::max(0.0, k_status_feasible - status));
+    }
+    return violations;
+}
+
 /// Orders a scored population best-first according to @p cfg's selection
 /// scheme: descending weighted fitness for WeightedAverage, or the NSGA-II
 /// crowded-comparison order (front rank ascending, crowding descending) for
@@ -140,7 +171,7 @@ template <typename Spec>
 void order_population(const Config& cfg,
                       std::vector<Scored<Spec>>& population) {
     if (uses_nsga2_ranking(cfg)) {
-        nsga2_sort(population);
+        nsga2_sort(population, constraint_violations(cfg, population));
         return;
     }
     std::stable_sort(population.begin(), population.end(),
@@ -569,7 +600,7 @@ void stage_select(GenerationContext<Spec>& ctx) {
         // arbitrarily through the rank-0 front.
         pool = generation_detail::dedup_by_specification(std::move(pool));
     }
-    nsga2_sort(pool);
+    nsga2_sort(pool, constraint_violations(ctx.m_cfg, pool));
 
     if (pool.size() > ctx.m_target_size) {
         pool.resize(ctx.m_target_size);

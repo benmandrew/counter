@@ -1255,6 +1255,74 @@ PROFILES: dict[str, dict] = {
         # campaign's wall times readable against theirs.
         "default_jobs": 8,
     },
+    # ── 2026-09-08 constrained domination ────────────────────────────────────
+    #
+    # One factor on TLSF: genetic.constrained_domination, off against on, at the
+    # shipping selection scheme (nsga2-apportion) and status grading (mrs).
+    # Both similarity objectives are measured against the original
+    # specification, so the original scores 1.0 on each by construction and
+    # nothing dominates it; instrumenting the rank-0 front over 21 runs found it
+    # there in 21 of 21, at generation 10, in every family tried. Constrained
+    # domination is the form of fix that needs no margin -- the epsilon that
+    # would displace it spans 0.0010 to 0.3636 across those seven families.
+    "constrained-dom": {
+        # One scheme, not two. The question is about the ranking rule inside
+        # NSGA-II, and `weighted` has no front to constrain.
+        "schemes": ["nsga2-apportion"],
+        "weakenings": ["wkoff"],
+        "metrics": ["log"],
+        "repair_modes": None,
+        "sweeps": ["K"],
+        "levels": {"K": ["cdoff", "cdon"]},
+        # The 21 families selection-smoke ran, so the control arm is directly
+        # readable against that campaign's control arm.
+        "specs": SELECTION_SMOKE_SPECS,
+        # 30 seeds, split 0-14 / 15-29. Both arms of a pair run on the same
+        # host, so the split is over seeds and never over levels, which the
+        # runner crosses itself. 21 families x 30 seeds = 630 pairs, enough for
+        # a per-family read rather than a pooled one alone.
+        #
+        # Sized at the probe's 1.67 ratio: 15 seeds x 21 families x
+        # (88.45 + 148) s is about 20.7 serial hours a host, roughly 3 h at
+        # jobs = 8 and inside the night at twice that.
+        "seeds": list(range(30)),
+        # selection-smoke's table times 1.7, rounded up to the minute and
+        # clamped at 3600 s. That table is 4x the slowest run its
+        # nsga2-apportion arm recorded per family, and the `cdon` arm is not
+        # that arm: a 12-case probe over 6 families (arbiter-aurus,
+        # detector-aurus, lily11, lily16, minepump, rg2 at seeds 0 and 1) reads
+        # a median paired wall ratio of 1.67 and a maximum of 2.71. Left
+        # unscaled the caps would give the treatment arm roughly 1.5x margin
+        # against the control arm's 4x, and a one-sided kill rate makes
+        # implies_ideal uninterpretable -- which is what 2026-08-28
+        # selection-grading cost before its re-score. The clamp binds on lift
+        # and prioritized-arbiter-aurus and exists because a single run capped
+        # above the per-host budget cannot be told apart from the campaign not
+        # finishing.
+        "timeout_caps": {
+            "lift": 3600, "prioritized-arbiter-aurus": 3600,
+            "gyro-var1": 3570, "full-arbiter-aurus": 3360,
+            "humanoid-458": 2700, "round-robin-arbiter-aurus": 2400,
+            "gyro-var2": 1440, "ltl2dba-theta-2": 1020,
+            "load-balancer-aurus": 660, "arbiter-aurus": 540,
+            "detector-aurus": 540, "lily02": 540, "lily11": 540,
+            "lily15": 540, "lily16": 540, "ltl2dba-r-2": 540,
+            "ltl2dba27": 540, "minepump": 540, "rg1": 540, "rg2": 540,
+            "simple-arbiter-aurus": 540,
+        },
+        # 1800 s, as selection-smoke set it and for its reason:
+        # accumulate_repairs is on, and a compare timeout costs the row's
+        # implies_ideal silently.
+        "compare_timeout": 1800,
+        # Neither level is a grid baseline, and sweep K has no gen/pop axis.
+        "baseline_aliases": {},
+        "configs_dir": EXPERIMENTS_DIR / "configs-constrained-dom",
+        "results_dir": EXPERIMENTS_DIR / "results-constrained-dom",
+        "results_csv": EXPERIMENTS_DIR / "results-constrained-dom.csv",
+        # jobs = 8, the value selection-smoke and monotone ran on this corpus,
+        # which is what makes the wall times readable against theirs.
+        "default_jobs": 8,
+    },
     # ── 2026-08-28 selection x grading ───────────────────────────────────────
     #
     # A 2x2 ablation on TLSF, measuring repair discovery over time rather than

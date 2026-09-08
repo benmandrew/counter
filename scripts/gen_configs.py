@@ -195,6 +195,12 @@ DEFAULTS: dict = {
     # -- the exposure "Config vintage" in experiments/README.md records for
     # every other archive here.
     "accumulate_repairs": True,
+    # Mirrors include/config.hpp. Emitted into [genetic] only when a sweep
+    # overrides it, so every existing grid stays byte-identical; TLSF sweep K
+    # crosses it. Sweep K states it on both arms rather than letting the control
+    # inherit silence, following sweep N, so the archive stays readable if the
+    # default ever moves.
+    "constrained_domination": False,
     "black_timeout_ms": 1000,
     "repair_mode": "monolithic",
     # Mirrors include/config.hpp, which moved to "mrs" on the 2026-08-11
@@ -323,6 +329,8 @@ def make_toml(overrides: dict, defaults: dict = DEFAULTS) -> str:
          if "elitism_rate" in overrides else []) + (
         [f"accumulate_repairs = {_fmt(d['accumulate_repairs'])}"]
         if "accumulate_repairs" in overrides else []) + (
+        [f"constrained_domination = {_fmt(d['constrained_domination'])}"]
+        if "constrained_domination" in overrides else []) + (
         [f"max_wall_s      = {d['max_wall_s']}"]
         if d.get("max_wall_s") else []) + (
         [f'termination     = "{d["termination"]}"']
@@ -776,6 +784,28 @@ TLSF_SWEEP_N: list[tuple[str, dict]] = [
     ("accon",  {"accumulate_repairs": True}),
 ]
 
+# TLSF sweep K: constrained domination against plain Pareto domination, at the
+# shipping selection scheme and status grading. Both similarity objectives are
+# measured against the original specification, so the original scores 1.0 on
+# each by construction and no candidate dominates it; instrumenting the rank-0
+# front over 21 runs (7 families x 3 seeds, generation 10) found it there in 21
+# of 21. The epsilon-dominance margin that would displace it spans 0.0010 to
+# 0.3636 across those families, so a constraint is the form that covers the
+# corpus. Both arms state the key, as sweep N does, so neither reads as a
+# vintage question later.
+# Both levels also pin the four keys sweep T's `monoon` level pins, at the same
+# shipping values, so a row here is comparable with a `monoon` row from
+# 2026-08-26-selection-smoke and 2026-08-23-monotone rather than depending on
+# what the binary defaulted to on the day.
+TLSF_SWEEP_K: list[tuple[str, dict]] = [
+    ("cdoff", {"constrained_domination": False,  # control: shipping ranking
+               "p_monotone": 0.25, "p_clone_assumption": 0.25,
+               "elitism_rate": 0.1, "accumulate_repairs": True}),
+    ("cdon",  {"constrained_domination": True,
+               "p_monotone": 0.25, "p_clone_assumption": 0.25,
+               "elitism_rate": 0.1, "accumulate_repairs": True}),
+]
+
 # TLSF sweep T: attribute the three changes on feat/monotone-operators, one
 # contrast at a time, against the archived 2026-08-21-aurus-h2h-ship rows as the
 # outer control. That campaign is main at the shipping configuration plus the
@@ -834,6 +864,7 @@ TLSF_SWEEPS: list[tuple[str, list]] = [
     ("R", TLSF_SWEEP_R),
     ("G", TLSF_SWEEP_G),
     ("N", TLSF_SWEEP_N),
+    ("K", TLSF_SWEEP_K),
     ("T", TLSF_SWEEP_T),
     # The compute-matched control, on the same terms as the FRETISH grid's S:
     # TLSF_SWEEP_R is SWEEP_R, so make_sweep_s already emits the right levels

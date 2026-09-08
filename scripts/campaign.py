@@ -2915,7 +2915,7 @@ done
 
 
 def configs_block(configs: str | None, config_dirs: list,
-                  results_dirs: list = ()) -> str:
+                  results_dirs: list | None = None) -> str:
     """The configs section: the declared command, then the check, or just the
     check. The check is never conditional — a campaign that declares no command
     is the case that broke, not the case to trust. A score phase's results
@@ -2935,7 +2935,7 @@ def configs_block(configs: str | None, config_dirs: list,
 
 def stage_apply_script(root: str, branch: str, sha: str, build: str,
                        configs: str | None, config_dirs: list,
-                       force: bool, results_dirs: list = ()) -> str:
+                       force: bool, results_dirs: list | None = None) -> str:
     # CONFIGS first, and the marker last inside render_script: the configs
     # block is itself a script fragment carrying markers of its own.
     # BUILD and BIN go in unquoted -- the first is a command line, the second
@@ -3078,7 +3078,7 @@ def cmd_stage(args: argparse.Namespace) -> int:
             host, stage_apply_script(source_path(host), branch, sha,
                                      campaign["build"], campaign["configs"],
                                      campaign["config_dirs"], args.force,
-                                     campaign.get("results_dirs", ())),
+                                     campaign.get("results_dirs")),
             timeout=args.build_timeout)
         result = parse_sections(text or "")
         if err or "err" in result or "end" not in result:

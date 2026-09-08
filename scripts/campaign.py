@@ -1406,13 +1406,18 @@ def pull_curves(host: str, out_name: str, dry_run: bool) -> dict:
 def merge_curves(per_host: dict, merged_csv: Path) -> tuple:
     """Join every host's per-run CSVs into one file, header once.
 
-    Returns ``(union, problems)``: the run names written, and the reasons the
-    join is not clean. A run present on two hosts is written once, from the
-    first host, and reported unless the two copies are byte-identical -- the
-    seeds are split, so two differing copies of one run mean two hosts
-    scored it, under budgets that may differ. A header from another vintage
-    of score_curves.py is refused rather than concatenated under the wrong
-    columns.
+    Returns ``(union, problems)``: the run names that would be written, and
+    the reasons the join is not clean. A run present on two hosts is written
+    once, from the first host, and reported unless the two copies are
+    byte-identical -- the seeds are split, so two differing copies of one
+    run mean two hosts scored it, under budgets that may differ. Two
+    distinct headers among the curves mean two vintages of score_curves.py,
+    and the join refuses naming both rather than concatenating one set of
+    rows under the other's columns.
+
+    The merged file is written only when every curve was accepted. A join
+    with any problem leaves whatever ``merged_csv`` held before, so a bad
+    collect cannot overwrite a good file with a partial one.
     """
     problems: list = []
     chosen: dict = {}
@@ -1428,18 +1433,24 @@ def merge_curves(per_host: dict, merged_csv: Path) -> tuple:
     if not chosen:
         return [], problems
     ordered = sorted(chosen)
-    header = csv_header(chosen[ordered[0]][1])
+    headers: dict = {}
+    for run in ordered:
+        headers.setdefault(csv_header(chosen[run][1]), []).append(run)
+    if len(headers) > 1:
+        shown = "; ".join(f"{header!r} on {len(runs)} curve(s) e.g. {runs[0]}"
+                          for header, runs in headers.items())
+        problems.append(f"{len(headers)} different headers among the curves, "
+                        f"which is more than one score_curves.py vintage: "
+                        f"{shown}")
+    if problems:
+        return ordered, problems
+    header = next(iter(headers))
     tmp = merged_csv.with_name(merged_csv.name + ".tmp")
     with open(tmp, "w", newline="") as out:
         out.write(header + "\n")
         for run in ordered:
-            path = chosen[run][1]
-            with open(path, newline="") as handle:
-                first = handle.readline().rstrip("\r\n")
-                if first != header:
-                    problems.append(f"{run} ({chosen[run][0]}) has a "
-                                    f"different header from {ordered[0]}")
-                    continue
+            with open(chosen[run][1], newline="") as handle:
+                handle.readline()
                 for line in handle:
                     if line.strip():
                         out.write(line if line.endswith("\n") else line + "\n")
@@ -1485,6 +1496,10 @@ def verify_curves(merged_csv: Path, before_rows: int, per_host: dict,
             if shared:
                 print(f"  overlap {h1}/{h2}: {len(shared)} run(s) scored on "
                       f"both")
+    if problems:
+        print(f"  the merged file was not written; {merged_csv} holds what "
+              f"it held before ({before_rows} rows)")
+        return False
     # Each run counted once: the first host holding it is the one written.
     seen: set = set()
     expected = 0
@@ -1549,7 +1564,8 @@ def collect_curves(hosts: list, out_name: str, dry_run: bool) -> int:
         print(f"\nNo curves found on any host — nothing merged.")
         return 1
     union, problems = merge_curves(per_host, merged_csv)
-    print(f"\nMerged {len(union)} curve(s) → {merged_csv}")
+    if not problems:
+        print(f"\nMerged {len(union)} curve(s) → {merged_csv}")
     return 0 if verify_curves(merged_csv, before_rows, per_host, union,
                               problems, missing, host_dirs) else 1
 
@@ -2151,7 +2167,7 @@ def load_campaign(name: str, root: Path | None = None) -> dict:
                           for phase in normalised if phase_kind(phase) == "run"})
     return {"name": name, "branch": branch, "build": build, "path": path,
             "configs": configs, "config_dirs": config_dirs,
-            "results_dirs": staged_results_dirs(normalised),
+            "results_dirs": staged_results_dirs(normalised, seeds_by_host),
             "hosts": seeds_by_host, "phases": normalised,
             "description": raw.get("description", "")}
 
@@ -2197,8 +2213,8 @@ def phase_kind(phase: dict) -> str:
     return phase.get("kind") or "run"
 
 
-def staged_results_dirs(phases: list) -> list:
-    """The results directories `stage` has to find on the host already.
+def staged_results_dirs(phases: list, seeds_by_host: dict) -> dict:
+    """Per host, the results directories `stage` has to find there already.
 
     A score phase reads a results directory the way a run phase reads a
     configs directory, and an absent one fails the phase on the host after
@@ -2206,16 +2222,23 @@ def staged_results_dirs(phases: list) -> list:
     scoring the run phase declared before it in the same campaign, whose
     results directory does not exist until that phase has run, so those are
     not demanded at stage time: only a directory no earlier run phase of this
-    campaign produces is.
+    campaign produces is, and only on the hosts the phase runs on, since a
+    phase narrowed away from a host reads nothing there.
     """
-    produced: set = set()
-    wanted: list = []
-    for phase in phases:
-        if phase_kind(phase) == "run":
-            produced.add(profile_results_dir(phase["profile"]))
-        elif phase["results"] not in produced and phase["results"] not in wanted:
-            wanted.append(phase["results"])
-    return sorted(wanted)
+    out: dict = {}
+    for host, seeds in seeds_by_host.items():
+        produced: set = set()
+        wanted: list = []
+        for phase in phases:
+            if not phase_seeds(phase, host, seeds):
+                continue
+            if phase_kind(phase) == "run":
+                produced.add(profile_results_dir(phase["profile"]))
+            elif (phase["results"] not in produced
+                  and phase["results"] not in wanted):
+                wanted.append(phase["results"])
+        out[host] = sorted(wanted)
+    return out
 
 
 def campaign_hosts(campaign: dict, only: list | None) -> list:
@@ -3078,7 +3101,8 @@ def cmd_stage(args: argparse.Namespace) -> int:
             host, stage_apply_script(source_path(host), branch, sha,
                                      campaign["build"], campaign["configs"],
                                      campaign["config_dirs"], args.force,
-                                     campaign.get("results_dirs")),
+                                     (campaign.get("results_dirs") or {})
+                                     .get(host)),
             timeout=args.build_timeout)
         result = parse_sections(text or "")
         if err or "err" in result or "end" not in result:

@@ -39,6 +39,7 @@ import queue
 import re
 import shlex
 import shutil
+import signal
 import socket
 import subprocess
 import sys
@@ -225,6 +226,41 @@ class Ledger:
                 handle.write(line + "\n")
 
 
+# With coreutils timeout in front the cap is its own and the Python one is a
+# backstop this far behind it, for a timeout that itself failed to kill.
+BACKSTOP_S = 60
+
+
+def run_capped(command: list, log, env: dict, wall_cap_s: int,
+               has_timeout: bool) -> int:
+    """Run one scorer in a session of its own, and kill the whole session if
+    it overruns the cap.
+
+    A scorer forks maximal and compare, and killing score_curves.py alone
+    leaves those running to the end of their own budgets on cores the next
+    item is about to be pinned to. coreutils timeout kills the group it
+    started; the fallback used to kill the child alone, so both paths now
+    put the scorer in a new session and kill that with os.killpg on expiry.
+    """
+    try:
+        proc = subprocess.Popen(command, cwd=str(REPO_ROOT), stdout=log,
+                                stderr=subprocess.STDOUT, env=env,
+                                start_new_session=True)
+    except OSError as exc:
+        log.write(f"cannot run {command[0]}: {exc}\n")
+        return 127
+    try:
+        return proc.wait(timeout=wall_cap_s + (BACKSTOP_S if has_timeout
+                                               else 0))
+    except subprocess.TimeoutExpired:
+        try:
+            os.killpg(proc.pid, signal.SIGKILL)
+        except ProcessLookupError:
+            pass
+        proc.wait()
+        return TIMEOUT_RC
+
+
 def score_one(run_dir: Path, slot: int, args, out: Path, ledger: Ledger,
               pinned: bool, timeout_bin, index: int, total: int,
               child_env: dict) -> int:
@@ -248,17 +284,8 @@ def score_one(run_dir: Path, slot: int, args, out: Path, ledger: Ledger,
         log.write(f"=== {time.strftime('%Y-%m-%dT%H:%M:%S')} {run_dir.name} "
                   f"(worker {slot})\n")
         log.flush()
-        try:
-            proc = subprocess.run(command, cwd=str(REPO_ROOT), stdout=log,
-                                  stderr=subprocess.STDOUT, env=child_env,
-                                  timeout=None if timeout_bin
-                                  else args.wall_cap_s)
-            rc = proc.returncode
-        except subprocess.TimeoutExpired:
-            rc = TIMEOUT_RC
-        except OSError as exc:
-            log.write(f"cannot run {command[0]}: {exc}\n")
-            rc = 127
+        rc = run_capped(command, log, child_env, args.wall_cap_s,
+                        bool(timeout_bin))
     elapsed = int(time.time() - start)
     ledger.append(TIMINGS_NAME,
                   f"{accumulated} {elapsed} {rc} {run_dir.name} "
@@ -437,9 +464,26 @@ def main(argv=None) -> int:
     results = resolve(args.results)
     out = resolve(args.out)
     if not results.is_dir():
-        sys.exit(f"no results directory at {results}")
+        print(f"no results directory at {results}", file=sys.stderr)
+        return 2
+    # Refused before the queue is built: an oversized pool is not a slow
+    # pass but a fast one, `taskset -c` on a core the host does not have
+    # exiting 1 at once and draining the whole queue into failures.txt.
+    cpus = os.cpu_count()
+    if cpus is not None and args.workers * args.cores > cpus:
+        print(f"{args.workers} workers x {args.cores} cores is "
+              f"{args.workers * args.cores} cores; this host has {cpus}",
+              file=sys.stderr)
+        return 2
 
     runs = queue_runs(results, args.seeds)
+    if not runs:
+        # An empty queue is never a finished pass. Exiting 0 here would let a
+        # tick mark the phase done over nothing, and status read 0 of 0.
+        print(f"nothing to score: no run directory under {results} is "
+              f"named _seed<N> with N in {' '.join(map(str, args.seeds))}",
+              file=sys.stderr)
+        return 2
     already = [r for r in runs if is_scored(csv_path(out, r))]
     todo = [r for r in runs if not is_scored(csv_path(out, r))]
     versions = read_versions()

@@ -796,6 +796,8 @@ try:
     check_true("MISMATCH" in buffer.getvalue()
                and "amba_seed1" in buffer.getvalue(),
                "naming the run")
+    check(C.count_csv_rows(merged_curves), 10,
+          "without touching the merged file")
     (hosts["h2"] / "experiments" / "curves-fixture" / "amba_seed1.csv").unlink()
     (dest / "experiments" / "curves-fixture" / "h2" / "amba_seed1.csv").unlink()
 
@@ -807,7 +809,13 @@ try:
     with contextlib.redirect_stdout(buffer):
         code = C.cmd_collect(collect_args(curves="curves-fixture"))
     check(code, 1, "a curve with another header fails the collect")
-    check_true("different header" in buffer.getvalue(), "and says so")
+    check_true("2 different headers" in buffer.getvalue()
+               and "spec,seed,other" in buffer.getvalue()
+               and "amba_seed3" in buffer.getvalue(),
+               f"naming both headers and a curve carrying the odd one: "
+               f"{buffer.getvalue()!r}")
+    check(C.count_csv_rows(merged_curves), 10,
+          "and the merged file from the last good collect is left standing")
     curve("h2", "amba_seed3", rows=3)
 
     # A host that contributes nothing is INCOMPLETE, whether the transfer
@@ -1202,9 +1210,10 @@ hosts = { av2 = "0-4" }
           "a score phase narrows the split exactly as a run phase does")
     check(scored["config_dirs"], [C.profile_configs_dir("tlsf")],
           "score phases add no configs directory to the stage check")
-    check(scored["results_dirs"], ["experiments/results-old"],
+    check(scored["results_dirs"],
+          {"av2": ["experiments/results-old"], "av3": []},
           "and the stage check wants only the results directory no earlier "
-          "run phase of this campaign writes")
+          "run phase of this campaign writes, on the hosts the phase runs on")
     check(C.curves_dir_for("experiments/results"), "experiments/curves",
           "the bare `results` directory scores into `curves`")
     check(C.curves_dir_for("results-x"), "curves-x",
@@ -1223,7 +1232,7 @@ phases = [ { kind = "score", results = "experiments/results-rematch" } ]
           "results-rematch scores into curves-rematch")
     check(dironly["config_dirs"], [],
           "and a campaign of score phases alone checks no configs directory")
-    check(dironly["results_dirs"], ["experiments/results-rematch"],
+    check(dironly["results_dirs"], {"av2": ["experiments/results-rematch"]},
           "but does check the results directory it reads")
 
     for text, expect_in, why in (
@@ -2681,6 +2690,13 @@ with open(os.path.join(os.path.dirname(os.path.abspath(__file__)),
 if "fail" in run:
     sys.exit(3)
 if "slow" in run:
+    # A grandchild standing in for maximal, whose pid the test checks after
+    # the wall cap fires: the cap has to kill the scorer's whole session.
+    import subprocess
+    child = subprocess.Popen([sys.executable, "-c",
+                              "import time; time.sleep(60)"])
+    with open(out + ".grandchild", "w") as handle:
+        handle.write(str(child.pid))
     time.sleep(10)
 if "empty" in run:
     open(out, "w").close()
@@ -2873,6 +2889,23 @@ try:
                and not (out / "slow_seed3.csv.part").exists(),
                "leaving neither a curve nor a .part")
 
+    def grandchild_dead() -> bool:
+        """Whether the stand-in maximal the slow scorer forked was killed
+        with it. Polled briefly: the kill is asynchronous to the wait."""
+        pid = int((out / "slow_seed3.csv.part.grandchild").read_text())
+        for _ in range(50):
+            try:
+                os.kill(pid, 0)
+            except ProcessLookupError:
+                return True
+            time.sleep(0.1)
+        os.kill(pid, signal.SIGKILL)
+        return False
+
+    check_true(grandchild_dead(),
+               "and the scorer's own child died with it: the cap kills the "
+               "whole session, not score_curves.py alone")
+
     # Unpinned where taskset is absent: an empty PATH has no taskset and no
     # timeout, and the manifest says so rather than pretending.
     proc = scorer("--workers", "1", seeds=("2",),
@@ -2881,6 +2914,45 @@ try:
     manifest = json.loads(manifests[0].read_text())
     check(manifest["pinned"], False, "and records that it was unpinned")
     check_true("no taskset" in manifest["pinning"], "in words")
+
+    # The fallback cap, with no coreutils timeout to kill the group, has to
+    # reach the grandchild too.
+    (out / "slow_seed3.csv.part.grandchild").unlink()
+    proc = scorer("--workers", "1", seeds=("3",),
+                  env_extra={"PATH": str(score_root / "nowhere")})
+    check(proc.returncode, 1, "the fallback cap still fails the slow run")
+    check_true(grandchild_dead(),
+               "and kills the scorer's child as coreutils timeout would")
+    check_true("124 slow" in " ".join(
+        ln.split()[2] + " " + ln.split()[3]
+        for ln in (out / "timings.txt").read_text().splitlines()),
+        "recording exit 124 as the coreutils cap does")
+
+    # Nothing to score is never a finished pass: a tick would mark the phase
+    # done over nothing and status would read 0 of 0.
+    proc = scorer("--workers", "1", seeds=("42",))
+    check(proc.returncode, 2, "a queue with no run on this host's seeds is "
+                              "an error")
+    check_true("nothing to score" in proc.stderr and "42" in proc.stderr
+               and str(results) in proc.stderr,
+               f"naming the directory and the seeds: {proc.stderr!r}")
+    proc = scorer("--workers", "1", "--dry-run", seeds=("42",))
+    check(proc.returncode, 2, "and so is a dry run of one")
+
+    # An oversized pool is not slow but fast: taskset -c on a core the host
+    # does not have exits 1 at once, and the queue drains into failures.txt.
+    cpus = os.cpu_count()
+    if cpus is not None:
+        failures_before = (out / "failures.txt").read_text()
+        (out / "b_seed1.csv").unlink()
+        proc = scorer("--workers", str(cpus + 1), "--cores", "1",
+                      seeds=("1",))
+        check(proc.returncode, 2, "workers x cores past the host's CPUs is "
+                                  "refused at startup")
+        check_true(str(cpus) in proc.stderr and str(cpus + 1) in proc.stderr,
+                   f"naming both counts: {proc.stderr!r}")
+        check((out / "failures.txt").read_text(), failures_before,
+              "before any run is attempted")
 
     for bad, why in ((["--workers", "0"], "zero workers"),
                      (["--cuts", "-1"], "negative cuts"),

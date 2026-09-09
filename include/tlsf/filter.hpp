@@ -184,6 +184,18 @@ using TlsfSimilarityKey = std::function<double(const tlsf::Specification&)>;
 TlsfSimilarityKey tlsf_syntactic_similarity_key(tlsf::Specification original,
                                                 const Config& cfg);
 
+/// Orders the two members of one equivalence class, true where @p spec_a is the
+/// one to keep: the higher @p key_a / @p key_b, and where those tie, the
+/// greater of the two under `tlsf::Specification::operator<`.
+///
+/// Exposed because two sweeps collapse equivalence classes -- the pairwise one
+/// behind `tlsf_make_implication_filter` and the running antichain in
+/// src/tlsf/antichain.cpp -- and a class must collapse the same way in both or
+/// the two disagree on which repair is written out.
+bool tlsf_prefer_in_class(const tlsf::Specification& spec_a,
+                          const tlsf::Specification& spec_b, double key_a,
+                          double key_b);
+
 /// Returns a filter keeping only the maximal specifications under the
 /// implication partial order: spec A strictly dominates B when A implies B but
 /// B does not imply A. Mutually equivalent specs contribute exactly one

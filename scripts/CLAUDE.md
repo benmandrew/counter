@@ -69,9 +69,9 @@ kind = "score"          # scores the run phase's results directory
 workers = 8             # scorers in flight, each pinned to `cores` cores
 cores = 4               # cores per scorer, also score_curves.py --jobs
 cuts = 20
-maximal_timeout = 900   # seconds per maximal call, per cut
+maximal_timeout = 900   # seconds for the antichain walk, absent a deadline
 compare_timeout = 600   # seconds for the compare call
-deadline_s = 4500       # score_curves.py stops adding cuts after this
+deadline_s = 4500       # the walk's real budget wherever it is set
 wall_cap_s = 5400       # the outer timeout on one scorer; default deadline_s + 900
 ```
 

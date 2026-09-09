@@ -108,6 +108,7 @@ target_sources(counter_fitness PRIVATE
     src/tlsf/mutation.cpp
     src/tlsf/crossover.cpp
     src/tlsf/operators.cpp
+    src/tlsf/antichain.cpp
     src/tlsf/filter.cpp
     src/tlsf/fingerprint_prefilter.cpp
     src/tlsf/mucs.cpp

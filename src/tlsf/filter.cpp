@@ -116,17 +116,6 @@ bool any_formula_exceeds(const tlsf::Specification& spec, std::size_t cap) {
     return false;
 }
 
-// Orders the two members of an equivalence class so exactly one survives. The
-// FRETISH twin in src/filter/implication.cpp carries the argument for the
-// tie-break being total rather than "whichever pair finished first".
-bool prefer_a(const tlsf::Specification& spec_a,
-              const tlsf::Specification& spec_b, double key_a, double key_b) {
-    if (key_a != key_b) {
-        return key_a > key_b;
-    }
-    return spec_b < spec_a;
-}
-
 // Marks the dominated side of the unordered pair of representative positions
 // {a, b}, if any: the weaker side under strict implication, or the side
 // `prefer_a` ranks lower when the two are equivalent. Short-circuits once
@@ -162,7 +151,8 @@ void check_pair(const std::vector<tlsf::Specification>& pop,
         b_refuted ? false
                   : tlsf_spec_implies(spec_b, spec_a, checker).value_or(false);
     if (a_implies_b && b_implies_a) {
-        const bool keep_a = prefer_a(spec_a, spec_b, keys[pos_a], keys[pos_b]);
+        const bool keep_a =
+            tlsf_prefer_in_class(spec_a, spec_b, keys[pos_a], keys[pos_b]);
         subsumed[keep_a ? pos_b : pos_a].store(1, std::memory_order_relaxed);
         ImplicationFilterStats::n_equivalent_collapsed.fetch_add(
             1, std::memory_order_relaxed);
@@ -308,6 +298,17 @@ std::vector<tlsf::Specification> filter_in_parallel(
 }
 
 }  // namespace
+
+// The FRETISH twin in src/filter/implication.cpp carries the argument for the
+// tie-break being total rather than "whichever pair finished first".
+bool tlsf_prefer_in_class(const tlsf::Specification& spec_a,
+                          const tlsf::Specification& spec_b, double key_a,
+                          double key_b) {
+    if (key_a != key_b) {
+        return key_a > key_b;
+    }
+    return spec_b < spec_a;
+}
 
 FilterFunctionT<tlsf::Specification> tlsf_make_dedup_filter() {
     return {"dedup",

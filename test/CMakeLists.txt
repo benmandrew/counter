@@ -39,6 +39,7 @@ add_executable(counter_tests
     thread_pool_tests.cpp
     tlsf/parser_tests.cpp
     tlsf/writer_tests.cpp
+    tlsf/antichain_tests.cpp
     tlsf/filter_tests.cpp
     tlsf/fitness_tests.cpp
     tlsf/mucs_tests.cpp
@@ -64,7 +65,8 @@ target_link_libraries(counter_tests PRIVATE counter_fitness)
 # where they landed. Every driver is built into the same directory, so one
 # generator expression covers all of them.
 add_dependencies(counter_tests
-    counter compare fingerprint lint-ideals ltl mucs realize signal_tracer)
+    counter compare fingerprint lint-ideals ltl maximal mucs realize
+    signal_tracer)
 target_compile_definitions(counter_tests PRIVATE
     COUNTER_DRIVER_DIR="$<TARGET_FILE_DIR:counter>")
 
@@ -130,6 +132,7 @@ add_test(NAME counter_tests.driver_support COMMAND counter_tests driver_support)
 add_test(NAME counter_tests.tlsf_parser COMMAND counter_tests tlsf_parser)
 add_test(NAME counter_tests.tlsf_writer COMMAND counter_tests tlsf_writer)
 add_test(NAME counter_tests.tlsf_filter COMMAND counter_tests tlsf_filter)
+add_test(NAME counter_tests.tlsf_antichain COMMAND counter_tests tlsf_antichain)
 add_test(NAME counter_tests.tlsf_fitness COMMAND counter_tests tlsf_fitness)
 add_test(NAME counter_tests.tlsf_mucs COMMAND counter_tests tlsf_mucs)
 add_test(NAME counter_tests.tlsf_genetic COMMAND counter_tests tlsf_genetic)
@@ -143,6 +146,7 @@ add_test(NAME counter_tests.tlsf_pipeline COMMAND counter_tests tlsf_pipeline)
 add_test(NAME counter_tests.driver_counter COMMAND counter_tests driver_counter)
 add_test(NAME counter_tests.driver_realize COMMAND counter_tests driver_realize)
 add_test(NAME counter_tests.driver_ltl COMMAND counter_tests driver_ltl)
+add_test(NAME counter_tests.driver_maximal COMMAND counter_tests driver_maximal)
 add_test(NAME counter_tests.driver_mucs COMMAND counter_tests driver_mucs)
 add_test(NAME counter_tests.driver_compare COMMAND counter_tests driver_compare)
 add_test(NAME counter_tests.driver_lint_ideals

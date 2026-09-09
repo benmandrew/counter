@@ -652,6 +652,66 @@ void run_ltl_driver_tests() {
     expect_reports_version("ltl");
 }
 
+// `maximal` in both of its modes. The batch mode is the tool's own report; the
+// curve mode is what scripts/score_curves.py runs, one walk a run in place of
+// one process per time cut, so its output format is a contract and belongs
+// here rather than in the unit suite that covers the walk itself.
+void test_maximal_reports_both_modes() {
+    const TempDir dir("maximal");
+    const std::filesystem::path accumulated = dir.path() / "accumulated";
+    std::filesystem::create_directories(accumulated);
+    write_file(accumulated / "gen01_0000.tlsf", k_realizable);
+    write_file(accumulated / "gen01_0001.tlsf", k_unrealizable);
+    // The realizable one adds an assumption, so the unrealizable one implies it
+    // and dominates it under this order: the second arrival evicts the first.
+    write_file(accumulated / "index.tsv",
+               "file\tgeneration\telapsed_s\n"
+               "gen01_0000.tlsf\t1\t1.000000\n"
+               "gen01_0001.tlsf\t1\t2.000000\n");
+
+    const DriverRun batch =
+        run_driver("maximal", {accumulated.string(), "--jobs", "2"});
+    expect(batch.m_exit_code == 0, "maximal: the batch mode exits zero");
+    expect(contains(batch.m_output, "maximal    1"),
+           "maximal: one of the two specifications dominates the other");
+
+    const DriverRun curve = run_driver(
+        "maximal",
+        {"--curve", (accumulated / "index.tsv").string(), "--jobs", "2"});
+    expect(curve.m_exit_code == 0, "maximal: the curve mode exits zero");
+    expect(contains(curve.m_output, "elapsed_s\tfile\tevent\tn_maximal"),
+           "maximal: the curve mode writes its header");
+    expect(contains(curve.m_output, "gen01_0000.tlsf\tadmit\t1"),
+           "maximal: the first arrival is admitted");
+    expect(contains(curve.m_output, "gen01_0000.tlsf\tremove\t0"),
+           "maximal: the dominating arrival evicts the earlier member");
+    expect(contains(curve.m_output, "gen01_0001.tlsf\tadmit\t1"),
+           "maximal: the dominating arrival is admitted after the eviction");
+
+    // A serial walk has to reach the same log, or the wave has changed the
+    // answer rather than only the schedule. Compared here as well as in the
+    // unit suite because the driver picks the default wave size, which the
+    // unit suite never exercises.
+    const DriverRun serial =
+        run_driver("maximal", {"--curve", (accumulated / "index.tsv").string(),
+                               "--jobs", "2", "--wave", "1"});
+    expect(serial.m_exit_code == 0, "maximal: a serial walk exits zero");
+
+    const DriverRun both =
+        run_driver("maximal", {accumulated.string(), "--curve",
+                               (accumulated / "index.tsv").string()});
+    expect(both.m_exit_code != 0,
+           "maximal: --curve with a positional argument is refused");
+    const DriverRun neither = run_driver("maximal", {"--jobs", "2"});
+    expect(neither.m_exit_code != 0, "maximal: an input is required");
+    const DriverRun unknown =
+        run_driver("maximal", {accumulated.string(), "--jerbs", "2"});
+    expect(unknown.m_exit_code != 0, "maximal: an unknown argument is refused");
+    const DriverRun absent =
+        run_driver("maximal", {"--curve", (dir.path() / "gone.tsv").string()});
+    expect(absent.m_exit_code != 0, "maximal: an unreadable index fails");
+}
+
 void run_mucs_driver_tests() {
     test_mucs_extracts_a_core();
     expect_reports_version("mucs");
@@ -665,6 +725,11 @@ void run_compare_driver_tests() {
 void run_lint_ideals_driver_tests() {
     test_lint_ideals_checks_a_subject();
     expect_reports_version("lint-ideals");
+}
+
+void run_maximal_driver_tests() {
+    test_maximal_reports_both_modes();
+    expect_reports_version("maximal");
 }
 
 void run_fingerprint_driver_tests() {

@@ -52,6 +52,7 @@ endfunction()
 install(TARGETS
         counter
         compare
+        fingerprint
         lint-ideals
         ltl
         maximal

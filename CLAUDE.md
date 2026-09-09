@@ -97,6 +97,16 @@ The verbs are `stage` (put a host on the branch and rebuild it), `start` (launch
 
 `scripts/CLAUDE.md` is the operating manual — the state each `status` value means, when `--allow-stale-binary` is legitimate, the queue's transitions, and how a campaign is closed.
 
+## Behavioural fingerprints
+
+`fingerprint` (`src/fingerprint.cpp`, evaluator in `src/fingerprint/lasso.hpp`) prints one bit per sampled lasso word per input specification: whether that specification's lowering holds at the word's first position. The Hamming distance between two fingerprints estimates the measure of the two languages' symmetric difference, which is what separates a set of near-duplicate repairs from a set of genuinely different ones. The maximality filter cannot: an antichain is defined by an implication test no two of its members pass, so it says nothing about how far apart they are. Over one 211-repair `round-robin-arbiter-aurus` run, 211 pairwise-incomparable repairs are 90 that differ on a twentieth of sampled behaviours, 32 on a fifth and 3 on half.
+
+The evaluator is a fixed-point walk over the node arena, one `std::uint64_t` valuation mask per node with a bit per position, so a lasso is capped at 64 positions and every operator is a mask fold. `F` and `U` seed empty and grow, `G`, `W` and `R` seed full and shrink, which is the only difference between the strong and weak pairs. No automaton is built and no subprocess spawned: 421 candidates at 256 words take 0.09 s in a debug build, against the 108M automaton constructions the same measurement through `ltlfilt --accept-word` would cost. `test_agrees_with_ltlfilt` in `test/fingerprint/lasso_tests.cpp` crosses 20 formulae against 24 words and requires every verdict to match SPOT's, because a hand-written evaluator and a hand-written expectation table can be wrong the same way.
+
+Words are drawn from the *original* specification's signal list, the word count and the seed — never from a candidate's own — and the signals are sorted first, so two candidates of one family are always scored on one word set however they reached the tool. Two fingerprints are comparable only when drawn from identical arguments; nothing in the format records them, so a phase that compares two arms must state them once and use it twice.
+
+`score_curves.py --epsilon` turns this into an anytime curve: `eps_solutions_<e>` is the greedy net over the candidates accumulated by time t, in discovery order, keeping one only where it differs from every kept one on more than a fraction e of the words. Discovery order rather than fitness order because it makes the count non-decreasing, which an anytime curve has to be. It runs over every gate-passing candidate rather than over the maximal set, which costs no solver call and removes an asymmetry the maximality curves carry: a timed-out implication reads as non-implication, and the two tools' passes ran at different `compare` budgets.
+
 ## Docs
 
 Every header file in `include/` must have a corresponding `.rst` page under `docs/api/` and be listed in `docs/index.rst`. When adding a new header, add the page and toctree entry before committing. The site covers `include/` alone: implementation detail under `src/` is deliberately not published.
@@ -332,7 +342,7 @@ Two calls that both draw from the `RandomSource` must never be arguments of the 
 
 ## TLSF repair modes
 
-Binaries: `counter` (genetic repair), `realize`, `compare`, `ltl`, `mucs`, `maximal` — run each with `--help` for flags.
+Binaries: `counter` (genetic repair), `realize`, `compare`, `ltl`, `mucs`, `maximal`, `fingerprint` — run each with `--help` for flags.
 
 `mucs` extracts a minimal unrealizable core. Prints the smallest subset of the guarantee-side sections (PRESET, ASSERT, GUARANTEE) that stays unrealizable against the full, unchanged environment side (INITIALLY, REQUIRE, ASSUME) — the culprit formulae behind unrealizability. Uses QuickXplain over `ltlsynt`. Prints `REALIZABLE (no core)` if the input is already realizable. TLSF-only (FRETISH JSON is not supported).
 

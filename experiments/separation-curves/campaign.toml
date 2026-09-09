@@ -1,0 +1,70 @@
+# The behavioural-separation pass over both arms of the 2026-09-04 rematch.
+#
+# No search runs here. Both sides' candidates are already on the hosts --
+# counter's 3000 rematch run directories under
+# ~/projects/counter/experiments/results-rematch, and AuRUS's 780 runs under
+# ~/aurus-h2h-out -- and this campaign measures how many behaviourally
+# distinct repairs each of them held at each time cut. `configs` is the
+# adapter rather than a generator, for the reason experiments/aurus-curves
+# gives: scripts/aurus_adapt.py materialises AuRUS's flat output as the run
+# directories a score phase reads, and its candidate files are symlinks, so
+# the tree costs no copy of the 287,006 of them.
+#
+# maximality = "off" on both phases. The epsilon curves are computed from
+# `fingerprint`'s bit per sampled lasso word and make no solver call at all,
+# where the 2026-09-07 maximality pass over the same counter runs cost 311.7
+# worker-hours. Nothing here needs that sweep: an antichain is defined by an
+# implication test no two of its members pass, so it cannot say how far apart
+# its members are, which is the whole question these curves answer.
+#
+# One seed split serves both phases: av2 ran rematch seeds 0-14 and AuRUS
+# repeats 0-14, av3 the other half of each, and each host holds only what it
+# wrote.
+name = "separation-curves"
+branch = "feat/fingerprint-curves"
+configs = "python3 scripts/aurus_adapt.py --root ~/aurus-h2h-out --out experiments/results-aurus-curves"
+hosts = { av2 = "0-14", av3 = "15-29" }
+
+# The word count and seed are stated on both phases and must agree: a
+# fingerprint is comparable only against one drawn from an identical sampling,
+# and the two arms are compared against each other. 256 words puts the
+# distance resolution at 0.4%, well inside the coarsest epsilon below.
+#
+# The epsilon list is the panel's: 0.05 separates repairs agreeing on all but
+# a twentieth of sampled behaviours, and 0.5 keeps only repairs that disagree
+# on half. Over one 211-repair round-robin-arbiter-aurus run those read 90 and
+# 3 against the 211 the maximality filter returns.
+
+[[phases]]
+name = "counter"
+kind = "score"
+results = "experiments/results-rematch"
+out = "experiments/separation-rematch"
+workers = 8
+cores = 1
+maximality = "off"
+ideals = "off"
+epsilon = "0.05,0.2,0.5"
+fingerprint_words = 256
+fingerprint_seed = 0
+cuts = 20
+compare_timeout = 600
+deadline_s = 900
+wall_cap_s = 1200
+
+[[phases]]
+name = "aurus"
+kind = "score"
+results = "experiments/results-aurus-curves"
+out = "experiments/separation-aurus"
+workers = 8
+cores = 1
+maximality = "off"
+ideals = "off"
+epsilon = "0.05,0.2,0.5"
+fingerprint_words = 256
+fingerprint_seed = 0
+cuts = 20
+compare_timeout = 600
+deadline_s = 900
+wall_cap_s = 1200

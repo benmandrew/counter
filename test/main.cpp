@@ -143,6 +143,10 @@ bool run_driver_suite(std::string_view suite_name) {
         run_lint_ideals_driver_tests();
         return true;
     }
+    if (suite_name == "driver_fingerprint") {
+        run_fingerprint_driver_tests();
+        return true;
+    }
     if (suite_name == "driver_signal_tracer") {
         run_signal_tracer_driver_tests();
         return true;
@@ -171,6 +175,43 @@ bool run_infrastructure_suite(std::string_view suite_name) {
     }
     if (suite_name == "thread_pool") {
         run_thread_pool_tests();
+        return true;
+    }
+    return false;
+}
+
+// The formula suites: the AST and its parser, printer, canonical form, CNF
+// encoding and rewriter, plus the lasso evaluator that walks the same arena.
+// Split out of run_suite for the reason run_tlsf_suite and run_genetic_suite
+// are: one flat chain of every suite in the binary crosses the lint target's
+// cognitive-complexity bound.
+bool run_formula_suite(std::string_view suite_name) {
+    if (suite_name == "prop_formula_ast") {
+        run_prop_formula_ast_tests();
+        return true;
+    }
+    if (suite_name == "prop_formula_canonical") {
+        run_prop_formula_canonical_tests();
+        return true;
+    }
+    if (suite_name == "prop_formula_cnf") {
+        run_prop_formula_cnf_tests();
+        return true;
+    }
+    if (suite_name == "prop_formula_rewrite") {
+        run_prop_formula_rewrite_tests();
+        return true;
+    }
+    if (suite_name == "prop_formula_temporal") {
+        run_prop_formula_temporal_tests();
+        return true;
+    }
+    if (suite_name == "prop_formula_similarity") {
+        run_prop_formula_similarity_tests();
+        return true;
+    }
+    if (suite_name == "fingerprint_lasso") {
+        run_fingerprint_lasso_tests();
         return true;
     }
     return false;
@@ -209,28 +250,7 @@ void run_suite(std::string_view suite_name,
     if (run_genetic_suite(suite_name)) {
         return;
     }
-    if (suite_name == "prop_formula_ast") {
-        run_prop_formula_ast_tests();
-        return;
-    }
-    if (suite_name == "prop_formula_canonical") {
-        run_prop_formula_canonical_tests();
-        return;
-    }
-    if (suite_name == "prop_formula_cnf") {
-        run_prop_formula_cnf_tests();
-        return;
-    }
-    if (suite_name == "prop_formula_rewrite") {
-        run_prop_formula_rewrite_tests();
-        return;
-    }
-    if (suite_name == "prop_formula_temporal") {
-        run_prop_formula_temporal_tests();
-        return;
-    }
-    if (suite_name == "prop_formula_similarity") {
-        run_prop_formula_similarity_tests();
+    if (run_formula_suite(suite_name)) {
         return;
     }
     if (suite_name == "semantic_similarity") {
@@ -310,6 +330,7 @@ int main(int argc, const char* const argv[]) {
             run_prop_formula_rewrite_tests();
             run_prop_formula_similarity_tests();
             run_prop_formula_temporal_tests();
+            run_fingerprint_lasso_tests();
             run_semantic_similarity_tests();
             run_syntactic_similarity_tests();
             run_fitness_function_tests();
@@ -341,6 +362,7 @@ int main(int argc, const char* const argv[]) {
             run_mucs_driver_tests();
             run_compare_driver_tests();
             run_lint_ideals_driver_tests();
+            run_fingerprint_driver_tests();
             run_signal_tracer_driver_tests();
             // run_thread_pool_tests() is deliberately absent. It sizes the
             // global pool, which is a function-local static built on first use

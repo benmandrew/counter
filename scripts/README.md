@@ -519,7 +519,27 @@ maximal_timeout = 900  # seconds per maximal call, per cut
 compare_timeout = 600  # seconds for the compare call
 deadline_s = 4500      # score_curves.py stops adding cuts after this
 wall_cap_s = 5400      # outer timeout on one scorer; default deadline_s + 900
+maximality = "on"      # run the implication sweep over the time cuts
+ideals = "on"          # label candidates against the family's ideals
+epsilon = ""           # separation thresholds, e.g. "0.05,0.2,0.5"; none if empty
+fingerprint_words = 256
+fingerprint_seed = 0
 ```
+
+The last five choose which curves a phase writes. `maximality = "off"` with a
+non-empty `epsilon` is the behavioural-separation pass: it makes no solver
+call, where the maximality sweep over the same 3000 rematch runs cost 311.7
+worker-hours. `ideals = "off"` drops the `compare` call behind
+`ideal_solutions`, which is 7.2 s of a 7.3 s epsilon-only run on a
+421-candidate directory and re-derives what the maximality pass already
+recorded. A phase with `maximality = "off"` and no `epsilon` is refused,
+having nothing to score. The word count and seed must match across any two
+phases whose curves are compared: a fingerprint is a bit per sampled lasso
+word, and its distance to another is only a distance if both were drawn from
+one sampling. A phase states every budget on the scorer's command line, so
+the manifest records which stages it ran and which binaries decided them --
+an epsilon-only pass names `fingerprint` and neither `maximal` nor
+`compare`.
 
 Either `results` or a profile (the phase's own, or the campaign's) must be
 present. Every budget defaults to `score_campaign.DEFAULTS` and is stated on

@@ -52,6 +52,7 @@ target_sources(counter_core PRIVATE
     src/prop_formula/parser.cpp
     src/prop_formula/render.cpp
     src/prop_formula/rewrite.cpp
+    src/fingerprint/lasso.cpp
     src/prop_formula/similarity.cpp
     src/prop_formula/simplify.cpp
     src/prop_formula/transform.cpp
@@ -64,6 +65,11 @@ target_sources(counter_core PRIVATE
     src/version.cpp
 )
 target_include_directories(counter_core PUBLIC include)
+# src is on the path for counter_core's own sources alone, so an internal
+# header can be named from another directory under src/ ("fingerprint/lasso.hpp"
+# from src/fingerprint.cpp resolves relative to src/ without it). include/ stays
+# the published surface; nothing outside this target may reach src/ this way.
+target_include_directories(counter_core PRIVATE src)
 # Only version.cpp includes the generated header, so a new commit recompiles
 # one translation unit rather than the whole tree.
 target_include_directories(counter_core PRIVATE "${COUNTER_VERSION_HEADER_DIR}")
@@ -193,6 +199,9 @@ target_link_libraries(mucs PRIVATE counter_fitness)
 
 add_executable(maximal src/maximal.cpp)
 target_link_libraries(maximal PRIVATE counter_fitness)
+
+add_executable(fingerprint src/fingerprint.cpp)
+target_link_libraries(fingerprint PRIVATE counter_fitness)
 
 add_custom_target(ganak_binary ALL DEPENDS "${GANAK_EXECUTABLE}")
 add_custom_target(black_binary ALL DEPENDS "${BLACK_EXECUTABLE}")

@@ -40,6 +40,7 @@ PROFDATA = BUILD / "coverage.profdata"
 # fails here rather than quietly leaving its lines out of the denominator.
 BINARIES = (
     "counter",
+    "fingerprint",
     "compare",
     "lint-ideals",
     "ltl",

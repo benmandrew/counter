@@ -24,11 +24,24 @@ branch = "feat/fingerprint-curves"
 configs = "python3 scripts/aurus_adapt.py --root ~/aurus-h2h-out --out experiments/results-aurus-curves"
 hosts = { av2 = "0-14", av3 = "15-29" }
 
+# Calibration first, and alone: the two phases below are commented out until
+# it has priced them. The pass is a sweep nothing has run at this cost before,
+# and the only honest place to time it is the hardware and the concurrency it
+# will run at. A single run on an idle workstation reads low -- 8 workers x 4
+# cores against 20 real cores is oversubscribed, which is the saturation bias
+# that made an earlier campaign's estimate ~27% light.
+#
+# One seed a host, which is 100 of that host's 1500 runs, so the full phase is
+# 15x what this reports. Seed 4 carries humanoid-531, the largest accumulated
+# set in the corpus at 727 candidates and the family the 2026-09-07 pass left
+# partial curves on, so the worst case is inside the sample rather than
+# extrapolated to.
 [[phases]]
-name = "counter"
+name = "calib"
 kind = "score"
 results = "experiments/results-rematch"
-out = "experiments/separation-maximal-rematch"
+out = "experiments/separation-maximal-calib"
+hosts = { av2 = "4", av3 = "19" }
 workers = 8
 cores = 4
 maximality = "on"
@@ -41,19 +54,36 @@ maximal_timeout = 900
 compare_timeout = 600
 deadline_s = 4500
 
-[[phases]]
-name = "aurus"
-kind = "score"
-results = "experiments/results-aurus-curves"
-out = "experiments/separation-maximal-aurus"
-workers = 8
-cores = 4
-maximality = "on"
-ideals = "off"
-epsilon = "0.05,0.2,0.5"
-fingerprint_words = 256
-fingerprint_seed = 0
-cuts = 20
-maximal_timeout = 900
-compare_timeout = 600
-deadline_s = 4500
+# [[phases]]
+# name = "counter"
+# kind = "score"
+# results = "experiments/results-rematch"
+# out = "experiments/separation-maximal-rematch"
+# workers = 8
+# cores = 4
+# maximality = "on"
+# ideals = "off"
+# epsilon = "0.05,0.2,0.5"
+# fingerprint_words = 256
+# fingerprint_seed = 0
+# cuts = 20
+# maximal_timeout = 900
+# compare_timeout = 600
+# deadline_s = 4500
+
+# [[phases]]
+# name = "aurus"
+# kind = "score"
+# results = "experiments/results-aurus-curves"
+# out = "experiments/separation-maximal-aurus"
+# workers = 8
+# cores = 4
+# maximality = "on"
+# ideals = "off"
+# epsilon = "0.05,0.2,0.5"
+# fingerprint_words = 256
+# fingerprint_seed = 0
+# cuts = 20
+# maximal_timeout = 900
+# compare_timeout = 600
+# deadline_s = 4500

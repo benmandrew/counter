@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Score one completed TLSF run's accumulated repairs as curves over time.
+"""Score one completed run's accumulated repairs as curves over time.
 
 An ablation campaign that varies a termination rule cannot be read off
 `n_repairs` alone: two arms that stop at different moments are answering
@@ -16,7 +16,9 @@ them scalars:
 
 The source is `<run-dir>/accumulated/index.tsv`, the accumulator's flushed
 record of every candidate that passed the output gate and when, which is a
-superset of the filtered `repair_N.tlsf` the run reports. The repairs are
+superset of the filtered `repair_N` files the run reports. Either front end's
+output is read: `compare` and `maximal` both route on the extension the
+accumulator wrote, `.tlsf` for TLSF and `.json` for FRETISH. The repairs are
 deliberately not scored here: they are the run's answer, and these are its
 working.
 
@@ -367,8 +369,8 @@ def maximality_rows(base: dict, index: list[tuple[str, int, float]],
     The cheaper algorithm this is still not: walk the set in timestamp order
     keeping a running maximal antichain and compare each arrival against that
     antichain alone, which is O(n * |antichain|). It needs a pairwise
-    implication oracle over two .tlsf files, and no binary exposes one --
-    `maximal` takes a whole set and reports its filter's verdict, not the
+    implication oracle over two specification files, and no binary exposes one
+    -- `maximal` takes a whole set and reports its filter's verdict, not the
     individual implications behind it.
     """
     rows: list[dict] = []

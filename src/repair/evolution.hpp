@@ -47,8 +47,10 @@ EvolutionResult run_evolution(
     RandomSource& random_source, DashboardWriter& dashboard,
     const std::string& output_dir, SearchBudget& budget);
 
+// The gate. @p cfg supplies the status grading, which is the run's rather than
+// a fixed one, so the output is judged on the scale the search scored on.
 std::vector<Specification> collect_realizable_specifications(
-    const std::vector<ScoredSpecification>& population);
+    const Config& cfg, const std::vector<ScoredSpecification>& population);
 
 // Applies the final screens to the realizable specifications: deduplication,
 // then the weakening filter against @p original when run_weakening_filter is

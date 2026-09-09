@@ -296,6 +296,7 @@ DEFAULT_FIELDS = {
     "mutation.p_timing": "p_timing",
     "mutation.p_condition_type": "p_condition_type",
     "mutation.p_scope": "p_scope",
+    "mutation.p_monotone": "p_monotone",
     "mutation.p_add_assumption": "p_add_assumption",
     "mutation.p_remove_guarantee": "p_remove_guarantee",
     "mutation.p_conditional_assumption": "p_conditional_assumption",

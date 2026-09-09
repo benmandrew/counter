@@ -121,7 +121,11 @@ namespace {
 // assume it names one of two scales that do; from this version it may name a
 // third that does not, so the status objective of two runs is comparable only
 // where the field agrees.
-constexpr int k_schema_version = 24;
+//
+// 25 added mutation.p_monotone, the FRETISH monotone rewrite arm. Its TLSF
+// twin tlsf.mutation.p_monotone has been in the config block since the block
+// existed, so a reader keying on the name alone now finds two.
+constexpr int k_schema_version = 25;
 
 // The inverse of the spellings config_io.cpp parses. It has no table to
 // borrow -- it only ever goes string to enum -- so these must be kept in step
@@ -267,6 +271,7 @@ nlohmann::json config_json(const Config& cfg) {
           {"p_timing", cfg.p_timing},
           {"p_condition_type", cfg.p_condition_type},
           {"p_scope", cfg.p_scope},
+          {"p_monotone", cfg.p_monotone},
           {"p_add_assumption", cfg.p_add_assumption},
           {"p_remove_guarantee", cfg.p_remove_guarantee},
           {"p_conditional_assumption", cfg.p_conditional_assumption},

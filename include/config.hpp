@@ -453,6 +453,21 @@ struct Config {
     /// examples/ -- the arm can only reach Global and is a no-op. Defaults to 0
     /// on the same terms as p_condition_type.
     double p_scope = 0.0;
+    /// FRETISH only: probability that a condition or response rewrite is a
+    /// monotone one (monotone_rewrite, include/genetic/monotone.hpp) rather
+    /// than the general propositional rewrite. It is offered inside the
+    /// p_response and p_trigger arms rather than beside them, so it changes
+    /// which rewrite fires and not how often one does. The TLSF twin is
+    /// `tlsf_p_monotone`, which defaults to 0.25; this defaults to 0, where the
+    /// arm costs no RNG draw and the breeding stream is byte-identical to the
+    /// one before it existed -- the p_remove_guarantee discipline. No campaign
+    /// has measured it off 0.
+    ///
+    /// The arm sits out a field whose polarity in the lowered requirement is
+    /// not determinate, monotonicity saying nothing there: a trigger's rising
+    /// edge `(!c & Xc)` holds its condition at both polarities, and
+    /// `after n ticks` does the same to its response.
+    double p_monotone = 0.0;
     /// Low-probability structural mutation, shared by both modes: append a new
     /// environment assumption (over input atoms) rather than rewriting an
     /// existing requirement/formula. This is how the algorithm can repair

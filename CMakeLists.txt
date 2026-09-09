@@ -96,6 +96,7 @@ target_sources(counter_fitness PRIVATE
     src/fitness/transfer_matrix.cpp
     src/genetic/crossover.cpp
     src/genetic/generation.cpp
+    src/genetic/monotone.cpp
     src/genetic/mutation.cpp
     src/genetic/nsga2.cpp
     src/tlsf/fitness.cpp

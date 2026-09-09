@@ -10,6 +10,7 @@
 #include <variant>
 #include <vector>
 
+#include "genetic/monotone.hpp"
 #include "prop_formula.hpp"
 
 namespace {
@@ -143,6 +144,15 @@ Formula mutate_binary_subtree(const std::pair<Formula, Formula>& children,
 }
 
 }  // namespace
+
+Formula draw_literal(const std::vector<std::string>& pool,
+                     const RandomSource& random_source) {
+    const Formula atom =
+        Formula::make_atom(pool[random_source.next_index(pool.size())]);
+    return random_source.next_bool()
+               ? Formula::make_unary(Formula::Kind::Not, atom)
+               : atom;
+}
 
 Formula mutate_formula(const Formula& formula,
                        const std::vector<std::string>& atoms,
@@ -488,6 +498,67 @@ Scope move_scope(const Scope& scope, Direction direction, const Timing& timing,
     return candidates[random_source.next_index(candidates.size())];
 }
 
+// Which way a monotone rewrite of a field has to move for the requirement to
+// move @p direction, given whether the field sits under a negation.
+MonotoneDirection monotone_of(Direction direction, bool flipped) {
+    return (direction == Direction::Weaken) != flipped
+               ? MonotoneDirection::Weaken
+               : MonotoneDirection::Strengthen;
+}
+
+// The direction a monotone rewrite of the response must take, or nothing where
+// the response occurs at both polarities in the lowered requirement and no
+// rewrite of it says anything about the whole.
+//
+// scope_wrap places its argument positively in every one of its eight
+// branches, and both the continual wrapper `G(c -> body)` and the trigger's
+// two conjuncts place `body` positively, so what is left to decide is the
+// timing and the scope's polarity.
+std::optional<MonotoneDirection> response_direction(
+    const Requirement& requirement, Direction direction) {
+    // expand_after builds `!r & X(!r & X(... & X(r)))` and the bounded form
+    // conjoins `for n (!r)` with `within n+1 r`, so `after n ticks` holds its
+    // response at both polarities either way.
+    if (std::holds_alternative<timing::AfterTicks>(requirement.m_timing)) {
+        return std::nullopt;
+    }
+    // An "only" scope carries the negation of the timing's obligation
+    // (negated_timing_body), which puts the response under a Not.
+    return monotone_of(direction, is_only_scope(requirement.m_scope.m_kind));
+}
+
+// The same for the condition. Continual lowers to `G(c -> body)`, an
+// antecedent and so uniformly negative; a trigger's rising edge is
+// `(!c & Xc)`, which holds the condition at both polarities at once, and its
+// second conjunct `(c -> body)` at neither of those two consistently.
+std::optional<MonotoneDirection> condition_direction(
+    const Requirement& requirement, Direction direction) {
+    if (requirement.m_condition_type != ConditionType::Continual) {
+        return std::nullopt;
+    }
+    return monotone_of(direction, true);
+}
+
+// The monotone arm, offered ahead of the general rewrite. cfg.p_monotone is
+// read before the RandomSource is touched, so at 0 the arm costs no draw and
+// the breeding stream is what it was before it existed.
+Formula rewrite_field(const Formula& field,
+                      const std::vector<std::string>& atoms,
+                      std::optional<MonotoneDirection> direction,
+                      const Config& cfg, const RandomSource& random_source) {
+    if (cfg.p_monotone > 0.0 && direction.has_value() && !atoms.empty() &&
+        random_source.next_real() < cfg.p_monotone) {
+        // Both menu widenings on, unlike the TLSF call site. The two gates
+        // exist to hold an archived draw stream byte-identical, which a new
+        // arm has nothing to preserve, and with atom_rules off the menu at a
+        // literal is the rewrite to a constant alone -- which guts a
+        // propositional field rather than moving it along the order.
+        return monotone_rewrite(field, *direction, MonotoneRules{true, true},
+                                atoms, random_source);
+    }
+    return mutate_formula(field, atoms, random_source);
+}
+
 }  // namespace
 
 std::vector<Timing> collect_timing_pool(const Specification& specification) {
@@ -529,16 +600,20 @@ Requirement mutate_requirement(const Requirement& requirement,
                                const RandomSource& random_source,
                                const Config& cfg) {
     Requirement mutated = requirement;
-    // Response and condition mutation is still direction-agnostic: it rewrites
-    // the propositional structure freely and relies on the population filters
-    // to discard candidates that moved the wrong way.
+    // Under cfg.p_monotone these two rewrites move along the implication order
+    // and are direction-agnostic otherwise, rewriting the propositional
+    // structure freely and relying on the population filters to discard
+    // candidates that moved the wrong way. The key defaults to 0, so that is
+    // still what a run does unless it is turned on.
     if (random_source.next_real() < cfg.p_response) {
-        mutated.m_response =
-            mutate_formula(requirement.m_response, atoms, random_source);
+        mutated.m_response = rewrite_field(
+            requirement.m_response, atoms,
+            response_direction(requirement, direction), cfg, random_source);
     }
     if (random_source.next_real() < cfg.p_trigger) {
-        mutated.m_condition = mutate_formula(requirement.m_condition,
-                                             condition_atoms, random_source);
+        mutated.m_condition = rewrite_field(
+            requirement.m_condition, condition_atoms,
+            condition_direction(requirement, direction), cfg, random_source);
     }
     if (random_source.next_real() < cfg.p_timing) {
         mutated.m_timing = mutate_timing(requirement.m_timing, direction,

@@ -16,6 +16,7 @@ add_executable(counter_tests
     genetic/pipeline_tests.cpp
     genetic/termination_tests.cpp
     genetic/mutation_tests.cpp
+    genetic/monotone_arm_tests.cpp
     genetic/nsga2_tests.cpp
     main.cpp
     fitness/function_tests.cpp
@@ -105,6 +106,7 @@ add_test(NAME counter_tests.pipeline COMMAND counter_tests pipeline)
 add_test(NAME counter_tests.termination COMMAND counter_tests termination)
 add_test(NAME counter_tests.nsga2 COMMAND counter_tests nsga2)
 add_test(NAME counter_tests.mutation COMMAND counter_tests mutation)
+add_test(NAME counter_tests.fretish_monotone COMMAND counter_tests fretish_monotone)
 add_test(NAME counter_tests.prop_formula_ast COMMAND counter_tests prop_formula_ast)
 add_test(NAME counter_tests.prop_formula_canonical COMMAND counter_tests prop_formula_canonical)
 add_test(NAME counter_tests.prop_formula_cnf COMMAND counter_tests prop_formula_cnf)

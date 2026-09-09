@@ -134,6 +134,10 @@ Config golden_config() {
     // this suite rather than silently re-recording the goldens.
     cfg.p_condition_type = 0.0;
     cfg.p_scope = 0.0;
+    // The same, for the monotone arm: at 0 rewrite_field returns to
+    // mutate_formula without drawing, so the goldens hold what they held
+    // before the arm existed.
+    cfg.p_monotone = 0.0;
     // Pinned to the production default. It is also the value the goldens below
     // were recorded under: with it off, an assumption-side rewrite draws from
     // the inputs alone, so next_index sees a narrower bound and the trace hash
@@ -308,6 +312,28 @@ void test_new_arms_cost_no_draw_at_zero() {
            "got " +
                std::to_string(count_draws(scope_on)) + " against " +
                std::to_string(baseline));
+
+    // The monotone arm is checked on the rendered stream rather than on a
+    // draw count. It sits *inside* the response arm rather than beside it, so
+    // it is only observable with that arm on, and it replaces one rewrite with
+    // another rather than appending draws to the end -- two rewrites of one
+    // field can draw the same number of times and take different branches
+    // doing it.
+    const auto render_draws = [&](const Config& cfg) {
+        auto trace = std::make_shared<DrawTrace>();
+        const RandomSource source = make_recording_source(k_seed, trace);
+        mutate_requirement(req, atoms, atoms, Direction::Weaken, timings, modes,
+                           source, cfg);
+        return render_trace(*trace);
+    };
+
+    Config response_on = off;
+    response_on.p_response = 1.0;
+    Config monotone_on = response_on;
+    monotone_on.p_monotone = 1.0;
+    expect(render_draws(monotone_on) != render_draws(response_on),
+           "p_monotone: turning the arm on must change the draw stream, or "
+           "the zero-cost guard above is passing over a dead arm");
 }
 
 void test_generation_draw_sequence_is_pinned() {

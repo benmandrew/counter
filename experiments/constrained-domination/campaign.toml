@@ -35,4 +35,29 @@ configs = "python3 scripts/gen_configs.py --tlsf --schemes nsga2-apportion --swe
 
 # jobs = 8, as selection-smoke and monotone ran it on this corpus, which is
 # what makes this campaign's wall times readable against theirs.
-phases = [ { profile = "constrained-dom", jobs = 8 } ]
+# The maximality pass over the search phase's accumulated sets, which is where
+# the maximal_solutions and maximal_ideal_solutions anytime curves come from.
+# It is a second phase rather than a second campaign because it scores this
+# campaign's own results directory, so `results` and `out` take their defaults
+# -- results-constrained-dom into curves-constrained-dom.
+#
+# Every budget is stated rather than inherited, so the archive records values
+# that were chosen. They are the score_campaign.DEFAULTS and each is per run,
+# not per phase: wall_cap_s wraps one score_curves.py invocation. Seven timed
+# runs on av2 put the slowest at 200 s (round-robin-arbiter-aurus cdon seed 0,
+# 200 accumulated candidates), so 4500 s of deadline is ample.
+#
+# The cost is set by the family rather than by the size of the accumulated set
+# -- 1003 ms per candidate on round-robin-arbiter-aurus against 76 ms on
+# minepump, a 15x spread, while minepump carries the larger set of the two.
+# That is the whole-specification implication query's formula size, which is a
+# property of the family. Sizing this phase off any one family is therefore
+# wrong in either direction; the per-run budgets are what absorb it.
+#
+# workers x cores is 32 on both hosts, which is exactly nproc. score_campaign
+# refuses a product past the host's CPU count, so this is the ceiling and not
+# a chosen fraction of it.
+phases = [
+    { profile = "constrained-dom", jobs = 8 },
+    { kind = "score", workers = 8, cores = 4, cuts = 20, maximal_timeout = 900, compare_timeout = 600, deadline_s = 4500, wall_cap_s = 5400 },
+]

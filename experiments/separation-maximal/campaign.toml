@@ -1,0 +1,59 @@
+# The maximal-and-separated pass over both arms of the 2026-09-04 rematch.
+#
+# experiments/separation-curves measured the epsilon net over every
+# gate-passing candidate, which needed no solver call. This measures it over
+# the maximal antichain instead, which needs the implication sweep, and the
+# two answer different questions: the first counts distinct repairs a run
+# holds, the second counts repairs that are distinct *and* not dominated by
+# another the run also holds.
+#
+# The sweep is affordable now because it prefilters on the same sampled words.
+# A word one candidate accepts and another rejects settles that direction of
+# the implication with no solver call, and it settles 95.9% of the ordered
+# pairs of a 421-candidate round-robin-arbiter-aurus set. Measured over 80
+# candidates the whole tool went from 6.415s to 0.341s with byte-identical
+# output, so the 2026-09-07 pass's 311.7 worker-hours is not the budget here.
+# PLAN.md carries the smoke test the estimate comes from.
+#
+# ideals = "off": `compare` is not needed for either metric and the maximality
+# pass of 2026-09-07 already recorded the ideal-implying counts. The word
+# count and seed match separation-curves so the two passes' epsilon columns
+# are on one sampling and can be read against each other.
+name = "separation-maximal"
+branch = "feat/fingerprint-curves"
+configs = "python3 scripts/aurus_adapt.py --root ~/aurus-h2h-out --out experiments/results-aurus-curves"
+hosts = { av2 = "0-14", av3 = "15-29" }
+
+[[phases]]
+name = "counter"
+kind = "score"
+results = "experiments/results-rematch"
+out = "experiments/separation-maximal-rematch"
+workers = 8
+cores = 4
+maximality = "on"
+ideals = "off"
+epsilon = "0.05,0.2,0.5"
+fingerprint_words = 256
+fingerprint_seed = 0
+cuts = 20
+maximal_timeout = 900
+compare_timeout = 600
+deadline_s = 4500
+
+[[phases]]
+name = "aurus"
+kind = "score"
+results = "experiments/results-aurus-curves"
+out = "experiments/separation-maximal-aurus"
+workers = 8
+cores = 4
+maximality = "on"
+ideals = "off"
+epsilon = "0.05,0.2,0.5"
+fingerprint_words = 256
+fingerprint_seed = 0
+cuts = 20
+maximal_timeout = 900
+compare_timeout = 600
+deadline_s = 4500

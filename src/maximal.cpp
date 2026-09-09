@@ -13,9 +13,11 @@
 
 #include "config.hpp"
 #include "driver_support.hpp"
+#include "fingerprint/lasso.hpp"
 #include "runner/black.hpp"
 #include "thread_pool.hpp"
 #include "tlsf/filter.hpp"
+#include "tlsf/fingerprint_prefilter.hpp"
 #include "tlsf/parser.hpp"
 #include "tlsf/specification.hpp"
 
@@ -126,14 +128,30 @@ struct Quotient {
 // Quotient the survivors. They are pairwise non-dominating by construction, so
 // a mutual implication here is an equivalence and nothing else, and the sweep
 // is over the survivors alone rather than the whole input.
+//
+// This loop is serial and used to be free: every query it asks, the pairwise
+// sweep had already asked and cached. The sweep's fingerprint prefilter took
+// that away, since the pairs reaching here are the mutually non-implying ones
+// and those are exactly the ones a sampled word refutes, so the sweep now
+// skips them and this loop pays a fresh subprocess for each. Measured over 80
+// candidates that was 1030 serial ltlfilt calls and 20.4s of a 21s run. The
+// same prefilter applies here for the same reason and restores it: a word one
+// survivor accepts and another rejects rules out equivalence outright.
 Quotient quotient_by_equivalence(
     const std::vector<tlsf::Specification>& maximal,
-    SatisfiabilityChecker& checker) {
+    SatisfiabilityChecker& checker,
+    const std::vector<fingerprint::PackedFingerprint>& prints) {
     Quotient out;
     out.m_class_of.assign(maximal.size(), 0);
+    const bool have_prints = prints.size() == maximal.size();
     for (std::size_t i = 0; i < maximal.size(); ++i) {
         bool placed = false;
         for (std::size_t j = 0; j < i && !placed; ++j) {
+            if (have_prints &&
+                (fingerprint::refutes_implication(prints[i], prints[j]) ||
+                 fingerprint::refutes_implication(prints[j], prints[i]))) {
+                continue;
+            }
             if (tlsf_spec_implies(maximal[i], maximal[j], checker)
                     .value_or(false) &&
                 tlsf_spec_implies(maximal[j], maximal[i], checker)
@@ -289,7 +307,8 @@ int main(int argc, const char* const argv[]) {
         std::cerr << "\n";
     }
 
-    const Quotient quotient = quotient_by_equivalence(maximal, checker);
+    const Quotient quotient = quotient_by_equivalence(
+        maximal, checker, tlsf::prefilter::fingerprints_of(maximal));
     print_report(maximal, quotient, position_of, members, distinct.size(),
                  parse_failures);
     return 0;

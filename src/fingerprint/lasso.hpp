@@ -53,6 +53,22 @@ std::vector<LassoWord> sample_words(const std::vector<std::string>& signals,
 std::vector<bool> fingerprint_of(const Formula& formula,
                                  const std::vector<LassoWord>& words);
 
+/// A fingerprint packed for the pairwise test, 64 words to an element.
+using PackedFingerprint = std::vector<std::uint64_t>;
+
+/// @p bits packed low word first.
+PackedFingerprint pack(const std::vector<bool>& bits);
+
+/// True when @p lhs accepts a word @p rhs rejects.
+///
+/// That word is a witness for `lhs & !rhs`, so it refutes `lhs -> rhs` with no
+/// solver call. The test is necessary and not sufficient: a false result means
+/// no sampled word separated the two, which is evidence of implication and not
+/// proof of it, so the caller must still ask the solver. Refutation is exact
+/// either way -- every bit comes from evaluating the lowering itself.
+bool refutes_implication(const PackedFingerprint& lhs,
+                         const PackedFingerprint& rhs);
+
 /// Lowercase hex, four bits a digit, word 0 in the low bit of the last digit.
 /// Padded to a whole digit so a fingerprint's length names its word count.
 std::string to_hex(const std::vector<bool>& bits);

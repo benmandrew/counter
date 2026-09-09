@@ -326,11 +326,22 @@ def score_one(run_dir: Path, slot: int, args, out: Path, ledger: Ledger,
                   f"{args.deadline_s}")
     if rc == 0 and is_scored(part):
         os.replace(part, final)
+        # The membership sidecars travel with the curve they describe, under
+        # the same rule: a reader listing the output directory never sees one
+        # belonging to a run whose CSV was thrown away.
+        for suffix in (".members.tsv", ".fingerprints.tsv"):
+            side = part.parent / (part.name[: -len(".csv.part")] + suffix)
+            if side.exists():
+                os.replace(side, final.parent /
+                           (final.stem + suffix))
         with ledger.lock:
             ledger.scored += 1
         print(f"[{index}/{total}] {run_dir.name}: scored in {elapsed}s")
     else:
         part.unlink(missing_ok=True)
+        for suffix in (".members.tsv", ".fingerprints.tsv"):
+            (part.parent /
+             (part.name[: -len(".csv.part")] + suffix)).unlink(missing_ok=True)
         ledger.append(FAILURES_NAME, f"{rc} {run_dir}")
         with ledger.lock:
             ledger.failed += 1

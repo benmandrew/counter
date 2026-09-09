@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1788593744601,
+  "lastUpdate": 1788941012688,
   "repoUrl": "https://github.com/benmandrew/counter",
   "entries": {
     "counter benchmarks": [
@@ -6520,6 +6520,100 @@ window.BENCHMARK_DATA = {
             "value": 3353.4648912271246,
             "unit": "ns/iter",
             "extra": "iterations: 208324\ncpu: 3353.1297546130045 ns\nthreads: 1"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "name": "benmandrew",
+            "username": "benmandrew",
+            "email": "benmandrew@gmail.com"
+          },
+          "committer": {
+            "name": "benmandrew",
+            "username": "benmandrew",
+            "email": "benmandrew@gmail.com"
+          },
+          "id": "f0e4723cfe73b0606d5bb7a40eee500f57be3d0a",
+          "message": "fix(scripts): restart a tick that stages its own sources\n\nEnqueueing aurus-curves on 2026-09-08 failed on both hosts with\n`declaration unusable: ... phases[0]: unknown key(s) compare_timeout,\ncores, cuts, deadline_s, kind, maximal_timeout, out, results, workers`.\nThe file on disk was correct and the parser reading it was not: both\nhosts stood on campaign/aurus-rematch at f8fbe26, which predates the\n`kind = \"score\"` phase, and a tick keeps the campaign.py it imported\nbefore the checkout moved. ensure_staged runs before load_campaign\ndeliberately, the declaration being tracked on the campaign's own\nbranch and unreadable until then, so the staging tick always reads a\nnew declaration with old code. Parsing is the first thing that breaks\nrather than the only one: phase_command from that revision cannot\nrender a phase kind it does not define either.\n\nA tick now re-execs itself once, where staging changed the two commits'\ncontents under scripts/, and the restarted process runs the phase.\nensure_staged already returns the entry to `queued` before it returns,\nso the restart spends no attempt. The scripts/ diff is what keeps the\ncommon case as it was: a campaign sitting on another branch of the same\nscripts still runs its phase in the tick that staged it, rather than\npaying a five-minute cycle for nothing.\n\nThe queue lock's descriptor is carried across the exec — set\ninheritable, named in COUNTER_TICK_LOCK_FD, adopted on the other side —\nrather than dropped. flock is per open file description and Python\nopens the lock file O_CLOEXEC by default (PEP 446), so a bare exec\nwould release the lock for the length of the exec and let a hand-typed\ntick in between the two processes, and both would then run the same\nentry. That is the failure the lock exists to prevent, reached through\nthe mechanism that prevents it. COUNTER_TICK_RESTARTED marks the\nrestarted process, so scripts that move again run on what they have\ninstead of looping.\n\nrestart_after_stage returns 0 after a successful exec. That line is\nunreachable in production, the exec having replaced the process, and is\nthere so a stubbed exec stops the tick the way the real one does\ninstead of falling through into the phase. The tick fixture gains the\nstaging case, the no-second-restart case and the lock adoption; the\nhand-off was also checked against a real exec, where the child adopts\nthe descriptor and a third opener is refused.",
+          "timestamp": "2026-09-08T15:30:52Z",
+          "url": "https://github.com/benmandrew/counter/commit/f0e4723cfe73b0606d5bb7a40eee500f57be3d0a"
+        },
+        "date": 1788941011604,
+        "tool": "googlecpp",
+        "benches": [
+          {
+            "name": "Copy formula - 8 variables",
+            "value": 5.851188256320301,
+            "unit": "ns/iter",
+            "extra": "iterations: 135309274\ncpu: 5.849394558129106 ns\nthreads: 1"
+          },
+          {
+            "name": "Copy specification - 3-guarantee takeoff spec",
+            "value": 91.8677078480289,
+            "unit": "ns/iter",
+            "extra": "iterations: 6872834\ncpu: 91.85923376004716 ns\nthreads: 1"
+          },
+          {
+            "name": "Hash specification - 3-guarantee takeoff spec",
+            "value": 84.62901632582626,
+            "unit": "ns/iter",
+            "extra": "iterations: 9281244\ncpu: 84.62058566717995 ns\nthreads: 1"
+          },
+          {
+            "name": "Compare specifications - equal, distinct arenas",
+            "value": 47.214020778836804,
+            "unit": "ns/iter",
+            "extra": "iterations: 14942993\ncpu: 47.1938818414758 ns\nthreads: 1"
+          },
+          {
+            "name": "Syntactic similarity - small formulas (3 variables)",
+            "value": 354.80136236672683,
+            "unit": "ns/iter",
+            "extra": "iterations: 1970835\ncpu: 354.7631871770086 ns\nthreads: 1"
+          },
+          {
+            "name": "Syntactic similarity - large formulas (11 variables, O(n*m) shared_subformulae)",
+            "value": 1437.781086069855,
+            "unit": "ns/iter",
+            "extra": "iterations: 493541\ncpu: 1437.7074873212152 ns\nthreads: 1"
+          },
+          {
+            "name": "Spec implication check - warm black cache",
+            "value": 390.1847356431409,
+            "unit": "ns/iter",
+            "extra": "iterations: 1785768\ncpu: 390.14805954636915 ns\nthreads: 1"
+          },
+          {
+            "name": "Trace model counting - matrix exponentiation/steps:5",
+            "value": 121.11033623537084,
+            "unit": "ns/iter",
+            "extra": "iterations: 5740562\ncpu: 121.10622932040448 ns\nthreads: 1"
+          },
+          {
+            "name": "Trace model counting - matrix exponentiation/steps:10",
+            "value": 137.85734723393105,
+            "unit": "ns/iter",
+            "extra": "iterations: 5109610\ncpu: 137.85065318096702 ns\nthreads: 1"
+          },
+          {
+            "name": "Trace model counting - matrix exponentiation/steps:20",
+            "value": 153.07345109532102,
+            "unit": "ns/iter",
+            "extra": "iterations: 4578897\ncpu: 153.06223704092935 ns\nthreads: 1"
+          },
+          {
+            "name": "Trace model counting - matrix exponentiation/steps:50",
+            "value": 210.2813363959103,
+            "unit": "ns/iter",
+            "extra": "iterations: 3638772\ncpu: 210.26805609145063 ns\nthreads: 1"
+          },
+          {
+            "name": "Mutate specification - 3-guarantee takeoff spec",
+            "value": 2341.324922132077,
+            "unit": "ns/iter",
+            "extra": "iterations: 297619\ncpu: 2341.1960291513656 ns\nthreads: 1"
           }
         ]
       }

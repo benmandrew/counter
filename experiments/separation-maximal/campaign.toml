@@ -7,13 +7,14 @@
 # holds, the second counts repairs that are distinct *and* not dominated by
 # another the run also holds.
 #
-# The sweep is affordable now because it prefilters on the same sampled words.
-# A word one candidate accepts and another rejects settles that direction of
-# the implication with no solver call, and it settles 95.9% of the ordered
-# pairs of a 421-candidate round-robin-arbiter-aurus set. Measured over 80
-# candidates the whole tool went from 6.415s to 0.341s with byte-identical
-# output, so the 2026-09-07 pass's 311.7 worker-hours is not the budget here.
-# PLAN.md carries the smoke test the estimate comes from.
+# Two changes make the sweep affordable. It prefilters on the same sampled
+# words -- a word one candidate accepts and another rejects settles that
+# direction of the implication with no solver call, and that settles 95.9% of
+# the ordered pairs of a 421-candidate round-robin-arbiter-aurus set; measured
+# over 80 candidates the tool went from 6.415s to 0.341s with byte-identical
+# output. And the pass is now one `maximal --curve` walk a run rather than a
+# process per time cut, comparing each arrival against the running antichain
+# alone. The 2026-09-07 pass's 311.7 worker-hours is not the budget here.
 #
 # ideals = "off": `compare` is not needed for either metric and the maximality
 # pass of 2026-09-07 already recorded the ideal-implying counts. The word
@@ -24,24 +25,45 @@ branch = "feat/fingerprint-curves"
 configs = "python3 scripts/aurus_adapt.py --root ~/aurus-h2h-out --out experiments/results-aurus-curves"
 hosts = { av2 = "0-14", av3 = "15-29" }
 
-# Calibration first, and alone: the two phases below are commented out until
-# it has priced them. The pass is a sweep nothing has run at this cost before,
-# and the only honest place to time it is the hardware and the concurrency it
-# will run at. A single run on an idle workstation reads low -- 8 workers x 4
-# cores against 20 real cores is oversubscribed, which is the saturation bias
-# that made an earlier campaign's estimate ~27% light.
+# The calibration ran and is not repeated. It priced the pass as it stood at
+# 051152d, a `maximal` process per time cut: 190 runs over the two hosts, one
+# seed each, at a mean of 138s and a maximum of 3022s for 26,193s of scorer
+# wall. One seed a host is 100 of that host's 1500 runs, so the full phase is
+# 15x -- 109 scorer-hours, about 6.8 hours of wall over the two hosts at 8
+# workers each. Its seed 4 carries humanoid-531, the largest accumulated set
+# in the corpus at 727 candidates, so the worst case was inside the sample
+# rather than extrapolated to.
 #
-# One seed a host, which is 100 of that host's 1500 runs, so the full phase is
-# 15x what this reports. Seed 4 carries humanoid-531, the largest accumulated
-# set in the corpus at 727 candidates and the family the 2026-09-07 pass left
-# partial curves on, so the worst case is inside the sample rather than
-# extrapolated to.
+# The two phases below run against the running antichain instead, which is the
+# same output by a cheaper route -- the scorer's CSV and both sidecars are
+# byte-identical over the three run directories the change was validated on --
+# so the figure above is an upper bound rather than the estimate. It is not
+# re-calibrated: the pass is bounded per run by deadline_s either way, and the
+# calibration would cost a share of the thing it is pricing.
+#
+# [[phases]]
+# name = "calib"
+# kind = "score"
+# results = "experiments/results-rematch"
+# out = "experiments/separation-maximal-calib"
+# hosts = { av2 = "4", av3 = "19" }
+# workers = 8
+# cores = 4
+# maximality = "on"
+# ideals = "off"
+# epsilon = "0.05,0.2,0.5"
+# fingerprint_words = 256
+# fingerprint_seed = 0
+# cuts = 20
+# maximal_timeout = 900
+# compare_timeout = 600
+# deadline_s = 4500
+
 [[phases]]
-name = "calib"
+name = "counter"
 kind = "score"
 results = "experiments/results-rematch"
-out = "experiments/separation-maximal-calib"
-hosts = { av2 = "4", av3 = "19" }
+out = "experiments/separation-maximal-rematch"
 workers = 8
 cores = 4
 maximality = "on"
@@ -54,36 +76,19 @@ maximal_timeout = 900
 compare_timeout = 600
 deadline_s = 4500
 
-# [[phases]]
-# name = "counter"
-# kind = "score"
-# results = "experiments/results-rematch"
-# out = "experiments/separation-maximal-rematch"
-# workers = 8
-# cores = 4
-# maximality = "on"
-# ideals = "off"
-# epsilon = "0.05,0.2,0.5"
-# fingerprint_words = 256
-# fingerprint_seed = 0
-# cuts = 20
-# maximal_timeout = 900
-# compare_timeout = 600
-# deadline_s = 4500
-
-# [[phases]]
-# name = "aurus"
-# kind = "score"
-# results = "experiments/results-aurus-curves"
-# out = "experiments/separation-maximal-aurus"
-# workers = 8
-# cores = 4
-# maximality = "on"
-# ideals = "off"
-# epsilon = "0.05,0.2,0.5"
-# fingerprint_words = 256
-# fingerprint_seed = 0
-# cuts = 20
-# maximal_timeout = 900
-# compare_timeout = 600
-# deadline_s = 4500
+[[phases]]
+name = "aurus"
+kind = "score"
+results = "experiments/results-aurus-curves"
+out = "experiments/separation-maximal-aurus"
+workers = 8
+cores = 4
+maximality = "on"
+ideals = "off"
+epsilon = "0.05,0.2,0.5"
+fingerprint_words = 256
+fingerprint_seed = 0
+cuts = 20
+maximal_timeout = 900
+compare_timeout = 600
+deadline_s = 4500

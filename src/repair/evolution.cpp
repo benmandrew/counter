@@ -6,6 +6,7 @@
 #include <fstream>
 #include <iomanip>
 #include <iostream>
+#include <optional>
 #include <sstream>
 #include <stdexcept>
 #include <string>
@@ -41,15 +42,49 @@ const std::vector<CorrectnessCheck>& gate_checks() {
 // outright, so both the live "real" counter and the final collection apply the
 // whole table here, unconditionally.
 //
+// The grading is the run's, as it is on the TLSF path (is_tlsf_repair forwards
+// cfg to tlsf_status): hard-coding Tiered here made a run configured
+// `status_grading = "aurus"` score its search on the six-level ladder and then
+// judge its output on the three-point one. The admitted set is the same either
+// way, gate_checks() below applying the whole table whatever the scale folded
+// in, so what the mismatch cost was a cold well-separation query per survivor
+// under a grading whose search never asked one. No admission order is passed,
+// again matching the TLSF gate: the order changes which queries the MRS walk
+// memoises, never whether the top tier is reached.
+//
 // Status leads. Most of the final population is unrealizable -- that is why the
 // collection drops most of it -- and status is a scored objective, so its
 // verdict is already memoised for anything the last generation scored, whereas
 // the checks behind it are only warm where their per-generation stage ran.
 // Asking the warm question first short-circuits the common case for free.
-bool is_realizable_repair(const Specification& spec) {
+bool is_realizable_repair(const Specification& spec, const Config& cfg) {
     return specification_status(spec, global_sat_checker(),
-                                global_real_checker()) == 1.0 &&
+                                global_real_checker(),
+                                cfg.status_grading) == 1.0 &&
            !first_failing_check(spec, gate_checks()).has_value();
+}
+
+// The gate asked of every candidate in the population, run only where there
+// is somewhere to put what it admits. Nothing else in a FRETISH generation
+// asks the gate, so with the accumulator off this sweep is a solver call per
+// candidate that the run would not otherwise make; the status line's "real"
+// column was the whole argument for paying it. The TLSF twin
+// (`accumulate_gate_passing`, src/tlsf/evolve.cpp) has been gated this way
+// since it gained the accumulator. Empty where it did not run.
+std::optional<std::size_t> accumulate_gate_passing(
+    const std::vector<ScoredSpecification>& population, const Config& cfg,
+    std::size_t generation, RepairAccumulator<Specification>& accumulator) {
+    if (!accumulator.enabled()) {
+        return std::nullopt;
+    }
+    std::size_t n_gate_passing = 0;
+    for (const ScoredSpecification& cand : population) {
+        if (is_realizable_repair(cand.specification, cfg)) {
+            ++n_gate_passing;
+            accumulator.insert(cand.specification, generation);
+        }
+    }
+    return n_gate_passing;
 }
 
 }  // namespace
@@ -112,7 +147,11 @@ EvolutionResult run_evolution(
     const std::size_t col_pct = status.add("%", true);
     const std::size_t col_time = status.add("time");
     const std::size_t col_best = status.add("best");
-    const std::size_t col_real = status.add("real");
+    // Only where the sweep below runs: a column that reads the same number
+    // every generation because nothing measured it is worse than no column.
+    const std::optional<std::size_t> col_real =
+        accumulator.enabled() ? std::optional<std::size_t>(status.add("real"))
+                              : std::nullopt;
 
     auto format_elapsed = [](double secs) -> std::string {
         std::ostringstream oss;
@@ -205,17 +244,13 @@ EvolutionResult run_evolution(
             oss << std::fixed << std::setprecision(3) << fitness_best;
             status.set(col_best, oss.str());
         }
-        std::size_t n_real = 0;
-        for (const ScoredSpecification& cand : population) {
-            if (is_realizable_repair(cand.specification)) {
-                ++n_real;
-                // Free: this is the gate query the status line needs anyway,
-                // so accumulating here costs a hash insertion and no solver
-                // call. A second gate call would not be.
-                accumulator.insert(cand.specification, gen_idx + 1);
-            }
+        const std::optional<std::size_t> n_real =
+            accumulate_gate_passing(population, cfg, gen_idx + 1, accumulator);
+        // Both optionals are governed by accumulator.enabled(), so either
+        // test decides the other; the pair is what lets the checker see it.
+        if (col_real.has_value() && n_real.has_value()) {
+            status.set(*col_real, std::to_string(*n_real));
         }
-        status.set(col_real, std::to_string(n_real));
         status.finish();
 
         dashboard.generation(
@@ -231,7 +266,7 @@ EvolutionResult run_evolution(
 }
 
 std::vector<Specification> collect_realizable_specifications(
-    const std::vector<ScoredSpecification>& population) {
+    const Config& cfg, const std::vector<ScoredSpecification>& population) {
     // Each check is a `black` and an `ltlsynt` query, and the whole final
     // population is checked, so a serial sweep here costs a subprocess per
     // distinct candidate -- the more diverse the population, the worse. Results
@@ -245,15 +280,16 @@ std::vector<Specification> collect_realizable_specifications(
     // filters entirely, so one can reach the output unscreened either way.
     if (max_in_flight <= 1) {
         for (std::size_t idx = 0; idx < population.size(); ++idx) {
-            keep[idx] =
-                is_realizable_repair(population[idx].specification) ? 1 : 0;
+            keep[idx] = is_realizable_repair(population[idx].specification, cfg)
+                            ? 1
+                            : 0;
         }
     } else {
         run_bounded_async(
             population.size(), max_in_flight,
-            [&population](std::size_t idx) {
-                return [&spec = population[idx].specification] {
-                    return is_realizable_repair(spec);
+            [&population, &cfg](std::size_t idx) {
+                return [&spec = population[idx].specification, &cfg] {
+                    return is_realizable_repair(spec, cfg);
                 };
             },
             [&keep](std::size_t idx, bool realizable) {
@@ -295,8 +331,27 @@ filter_maximal_specifications(
                   << " equiv, " << ImplicationFilterStats::n_timeouts
                   << " timeout)" << std::flush;
     };
+    // A checker of the stage's own, as on the TLSF path (tlsf/pipeline.cpp)
+    // and in `maximal` and `compare`. Both final filters ask implications
+    // between whole specifications, which is not the shape the search's
+    // checker is tuned for, and the FRETISH path was left on the search's
+    // settings only because its per-requirement queries had not been measured.
+    // Measured at 40 generations of 1000: the `ltlfilt --simplify` pass is
+    // 59-61% of every ltlfilt exec a run makes -- 37,171 of 61,100 on fsm,
+    // 28,573 of 48,093 on takeoff -- and on takeoff 122 of those calls spent
+    // the whole 10s ltlfilt budget and returned the formula unchanged, at
+    // least 1,220s of that run's 2,523s of ltlfilt CPU. The 500ms SPOT budget
+    // costs output as well as time: takeoff declined 109 escalations, each an
+    // ExpectUnsat query left undecided and so read as "does not imply", each
+    // keeping a repair the filter had grounds to drop. It starts cold, but
+    // these queries are between survivors rather than about one requirement,
+    // so there is nothing in the search's cache to inherit.
+    SatisfiabilityChecker final_checker;
+    final_checker.set_timeout(cfg.black_timeout);
+    final_checker.set_simplify(false);
+    final_checker.set_spot_budget(cfg.black_timeout);
     const std::vector<FilterFunction> filters = get_final_filter_functions(
-        cfg, original, global_sat_checker(), on_impl_progress);
+        cfg, original, final_checker, on_impl_progress);
     const std::vector<Specification> result =
         filter_population(realizable_vec, filters);
     // A final filter drops repairs from the output, so it owes the same

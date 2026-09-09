@@ -13,6 +13,11 @@
 #include "prop_formula.hpp"
 #include "requirement.hpp"
 
+/// Draws a literal from @p pool: an atom drawn uniformly, negated on a coin
+/// flip. Two draws, in that order.
+Formula draw_literal(const std::vector<std::string>& pool,
+                     const RandomSource& random_source);
+
 /// Mutates a formula according to a propositional GA mutation strategy. Atom
 /// names are replaced by atoms drawn from @p atoms; if @p atoms is empty,
 /// atom names are left unchanged.

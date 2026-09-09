@@ -80,6 +80,11 @@ p_timing   = 0.15
 # additionally needs the specification to declare a mode to have anywhere to go.
 p_condition_type = 0.0
 p_scope          = 0.0
+# FRETISH only: the share of condition and response rewrites that take the
+# monotone form, moving the requirement along the implication order rather than
+# rewriting it freely. Off by default, and off it costs no RNG draw. The TLSF
+# twin is [tlsf.mutation] p_monotone below, which is on at 0.25.
+p_monotone       = 0.0
 # Both modes: the probability that a mutation instead appends a new environment
 # assumption, and the fraction of those guarded by a random input atom rather
 # than by `true`.

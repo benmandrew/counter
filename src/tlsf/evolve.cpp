@@ -57,10 +57,12 @@ std::vector<FilterFunctionT<Specification>> build_per_gen_filters(
 
 namespace {
 
-// Not free, unlike the FRETISH path: nothing else asks the gate per generation
-// here, so this sweep is work the run would not otherwise do. The status query
-// behind it is memoised from scoring, leaving the correctness rows as the real
-// cost. Hence the early return rather than a caller-side branch.
+// Not free: nothing else asks the gate per generation, so this sweep is work
+// the run would not otherwise do. The status query behind it is memoised from
+// scoring, leaving the correctness rows as the real cost. Hence the early
+// return rather than a caller-side branch. The FRETISH twin
+// (`accumulate_gate_passing`, src/repair/evolution.cpp) was unconditional
+// until 2026-09-09 and is now gated the same way.
 void accumulate_gate_passing(
     const std::vector<Scored<Specification>>& population, const Config& cfg,
     std::size_t generation, RepairAccumulator<Specification>& accumulator) {

@@ -9,6 +9,7 @@
 #include <vector>
 
 #include "config.hpp"
+#include "genetic/monotone.hpp"
 #include "genetic/random_source.hpp"
 #include "prop_formula.hpp"
 #include "runner/black.hpp"
@@ -83,8 +84,8 @@ void test_monotone_rewrite_direction_holds(MonotoneDirection direction,
     for (const Formula& parent : subjects()) {
         for (std::size_t seed = 0; seed < 12; ++seed) {
             const RandomSource rng = make_random_source_from_seed(seed);
-            const Formula child = tlsf_monotone_rewrite(
-                parent, direction, rules, atom_pool(), rng);
+            const Formula child =
+                monotone_rewrite(parent, direction, rules, atom_pool(), rng);
             const std::optional<bool> held =
                 weaken ? implies(parent, child) : implies(child, parent);
             if (!held.has_value()) {
@@ -120,9 +121,9 @@ void test_monotone_rewrite_reaches_the_biconditional_weakening() {
     bool reached = false;
     for (std::size_t seed = 0; seed < 200 && !reached; ++seed) {
         const RandomSource rng = make_random_source_from_seed(seed);
-        reached = tlsf_monotone_rewrite(parent, MonotoneDirection::Weaken,
-                                        MonotoneRules{false, false},
-                                        atom_pool(), rng) == target;
+        reached = monotone_rewrite(parent, MonotoneDirection::Weaken,
+                                   MonotoneRules{false, false}, atom_pool(),
+                                   rng) == target;
     }
     expect(reached,
            "monotone: `<->` weakens to `->` with both children untouched");
@@ -140,8 +141,8 @@ void test_monotone_rewrite_grows_an_atom() {
     for (std::size_t seed = 0; seed < 200; ++seed) {
         const RandomSource rng = make_random_source_from_seed(seed);
         const Formula child =
-            tlsf_monotone_rewrite(parent, MonotoneDirection::Weaken,
-                                  MonotoneRules{true, false}, atom_pool(), rng);
+            monotone_rewrite(parent, MonotoneDirection::Weaken,
+                             MonotoneRules{true, false}, atom_pool(), rng);
         if (child.kind() == Formula::Kind::Or) {
             const auto children = child.binary_children();
             weakened = children.has_value() && children->first == parent;
@@ -153,8 +154,8 @@ void test_monotone_rewrite_grows_an_atom() {
     for (std::size_t seed = 0; seed < 200; ++seed) {
         const RandomSource rng = make_random_source_from_seed(seed);
         const Formula child =
-            tlsf_monotone_rewrite(parent, MonotoneDirection::Strengthen,
-                                  MonotoneRules{true, false}, atom_pool(), rng);
+            monotone_rewrite(parent, MonotoneDirection::Strengthen,
+                             MonotoneRules{true, false}, atom_pool(), rng);
         if (child.kind() == Formula::Kind::And) {
             const auto children = child.binary_children();
             strengthened = children.has_value() && children->first == parent;
@@ -177,8 +178,8 @@ void test_add_operand_follows_the_direction_not_the_node() {
     for (std::size_t seed = 0; seed < 200 && !disjoined; ++seed) {
         const RandomSource rng = make_random_source_from_seed(seed);
         const Formula child =
-            tlsf_monotone_rewrite(parent, MonotoneDirection::Weaken,
-                                  MonotoneRules{true, false}, atom_pool(), rng);
+            monotone_rewrite(parent, MonotoneDirection::Weaken,
+                             MonotoneRules{true, false}, atom_pool(), rng);
         const auto children = child.binary_children();
         disjoined = child.kind() == Formula::Kind::Or && children.has_value() &&
                     children->first == parent;
@@ -198,9 +199,9 @@ void test_atom_rules_off_leaves_an_atom_ungrown() {
         for (const MonotoneDirection direction :
              {MonotoneDirection::Weaken, MonotoneDirection::Strengthen}) {
             const RandomSource rng = make_random_source_from_seed(seed);
-            const Formula child = tlsf_monotone_rewrite(
-                parent, direction, MonotoneRules{false, false}, atom_pool(),
-                rng);
+            const Formula child =
+                monotone_rewrite(parent, direction, MonotoneRules{false, false},
+                                 atom_pool(), rng);
             const bool constant = child == Formula::true_formula ||
                                   child == Formula::false_formula;
             expect(constant,
@@ -216,8 +217,8 @@ bool reaches(const Formula& parent, MonotoneDirection direction,
              const Formula& target) {
     for (std::size_t seed = 0; seed < 200; ++seed) {
         const RandomSource rng = make_random_source_from_seed(seed);
-        if (tlsf_monotone_rewrite(parent, direction, MonotoneRules{false, true},
-                                  atom_pool(), rng) == target) {
+        if (monotone_rewrite(parent, direction, MonotoneRules{false, true},
+                             atom_pool(), rng) == target) {
             return true;
         }
     }
@@ -303,9 +304,9 @@ void test_extra_rules_off_leaves_the_new_sites_constant() {
     for (const auto& subject : cases) {
         for (std::size_t seed = 0; seed < 200; ++seed) {
             const RandomSource rng = make_random_source_from_seed(seed);
-            const Formula child = tlsf_monotone_rewrite(
-                subject.first, subject.second, MonotoneRules{false, false},
-                atom_pool(), rng);
+            const Formula child =
+                monotone_rewrite(subject.first, subject.second,
+                                 MonotoneRules{false, false}, atom_pool(), rng);
             expect(is_parent_with_one_constant(subject.first, child),
                    "monotone: with extra rules off `" +
                        subject.first.to_string() +

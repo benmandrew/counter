@@ -180,7 +180,7 @@ int run_fretish_repair(const Config& cfg, const std::string& input_path,
         std::vector<FilterRunStats> filter_stats =
             std::move(evolved.filter_stats);
         std::vector<Specification> realizable_vec =
-            collect_realizable_specifications(population);
+            collect_realizable_specifications(cfg, population);
         // The accumulated candidates passed this same gate in the generation
         // they were collected in, so they are merged rather than re-checked;
         // the final filters below screen the union as one set.

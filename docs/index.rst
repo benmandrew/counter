@@ -66,6 +66,7 @@ The overview pages describe the algorithm, the tuning knobs, and the TLSF path. 
    api/genetic/accumulator
    api/genetic/crossover
    api/genetic/generation
+   api/genetic/monotone
    api/genetic/mutation
    api/genetic/nsga2
    api/genetic/operators

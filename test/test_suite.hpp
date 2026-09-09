@@ -24,6 +24,7 @@ void run_pipeline_tests();
 void run_termination_tests();
 void run_nsga2_tests();
 void run_mutation_tests();
+void run_fretish_monotone_tests();
 void run_prop_formula_ast_tests();
 void run_prop_formula_canonical_tests();
 void run_prop_formula_cnf_tests();

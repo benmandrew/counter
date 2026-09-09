@@ -30,6 +30,10 @@ bool run_genetic_suite(std::string_view suite_name) {
         run_determinism_tests();
         return true;
     }
+    if (suite_name == "fretish_monotone") {
+        run_fretish_monotone_tests();
+        return true;
+    }
     if (suite_name == "pipeline") {
         run_pipeline_tests();
         return true;
@@ -304,6 +308,7 @@ int main(int argc, const char* const argv[]) {
             run_termination_tests();
             run_nsga2_tests();
             run_mutation_tests();
+            run_fretish_monotone_tests();
             run_prop_formula_ast_tests();
             run_prop_formula_canonical_tests();
             run_prop_formula_cnf_tests();

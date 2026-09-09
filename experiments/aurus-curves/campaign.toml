@@ -1,0 +1,29 @@
+# The maximality pass over the AuRUS arm of the 2026-08-14 head-to-head.
+#
+# No search runs here: AuRUS's 780 runs are already on the hosts under
+# ~/aurus-h2h-out, and this campaign scores what they wrote. `configs` is the
+# adapter rather than a generator -- scripts/aurus_adapt.py materialises that
+# tree as counter-shaped run directories, which is what a score phase reads.
+# `stage` runs it and then checks the directory it wrote; a tick does not, its
+# ensure_configs having no configs directory to find missing, so this campaign
+# is staged before it is enqueued.
+#
+# The seed split is the head-to-head's own: av2 ran repeats 0-14 and av3 ran
+# 15-29, and each host holds only the solution files it wrote, so the adapter
+# on av2 can materialise nothing outside 0-14 whatever the split said.
+name = "aurus-curves"
+branch = "feat/aurus-curve-adapter"
+configs = "python3 scripts/aurus_adapt.py --root ~/aurus-h2h-out --out experiments/results-aurus-curves"
+hosts = { av2 = "0-14", av3 = "15-29" }
+
+[[phases]]
+name = "maximality"
+kind = "score"
+results = "experiments/results-aurus-curves"
+out = "experiments/curves-aurus"
+workers = 8
+cores = 4
+cuts = 20
+maximal_timeout = 900
+compare_timeout = 600
+deadline_s = 4500

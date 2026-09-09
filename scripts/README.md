@@ -25,6 +25,8 @@ The sections below cover the harness in depth. This table is the index, so that 
 | `analyse.ipynb` | Generic notebook over a sweep's `results.csv`; `RESULTS_CSV` overrides the path. |
 | `drop_censored_rows.py` | Deletes timeout-censored rows and their run directories so a resume re-runs them under a looser cap. Used once, on the replicate recap. |
 | `maximality_sweep.py` | Runs the `maximal` binary over both arms of a head-to-head. Hard-wired to two directory layouts. |
+| `aurus_adapt.py` | Materialises an AuRUS output tree as counter-shaped run directories, so the scoring pass reads both arms of a head-to-head through one scorer. |
+| `test_aurus_adapt.py` | Covers `aurus_adapt.py`: the dating rule, the run-directory name both scorer-side readers parse, and what is skipped rather than materialised. |
 | `test_campaign.py` | Covers `campaign.py`. No pytest; run it directly. |
 | `test_experiment_paths.py` | Covers the factor-path parsers and the resume-key invariants in `run_experiments.py` and `gen_configs.py`. |
 
@@ -868,10 +870,73 @@ runnable: it names retired profiles and retired selection-scheme spellings,
 and an archived campaign is reproduced from `experiments/<campaign>/scripts/`
 at the commit its `PROVENANCE.json` names.
 
+### Scoring an AuRUS arm
+
+```sh
+# Materialise an AuRUS output tree as counter-shaped run directories
+python3 scripts/aurus_adapt.py --root ~/aurus-h2h-out \
+    --out experiments/results-aurus-curves
+
+# The same over a sample of the repeats
+python3 scripts/aurus_adapt.py --root ~/aurus-h2h-out \
+    --out experiments/results-aurus-curves --seeds 0-9
+```
+
+`aurus_adapt.py` reads an AuRUS output tree — `<spec>/repeat-NN/` holding a
+`run.log` and the `spec<i>.tlsf` files the run wrote — and materialises it as
+a results directory in counter's own shape. `score_campaign.py` and
+`score_curves.py` then score the AuRUS arm of a head-to-head with no flag of
+their own, and a `kind = "score"` phase in `campaign.toml` points its
+`results` key at that directory.
+
+`experiments/aurus-curves/campaign.toml` declares that phase over the
+2026-08-14 head-to-head, splitting the repeats the way the head-to-head split
+them: av2 ran 0-14 and av3 ran 15-29, and each host holds only the solution
+files it wrote, so neither can materialise the other's repeats whatever the
+split says. The adapter is the campaign's `configs` command, which `stage`
+runs on each host after the build and before the version check, and the
+results directory it writes is then checked there as a score phase's results
+directory always is. A tick does not run it. `ensure_configs` returns early on
+a campaign that names no configs directory and a campaign of score phases
+alone names none, so this one is staged before it is enqueued.
+
+A *repeat* becomes a seed. Each run directory is named
+`aurus_<spec>_seed<NN>`, which is what the scorer's seed split, its
+smallest-first queue and its resume already key on, so the scorer needs no
+AuRUS branch to read the tree. Both arms of a head-to-head then run through
+one scorer under one set of budgets, which is what makes the two sets of
+curves comparable.
+
+AuRUS writes its solutions in one batch when the run ends, so no file carries
+a discovery time. The per-iteration `#Sol` column in `run.log` is the running
+length of the solution list, so `spec_i` was found at the first iteration
+whose `#Sol` reaches i+1, dated to the second by the `Elapsed Time` line that
+follows. `score_aurus_anytime.py` established that rule and `aurus_adapt.py`
+imports it.
+
+Two cases are counted instead of materialised. A repeat AuRUS killed at its
+7200 s cap wrote no solution files, they die with the JVM, and an empty run
+directory would score as a run that found nothing, which is a different
+claim. A solution file the iteration series never reaches is skipped on the
+same ground, dating it having no source but invention. Both counts land in
+`<out>/aurus-adapt.json`, beside the root, the host, the arm labels and the
+per-family counts.
+
+Candidate files are symlinked, 287,006 of them across the two lab hosts, so
+the pass runs on the host that holds the tree; `--copy` makes the output
+self-contained where it has to move.
+
+Over `lily11` repeats 0 and 1 the adapter indexes 1,139 candidates, matching
+`experiments/aurus-reference/aurus_full.csv` row for row on both counts and
+arrival times. Scoring the first of them end to end — `compare` plus 20
+maximality cuts, four cores — took 26.2 s and ended at 42 maximal solutions,
+against a mean of 40.5 over the family's archived maximality cells.
+
 ### Tests
 
 ```sh
 python scripts/test_campaign.py
+python3 scripts/test_aurus_adapt.py
 ```
 
 A plain script with no pytest dependency, like `test_experiment_paths.py`. It
@@ -885,6 +950,14 @@ never touches a lab machine: the remote protocol is exercised against captured
 marker output, `collect` against two throwaway checkouts, and the stage and
 queue paths against temporary git repositories with `COUNTER_RUNNER_CMD`
 pointed at a stub that records its arguments instead of running a campaign.
+
+`test_aurus_adapt.py` runs against a synthetic AuRUS tree of the log's own
+shape and touches no lab machine either. It guards three silent failures: a
+misdated candidate, which moves a point on the only axis these curves are
+read on; a run directory whose name the scorer's queue skips without a word;
+and a rewritten directory that keeps a previous adaptation's candidate files,
+which `maximal` and `compare` both score because both are handed the whole
+directory.
 
 The verification is the half worth having. A merge that quietly drops one
 machine's share of a campaign reads the same as a merge that worked, and the

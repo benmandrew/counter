@@ -35,7 +35,7 @@ constexpr milliseconds k_deadline{120'000};
 // One request signal, one grant signal, and no way to serve a request every
 // tick while alternating: the environment holds `req` high and the second
 // guarantee forbids two grants in a row. Small enough that ltlsynt decides it
-// in milliseconds, which is what makes it usable in seven suites.
+// in milliseconds, which is what makes it usable in eight suites.
 const char* const k_unrealizable = R"(INFO {
   TITLE:       "alternating grant"
   DESCRIPTION: "unrealizable: a persistent request outruns the alternation"
@@ -94,6 +94,26 @@ const char* const k_fretish = R"({
       "condition-type": "trigger",
       "response": "lift_off",
       "timing": { "type": "AfterTicks", "ticks": 1 }
+    }
+  ],
+  "in_atoms": [],
+  "out_atoms": ["takeoff_roll", "lift_off"]
+}
+)";
+
+// The same specification with its second guarantee dropped, which the FRETISH
+// implication check reads as a weakening: the full spec's lowering is the
+// conjunction of both guarantees and implies this one, and the reverse fails
+// on the guarantee that is gone. The atom lists are untouched so the two share
+// an alphabet.
+const char* const k_fretish_weaker = R"({
+  "assumptions": [],
+  "guarantees": [
+    {
+      "condition": "true",
+      "condition-type": "trigger",
+      "response": "takeoff_roll",
+      "timing": { "type": "ForTicks", "ticks": 5 }
     }
   ],
   "in_atoms": [],
@@ -577,6 +597,63 @@ void test_signal_tracer_writes_a_report() {
            "signal_tracer: the second signal is named too");
 }
 
+void test_maximal_reports_both_formats() {
+    const TempDir dir("maximal");
+
+    // The unrealizable specification implies its own weakening and not the
+    // reverse, so the pair has one maximal member; the third file is a copy of
+    // the second and collapses into it before any solver call.
+    const std::filesystem::path tlsf = dir.path() / "tlsf";
+    write_file(tlsf / "original.tlsf", k_unrealizable);
+    write_file(tlsf / "weaker.tlsf", k_realizable);
+    write_file(tlsf / "weaker_again.tlsf", k_realizable);
+
+    const DriverRun tlsf_run = run_driver("maximal", {tlsf.string()});
+    expect(tlsf_run.m_exit_code == 0, "maximal: a TLSF directory exits zero");
+    expect(contains(tlsf_run.m_output, "files      3") &&
+               contains(tlsf_run.m_output, "distinct   2"),
+           "maximal: structural duplicates collapse before the sweep");
+    expect(contains(tlsf_run.m_output, "maximal    1") &&
+               contains(tlsf_run.m_output, "classes    1"),
+           "maximal: the weakening is dominated by the specification it came "
+           "from");
+    expect(contains(tlsf_run.m_output, "class 0  ") &&
+               contains(tlsf_run.m_output, "original.tlsf"),
+           "maximal: the survivor is named by its file");
+
+    // The FRETISH half, over a directory shaped like a run's output: the
+    // repairs carry a fitness block and the manifest sits beside them. Reading
+    // the manifest as a specification would land in the report as an unparsed
+    // file, so its absence from the counts is the assertion.
+    const std::filesystem::path fretish = dir.path() / "fretish";
+    write_file(fretish / "repair_0.json", k_fretish);
+    write_file(fretish / "repair_1.json", k_fretish_weaker);
+    write_file(fretish / "run.json", "{\"schema_version\": 25}\n");
+
+    const DriverRun fretish_run = run_driver("maximal", {fretish.string()});
+    expect(fretish_run.m_exit_code == 0,
+           "maximal: a FRETISH directory exits zero");
+    expect(contains(fretish_run.m_output, "files      2") &&
+               contains(fretish_run.m_output, "distinct   2"),
+           "maximal: the run manifest is not read as a repair");
+    expect(!contains(fretish_run.m_output, "unparsed"),
+           "maximal: nothing in a run output directory fails to parse");
+    expect(contains(fretish_run.m_output, "maximal    1") &&
+               contains(fretish_run.m_output, "repair_0.json"),
+           "maximal: the full specification dominates the one that dropped a "
+           "guarantee");
+
+    // Nothing of either extension, so the format falls through to FRETISH and
+    // the refusal names what it looked for.
+    const std::filesystem::path empty = dir.path() / "empty";
+    std::filesystem::create_directories(empty);
+    const DriverRun nothing = run_driver("maximal", {empty.string()});
+    expect(nothing.m_exit_code != 0,
+           "maximal: a directory holding no specifications is refused");
+    expect(contains(nothing.m_output, ".json"),
+           "maximal: the refusal says which extension it wanted");
+}
+
 }  // namespace
 
 void run_counter_driver_tests() {
@@ -604,6 +681,11 @@ void run_mucs_driver_tests() {
 void run_compare_driver_tests() {
     test_compare_orders_repairs_against_ideals();
     expect_reports_version("compare");
+}
+
+void run_maximal_driver_tests() {
+    test_maximal_reports_both_formats();
+    expect_reports_version("maximal");
 }
 
 void run_lint_ideals_driver_tests() {

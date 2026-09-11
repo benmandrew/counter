@@ -6,24 +6,37 @@
 #include <filesystem>
 #include <iostream>
 #include <optional>
+#include <stdexcept>
 #include <string>
+#include <system_error>
 #include <unordered_map>
 #include <utility>
 #include <vector>
 
+#include <nlohmann/json.hpp>
+
 #include "config.hpp"
 #include "driver_support.hpp"
+#include "filter/implication.hpp"
+#include "filter/implication_check.hpp"
 #include "fingerprint/lasso.hpp"
 #include "fingerprint/prefilter.hpp"
+#include "genetic/generation.hpp"
+#include "repair/manifest.hpp"
+#include "requirement.hpp"
 #include "runner/black.hpp"
+#include "serialisation.hpp"
 #include "thread_pool.hpp"
 #include "tlsf/filter.hpp"
 #include "tlsf/parser.hpp"
 #include "tlsf/specification.hpp"
 
-// Runs counter's TLSF maximality filter over a directory of .tlsf files that
+// Runs counter's maximality filter over a directory of specifications that
 // counter did not produce, so a foreign tool's output can be measured for
-// semantic diversity on the same definition counter applies to its own.
+// semantic diversity on the same definition counter applies to its own. Both
+// front ends are here: basic-TLSF text and FRETISH JSON, selected by extension
+// the way `compare` selects, since a maximality curve over a FRETISH campaign
+// reads the same accumulated candidates a TLSF one does.
 //
 // Two numbers, because they answer different questions and AuRUS's own
 // MaximalSolutions filter conflates them. "maximal" is the filter counter runs:
@@ -32,6 +45,13 @@
 // implication, which is the count of genuinely distinct strongest repairs. A
 // filter that keeps one arbitrary member per class reports the second number
 // while looking like the first.
+//
+// The two implication oracles ask the same question, so the numbers are
+// comparable across the formats: each lowers a whole specification to one LTL
+// formula and asks a complete query. `spec_implies` decomposed per requirement
+// until 2026-09-11, which missed every implication holding only via several
+// requirements together, so a FRETISH corpus reported more maximal members
+// than the same corpus under the TLSF oracle.
 
 namespace {
 
@@ -45,11 +65,13 @@ void print_usage(const char* prog) {
     std::cerr
         << "Usage: " << prog << " <dir-or-file>... [--jobs N] [--timeout S]\n"
         << "\n"
-        << "Reports the maximal subset of a set of basic-TLSF specifications\n"
-        << "under the implication order (A dominates B when A implies B and B\n"
-        << "does not imply A), then quotients the survivors by mutual\n"
-        << "implication. Directory arguments contribute every .tlsf file in\n"
-        << "them, non-recursively.\n"
+        << "Reports the maximal subset of a set of specifications under the\n"
+        << "implication order (A dominates B when A implies B and B does not\n"
+        << "imply A), then quotients the survivors by mutual implication.\n"
+        << "The input format is basic-TLSF (.tlsf) or FRETISH JSON (.json),\n"
+        << "chosen by the extensions present; the two cannot be mixed.\n"
+        << "Directory arguments contribute every file of the chosen\n"
+        << "extension in them, non-recursively.\n"
         << "\n"
         << "  --jobs N     Solver calls in flight (default: hardware "
            "concurrency).\n"
@@ -99,15 +121,123 @@ std::optional<Args> parse_args(int argc, const char* const* argv) {
     return args;
 }
 
-std::vector<std::string> expand_paths(const std::vector<std::string>& paths) {
+// Everything one front end contributes, so the sweep, the quotient and the
+// report below are written once. The pair of specialisations is the whole of
+// the format split; adding a third format means adding one of these.
+template <typename Spec>
+struct SpecOps;
+
+template <>
+struct SpecOps<Specification> {
+    static constexpr const char* k_extension = ".json";
+    static constexpr const char* k_alphabet = "atom alphabets";
+
+    // load_specification reads the file itself, and this driver has already
+    // read it to report an unreadable one uniformly across the two formats, so
+    // the JSON half of that function is repeated here rather than the read.
+    static Specification parse(const std::string& text) {
+        const nlohmann::json jobj = nlohmann::json::parse(text);
+        if (const std::optional<std::string> err =
+                validate_specification_json(jobj)) {
+            throw std::invalid_argument(*err);
+        }
+        return add_atom_prefix(jobj.get<Specification>());
+    }
+
+    static bool same_alphabet(const Specification& lhs,
+                              const Specification& rhs) {
+        return lhs.m_in_atoms == rhs.m_in_atoms &&
+               lhs.m_out_atoms == rhs.m_out_atoms && lhs.m_modes == rhs.m_modes;
+    }
+
+    static std::optional<bool> implies(const Specification& from,
+                                       const Specification& dest,
+                                       SatisfiabilityChecker& checker) {
+        return spec_implies(from, dest, checker);
+    }
+
+    static FilterFunctionT<Specification> maximality_filter(
+        SatisfiabilityChecker& checker,
+        const GenerationProgressCallback& on_progress) {
+        // No original specification here -- `maximal` takes a bare directory of
+        // repairs -- so an equivalence class collapses on operator< with no
+        // similarity to rank it.
+        return make_implication_filter(checker, nullptr, on_progress);
+    }
+};
+
+template <>
+struct SpecOps<tlsf::Specification> {
+    static constexpr const char* k_extension = ".tlsf";
+    static constexpr const char* k_alphabet = "signal alphabets";
+
+    static tlsf::Specification parse(const std::string& text) {
+        return tlsf::parse(text);
+    }
+
+    static bool same_alphabet(const tlsf::Specification& lhs,
+                              const tlsf::Specification& rhs) {
+        return lhs.m_inputs == rhs.m_inputs && lhs.m_outputs == rhs.m_outputs;
+    }
+
+    static std::optional<bool> implies(const tlsf::Specification& from,
+                                       const tlsf::Specification& dest,
+                                       SatisfiabilityChecker& checker) {
+        return tlsf_spec_implies(from, dest, checker);
+    }
+
+    static FilterFunctionT<tlsf::Specification> maximality_filter(
+        SatisfiabilityChecker& checker,
+        const GenerationProgressCallback& on_progress) {
+        return tlsf_make_implication_filter(checker, nullptr, on_progress);
+    }
+};
+
+// Route by input format, as compare.cpp does. A .tlsf extension on any
+// argument, or any .tlsf file in any directory argument, selects the TLSF
+// path; otherwise FRETISH JSON. Mixing the formats across the arguments is not
+// supported, and the FRETISH side then finds no .json files and says so.
+bool wants_tlsf(const std::vector<std::string>& paths) {
+    for (const std::string& path : paths) {
+        if (std::filesystem::path(path).extension() == ".tlsf") {
+            return true;
+        }
+        std::error_code err_code;
+        const std::filesystem::directory_iterator iter(path, err_code);
+        const bool found =
+            std::any_of(std::filesystem::begin(iter),
+                        std::filesystem::end(iter), [](const auto& entry) {
+                            return entry.path().extension() == ".tlsf";
+                        });
+        if (found) {
+            return true;
+        }
+    }
+    return false;
+}
+
+std::vector<std::string> expand_paths(const std::vector<std::string>& paths,
+                                      const std::string& extension) {
     std::vector<std::string> files;
     for (const std::string& path : paths) {
         if (std::filesystem::is_directory(path)) {
             for (const auto& entry :
                  std::filesystem::directory_iterator(path)) {
-                if (entry.path().extension() == ".tlsf") {
-                    files.push_back(entry.path().string());
+                if (entry.path().extension() != extension) {
+                    continue;
                 }
+                // A FRETISH directory of repairs is a run's output directory,
+                // so it also holds the run manifest write_run_manifest left
+                // there. Reading that as a specification fails validation and
+                // is reported as an unparsed file, which would put a number in
+                // the report that is about the manifest rather than about the
+                // repairs. compare.cpp's FRETISH loader skips it for the same
+                // reason; the TLSF path is immune only because repairs are
+                // .tlsf there and the manifest is .json.
+                if (entry.path().filename() == k_run_manifest_name) {
+                    continue;
+                }
+                files.push_back(entry.path().string());
             }
         } else {
             files.push_back(path);
@@ -115,6 +245,48 @@ std::vector<std::string> expand_paths(const std::vector<std::string>& paths) {
     }
     std::sort(files.begin(), files.end());
     return files;
+}
+
+// Structural duplicates cost nothing to remove and would each pay for a full
+// row of the pairwise sweep, so they are collapsed before any solver call.
+// compute_subsumed does this internally too; doing it here as well is what lets
+// the report name the files behind each survivor.
+template <typename Spec>
+struct Corpus {
+    std::vector<Spec> m_distinct;
+    std::vector<std::vector<std::string>> m_members;
+    std::unordered_map<Spec, std::size_t> m_position_of;
+    std::size_t m_parse_failures = 0;
+};
+
+template <typename Spec>
+Corpus<Spec> load_corpus(const std::vector<std::string>& files) {
+    Corpus<Spec> corpus;
+    for (const std::string& file : files) {
+        const std::optional<std::string> contents = read_file_contents(file);
+        if (!contents.has_value()) {
+            std::cerr << file << ": cannot read file\n";
+            ++corpus.m_parse_failures;
+            continue;
+        }
+        Spec spec;
+        try {
+            spec = SpecOps<Spec>::parse(*contents);
+        } catch (const std::exception& exc) {
+            std::cerr << file << ": " << exc.what() << "\n";
+            ++corpus.m_parse_failures;
+            continue;
+        }
+        const auto [iter, inserted] =
+            corpus.m_position_of.try_emplace(spec, corpus.m_distinct.size());
+        if (inserted) {
+            corpus.m_distinct.push_back(std::move(spec));
+            corpus.m_members.push_back({file});
+        } else {
+            corpus.m_members[iter->second].push_back(file);
+        }
+    }
+    return corpus;
 }
 
 // The survivors' partition into mutual-implication classes, and how many there
@@ -137,9 +309,9 @@ struct Quotient {
 // candidates that was 1030 serial ltlfilt calls and 20.4s of a 21s run. The
 // same prefilter applies here for the same reason and restores it: a word one
 // survivor accepts and another rejects rules out equivalence outright.
+template <typename Spec>
 Quotient quotient_by_equivalence(
-    const std::vector<tlsf::Specification>& maximal,
-    SatisfiabilityChecker& checker,
+    const std::vector<Spec>& maximal, SatisfiabilityChecker& checker,
     const std::vector<fingerprint::PackedFingerprint>& prints) {
     Quotient out;
     out.m_class_of.assign(maximal.size(), 0);
@@ -152,9 +324,9 @@ Quotient quotient_by_equivalence(
                  fingerprint::refutes_implication(prints[j], prints[i]))) {
                 continue;
             }
-            if (tlsf_spec_implies(maximal[i], maximal[j], checker)
+            if (SpecOps<Spec>::implies(maximal[i], maximal[j], checker)
                     .value_or(false) &&
-                tlsf_spec_implies(maximal[j], maximal[i], checker)
+                SpecOps<Spec>::implies(maximal[j], maximal[i], checker)
                     .value_or(false)) {
                 out.m_class_of[i] = out.m_class_of[j];
                 placed = true;
@@ -167,35 +339,75 @@ Quotient quotient_by_equivalence(
     return out;
 }
 
-// `members` is indexed by position in the distinct corpus, not by position in
-// `maximal`, so every lookup goes through `position_of`.
-void print_report(
-    const std::vector<tlsf::Specification>& maximal, const Quotient& quotient,
-    const std::unordered_map<tlsf::Specification, std::size_t>& position_of,
-    const std::vector<std::vector<std::string>>& members,
-    std::size_t n_distinct, std::size_t parse_failures) {
+// `m_members` is indexed by position in the distinct corpus, not by position in
+// `maximal`, so every lookup goes through `m_position_of`.
+template <typename Spec>
+void print_report(const std::vector<Spec>& maximal, const Quotient& quotient,
+                  const Corpus<Spec>& corpus) {
     std::size_t n_files = 0;
-    for (const std::vector<std::string>& group : members) {
+    for (const std::vector<std::string>& group : corpus.m_members) {
         n_files += group.size();
     }
     std::cout << "files      " << n_files << "\n"
-              << "distinct   " << n_distinct << "\n"
+              << "distinct   " << corpus.m_distinct.size() << "\n"
               << "maximal    " << maximal.size() << "\n"
               << "classes    " << quotient.m_n_classes << "\n";
-    if (parse_failures > 0) {
-        std::cout << "unparsed   " << parse_failures << "\n";
+    if (corpus.m_parse_failures > 0) {
+        std::cout << "unparsed   " << corpus.m_parse_failures << "\n";
     }
     std::cout << "\n";
     for (std::size_t i = 0; i < maximal.size(); ++i) {
-        const std::size_t position = position_of.at(maximal[i]);
+        const std::size_t position = corpus.m_position_of.at(maximal[i]);
         std::cout << "class " << quotient.m_class_of[i] << "  "
-                  << members[position].front();
-        if (members[position].size() > 1) {
-            std::cout << "  (+" << members[position].size() - 1
+                  << corpus.m_members[position].front();
+        if (corpus.m_members[position].size() > 1) {
+            std::cout << "  (+" << corpus.m_members[position].size() - 1
                       << " identical)";
         }
         std::cout << "\n";
     }
+}
+
+template <typename Spec>
+int run(const Args& args, SatisfiabilityChecker& checker) {
+    const std::vector<std::string> files =
+        expand_paths(args.paths, SpecOps<Spec>::k_extension);
+    if (files.empty()) {
+        std::cerr << "no " << SpecOps<Spec>::k_extension << " files found\n";
+        return 1;
+    }
+    const Corpus<Spec> corpus = load_corpus<Spec>(files);
+    if (corpus.m_distinct.empty()) {
+        std::cerr << "no specifications parsed\n";
+        return 1;
+    }
+    // Implication between specs over different alphabets is not the relation
+    // this reports, so say so rather than printing a number that means nothing.
+    for (const Spec& spec : corpus.m_distinct) {
+        if (!SpecOps<Spec>::same_alphabet(spec, corpus.m_distinct.front())) {
+            std::cerr << "warning: the input set mixes "
+                      << SpecOps<Spec>::k_alphabet
+                      << "; implication across them is not meaningful\n";
+            break;
+        }
+    }
+
+    std::size_t reported = 0;
+    const std::vector<Spec> maximal = SpecOps<Spec>::maximality_filter(
+        checker, [&reported](std::size_t done, std::size_t total) {
+            reported = done;
+            if (done % 500 == 0 || done == total) {
+                std::cerr << "\r  pairs " << done << "/" << total << std::flush;
+            }
+        })(corpus.m_distinct);
+    if (reported > 0) {
+        std::cerr << "\n";
+    }
+
+    const Quotient quotient = quotient_by_equivalence<Spec>(
+        maximal, checker, fingerprint::prefilter::fingerprints_of(maximal));
+    print_report(maximal, quotient, corpus);
+    return 0;
 }
 
 }  // namespace
@@ -215,59 +427,6 @@ int main(int argc, const char* const argv[]) {
     }
     const Args& args = *maybe_args;
 
-    const std::vector<std::string> files = expand_paths(args.paths);
-    if (files.empty()) {
-        std::cerr << "no .tlsf files found\n";
-        return 1;
-    }
-
-    // Structural duplicates cost nothing to remove and would each pay for a
-    // full row of the pairwise sweep, so they are collapsed before any solver
-    // call. compute_subsumed does this internally too; doing it here as well is
-    // what lets the report name the files behind each survivor.
-    std::vector<tlsf::Specification> distinct;
-    std::vector<std::vector<std::string>> members;
-    std::unordered_map<tlsf::Specification, std::size_t> position_of;
-    std::size_t parse_failures = 0;
-    for (const std::string& file : files) {
-        const std::optional<std::string> contents = read_file_contents(file);
-        if (!contents.has_value()) {
-            std::cerr << file << ": cannot read file\n";
-            ++parse_failures;
-            continue;
-        }
-        tlsf::Specification spec;
-        try {
-            spec = tlsf::parse(*contents);
-        } catch (const std::exception& exc) {
-            std::cerr << file << ": " << exc.what() << "\n";
-            ++parse_failures;
-            continue;
-        }
-        const auto [iter, inserted] =
-            position_of.try_emplace(spec, distinct.size());
-        if (inserted) {
-            distinct.push_back(std::move(spec));
-            members.push_back({file});
-        } else {
-            members[iter->second].push_back(file);
-        }
-    }
-    if (distinct.empty()) {
-        std::cerr << "no specifications parsed\n";
-        return 1;
-    }
-    // Implication between specs over different signal sets is not the relation
-    // this reports, so say so rather than printing a number that means nothing.
-    for (const tlsf::Specification& spec : distinct) {
-        if (spec.m_inputs != distinct.front().m_inputs ||
-            spec.m_outputs != distinct.front().m_outputs) {
-            std::cerr << "warning: the input set mixes signal alphabets; "
-                         "implication across them is not meaningful\n";
-            break;
-        }
-    }
-
     Config cfg;
     cfg.parallel = args.jobs;
     cfg.black_timeout = std::chrono::milliseconds{args.timeout_s * 1000};
@@ -286,30 +445,14 @@ int main(int argc, const char* const argv[]) {
     // pass the unsimplified query runs about 2x longer, so the 500ms SPOT
     // budget tuned for the search tips over under load and an undecided
     // `ExpectUnsat` query keeps both sides. Giving SPOT black's budget instead
-    // restored agreement on 264 of 264 cut-values across a 10-run sample.
+    // restored agreement on 264 of 264 cut-values across a 10-run sample. The
+    // FRETISH path takes the same two settings, which is what its own final
+    // filters run under (src/repair/evolution.cpp): its queries are per
+    // requirement rather than whole-spec, and measured at 40 generations of
+    // 1000 the simplify pass was still 59-61% of every ltlfilt exec a run made.
     checker.set_simplify(false);
     checker.set_spot_budget(cfg.black_timeout);
 
-    std::size_t reported = 0;
-    const std::vector<tlsf::Specification> maximal =
-        // No original specification here -- `maximal` takes a bare directory
-        // of TLSF files -- so an equivalence class collapses on operator< with
-        // no similarity to rank it.
-        tlsf_make_implication_filter(
-            checker, nullptr, [&reported](std::size_t done, std::size_t total) {
-                reported = done;
-                if (done % 500 == 0 || done == total) {
-                    std::cerr << "\r  pairs " << done << "/" << total
-                              << std::flush;
-                }
-            })(distinct);
-    if (reported > 0) {
-        std::cerr << "\n";
-    }
-
-    const Quotient quotient = quotient_by_equivalence(
-        maximal, checker, fingerprint::prefilter::fingerprints_of(maximal));
-    print_report(maximal, quotient, position_of, members, distinct.size(),
-                 parse_failures);
-    return 0;
+    return wants_tlsf(args.paths) ? run<tlsf::Specification>(args, checker)
+                                  : run<Specification>(args, checker);
 }

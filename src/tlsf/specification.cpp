@@ -177,7 +177,7 @@ Formula collect_side(const std::vector<Formula>& verbatim_first,
 
 }  // namespace
 
-std::string Specification::to_ltl() const {
+Formula Specification::to_ltl_formula() const {
     // TLSF v1.1 standard lowering (paper §3.2):
     //   θ_e → ( θ_s ∧ ( (G ψ_e ∧ φ_e) → (G ψ_s ∧ φ_s) ) )
     // Strict pulls the system invariant ψ_s into a weak-until guard and drops
@@ -229,13 +229,16 @@ std::string Specification::to_ltl() const {
         body.push_back(*inner);
     }
 
-    const Formula body_formula = conj(body);  // empty body ⇒ true
+    Formula body_formula = conj(body);  // empty body ⇒ true
     if (initially.empty()) {
-        return body_formula.to_string();
+        return body_formula;
     }
     return Formula::make_binary(Formula::Kind::Implies, conj(initially),
-                                body_formula)
-        .to_string();
+                                body_formula);
+}
+
+std::string Specification::to_ltl() const {
+    return to_ltl_formula().to_string();
 }
 
 std::string Specification::assumption_ltl() const {

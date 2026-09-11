@@ -29,6 +29,13 @@ struct ImplicationFilterStats {
     inline static std::atomic<std::size_t> n_duplicates{0};
     /// black calls that timed out (inconclusive) during this sweep.
     inline static std::atomic<std::size_t> n_timeouts{0};
+    /// Ordered pairs a sampled lasso word refuted before any solver call: one
+    /// side accepts a word the other rejects, which is a witness for
+    /// `a & !b` and settles `a -> b` as false. Two of these per unordered
+    /// pair, so a pair both directions of which are refuted costs no call at
+    /// all. Both paths sample, over the specification's declared signals --
+    /// inputs, outputs, and on the FRETISH path the modes a scope names.
+    inline static std::atomic<std::size_t> n_fingerprint_refuted{0};
     /// Pairs found mutually equivalent, each of which dropped one side. This
     /// is the width of the population's equivalence classes, which nothing
     /// else records: a class of k members contributes k-1 here.

@@ -18,6 +18,8 @@
 #include "config.hpp"
 #include "filter/implication.hpp"
 #include "filter/well_separation.hpp"
+#include "fingerprint/lasso.hpp"
+#include "fingerprint/prefilter.hpp"
 #include "prop_formula.hpp"
 #include "runner/black.hpp"
 #include "runner/spot.hpp"
@@ -133,6 +135,7 @@ bool prefer_a(const tlsf::Specification& spec_a,
 void check_pair(const std::vector<tlsf::Specification>& pop,
                 const std::vector<std::size_t>& representatives,
                 const std::vector<double>& keys,
+                const std::vector<fingerprint::PackedFingerprint>& prints,
                 std::vector<std::atomic<uint8_t>>& subsumed,
                 SatisfiabilityChecker& checker, std::size_t pos_a,
                 std::size_t pos_b) {
@@ -142,10 +145,22 @@ void check_pair(const std::vector<tlsf::Specification>& pop,
     }
     const tlsf::Specification& spec_a = pop[representatives[pos_a]];
     const tlsf::Specification& spec_b = pop[representatives[pos_b]];
+    // A sampled word one side accepts and the other rejects settles that
+    // direction as false, so the solver is asked only where no word separated
+    // them. value_or(false) below reads a timeout the same way, so a
+    // refutation here can only replace an undecided verdict with the answer
+    // that verdict was already being given.
+    const bool have_prints = !prints.empty();
+    const bool a_refuted = have_prints && fingerprint::refutes_implication(
+                                              prints[pos_a], prints[pos_b]);
+    const bool b_refuted = have_prints && fingerprint::refutes_implication(
+                                              prints[pos_b], prints[pos_a]);
     const bool a_implies_b =
-        tlsf_spec_implies(spec_a, spec_b, checker).value_or(false);
+        a_refuted ? false
+                  : tlsf_spec_implies(spec_a, spec_b, checker).value_or(false);
     const bool b_implies_a =
-        tlsf_spec_implies(spec_b, spec_a, checker).value_or(false);
+        b_refuted ? false
+                  : tlsf_spec_implies(spec_b, spec_a, checker).value_or(false);
     if (a_implies_b && b_implies_a) {
         const bool keep_a = prefer_a(spec_a, spec_b, keys[pos_a], keys[pos_b]);
         subsumed[keep_a ? pos_b : pos_a].store(1, std::memory_order_relaxed);
@@ -185,13 +200,44 @@ std::vector<uint8_t> compute_subsumed(
             keys[rep_pos] = similarity(pop[representatives[rep_pos]]);
         }
     }
+    // Once per representative, ahead of a sweep quadratic in them.
+    std::vector<tlsf::Specification> rep_specs;
+    rep_specs.reserve(n_reps);
+    for (const std::size_t index : representatives) {
+        rep_specs.push_back(pop[index]);
+    }
+    const std::vector<fingerprint::PackedFingerprint> prints =
+        fingerprint::prefilter::fingerprints_of(rep_specs);
+    // A pair both of whose directions a word refutes is dropped here rather
+    // than dispatched and returned from. Dispatching it costs more than the
+    // two ANDs it saves: `run_bounded_async` bounds how many items are in
+    // flight, so a region that is 96% instant tasks keeps refilling its window
+    // with them and holds about one subprocess open at a time. Measured over
+    // 80 candidates, skipping inside the task left 1033 ltlfilt calls running
+    // at 1.07x concurrency for 21.5s of wall, against the unfiltered sweep's
+    // 3361 calls at 18x for 6.4s -- fewer calls and three times the wall.
     std::vector<std::pair<std::size_t, std::size_t>> pairs;
     pairs.reserve(n_reps * (n_reps - 1) / 2);
+    std::size_t refuted_directions = 0;
     for (std::size_t i = 0; i < n_reps; ++i) {
         for (std::size_t j = i + 1; j < n_reps; ++j) {
-            pairs.emplace_back(i, j);
+            if (prints.empty()) {
+                pairs.emplace_back(i, j);
+                continue;
+            }
+            const bool forward =
+                fingerprint::refutes_implication(prints[i], prints[j]);
+            const bool backward =
+                fingerprint::refutes_implication(prints[j], prints[i]);
+            refuted_directions += static_cast<std::size_t>(forward) +
+                                  static_cast<std::size_t>(backward);
+            if (!forward || !backward) {
+                pairs.emplace_back(i, j);
+            }
         }
     }
+    ImplicationFilterStats::n_fingerprint_refuted.fetch_add(
+        refuted_directions, std::memory_order_relaxed);
     std::vector<std::atomic<uint8_t>> subsumed(n_reps);
     for (auto& flag : subsumed) {
         flag.store(0, std::memory_order_relaxed);
@@ -200,14 +246,14 @@ std::vector<uint8_t> compute_subsumed(
     std::size_t completed = 0;
     run_bounded_async(
         pairs.size(), max_in_flight,
-        [&checker, &pop, &representatives, &keys, &subsumed,
+        [&checker, &pop, &representatives, &keys, &prints, &subsumed,
          &pairs](std::size_t idx) {
             const std::size_t pos_a = pairs[idx].first;
             const std::size_t pos_b = pairs[idx].second;
-            return [&checker, &pop, &representatives, &keys, &subsumed, pos_a,
-                    pos_b] {
-                check_pair(pop, representatives, keys, subsumed, checker, pos_a,
-                           pos_b);
+            return [&checker, &pop, &representatives, &keys, &prints, &subsumed,
+                    pos_a, pos_b] {
+                check_pair(pop, representatives, keys, prints, subsumed,
+                           checker, pos_a, pos_b);
             };
         },
         [&on_progress, &completed, total = pairs.size()](std::size_t) {

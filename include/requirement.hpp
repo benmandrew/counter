@@ -204,6 +204,17 @@ struct Specification {
     /// newlines. Removed requirements are omitted: the result is the
     /// specification's meaning, not its storage.
     [[nodiscard]] std::string to_string() const;
+
+    /// Returns the whole specification as one LTL formula in SPOT syntax:
+    /// `(a1 & ... & an) -> (g1 & ... & gm)` over the live requirements' own
+    /// `m_ltl`, or the guarantee conjunction alone where no assumption is
+    /// live. Removed requirements are skipped, and an empty conjunction
+    /// lowers to `true` rather than to nothing, so `() -> ()` is unreachable.
+    ///
+    /// Every whole-specification query goes through this -- realizability and
+    /// the implication check both -- so the two ask about the same formula.
+    /// `tlsf::Specification::to_ltl` is the twin on the other path.
+    [[nodiscard]] std::string to_ltl() const;
 };
 
 /// The signals ltlsynt plays as the environment: the declared inputs followed

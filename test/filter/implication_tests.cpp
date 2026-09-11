@@ -1,3 +1,5 @@
+#include <cstddef>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
@@ -5,6 +7,8 @@
 #include "config.hpp"
 #include "filter/implication.hpp"
 #include "filter/implication_check.hpp"
+#include "fingerprint/lasso.hpp"
+#include "fingerprint/prefilter.hpp"
 #include "requirement.hpp"
 #include "runner/black.hpp"
 #include "test_suite.hpp"
@@ -144,6 +148,65 @@ void test_mixed_population() {
            "implication_filter: surviving spec should have two requirements");
 }
 
+// --- fingerprint prefilter ---
+
+// A sampled word may refute an implication and may never confirm one, so the
+// sweep's output is what the solver alone would have produced only while every
+// refutation is a genuine non-implication. That is asked of the solver here
+// rather than of the argument, because the FRETISH side reaches the evaluator
+// through a string round trip -- `to_ltl` renders the whole specification and
+// `prop_formula_internal::try_parse_formula` reads it back -- and a silent
+// misparse would fingerprint a formula other than the one queried, which
+// nothing downstream would catch.
+void test_fretish_prefilter_refutes_only_non_implications() {
+    const std::vector<std::string> ins{"a", "b"};
+    const std::vector<std::string> outs{"c"};
+    const std::vector<std::string> modes{"m"};
+    // Scoped requirements carry the risk the unscoped ones do not: the mode is
+    // an atom of the lowering that sits in neither atom list, so a signal set
+    // built from those alone would leave it false at every position.
+    auto scoped = [&](const Timing& when, ScopeKind kind) {
+        return Requirement(Formula("a"), Formula("c"), when,
+                           ConditionType::Continual, true, false,
+                           Scope{kind, "m"});
+    };
+    const std::vector<Specification> specs{
+        Specification({}, {g_req("c")}, ins, outs, modes),
+        Specification({}, {f_req("c")}, ins, outs, modes),
+        Specification({}, {g_req("c"), f_req("a")}, ins, outs, modes),
+        Specification({g_req("a")}, {g_req("c")}, ins, outs, modes),
+        Specification({}, {scoped(timing::immediately(), ScopeKind::In)}, ins,
+                      outs, modes),
+        Specification({}, {scoped(timing::eventually(), ScopeKind::After)}, ins,
+                      outs, modes),
+        Specification({}, {scoped(timing::always(), ScopeKind::OnlyBefore)},
+                      ins, outs, modes),
+    };
+    const std::vector<fingerprint::PackedFingerprint> prints =
+        fingerprint::prefilter::fingerprints_of(specs);
+    expect(prints.size() == specs.size(),
+           "prefilter: every FRETISH spec should have fingerprinted");
+
+    SatisfiabilityChecker checker;
+    std::size_t refuted = 0;
+    for (std::size_t i = 0; i < specs.size(); ++i) {
+        for (std::size_t j = 0; j < specs.size(); ++j) {
+            if (i == j ||
+                !fingerprint::refutes_implication(prints[i], prints[j])) {
+                continue;
+            }
+            ++refuted;
+            const std::optional<bool> implies =
+                spec_implies(specs[i], specs[j], checker);
+            expect(implies.has_value() && !implies.value(),
+                   "prefilter: refuted a pair the solver reads as implying");
+        }
+    }
+    // Without this the loop above passes on an empty fingerprint table, which
+    // is exactly the failure it is written to catch.
+    expect(refuted > 0, "prefilter: refuted nothing, so nothing was checked");
+}
+
 }  // namespace
 
 // --- spec_implies propositional shortcut ---
@@ -200,4 +263,5 @@ void run_implication_filter_tests() {
     test_mixed_population();
     test_weakening_response_implies();
     test_independent_responses_not_implied();
+    test_fretish_prefilter_refutes_only_non_implications();
 }

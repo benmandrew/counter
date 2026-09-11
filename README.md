@@ -65,6 +65,7 @@ The full documentation is published at [benmandrew.com/docs/counter](https://ben
 |---|---|
 | [Building from source](docs/building.md) | Nix and non-Nix builds, dependencies, presets, tests |
 | [Docker](docs/docker.md) | building and running the container image |
+| [Virtual machine](docs/vm.md) | building a VirtualBox appliance from the image |
 | [Architecture](https://benmandrew.com/docs/counter/architecture.html) | algorithm flow, key types, module layout |
 | [Configuration](https://benmandrew.com/docs/counter/configuration.html) | tuning via TOML, fitness weights, selection schemes |
 | [TLSF specifications](https://benmandrew.com/docs/counter/tlsf.html) | TLSF mode and a worked repair |

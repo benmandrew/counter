@@ -48,6 +48,7 @@ add_executable(counter_tests
     tlsf/assumption_tests.cpp
     tlsf/monotone_tests.cpp
     tlsf/pipeline_tests.cpp
+    fingerprint/lasso_tests.cpp
     drivers/e2e_tests.cpp
 )
 
@@ -113,6 +114,7 @@ add_test(NAME counter_tests.prop_formula_cnf COMMAND counter_tests prop_formula_
 add_test(NAME counter_tests.prop_formula_rewrite COMMAND counter_tests prop_formula_rewrite)
 add_test(NAME counter_tests.prop_formula_similarity COMMAND counter_tests prop_formula_similarity)
 add_test(NAME counter_tests.prop_formula_temporal COMMAND counter_tests prop_formula_temporal)
+add_test(NAME counter_tests.fingerprint_lasso COMMAND counter_tests fingerprint_lasso)
 add_test(NAME counter_tests.semantic_similarity COMMAND counter_tests semantic_similarity)
 add_test(NAME counter_tests.syntactic_similarity COMMAND counter_tests syntactic_similarity)
 add_test(NAME counter_tests.fitness_function COMMAND counter_tests fitness_function)

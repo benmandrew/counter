@@ -9,6 +9,7 @@ void run_mucs_driver_tests();
 void run_compare_driver_tests();
 void run_lint_ideals_driver_tests();
 void run_signal_tracer_driver_tests();
+void run_fingerprint_lasso_tests();
 void run_transfer_matrix_tests();
 void run_black_runner_tests(const std::chrono::milliseconds& timeout);
 void run_formaliser_runner_tests();

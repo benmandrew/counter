@@ -113,6 +113,13 @@ struct Specification {
     /// are used only for per-side satisfiability checks, not realizability.
     [[nodiscard]] std::string to_ltl() const;
 
+    /// The `Formula` behind `to_ltl()`, which is this rendered.
+    ///
+    /// Exposed for the callers that walk or evaluate the lowering rather than
+    /// hand it to an external tool as text, so they need not parse back a
+    /// string this codebase has just printed.
+    [[nodiscard]] Formula to_ltl_formula() const;
+
     /// Lowers only the assumption side (INITIALLY, G(REQUIRE), ASSUME) to an
     /// LTL string in SPOT syntax, using the same collection order as to_ltl().
     /// When no assumption section contributes a term the result is `true`.

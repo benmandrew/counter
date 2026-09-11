@@ -181,9 +181,11 @@ double timing_syntactic_similarity(const Timing& tim, const Timing& tim_other) {
 
 // Jaccard on downward closures, as the timing term is, over the two-element
 // implication order: Continual implies Trigger for every scope and every
-// timing, strictly except at `always` where the two coincide, because a
-// trigger fires on the rising edges of its condition and those are a subset of
-// the timepoints where the condition holds. So down-Continual is both values
+// timing, because a trigger fires on the rising edges of its condition and
+// those are a subset of the timepoints where the condition holds. The two
+// coincide at `always` under a plain scope and at `eventually` under an `only`
+// one; the term scores the fields rather than their lowerings, so it does not
+// special-case either. So down-Continual is both values
 // and down-Trigger is itself alone, giving 1/2 for a pair that differs and 1
 // for a pair that agrees. Nothing is chosen here: the order fixes both values.
 double condition_type_syntactic_similarity(ConditionType lhs,

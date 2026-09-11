@@ -247,7 +247,11 @@ void test_scope_order_is_pinned() {
 }
 
 // Continual implies Trigger everywhere, which is what makes the condition-type
-// arm directional. Strict at every timing but `always`, where the two coincide.
+// arm directional. The converse holds only where the two coincide: at `always`
+// under a plain scope, and at `eventually` under an `only` scope, whose
+// lowering applies the dual wrapper to the negated body and so moves the
+// coinciding cell to the dual timing. The converse is checked too, since a
+// cell that stopped being strict would make the arm a no-op there.
 void test_condition_type_order_is_pinned() {
     for (const ScopeCase& scope_case : scope_cases()) {
         for (const Timing& tim : timing_cases()) {
@@ -256,10 +260,18 @@ void test_condition_type_order_is_pinned() {
                 scoped(scope, tim, ConditionType::Continual).m_ltl;
             const std::string trigger =
                 scoped(scope, tim, ConditionType::Trigger).m_ltl;
+            const std::string where =
+                std::string(scope_case.m_name) + " / " + to_string(tim);
             expect(ltl_implies(continual, trigger),
-                   std::string("condition type: continual must imply trigger "
-                               "at ") +
-                       scope_case.m_name + " / " + to_string(tim));
+                   "condition type: continual must imply trigger at " + where);
+            const bool coincide =
+                is_only_scope(scope_case.m_kind)
+                    ? std::holds_alternative<timing::Eventually>(tim)
+                    : std::holds_alternative<timing::Always>(tim);
+            expect(ltl_implies(trigger, continual) == coincide,
+                   std::string("condition type: trigger ") +
+                       (coincide ? "must" : "must not") +
+                       " imply continual at " + where);
         }
     }
 }

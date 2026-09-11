@@ -60,6 +60,47 @@ void test_timing_crossover_can_swap_parameters() {
            "crossover: parameter crossover should be able to swap ticks");
 }
 
+// Condition type and scope each come whole from one parent, on the tenth and
+// eleventh draws, after the two formula fields' eight and the timing's one.
+// Each coin is independent, so either field can come from the second parent
+// while the other stays with the first.
+void test_condition_type_and_scope_cross_over() {
+    const Scope in_mode{ScopeKind::In, "m"};
+    const Requirement first_parent(Formula("P"), Formula("Q"),
+                                   timing::immediately(),
+                                   ConditionType::Continual, true, false);
+    const Requirement second_parent(
+        Formula("P"), Formula("Q"), timing::immediately(),
+        ConditionType::Trigger, true, false, in_mode);
+    const std::vector<std::size_t> formula_and_timing(9, 0);
+
+    std::vector<std::size_t> type_draws = formula_and_timing;
+    type_draws.insert(type_draws.end(), {1, 0});
+    const Requirement type_swapped = crossover_requirements(
+        first_parent, second_parent, make_source(type_draws, 0));
+    expect(type_swapped.m_condition_type == ConditionType::Trigger,
+           "crossover: the condition type should come from the second parent "
+           "when its coin says so");
+    expect(type_swapped.m_scope == first_parent.m_scope,
+           "crossover: the scope coin is independent of the condition type's");
+
+    std::vector<std::size_t> scope_draws = formula_and_timing;
+    scope_draws.insert(scope_draws.end(), {0, 1});
+    const Requirement scope_swapped = crossover_requirements(
+        first_parent, second_parent, make_source(scope_draws, 0));
+    expect(scope_swapped.m_condition_type == ConditionType::Continual,
+           "crossover: the condition type should stay with the first parent "
+           "when its coin says so");
+    expect(scope_swapped.m_scope == in_mode,
+           "crossover: the scope, mode included, should come from the second "
+           "parent when its coin says so");
+    // m_ltl is derived, so it has to be rebuilt after both fields move or the
+    // offspring is scored and synthesised as a requirement it no longer is.
+    expect(scope_swapped.m_ltl == requirement_to_ltl(scope_swapped),
+           "crossover: the offspring's LTL must be lowered from its own "
+           "fields");
+}
+
 void test_formula_crossover_can_combine_atoms() {
     const Requirement first_parent{Formula("P"), Formula("Q"),
                                    timing::immediately()};
@@ -172,6 +213,7 @@ void test_crossover_accepts_unequal_lengths() {
 void run_crossover_tests() {
     test_crossover_always_recombines();
     test_timing_crossover_can_swap_parameters();
+    test_condition_type_and_scope_cross_over();
     test_formula_crossover_can_combine_atoms();
     test_crossover_keeps_non_weakenable_from_first_parent();
     test_crossover_donor_comes_from_any_slot();

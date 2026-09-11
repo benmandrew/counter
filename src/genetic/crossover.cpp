@@ -209,6 +209,23 @@ Timing crossover_timing(const Timing& first_parent, const Timing& second_parent,
         first_parent);
 }
 
+// Condition type and scope are both short implication orders with no parameter
+// to recombine, so each is taken whole from one parent on a coin, as the timing
+// crossover does for two unparameterised timings.
+ConditionType crossover_condition_type(ConditionType first_parent,
+                                       ConditionType second_parent,
+                                       const RandomSource& random_source) {
+    return random_source.next_bool() ? second_parent : first_parent;
+}
+
+// The mode travels with the kind. crossover_specifications has already required
+// both parents to declare the same modes, so the donor's scope names one the
+// offspring declares.
+Scope crossover_scope(const Scope& first_parent, const Scope& second_parent,
+                      const RandomSource& random_source) {
+    return random_source.next_bool() ? second_parent : first_parent;
+}
+
 }  // namespace
 
 Requirement crossover_requirements(const Requirement& first_parent,
@@ -222,6 +239,11 @@ Requirement crossover_requirements(const Requirement& first_parent,
         first_parent.m_response, second_parent.m_response, random_source);
     offspring.m_timing = crossover_timing(
         first_parent.m_timing, second_parent.m_timing, random_source);
+    offspring.m_condition_type =
+        crossover_condition_type(first_parent.m_condition_type,
+                                 second_parent.m_condition_type, random_source);
+    offspring.m_scope = crossover_scope(first_parent.m_scope,
+                                        second_parent.m_scope, random_source);
     offspring.m_ltl = requirement_to_ltl(offspring);
     return offspring;
 }

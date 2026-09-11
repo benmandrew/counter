@@ -398,11 +398,12 @@ Timing weaken_timing(const Timing& timing,
 // fails the suite rather than surfacing later as a candidate that moved the
 // wrong way.
 
-// Continual implies Trigger for every scope and every timing, strictly except
-// at `always`, where the two coincide: a trigger fires on the rising edges of
-// its condition, which are a subset of the timepoints where the condition
-// holds. So Continual is the strengthening and Trigger the weakening, and this
-// order needs no table.
+// Continual implies Trigger for every scope and every timing: a trigger fires
+// on the rising edges of its condition, which are a subset of the timepoints
+// where the condition holds. So Continual is the strengthening and Trigger the
+// weakening, and this order needs no table. The two coincide at `always` under
+// the five plain scopes and at `eventually` under the three `only` ones, and
+// are strictly ordered everywhere else.
 // The order has two elements, so the direction alone names the target and the
 // current value is not read: strengthening an already-Continual requirement
 // leaves it where it is, exactly as strengthen_timing does at Always.

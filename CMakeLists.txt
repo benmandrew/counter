@@ -66,9 +66,10 @@ target_sources(counter_core PRIVATE
 )
 target_include_directories(counter_core PUBLIC include)
 # src is on the path for counter_core's own sources alone, so an internal
-# header can be named from another directory under src/ ("fingerprint/lasso.hpp"
-# from src/fingerprint.cpp resolves relative to src/ without it). include/ stays
-# the published surface; nothing outside this target may reach src/ this way.
+# header can be named from another directory under src/ ("prop_formula/
+# internal.hpp" from src/fingerprint/lasso.cpp resolves relative to src/ without
+# it). include/ stays the published surface; nothing outside this target may
+# reach src/ this way.
 target_include_directories(counter_core PRIVATE src)
 # Only version.cpp includes the generated header, so a new commit recompiles
 # one translation unit rather than the whole tree.
@@ -110,6 +111,7 @@ target_sources(counter_fitness PRIVATE
     src/tlsf/crossover.cpp
     src/tlsf/operators.cpp
     src/tlsf/filter.cpp
+    src/tlsf/fingerprint_prefilter.cpp
     src/tlsf/mucs.cpp
     src/tlsf/guarantee_parts.cpp
     src/tlsf/pipeline.cpp
@@ -123,6 +125,9 @@ target_sources(counter_fitness PRIVATE
     src/driver_support.cpp
 )
 target_include_directories(counter_fitness PUBLIC include)
+# As counter_core does, and for the same reason: src/tlsf/filter.cpp names
+# "fingerprint/lasso.hpp", which lives under src/ because it is not published.
+target_include_directories(counter_fitness PRIVATE src)
 target_link_libraries(counter_fitness PUBLIC counter_core tomlplusplus::tomlplusplus)
 add_dependencies(counter_fitness spot_project)
 # Include Eigen as a system directory so clang-tidy skips warnings inside it.
@@ -200,6 +205,10 @@ target_link_libraries(mucs PRIVATE counter_fitness)
 
 add_executable(maximal src/maximal.cpp)
 target_link_libraries(maximal PRIVATE counter_fitness)
+# maximal reaches one internal header, src/tlsf/fingerprint_prefilter.hpp, so
+# that its equivalence quotient prefilters on the same words the pairwise sweep
+# does. include/ stays the published surface.
+target_include_directories(maximal PRIVATE src)
 
 add_custom_target(ganak_binary ALL DEPENDS "${GANAK_EXECUTABLE}")
 add_custom_target(black_binary ALL DEPENDS "${BLACK_EXECUTABLE}")

@@ -227,6 +227,27 @@ std::vector<bool> fingerprint_of(const Formula& formula,
     return bits;
 }
 
+PackedFingerprint pack(const std::vector<bool>& bits) {
+    PackedFingerprint packed((bits.size() + 63) / 64, 0);
+    for (std::size_t index = 0; index < bits.size(); ++index) {
+        if (bits[index]) {
+            packed[index / 64] |= std::uint64_t{1} << (index % 64);
+        }
+    }
+    return packed;
+}
+
+bool refutes_implication(const PackedFingerprint& lhs,
+                         const PackedFingerprint& rhs) {
+    assert(lhs.size() == rhs.size());
+    for (std::size_t word = 0; word < lhs.size(); ++word) {
+        if ((lhs[word] & ~rhs[word]) != 0) {
+            return true;
+        }
+    }
+    return false;
+}
+
 std::string to_hex(const std::vector<bool>& bits) {
     const std::size_t digits = (bits.size() + 3) / 4;
     std::vector<unsigned> nibbles(digits, 0);

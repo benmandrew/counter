@@ -149,9 +149,9 @@ Count run_ganak_on_dimacs(const std::string& dimacs_path, unsigned seed,
 }
 
 Count run_ganak_on_formula(const std::string& formula, unsigned seed) {
-    // The canonical form rather than `normalize_ltl`'s `ltlfilt --simplify`
-    // output. Both collapse spellings, and only this one is guaranteed to keep
-    // the variable set. The simplifier eliminates a variable wherever a term
+    // The canonical form rather than an `ltlfilt --simplify` pass. Both
+    // collapse spellings, and only this one is guaranteed to keep the
+    // variable set. The simplifier eliminates a variable wherever a term
     // subsumes another -- SPOT 2.15.1 returns `a` for `a | (a & b)` -- while
     // count_guard_models computed its 2^free_count multiplier from the atoms
     // the HOA label mentions, before the pass, so a dropped variable would

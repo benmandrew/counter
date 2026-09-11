@@ -197,7 +197,7 @@ void set_ltl2tgba_timeout(std::chrono::milliseconds timeout) {
 std::string ltl2tgba_path() { return spot_bin_dir() + "/ltl2tgba"; }
 
 std::string run_ltl2tgba_for_counting(const std::string& formula) {
-    // No normalize_ltl() pre-pass here, unlike the other SPOT/black callers.
+    // No `ltlfilt --simplify` pre-pass here, unlike the black caller.
     // ltl2tgba simplifies internally, so it is redundant -- and ltlfilt
     // --simplify blows up super-exponentially on the deeply nested-X
     // conjunctions this path builds for atom-rich, deep-horizon requirement
@@ -395,14 +395,15 @@ std::optional<bool> RealizabilityChecker::check_realizability_ltl(
 std::optional<bool> RealizabilityChecker::check_realizability_ltl(
     const std::string& ltl_formula, const std::vector<std::string>& inputs,
     const std::vector<std::string>& outputs, const SpecificationSides& sides) {
-    // No normalize_ltl() pre-pass, matching run_ltl2tgba_for_counting: ltlsynt
-    // simplifies internally, and the specification formula is a conjunction of
-    // the guarantees, which reproduces the deeply nested-X shape that hangs
-    // ltlfilt --simplify for multi-guarantee deep-horizon specs (e.g. two
-    // WithinTicks(20) guarantees with different responses -- reachable via
-    // mutate_timing, and re-checked here for every survivor). ltlsynt decides
-    // the raw formula in milliseconds, so pass it straight through. Unlike the
-    // black path, nothing here depends on the "0"/"1" fold normalize enables.
+    // No `ltlfilt --simplify` pre-pass, matching run_ltl2tgba_for_counting:
+    // ltlsynt simplifies internally, and the specification formula is a
+    // conjunction of the guarantees, which reproduces the deeply nested-X
+    // shape that hangs ltlfilt --simplify for multi-guarantee deep-horizon
+    // specs (e.g. two WithinTicks(20) guarantees with different responses --
+    // reachable via mutate_timing, and re-checked here for every survivor).
+    // ltlsynt decides the raw formula in milliseconds, so pass it straight
+    // through. Unlike the black path, nothing here depends on the "0"/"1"
+    // fold the pass would enable.
     const std::string& conj_ltl = ltl_formula;
     // The canonical key renames the atoms within each side of the partition,
     // which realizability is invariant under, and folds the declared lists

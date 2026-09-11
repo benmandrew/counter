@@ -62,12 +62,17 @@ void set_ltlfilt_timeout(std::chrono::milliseconds timeout);
 /// if the binary is inaccessible or exits non-zero.
 ///
 /// Memoised twice over: once on the input string, and behind that on the
-/// canonical renamed key (`formula_key::renamed`), which is what the
-/// subprocess is actually asked about and what the answer is read back from.
-/// The second level is why the exec count is 22.1% below the number of
-/// distinct input spellings, and 31.6% below it once the renaming is counted:
-/// operand order, association and atom naming all vary freely in what the
-/// search builds and none of them changes the answer.
+/// canonical key (`formula_key::canonical`), which is what the subprocess is
+/// actually asked about and what the answer is read back from. Operand order
+/// and association vary freely in what the search builds and neither changes
+/// the answer, so collapsing them leaves the exec count 22.1% below the
+/// number of distinct input spellings.
+///
+/// The renaming (`formula_key::renamed`) would take that to 31.6% and is not
+/// usable here. The value is a formula, so it would have to be read back over
+/// renamed atoms, and SPOT prints a unary operator hard against its operand:
+/// `F` applied to an atom named `fk1` comes back as `Ffk1`, which no
+/// tokenisation of that output separates.
 std::string simplify_ltl(const std::string& formula);
 
 /// Returns the ltlfilt-simplified canonical form of `formula`. The result is

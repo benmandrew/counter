@@ -56,4 +56,14 @@ void set_ganak_timeout(std::chrono::milliseconds timeout);
 Count run_ganak_on_dimacs(const std::string& dimacs_path, unsigned seed = 1,
                           double* cpu_s_out = nullptr);
 
+/// Counts the models of `formula` over the variables it mentions, memoised on
+/// the canonical renamed key (`formula_key::renamed`) and the seed.
+///
+/// The renaming is sound here where it is not in `simplify_ltl`, because the
+/// value is a number rather than a formula: a count is invariant under a
+/// bijection on the atoms, and the free variables of the wider alphabet are
+/// multiplied back in by the caller, outside this cache. Two guards differing
+/// only in operand order, association or atom naming therefore share one
+/// exec, which over nine specifications is 20.3% to 49.5% of the execs a run
+/// makes.
 Count run_ganak_on_formula(const std::string& formula, unsigned seed = 1);

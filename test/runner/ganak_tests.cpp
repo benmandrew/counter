@@ -1,5 +1,6 @@
 #include <unistd.h>
 
+#include <cstddef>
 #include <cstdio>
 #include <cstdlib>
 #include <fstream>
@@ -31,4 +32,21 @@ void test_ganak_runner_on_trivial_cnf() {
     std::remove(dimacs_path.c_str());
 }
 
-void run_ganak_runner_tests() { test_ganak_runner_on_trivial_cnf(); }
+// Two guards differing only in their atom names are one count, so they must
+// share a cache entry rather than buying an exec each. The renaming is where
+// the whole of that collapse comes from: the structural canonical form alone
+// left the exec count unchanged on all nine specifications measured, ltlfilt
+// having already normalised operand order upstream of this cache.
+void test_ganak_cache_is_rename_invariant() {
+    const std::size_t misses_before = GanakStats::n_cache_misses;
+    const Count first = run_ganak_on_formula("(a) & (b)");
+    const Count second = run_ganak_on_formula("(y) & (z)");
+    expect(first == second, "ganak-runner: a renaming changed the model count");
+    expect(GanakStats::n_cache_misses == misses_before + 1,
+           "ganak-runner: a renamed guard bought a second exec");
+}
+
+void run_ganak_runner_tests() {
+    test_ganak_runner_on_trivial_cnf();
+    test_ganak_cache_is_rename_invariant();
+}

@@ -1,6 +1,6 @@
 # Docker
 
-The image carries the eight counter binaries, the solvers they spawn, the dashboard page and the bundled examples under `/opt/counter`. It runs as a non-root user with `/work` as its working directory, and it is built from the repository root with the commit it was built from passed in as a build argument. Nothing about the algorithm changes inside it; the container is a way of getting Spot, black and Ganak without building them.
+The image carries the eight counter binaries, the solvers they spawn, the dashboard page and the bundled examples under `/opt/counter`. It runs as a non-root user with `/work` as its working directory, and it is built from the repository root with the commit it was built from passed in as a build argument. Nothing about the algorithm changes inside it; the container is a way of getting Spot, black and Ganak without building them. [`vm.md`](vm.md) covers a VirtualBox appliance built from this image, for a user who wants a virtual machine rather than a container.
 
 ## Running a command
 

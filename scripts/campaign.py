@@ -169,7 +169,7 @@ COUNTER_BINARY = "build-release/counter"
 # experiments/ is ignored by content, so the directory needs no .gitignore work.
 QUEUE_DIR = "experiments/queue"
 QUEUE_LOCK = "~/.counter-queue.lock"
-QUEUE_STATES = ("queued", "running", "done", "failed")
+QUEUE_STATES = ("queued", "running", "done", "failed", "cancelled")
 # ensure_staged's third answer, beside None (go on) and an exit code (stop):
 # the checkout moved and took the tick's own sources with it, so the rest of
 # this tick belongs to a process that has read them. See restart_after_stage.
@@ -3169,12 +3169,12 @@ def launch_script(root: str, chain: str, log: str) -> str:
 def pending_queue_entries(probe: HostProbe, name: str) -> list:
     """This campaign's queue entries on that host that a tick could still run.
 
-    A `done` entry is spent and a `failed` one needs `requeue` before any tick
-    touches it; anything else is a launch waiting to happen.
+    A `done` entry is spent, and a `failed` or `cancelled` one needs `requeue`
+    before any tick touches it; anything else is a launch waiting to happen.
     """
     return [entry for entry in probe.queue
             if entry.get("campaign") == name
-            and entry.get("state") not in ("done", "failed")]
+            and entry.get("state") not in ("done", "failed", "cancelled")]
 
 
 def start_refusals(probe: HostProbe, campaign: dict, sha: str,
@@ -3334,6 +3334,10 @@ def cmd_start(args: argparse.Namespace) -> int:
 #   running  -> queued           phase failed or was interrupted, attempts left
 #   running  -> failed           phase failed or was interrupted, cap reached
 #   failed   -> queued           `campaign requeue`, by hand
+#   queued   -> cancelled        `campaign dequeue`, by hand
+#   running  -> cancelled        `campaign dequeue`, by hand, having killed the
+#                                tick holding it first
+#   cancelled-> queued           `campaign requeue`, by hand
 #
 # `running` with no tick holding the lock is an interrupted phase, not a live
 # one: a tick runs its phase in the foreground, so the state outliving the
@@ -4063,7 +4067,7 @@ QUEUE_HEADERS = ["HOST", "ENTRY", "CAMPAIGN", "BRANCH", "STATE", "PHASE",
 # both at once and one word must not mean two colours on one screen.
 QUEUE_STATE_COLOURS = {"queued": ("dim",), "running": ("cyan",),
                        "done": ("green",), "failed": ("red",),
-                       "unparseable": ("red",)}
+                       "cancelled": ("yellow",), "unparseable": ("red",)}
 
 
 def queue_paint(row: int, col: int, cell: str, style: Style) -> str:
@@ -4126,8 +4130,8 @@ def cmd_queue(args: argparse.Namespace) -> int:
           else "No queue entries on any host.")
     if rows:
         print("\nPHASE is the next phase against the total; TRIES is attempts "
-              "against the cap.\nA failed entry stops moving until "
-              "`campaign.py requeue` clears it.")
+              "against the cap.\nA failed or cancelled entry stops moving "
+              "until `campaign.py requeue` clears it.")
     return 0 if all(r["reachable"] for r in reports) else 1
 
 
@@ -4175,6 +4179,144 @@ def cmd_requeue(args: argparse.Namespace) -> int:
         print(f"error: {' '.join(sections.get('err', [])) or err}")
         return 1
     print(f"{host}: {args.entry} requeued.")
+    return 0
+
+
+DEQUEUE_SCRIPT = r"""
+cd @ROOT@ 2>/dev/null || { echo "@M@ERR not a directory: @ROOT@"; exit 3; }
+if [ ! -f @PATH@ ]; then echo "@M@ERR no entry @PATH@"; exit 4; fi
+PID=@PID@
+TREEFILE=$(mktemp) || { echo "@M@ERR no temporary file"; exit 5; }
+if [ "$PID" != 0 ] && kill -0 "$PID" 2>/dev/null; then
+  case "$(ps -o args= -p "$PID" 2>/dev/null)" in
+    *campaign.py*)
+      ps -eo pid=,ppid= | awk -v root="$PID" '
+        { parent[$1] = $2; seen[NR] = $1; n = NR }
+        END {
+          tree[root] = 1
+          changed = 1
+          while (changed) {
+            changed = 0
+            for (i = 1; i <= n; i++) {
+              p = seen[i]
+              if (!(p in tree) && (parent[p] in tree)) { tree[p] = 1; changed = 1 }
+            }
+          }
+          for (p in tree) print p
+        }' > "$TREEFILE"
+      ;;
+    *) echo "@M@NOTE pid $PID is alive and is not a tick; nothing killed" ;;
+  esac
+fi
+echo "@M@TREE $(tr '\n' ' ' < "$TREEFILE")"
+if [ -s "$TREEFILE" ] && [ @KILL@ = yes ]; then
+  kill -TERM "$PID" 2>/dev/null
+  while read -r p; do
+    [ "$p" = "$PID" ] || kill -TERM "$p" 2>/dev/null
+  done < "$TREEFILE"
+  sleep 3
+  while read -r p; do kill -KILL "$p" 2>/dev/null; done < "$TREEFILE"
+  echo "@M@KILLED $(tr '\n' ' ' < "$TREEFILE")"
+fi
+rm -f "$TREEFILE"
+if [ @WRITE@ = yes ]; then
+  printf %s @B64@ | base64 -d > @PATH@.tmp || { echo "@M@ERR write failed"; exit 6; }
+  mv @PATH@.tmp @PATH@ || { echo "@M@ERR rename failed"; exit 7; }
+fi
+echo "@M@END"
+"""
+# The tick goes first and the entry is rewritten last, in one script rather
+# than two round trips. A tick writes the entry's state at the end of every
+# phase from the copy it holds in memory, so an entry rewritten while its tick
+# is alive is overwritten hours later by a process that never heard of this,
+# and the queue then disagrees with the machine. Its descendants are collected
+# before it dies, since a dead parent's children reparent to init and no walk
+# finds them afterwards; they are killed after it, being the runner and the
+# `counter` processes the phase launched, which outlive the tick otherwise and
+# keep writing rows into a results CSV nothing is waiting for.
+#
+# The tree is a fixpoint over one `ps -eo pid=,ppid=` snapshot rather than a
+# loop over `pgrep -P`, because the remote shell is zsh: an unquoted parameter
+# does not word-split there, so `for p in $FRONTIER` over a frontier of four
+# pids iterates once over all four as a single word, `pgrep -P` rejects it,
+# and the frontier holds the single space the substitution leaves. `[ -n " " ]`
+# is true, so that loop never terminates -- it spun at 25% of a core on av3
+# until it was killed by hand. Every loop here reads its pids from a file for
+# the same reason, one per line.
+
+
+def cmd_dequeue(args: argparse.Namespace) -> int:
+    """Take an entry out of the queue, stopping the phase it is mid-way through.
+
+    The inverse of `enqueue`, and the only supported way to stop a campaign:
+    the tick has no stop of its own, so without this the choice was editing
+    queue TOML on a lab machine by hand or waiting for the attempt cap to
+    spend itself against a run nobody wants any more.
+
+    It tombstones rather than deleting the file, following `p_remove_guarantee`
+    and for the same reason: the log is the record of what the entry did, and
+    `enqueue` numbers entries from the names already present, so a deleted
+    021 lets the next campaign take a number a reader has already seen mean
+    something else. `requeue` puts a cancelled entry back, which is what makes
+    this a stop rather than a withdrawal -- one verb for both, since a
+    cancelled entry and a failed one need exactly the same thing done to them.
+    """
+    import base64  # noqa: PLC0415
+    host, root = args.host, (source_path(args.host) if args.host != LOCAL
+                             else str(REPO_ROOT))
+    report = gather_host(host, root, None, False, False)
+    if not report["reachable"]:
+        print(f"error: {host} unreachable: {report['error']}")
+        return 1
+    matches = [e for e in report["queue"]
+               if Path(e.get("file", "")).name == args.entry]
+    if not matches:
+        print(f"error: {host} has no queue entry {args.entry!r}")
+        return 2
+    entry = entry_body(matches[0])
+    was = str(entry.get("state", "?"))
+    if was == "cancelled":
+        print(f"{host}: {args.entry} is already cancelled.")
+        return 0
+    # Only a `running` entry names a live tick. The pid on any other state is
+    # the last tick to have held it, long dead, and its number belongs to
+    # whatever the machine has started since.
+    try:
+        pid = int(entry.get("pid", 0)) if was == "running" else 0
+    except (TypeError, ValueError):
+        pid = 0
+    why = args.reason or "dequeued by hand"
+    entry["state"] = "cancelled"
+    entry["last_error"] = why
+    log_line(entry, f"cancelled while {was}: {why}")
+    encoded = base64.b64encode(dump_toml(entry).encode()).decode()
+    text, err = run_shell(host, render_script(
+        DEQUEUE_SCRIPT,
+        ROOT=shlex.quote(root),
+        PATH=shlex.quote(f"{QUEUE_DIR}/{args.entry}"),
+        PID=str(pid),
+        KILL="no" if args.dry_run else "yes",
+        WRITE="no" if args.dry_run else "yes",
+        B64=shlex.quote(encoded)), timeout=SSH_TIMEOUT_S + 10)
+    sections = parse_sections(text or "")
+    if err or "err" in sections or "end" not in sections:
+        print(f"error: {' '.join(sections.get('err', [])) or err}")
+        return 1
+    for note in sections.get("note", []):
+        print(f"note: {note}")
+    tree = " ".join(sections.get("tree", [])).split()
+    if was == "running" and not tree:
+        print(f"note: {args.entry} reads running and no tick holds it; "
+              f"nothing to kill.")
+    if args.dry_run:
+        print(f"{host}: would cancel {args.entry} ({was})"
+              + (f", killing {len(tree)} process(es): {' '.join(tree)}"
+                 if tree else ""))
+        return 0
+    if tree:
+        print(f"{host}: killed {len(tree)} process(es): {' '.join(tree)}")
+    print(f"{host}: {args.entry} cancelled; `campaign.py requeue` puts it "
+          f"back.")
     return 0
 
 
@@ -4342,6 +4484,17 @@ def build_parser() -> argparse.ArgumentParser:
     requeue.add_argument("--host", choices=[*HOSTS, LOCAL], required=True)
     requeue.add_argument("entry", help="Entry file name, e.g. 001-tlsf.toml.")
     requeue.set_defaults(func=cmd_requeue)
+
+    dequeue = sub.add_parser(
+        "dequeue",
+        help="Take an entry out of the queue, killing its tick if one holds it.")
+    dequeue.add_argument("--host", choices=[*HOSTS, LOCAL], required=True)
+    dequeue.add_argument("entry", help="Entry file name, e.g. 001-tlsf.toml.")
+    dequeue.add_argument("--reason", default="",
+                         help="What to record in the entry's log and NOTE.")
+    dequeue.add_argument("--dry-run", action="store_true",
+                         help="Say what would be killed, and kill nothing.")
+    dequeue.set_defaults(func=cmd_dequeue)
 
     tick = sub.add_parser(
         "tick", help="Run the next phase of the lowest-numbered queued entry. "

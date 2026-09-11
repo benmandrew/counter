@@ -132,7 +132,13 @@ namespace {
 // The same version is where the FRETISH implication check stopped decomposing
 // per requirement, so `comparisons`, `timeouts` and the repair counts beside
 // them are not comparable across it on that path.
-constexpr int k_schema_version = 26;
+//
+// 27 moved both paths onto one implication sweep. On TLSF, `comparisons`,
+// `skipped` and `duplicates` read 0 on every earlier manifest, the TLSF sweep
+// having counted none of them, and `fingerprint_refuted` was never reset; all
+// four now carry the sweep's own figures, as they already did on FRETISH.
+// `timeouts` still reads 0 there, tlsf_spec_implies counting none.
+constexpr int k_schema_version = 27;
 
 // The inverse of the spellings config_io.cpp parses. It has no table to
 // borrow -- it only ever goes string to enum -- so these must be kept in step

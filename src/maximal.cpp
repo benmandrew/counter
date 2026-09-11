@@ -223,8 +223,8 @@ int main(int argc, const char* const argv[]) {
 
     // Structural duplicates cost nothing to remove and would each pay for a
     // full row of the pairwise sweep, so they are collapsed before any solver
-    // call. compute_subsumed does this internally too; doing it here as well is
-    // what lets the report name the files behind each survivor.
+    // call. The implication filter does this internally too; doing it here as
+    // well is what lets the report name the files behind each survivor.
     std::vector<tlsf::Specification> distinct;
     std::vector<std::vector<std::string>> members;
     std::unordered_map<tlsf::Specification, std::size_t> position_of;

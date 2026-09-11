@@ -1,10 +1,13 @@
+#include <algorithm>
 #include <cstddef>
+#include <cstdint>
 #include <optional>
 #include <string>
 #include <utility>
 #include <vector>
 
 #include "config.hpp"
+#include "filter/antichain.hpp"
 #include "filter/implication.hpp"
 #include "filter/implication_check.hpp"
 #include "fingerprint/lasso.hpp"
@@ -13,6 +16,7 @@
 #include "runner/black.hpp"
 #include "test_suite.hpp"
 #include "test_support.hpp"
+#include "thread_pool.hpp"
 
 namespace {
 
@@ -207,6 +211,66 @@ void test_fretish_prefilter_refutes_only_non_implications() {
     expect(refuted > 0, "prefilter: refuted nothing, so nothing was checked");
 }
 
+// --- antichain merge ---
+
+std::vector<Specification> sorted(std::vector<Specification> specs) {
+    std::sort(specs.begin(), specs.end());
+    return specs;
+}
+
+// The streaming filter's correctness rests on merging batch by batch reaching
+// the antichain one sweep over the union reaches. The batches are ordered so
+// the merge meets both cases: a settled spec dominated by a later arrival
+// (G a, displaced by G a & G b), and an arrival dominated by a settled spec
+// (G b & GF a, below G a & G b).
+void test_batched_merge_matches_one_sweep() {
+    SatisfiabilityChecker checker;
+    const auto implies = [&checker](const Specification& lhs,
+                                    const Specification& rhs) {
+        return spec_implies(lhs, rhs, checker).value_or(false);
+    };
+    const std::vector<std::vector<Specification>> batches{
+        {make_spec({g_req("a")}), make_spec({f_req("a")})},
+        {make_spec({g_req("b")}), make_spec({g_req("a"), g_req("b")})},
+        {make_spec({g_req("b"), f_req("a")}), make_spec({g_req("c")})},
+    };
+
+    std::vector<Specification> all;
+    for (const std::vector<Specification>& batch : batches) {
+        all.insert(all.end(), batch.begin(), batch.end());
+    }
+    const std::vector<uint8_t> one_sweep_flags =
+        antichain::subsumed_in(all, implies, SimilarityKey{}, {});
+    std::vector<Specification> one_sweep;
+    for (std::size_t idx = 0; idx < all.size(); ++idx) {
+        if (one_sweep_flags[idx] == 0U) {
+            one_sweep.push_back(all[idx]);
+        }
+    }
+
+    std::vector<Specification> settled;
+    for (const std::vector<Specification>& batch : batches) {
+        std::vector<Specification> specs = settled;
+        specs.insert(specs.end(), batch.begin(), batch.end());
+        const std::vector<uint8_t> flags = antichain::merge_subsumed(
+            specs, antichain::keys_of(specs, SimilarityKey{}),
+            fingerprint::prefilter::fingerprints_of(specs), settled.size(),
+            implies, TaskPriority::Background, {});
+        settled.clear();
+        for (std::size_t idx = 0; idx < specs.size(); ++idx) {
+            if (flags[idx] == 0U) {
+                settled.push_back(specs[idx]);
+            }
+        }
+    }
+
+    expect(one_sweep.size() == 2,
+           "antichain: one sweep should keep G a & G b and G c");
+    expect(sorted(settled) == sorted(one_sweep),
+           "antichain: merging batch by batch should reach the antichain one "
+           "sweep over their union reaches");
+}
+
 }  // namespace
 
 // --- spec_implies propositional shortcut ---
@@ -264,4 +328,5 @@ void run_implication_filter_tests() {
     test_weakening_response_implies();
     test_independent_responses_not_implied();
     test_fretish_prefilter_refutes_only_non_implications();
+    test_batched_merge_matches_one_sweep();
 }

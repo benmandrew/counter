@@ -184,14 +184,16 @@ Count count_guard_models(const std::string& label,
     // produce, the widest mentions 12 atoms. A guard is a propositional
     // formula over a handful of variables and the model counter is a
     // subprocess costing 11 to 71ms a call, so the truth table is the cheaper
-    // answer by orders of magnitude, and it skips the ltlfilt exec that
-    // normalising the formula for that subprocess costs as well.
+    // answer by orders of magnitude.
     //
-    // It is also the more direct answer. This multiplication is over the
-    // atoms the *label* mentions, where ganak counts over whatever survives
-    // normalisation, so the two agree only while normalisation leaves the
-    // variable set alone -- which it does, SPOT's guards coming off a reduced
-    // BDD with no redundant variable to drop.
+    // This multiplication is over the atoms the *label* mentions, so whatever
+    // counts the guard must count over that same set. Both paths do:
+    // count_models_exhaustively counts over the atoms it parses out of the
+    // guard, and run_ganak_on_formula hands ganak the canonical form, which
+    // reorders and deduplicates operands without deleting an atom. Putting
+    // `ltlfilt --simplify` in front of either would break it -- that pass
+    // eliminates a variable wherever one term subsumes another -- and the
+    // resulting undercount by 2^(dropped) would be silent.
     if (const std::optional<Count> exact = count_models_exhaustively(guard)) {
         return mul_pow2(*exact, free_count);
     }

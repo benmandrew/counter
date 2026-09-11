@@ -36,10 +36,10 @@ void test_ganak_runner_on_trivial_cnf() {
 }
 
 // Two guards differing only in their atom names are one count, so they must
-// share a cache entry rather than buying an exec each. The renaming is where
-// the whole of that collapse comes from: the structural canonical form alone
-// left the exec count unchanged on all nine specifications measured, ltlfilt
-// having already normalised operand order upstream of this cache.
+// share a cache entry rather than buying an exec each. The renaming was where
+// the whole of that collapse came from while `ltlfilt --simplify` sat in front
+// of this cache normalising operand order; the canonical form carries that
+// half now.
 void test_ganak_cache_is_rename_invariant() {
     const std::size_t misses_before = GanakStats::n_cache_misses;
     const Count first = run_ganak_on_formula("(a) & (b)");
@@ -73,8 +73,19 @@ void test_exhaustive_count_agrees_with_ganak() {
     }
 }
 
+// The count must be over every variable the caller's formula mentions, since
+// count_guard_models multiplies it by two per variable of the wider alphabet
+// and computes that exponent from the HOA label rather than from whatever
+// reaches ganak. `ltlfilt --simplify` returns `a` for this subject, dropping
+// `b` from the DIMACS and halving the count; the canonical form keeps both.
+void test_ganak_counts_over_every_mentioned_variable() {
+    expect(run_ganak_on_formula("(a) | ((a) & (b))") == 2,
+           "ganak-runner: a subsumed term cost the count a variable");
+}
+
 void run_ganak_runner_tests() {
     test_ganak_runner_on_trivial_cnf();
     test_ganak_cache_is_rename_invariant();
+    test_ganak_counts_over_every_mentioned_variable();
     test_exhaustive_count_agrees_with_ganak();
 }

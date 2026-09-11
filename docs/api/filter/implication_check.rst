@@ -1,6 +1,6 @@
 filter/implication_check.hpp
 ============================
 
-Provides ``spec_implies(from, dest, checker)``, which tests whether specification *from* logically implies *dest* using a sufficient assume-guarantee decomposition: each assumption of *from* must be implied by some assumption of *dest*, and each guarantee of *dest* must be implied by some guarantee of *from*. This is intentionally incomplete (it under-detects implication) but produces no false positives, so dominated specs may be retained but correct specs are never dropped. Called by both the weakening and implication filters.
+Provides ``spec_implies(from, dest, checker)``, which tests whether specification *from* logically implies *dest* as one query over the two whole-specification lowerings: ``from.to_ltl() & !dest.to_ltl()`` is unsatisfiable exactly when the implication holds. The check is exact, so a refusal is a fact about the two specifications rather than a limit of the check, and a timeout is reported as ``nullopt`` rather than as a verdict. It decomposed per requirement until 2026-09-11, matching each requirement against a single counterpart, which missed every implication holding only via several requirements together. Called by both the weakening and implication filters.
 
 .. doxygenfile:: implication_check.hpp

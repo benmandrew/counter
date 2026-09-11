@@ -143,6 +143,10 @@ bool run_driver_suite(std::string_view suite_name) {
         run_compare_driver_tests();
         return true;
     }
+    if (suite_name == "driver_maximal") {
+        run_maximal_driver_tests();
+        return true;
+    }
     if (suite_name == "driver_lint_ideals") {
         run_lint_ideals_driver_tests();
         return true;
@@ -362,6 +366,7 @@ int main(int argc, const char* const argv[]) {
             run_ltl_driver_tests();
             run_mucs_driver_tests();
             run_compare_driver_tests();
+            run_maximal_driver_tests();
             run_lint_ideals_driver_tests();
             run_signal_tracer_driver_tests();
             // run_thread_pool_tests() is deliberately absent. It sizes the

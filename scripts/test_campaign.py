@@ -2199,6 +2199,8 @@ def control(name):
 
 with open(os.path.join(here, "calls.txt"), "a") as handle:
     handle.write(" ".join(sys.argv[1:]) + "\\n")
+with open(os.path.join(here, "runner.pid"), "w") as handle:
+    handle.write(str(os.getpid()))
 if control("sleep"):
     time.sleep(float(control("sleep")))
 sys.exit(int(control("exit-code") or 0))
@@ -2412,6 +2414,88 @@ try:
     entry = only_entry()
     check((entry["state"], entry["attempts"]), ("queued", 0),
           "which is the only way out of failed")
+
+    # ── dequeue stops a live phase ────────────────────────────────────────────
+    #
+    # The whole point of the verb is the `running` case, and the ordering it
+    # depends on is invisible in the entry afterwards: the tick has to die
+    # before the entry is rewritten, or it writes its own copy back at the end
+    # of the phase and the cancellation disappears hours later. The runner is
+    # killed too -- it is what actually spends the machine, and it outlives the
+    # tick that started it.
+    calls.unlink() if calls.exists() else None
+    runner_pid_file = control_dir / "runner.pid"
+    runner_pid_file.unlink() if runner_pid_file.exists() else None
+    (control_dir / "sleep").write_text("120")
+    entry = only_entry()
+    entry.update({"state": "queued", "phase": 0, "attempts": 0,
+                  "max_attempts": 2, "last_error": ""})
+    C.write_entry(entry["path"], entry)
+    child = subprocess.Popen(
+        [sys.executable, str(CAMPAIGN_PY), "tick",
+         "--root", str(repo), "--lock", str(lock), "--host", "local"],
+        env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+    deadline = time.time() + 60
+    while time.time() < deadline and not runner_pid_file.exists():
+        time.sleep(0.1)
+    check(only_entry()["state"], "running", "the tick holds the entry")
+    runner_pid = int(runner_pid_file.read_text())
+
+    def alive(pid: int) -> bool:
+        try:
+            os.kill(pid, 0)
+        except ProcessLookupError:
+            return False
+        except PermissionError:
+            return True
+        return True
+
+    def dequeue(**kwargs) -> tuple:
+        base = {"host": C.LOCAL, "entry": "001-queued.toml", "reason": "",
+                "dry_run": False}
+        base.update(kwargs)
+        buffer = io.StringIO()
+        with contextlib.redirect_stdout(buffer):
+            code = C.cmd_dequeue(argparse.Namespace(**base))
+        return code, buffer.getvalue()
+
+    code, printed = dequeue(dry_run=True)
+    check(code, 0, "a dry-run dequeue succeeds")
+    check_true(str(child.pid) in printed and str(runner_pid) in printed,
+               "naming the tick and the runner under it")
+    check(only_entry()["state"], "running", "and changes nothing")
+    check_true(alive(child.pid) and alive(runner_pid),
+               "leaving both processes alone")
+
+    code, printed = dequeue(reason="audit says stop")
+    check(code, 0, "dequeue succeeds")
+    check_true(str(child.pid) in printed, "reporting what it killed")
+    child.wait(timeout=30)
+    deadline = time.time() + 30
+    while time.time() < deadline and alive(runner_pid):
+        time.sleep(0.1)
+    check_true(not alive(runner_pid),
+               "the runner dies with the tick that started it")
+    entry = only_entry()
+    check(entry["state"], "cancelled", "and the entry is out of the queue")
+    check(entry["last_error"], "audit says stop", "carrying the reason given")
+    check_true(any("cancelled while running" in line
+                   for line in entry.get("log", [])),
+               "and the log says what state it was taken out of")
+    code, printed = tick()
+    check_true("nothing queued" in printed, "no tick picks a cancelled entry")
+
+    code, printed = dequeue()
+    check(code, 0, "dequeuing it again is not an error")
+    check_true("already cancelled" in printed, "and says so")
+
+    with contextlib.redirect_stdout(io.StringIO()):
+        check(C.cmd_requeue(argparse.Namespace(host=C.LOCAL,
+                                               entry="001-queued.toml")), 0,
+              "requeue is the way back")
+    check(only_entry()["state"], "queued", "which is a stop, not a withdrawal")
+    (control_dir / "sleep").unlink()
+    calls.unlink() if calls.exists() else None
 
     # ── the tick generates the configs its phase needs ────────────────────────
     #

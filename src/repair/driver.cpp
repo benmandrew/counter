@@ -140,7 +140,7 @@ int run_fretish_repair(const Config& cfg, const std::string& input_path,
     AggregateWeightedFitnessFunction fitness_function =
         get_fitness_function(original_spec, cfg);
     const std::vector<FilterFunction> filter_functions =
-        get_filter_functions(cfg, original_spec, global_sat_checker());
+        get_filter_functions(original_spec, global_sat_checker());
     std::vector<ScoredSpecification> population = original_population(
         original_spec, fitness_function, cfg.population_size);
     RandomSource random_source = init_random_source(seed);

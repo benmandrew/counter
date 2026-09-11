@@ -152,10 +152,9 @@ P = R.PROFILES
 # six families.
 check(P["tlsf"]["specs"], R.TLSF_CORE_SPECS, "tlsf profile corpus")
 check(P["muc"]["specs"], R.TLSF_CORE_SPECS, "muc profile corpus")
-for name in ("padd", "wellsep"):
-    check(P[name]["specs"],
-          [s for s in R.TLSF_CORE_SPECS if s != "humanoid-531"],
-          f"{name} profile corpus")
+check(P["padd"]["specs"],
+      [s for s in R.TLSF_CORE_SPECS if s != "humanoid-531"],
+      "padd profile corpus")
 
 # The two ablation arms are the same 4-cell factorial: 2 schemes x 2 metrics, at
 # the single sweep-C default level. The third factor was the Halstead weight,

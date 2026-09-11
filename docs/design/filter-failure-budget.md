@@ -16,7 +16,7 @@ The `2026-08-11-selection-default` campaign priced this. SPOT 2.15.1's `ltlsynt`
 
 Two reasons, and the second is the one that matters.
 
-A catch has to resolve the call to some value, and the safe direction differs per site. `include/runner/spot.hpp` states this where `check_realizability_ltl` is declared: nullopt means undecided, "unrealizable" is the safe reading where a true answer admits a repair and the unsafe one for the well-separation filter, and the choice is spelled with `value_or` at each call site. No generic handler can infer which way to go, and going the wrong way at a correctness filter admits specifications nothing verified.
+A catch has to resolve the call to some value, and the safe direction differs per site. `include/runner/spot.hpp` states this where `check_realizability_ltl` is declared: nullopt means undecided, "unrealizable" is the safe reading where a true answer admits a repair and the unsafe one for the well-separation check, and the choice is spelled with `value_or` at each call site. No generic handler can infer which way to go, and going the wrong way at a correctness filter admits specifications nothing verified.
 
 The larger risk is losing the signal. A run whose toolchain is broken — `ltlsynt` missing, `black` unbuilt — fails today in seconds with a clear message. Under blanket catches that run completes, drops every candidate, and reports zero repairs, which is indistinguishable from a genuinely hard specification. The tolerance in the scoring pool exists precisely to keep those two apart, and any filter-side handling has to preserve it.
 

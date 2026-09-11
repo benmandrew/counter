@@ -17,8 +17,8 @@
 /// One property a specification must hold to be written out as a repair.
 ///
 /// The same row drives three consumers: the per-generation filter chain builds
-/// a stage from it when @c per_generation_flag is set, the final gate applies
-/// @c admissible to every survivor regardless of that flag, and the input
+/// a stage from it when @c per_generation is set, the final gate applies
+/// @c admissible to every survivor regardless of that, and the input
 /// screen applies it once to the specification the run starts from. A property
 /// enforced in only the first of those leaks through anything the search did
 /// not breed -- an elite, or the seed population -- which is what made a
@@ -31,10 +31,12 @@ struct CorrectnessCheckT {
     std::string name;
     /// True when @p spec is admissible under this check.
     std::function<bool(const Spec&)> admissible;
-    /// The config flag turning this check's per-generation stage on. It governs
-    /// search pressure alone: the gate ignores it, so turning a check off never
-    /// admits a specification that fails it.
-    bool Config::* per_generation_flag = nullptr;
+    /// Whether this check also runs as a per-generation stage. It governs
+    /// search pressure alone: the gate ignores it. False for a check the gate
+    /// and the input screen apply but the search does not: well-separation is
+    /// one, the status objective scoring an ill-separated candidate down
+    /// rather than a filter dropping it unscored.
+    bool per_generation = false;
 };
 
 /// The FRETISH check type.

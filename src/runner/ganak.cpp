@@ -13,7 +13,6 @@
 #include <stdexcept>
 #include <string>
 #include <unordered_map>
-#include <unordered_set>
 #include <utility>
 #include <vector>
 
@@ -26,8 +25,8 @@
 namespace {
 
 // Removes the temporary DIMACS file however the enclosing scope exits.
-// run_ganak_on_dimacs throws on a non-zero exit or a timeout, which otherwise
-// leaks the file into the system temp directory for every abandoned count.
+// run_ganak_on_dimacs throws on a non-zero exit, which otherwise leaks the
+// file into the system temp directory for every failed count.
 class TempFileGuard {
    public:
     explicit TempFileGuard(std::string path) : m_path(std::move(path)) {}
@@ -125,12 +124,6 @@ Count run_ganak_on_dimacs(const std::string& dimacs_path, unsigned seed,
     if (cpu_s_out != nullptr) {
         *cpu_s_out = result.m_cpu_s;
     }
-    if (result.m_timed_out) {
-        // Reported separately from a non-zero exit so the run's failure budget
-        // can be read against the timeout rather than against ganak errors.
-        GanakStats::n_timeouts++;
-        throw GanakTimeout("ganak timed out for " + dimacs_path);
-    }
     if (result.m_exit_code != 0) {
         throw std::runtime_error("ganak exited with code " +
                                  std::to_string(result.m_exit_code));
@@ -141,11 +134,6 @@ Count run_ganak_on_dimacs(const std::string& dimacs_path, unsigned seed,
 Count run_ganak_on_formula(const std::string& formula, unsigned seed) {
     const std::string normalised = normalize_ltl(formula);
     static std::unordered_map<std::string, Count> cache;
-    // Keys whose count was abandoned at the budget. Memoised like the counts
-    // themselves: a formula hard enough to blow the budget is hard every time,
-    // and the individual is dropped either way, so re-running it spends the
-    // budget for a result already known.
-    static std::unordered_set<std::string> timed_out;
     static std::mutex cache_mutex;
     // Keyed on the canonical renamed form rather than on the caller's
     // spelling. A model count is invariant under a bijection on the atoms --
@@ -163,12 +151,6 @@ Count run_ganak_on_formula(const std::string& formula, unsigned seed) {
             GanakStats::n_cache_hits++;
             return found->second;
         }
-        if (timed_out.count(key) != 0) {
-            // Same error the exec would have raised, so a caller sees one
-            // behaviour whether or not this key has been tried before.
-            GanakStats::n_cache_hits++;
-            throw GanakTimeout("ganak timed out for " + normalised);
-        }
         GanakStats::n_cache_misses++;
     }
     const Formula parsed = Formula(normalised);
@@ -182,18 +164,7 @@ Count run_ganak_on_formula(const std::string& formula, unsigned seed) {
             .count();
     };
     double cpu_s = 0.0;
-    Count count = 0;
-    try {
-        count = run_ganak_on_dimacs(formula_dimacs_path, seed, &cpu_s);
-    } catch (const GanakTimeout&) {
-        // run_ganak_on_dimacs writes cpu_s before it raises, so the abandoned
-        // exec is billed to the totals rather than vanishing from them.
-        const std::scoped_lock lock(cache_mutex);
-        GanakStats::total_time_s += elapsed_since_start();
-        GanakStats::total_cpu_s += cpu_s;
-        timed_out.insert(key);
-        throw;
-    }
+    const Count count = run_ganak_on_dimacs(formula_dimacs_path, seed, &cpu_s);
     const double elapsed = elapsed_since_start();
     std::scoped_lock lock(cache_mutex);
     GanakStats::total_time_s += elapsed;

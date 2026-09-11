@@ -141,7 +141,8 @@ namespace {
 // mutation.allow_output_assumptions (always allowed),
 // tlsf.mutation.p_remove_assumption and p_burst_continue (their operators are
 // gone), runtime.ganak_timeout_ms (ganak runs untimed) and
-// runtime.max_concurrent_realizability (no ltlsynt concurrency cap).
+// runtime.max_concurrent_realizability (no ltlsynt concurrency cap), and
+// dropped tool_calls.ganak.timeouts with the timeout it counted.
 // The same version moved the fitness weights to AuRUS's 0.1/0.2/0.7 and
 // mutation.p_condition_type, p_scope and p_monotone off 0.
 constexpr int k_schema_version = 27;
@@ -348,8 +349,11 @@ nlohmann::json tool_calls_json() {
                       SatisfiabilityChecker::n_cache_hits,
                       SatisfiabilityChecker::n_timeouts,
                       SatisfiabilityChecker::total_time_s)},
-        {"ganak", row(GanakStats::n_cache_misses, GanakStats::n_cache_hits,
-                      GanakStats::n_timeouts, GanakStats::total_time_s)}};
+        // No timeouts field: ganak runs untimed, so it could only ever read 0.
+        {"ganak",
+         {{"calls", GanakStats::n_cache_misses},
+          {"cache_hits", GanakStats::n_cache_hits},
+          {"total_s", GanakStats::total_time_s}}}};
 }
 
 // Every memoisation cache in the run, so that a hit rate is derivable for each

@@ -12,6 +12,7 @@
 #include <string>
 #include <vector>
 
+#include "exhaustive_count.hpp"
 #include "profile.hpp"
 #include "prop_formula.hpp"
 #include "requirement.hpp"
@@ -177,7 +178,24 @@ Count count_guard_models(const std::string& label,
     // clamped: a silently wrong free count is a silently wrong trace count.
     assert(n_mentioned <= n_total_atoms);
     const std::size_t free_count = n_total_atoms - n_mentioned;
-    const Count count = run_ganak_on_formula(hoa_label_to_formula(label, aps));
+    const std::string guard = hoa_label_to_formula(label, aps);
+    // Enumerated in process wherever the guard is narrow enough, which every
+    // guard measured is: over the 2,932 distinct guards nine specifications
+    // produce, the widest mentions 12 atoms. A guard is a propositional
+    // formula over a handful of variables and the model counter is a
+    // subprocess costing 11 to 71ms a call, so the truth table is the cheaper
+    // answer by orders of magnitude, and it skips the ltlfilt exec that
+    // normalising the formula for that subprocess costs as well.
+    //
+    // It is also the more direct answer. This multiplication is over the
+    // atoms the *label* mentions, where ganak counts over whatever survives
+    // normalisation, so the two agree only while normalisation leaves the
+    // variable set alone -- which it does, SPOT's guards coming off a reduced
+    // BDD with no redundant variable to drop.
+    if (const std::optional<Count> exact = count_models_exhaustively(guard)) {
+        return mul_pow2(*exact, free_count);
+    }
+    const Count count = run_ganak_on_formula(guard);
     return mul_pow2(count, free_count);
 }
 

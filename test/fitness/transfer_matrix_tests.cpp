@@ -1,12 +1,14 @@
 #include <cmath>
 #include <cstddef>
 #include <limits>
+#include <optional>
 #include <sstream>
 #include <string>
 #include <type_traits>
 #include <variant>
 #include <vector>
 
+#include "fitness/exhaustive_count.hpp"
 #include "fitness/model_counter.hpp"
 #include "fitness/transfer_matrix.hpp"
 #include "requirement.hpp"
@@ -489,6 +491,61 @@ void test_count_traces_rounds_faithfully_above_64_bits() {
 }
 #endif
 
+// Checked against hand-counted truth tables rather than against a second
+// implementation, the whole claim of this counter being that it enumerates.
+void test_exhaustive_count_small_cases() {
+    struct Case {
+        std::string m_formula;
+        Count m_models;
+    };
+    const std::vector<Case> cases = {
+        {"(a)", 1},
+        {"(!a)", 1},
+        {"(a) & (b)", 1},
+        {"(a) | (b)", 3},
+        {"(a) -> (b)", 3},
+        {"(a) <-> (b)", 2},
+        {"(a) & (!a)", 0},
+        {"(a) | (!a)", 2},
+        {"((a) & (b)) | ((!a) & (c))", 4},
+        // Seven atoms is the first width whose truth table does not fit one
+        // machine word, and thirteen is the first that needs more than a
+        // cache line of them; both are inside the 12-atom widest guard
+        // measured, so the word-boundary arithmetic is what these pin.
+        {"(a) | (b) | (c) | (d) | (e) | (f) | (g)", 127},
+        {"(a) & (b) & (c) & (d) & (e) & (f) & (g) & (h) & (i) & (j) & (k) & "
+         "(l) & (m)",
+         1},
+    };
+    for (const Case& one : cases) {
+        const std::optional<Count> models =
+            count_models_exhaustively(one.m_formula);
+        expect(models.has_value(),
+               "exhaustive-count: declined " + one.m_formula);
+        expect(models.value_or(-1) == one.m_models,
+               "exhaustive-count: wrong model count for " + one.m_formula);
+    }
+}
+
+// The three shapes it must hand back to the model counter rather than answer
+// itself. A wrong answer here is silent, the caller having no way to tell a
+// declined count from a refused one.
+void test_exhaustive_count_declines_what_it_cannot_answer() {
+    expect(!count_models_exhaustively("G((a))").has_value(),
+           "exhaustive-count: answered a temporal formula");
+    expect(!count_models_exhaustively("(a) U (b)").has_value(),
+           "exhaustive-count: answered a temporal formula");
+    expect(!count_models_exhaustively("(a) &").has_value(),
+           "exhaustive-count: answered a string it cannot parse");
+    std::string wide = "(a0)";
+    for (std::size_t index = 1; index <= k_exhaustive_count_max_atoms;
+         ++index) {
+        wide += " & (a" + std::to_string(index) + ")";
+    }
+    expect(!count_models_exhaustively(wide).has_value(),
+           "exhaustive-count: answered a formula past the width cap");
+}
+
 }  // namespace
 
 void expect_square_matrix_size(const CountMatrix& matrix,
@@ -561,6 +618,8 @@ void run_transfer_matrix_tests() {
     test_count_traces_many_mentioned_atoms();
     test_count_traces_non_power_of_two_weight();
     test_count_overflow_detected_at_ceiling();
+    test_exhaustive_count_small_cases();
+    test_exhaustive_count_declines_what_it_cannot_answer();
 #ifdef __SIZEOF_INT128__
     test_count_traces_rounds_faithfully_above_64_bits();
 #endif

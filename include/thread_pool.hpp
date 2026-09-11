@@ -6,6 +6,7 @@
 
 #include <condition_variable>
 #include <cstddef>
+#include <cstdint>
 #include <functional>
 #include <future>
 #include <memory>
@@ -15,6 +16,14 @@
 #include <type_traits>
 #include <utility>
 #include <vector>
+
+/// Which of the pool's two queues a task joins. A worker takes a Background
+/// task only when no Foreground task is waiting, so work that can wait -- the
+/// streaming maximality filter -- fills the slots the search leaves idle
+/// without a pool of its own oversubscribing the CPU. A running task is never
+/// preempted, so a Foreground task can wait behind at most one Background task
+/// per worker.
+enum class TaskPriority : std::uint8_t { Foreground, Background };
 
 /// Fixed-size pool of worker threads consuming tasks from a shared queue.
 /// Unlike std::async(std::launch::async, ...), submitting a task never pays
@@ -29,13 +38,16 @@ class ThreadPool {
     ThreadPool& operator=(const ThreadPool&) = delete;
 
     template <typename F>
-    auto submit(F task) -> std::future<std::invoke_result_t<F>> {
+    auto submit(F task, TaskPriority priority = TaskPriority::Foreground)
+        -> std::future<std::invoke_result_t<F>> {
         using T = std::invoke_result_t<F>;
         auto task_promise = std::make_shared<std::promise<T>>();
         std::future<T> result = task_promise->get_future();
         {
             std::scoped_lock lock(m_mutex);
-            m_tasks.emplace([task = std::move(task), task_promise]() mutable {
+            std::queue<std::function<void()>>& queue =
+                priority == TaskPriority::Foreground ? m_tasks : m_background;
+            queue.emplace([task = std::move(task), task_promise]() mutable {
                 try {
                     if constexpr (std::is_void_v<T>) {
                         task();
@@ -62,6 +74,7 @@ class ThreadPool {
 
     std::vector<std::thread> m_workers;
     std::queue<std::function<void()>> m_tasks;
+    std::queue<std::function<void()>> m_background;
     std::mutex m_mutex;
     std::condition_variable m_cv;
     bool m_stop = false;

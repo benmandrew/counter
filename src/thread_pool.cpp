@@ -5,8 +5,10 @@
 #include <cstddef>
 #include <cstdint>
 #include <fstream>
+#include <functional>
 #include <limits>
 #include <optional>
+#include <queue>
 #include <sstream>
 #include <string>
 #include <string_view>
@@ -42,15 +44,19 @@ void ThreadPool::worker_loop() {
         std::function<void()> task;
         {
             std::unique_lock lock(m_mutex);
-            m_cv.wait(lock, [this] { return m_stop || !m_tasks.empty(); });
-            if (m_tasks.empty()) {
+            m_cv.wait(lock, [this] {
+                return m_stop || !m_tasks.empty() || !m_background.empty();
+            });
+            std::queue<std::function<void()>>& queue =
+                m_tasks.empty() ? m_background : m_tasks;
+            if (queue.empty()) {
                 if (m_stop) {
                     return;
                 }
                 continue;
             }
-            task = std::move(m_tasks.front());
-            m_tasks.pop();
+            task = std::move(queue.front());
+            queue.pop();
         }
         task();
     }

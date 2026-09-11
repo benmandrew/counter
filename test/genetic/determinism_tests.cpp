@@ -272,7 +272,7 @@ void test_trace_hash_distinguishes_order_and_bounds() {
 // One call rather than a whole evolution, because the evolution's draw count is
 // not monotone in the arm: a different condition type changes which offspring
 // deduplicate away, which changes how much later generations draw. Turning
-// p_condition_type on over the golden run reads 180 draws against 212, and
+// p_condition_type on over the golden run reads 195 draws against 187, and
 // neither number says anything about whether the probability was read.
 void test_new_arms_cost_no_draw_at_zero() {
     const Requirement req(Formula("a"), Formula("x"), timing::immediately(),
@@ -337,8 +337,8 @@ void test_new_arms_cost_no_draw_at_zero() {
 }
 
 void test_generation_draw_sequence_is_pinned() {
-    constexpr std::size_t k_expected_draws = 212;
-    constexpr std::uint64_t k_expected_hash = 17684145107458942659ULL;
+    constexpr std::size_t k_expected_draws = 187;
+    constexpr std::uint64_t k_expected_hash = 6958607742440809774ULL;
 
     const GoldenRun run = run_golden_evolution();
     const std::uint64_t hash = fnv1a(render_trace(*run.trace));
@@ -357,7 +357,7 @@ void test_generation_draw_sequence_is_pinned() {
 }
 
 void test_evolved_population_is_pinned() {
-    constexpr std::uint64_t k_expected_hash = 4278788104933889616ULL;
+    constexpr std::uint64_t k_expected_hash = 6487454080779250071ULL;
 
     const GoldenRun run = run_golden_evolution();
     const std::uint64_t hash = fnv1a(render_population(run.population));

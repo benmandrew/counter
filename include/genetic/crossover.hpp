@@ -7,14 +7,19 @@
 #include "genetic/random_source.hpp"
 #include "requirement.hpp"
 
-/// Produces an offspring requirement by crossing over the parents' condition,
-/// response, and timing components. Each of the two formula fields is grafted
-/// as in AuRUS: with equal probability a subformula of the first parent's field
-/// is replaced by one drawn from the second parent's, or the two are joined
-/// under a fresh binary operator. Neither branch copies a field verbatim.
+/// Produces an offspring requirement by crossing over every field of the
+/// parents but the two flags. Each of the two formula fields is grafted as in
+/// AuRUS: with equal probability a subformula of the first parent's field is
+/// replaced by one drawn from the second parent's, or the two are joined under
+/// a fresh binary operator. Neither branch copies a field verbatim.
 ///
 /// The graft site is drawn uniformly over the field's nodes, so every node is
 /// as likely to be rewritten as any other.
+///
+/// The timing, condition type and scope are each taken from one parent on a
+/// coin, a timing that carries a tick count possibly taking the other
+/// parent's. The scope keeps its mode, so the two parents must declare the
+/// same modes, which crossover_specifications checks before calling this.
 ///
 /// @param first_parent  First parent requirement
 /// @param second_parent Second parent requirement

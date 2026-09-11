@@ -1,7 +1,11 @@
 #include <algorithm>
 #include <cstddef>
 #include <cstdint>
+#include <filesystem>
+#include <fstream>
 #include <optional>
+#include <sstream>
+#include <stdexcept>
 #include <string>
 #include <utility>
 #include <vector>
@@ -10,6 +14,7 @@
 #include "filter/antichain.hpp"
 #include "filter/implication.hpp"
 #include "filter/implication_check.hpp"
+#include "filter/streaming_maximal.hpp"
 #include "fingerprint/lasso.hpp"
 #include "fingerprint/prefilter.hpp"
 #include "requirement.hpp"
@@ -271,6 +276,144 @@ void test_batched_merge_matches_one_sweep() {
            "sweep over their union reaches");
 }
 
+// --- StreamingMaximalFilter ---
+
+// A directory unique to this suite, removed on scope exit.
+class TempDir {
+   public:
+    TempDir()
+        : m_path(std::filesystem::temp_directory_path() /
+                 "counter_streaming_maximal_tests") {
+        std::filesystem::remove_all(m_path);
+        std::filesystem::create_directories(m_path);
+    }
+    ~TempDir() { std::filesystem::remove_all(m_path); }
+
+    TempDir(const TempDir&) = delete;
+    TempDir& operator=(const TempDir&) = delete;
+    TempDir(TempDir&&) = delete;
+    TempDir& operator=(TempDir&&) = delete;
+
+    [[nodiscard]] std::string listing() const {
+        return (m_path / "maximal.tsv").string();
+    }
+
+   private:
+    std::filesystem::path m_path;
+};
+
+MaximalStreamRules<Specification> fretish_rules() {
+    MaximalStreamRules<Specification> rules;
+    rules.implies = [](const Specification& lhs, const Specification& rhs,
+                       SatisfiabilityChecker& checker) {
+        return spec_implies(lhs, rhs, checker).value_or(false);
+    };
+    rules.fingerprints = [](const std::vector<Specification>& specs) {
+        return fingerprint::prefilter::fingerprints_of(specs);
+    };
+    return rules;
+}
+
+std::string read_whole(const std::string& path) {
+    std::ifstream file(path);
+    std::ostringstream contents;
+    contents << file.rdbuf();
+    return contents.str();
+}
+
+// The batches of test_batched_merge_matches_one_sweep, pushed one at a time
+// with a name each and G a pushed twice. The result has to match the batch
+// filter whatever batches the coordinator happened to form, and the listing
+// has to name the maximal members in push order and nothing else.
+void test_streaming_matches_batch_filter() {
+    const std::vector<Specification> specs{
+        make_spec({g_req("a")}),
+        make_spec({f_req("a")}),
+        make_spec({g_req("b")}),
+        make_spec({g_req("a"), g_req("b")}),
+        make_spec({g_req("b"), f_req("a")}),
+        make_spec({g_req("c")}),
+    };
+    SatisfiabilityChecker checker;
+    const std::vector<Specification> batch =
+        make_implication_filter(checker)(specs);
+
+    const TempDir dir;
+    const Config cfg;
+    StreamingMaximalFilter<Specification> stream(cfg, fretish_rules(),
+                                                 dir.listing());
+    for (std::size_t idx = 0; idx < specs.size(); ++idx) {
+        stream.push(specs[idx], "r" + std::to_string(idx) + ".json");
+    }
+    stream.push(specs[0], "r6.json");
+    const std::vector<Specification> streamed = stream.finish();
+
+    expect(sorted(streamed) == sorted(batch),
+           "streaming_maximal: should keep what the batch filter keeps");
+    expect(streamed.size() == 2 && streamed[0] == specs[3] &&
+               streamed[1] == specs[5],
+           "streaming_maximal: should return the maximal set in push order");
+    const MaximalStreamCounts& counts = stream.counts();
+    expect(counts.n_pushed == 7 && counts.n_distinct == 6 &&
+               counts.n_admitted == 6,
+           "streaming_maximal: should count 7 pushed, 6 distinct, 6 admitted");
+    expect(read_whole(dir.listing()) == "file\nr3.json\nr5.json\n",
+           "streaming_maximal: the listing should name r3 and r5 alone");
+    expect(!std::filesystem::exists(dir.listing() + ".tmp"),
+           "streaming_maximal: no temporary listing should be left behind");
+}
+
+// A failed check must reach the caller rather than leave a smaller set that
+// reads as a result.
+void test_streaming_rethrows_a_failed_check() {
+    MaximalStreamRules<Specification> rules;
+    rules.implies = [](const Specification&, const Specification&,
+                       SatisfiabilityChecker&) -> bool {
+        throw std::runtime_error("check failed");
+    };
+    const Config cfg;
+    StreamingMaximalFilter<Specification> stream(cfg, std::move(rules), {});
+    stream.push(make_spec({g_req("a")}), {});
+    stream.push(make_spec({f_req("a")}), {});
+    bool threw = false;
+    try {
+        static_cast<void>(stream.finish());
+    } catch (const std::runtime_error&) {
+        threw = true;
+    }
+    expect(threw, "streaming_maximal: finish() should rethrow a failed check");
+}
+
+// A specification the weakening screen refuses never joins the set, so it
+// cannot subsume anything either: here G a would have removed GF a.
+void test_streaming_screens_before_merging() {
+    const Specification strong = make_spec({g_req("a")});
+    const Specification weak = make_spec({f_req("a")});
+    MaximalStreamRules<Specification> rules = fretish_rules();
+    rules.admits = [strong](const Specification& spec, SatisfiabilityChecker&) {
+        return !(spec == strong);
+    };
+    const Config cfg;
+    StreamingMaximalFilter<Specification> stream(cfg, std::move(rules), {});
+    stream.push(strong, {});
+    stream.push(weak, {});
+    const std::vector<Specification> streamed = stream.finish();
+    expect(streamed.size() == 1 && streamed[0] == weak,
+           "streaming_maximal: a refused specification should not subsume");
+    expect(stream.counts().n_admitted == 1,
+           "streaming_maximal: should count one admitted specification");
+}
+
+// Unwinding past an unfinished filter must not wait on the solver or hang.
+void test_streaming_destroyed_unfinished() {
+    const Config cfg;
+    {
+        StreamingMaximalFilter<Specification> stream(cfg, fretish_rules(), {});
+        stream.push(make_spec({g_req("a")}), {});
+        stream.push(make_spec({f_req("a")}), {});
+    }
+}
+
 }  // namespace
 
 // --- spec_implies propositional shortcut ---
@@ -329,4 +472,8 @@ void run_implication_filter_tests() {
     test_independent_responses_not_implied();
     test_fretish_prefilter_refutes_only_non_implications();
     test_batched_merge_matches_one_sweep();
+    test_streaming_matches_batch_filter();
+    test_streaming_rethrows_a_failed_check();
+    test_streaming_screens_before_merging();
+    test_streaming_destroyed_unfinished();
 }

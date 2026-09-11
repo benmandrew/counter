@@ -138,7 +138,13 @@ namespace {
 // having counted none of them, and `fingerprint_refuted` was never reset; all
 // four now carry the sweep's own figures, as they already did on FRETISH.
 // `timeouts` still reads 0 there, tlsf_spec_implies counting none.
-constexpr int k_schema_version = 27;
+//
+// 28 added filters.stream_implication. Under it the implication figures count
+// the streaming sweep, whose batches ask the pairs within a batch and between
+// it and the maximal set so far, so `comparisons` and `skipped` do not compare
+// with a batch run's; `duplicates` reads 0, the stream deduplicating before
+// its sweep sees anything.
+constexpr int k_schema_version = 28;
 
 // The inverse of the spellings config_io.cpp parses. It has no table to
 // borrow -- it only ever goes string to enum -- so these must be kept in step
@@ -315,7 +321,8 @@ nlohmann::json config_json(const Config& cfg) {
          {{"run_weakening", cfg.run_weakening_filter},
           {"run_implication", cfg.run_implication_filter},
           {"run_vacuity", cfg.run_vacuity_filter},
-          {"run_well_separation", cfg.run_well_separation_filter}}},
+          {"run_well_separation", cfg.run_well_separation_filter},
+          {"stream_implication", cfg.stream_implication_filter}}},
         {"runtime",
          {{"black_timeout_ms", cfg.black_timeout.count()},
           {"ltlsynt_timeout_ms", cfg.ltlsynt_timeout.count()},

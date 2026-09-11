@@ -201,6 +201,17 @@ struct Config {
     /// runs rather than by construction.
     bool run_weakening_filter = false;
     bool run_implication_filter = true;
+    /// Run the implication filter during the search: each accumulated repair
+    /// joins a queue as the accumulator writes it, and a coordinator thread
+    /// merges the queue into the maximal set batch by batch, on the thread
+    /// pool's background queue so the search's own work goes first.
+    /// `<output-dir>/accumulated/maximal.tsv` names the accumulated files
+    /// currently maximal, rewritten after each batch; no accumulated file is
+    /// deleted. Needs `accumulate_repairs` and `run_implication_filter` both
+    /// on, and on the TLSF path `repair_mode = "monolithic"`; otherwise the key
+    /// does nothing. The output is the one-sweep batch filter's wherever no
+    /// implication check times out.
+    bool stream_implication_filter = false;
     /// Drop candidates that hold for free rather than because anything was
     /// repaired: ones carrying a requirement whose condition is the literal
     /// `false`, ones with a *valid* guarantee, which demands nothing, and ones

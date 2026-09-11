@@ -1,13 +1,16 @@
 #pragma once
 
 #include <cstddef>
+#include <memory>
 #include <string>
 #include <utility>
 #include <vector>
 
 #include "config.hpp"
 #include "dashboard.hpp"
+#include "filter/streaming_maximal.hpp"
 #include "fitness/function.hpp"
+#include "genetic/accumulator.hpp"
 #include "genetic/generation.hpp"
 #include "genetic/pipeline.hpp"
 #include "genetic/random_source.hpp"
@@ -39,13 +42,22 @@ struct EvolutionResult {
 
 // @p output_dir is where the accumulator streams each gate-passing candidate
 // as it finds it, under cfg.accumulate_repairs; nothing is created there
-// otherwise.
+// otherwise. @p sink is handed each candidate as it is accumulated, with the
+// name of the file it went to.
 EvolutionResult run_evolution(
     const Config& cfg, std::vector<ScoredSpecification> population,
     const AggregateWeightedFitnessFunction& fitness_function,
     const std::vector<FilterFunction>& filter_functions,
     RandomSource& random_source, DashboardWriter& dashboard,
-    const std::string& output_dir, SearchBudget& budget);
+    const std::string& output_dir, SearchBudget& budget,
+    RepairAccumulator<Specification>::Sink sink = {});
+
+// The final screens run during the search, fed from the accumulator, or null
+// where implication_streams(cfg) is false. The weakening screen joins it when
+// cfg.run_weakening_filter is set.
+std::unique_ptr<StreamingMaximalFilter<Specification>> make_maximal_stream(
+    const Config& cfg, const Specification& original,
+    const std::string& output_dir);
 
 // The gate. @p cfg supplies the status grading, which is the run's rather than
 // a fixed one, so the output is judged on the scale the search scored on.
@@ -58,6 +70,15 @@ std::vector<Specification> collect_realizable_specifications(
 std::pair<std::vector<Specification>, std::vector<FilterRunStats>>
 filter_maximal_specifications(const Config& cfg, const Specification& original,
                               const std::vector<Specification>& realizable_vec);
+
+// What filter_maximal_specifications returns, from @p stream instead: pushes
+// the realizable specifications the accumulator did not already hand it, waits
+// for the last batch, and returns the maximal set in @p realizable_vec's order
+// with the same per-screen accounting.
+std::pair<std::vector<Specification>, std::vector<FilterRunStats>>
+finish_maximal_stream(const Config& cfg,
+                      StreamingMaximalFilter<Specification>& stream,
+                      const std::vector<Specification>& realizable_vec);
 
 void write_specifications(
     const std::vector<ScoredSpecification>& scored,

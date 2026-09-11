@@ -131,7 +131,7 @@ const KeySpec& config_key_spec() {
                              "p_remove_assumption", "p_burst_continue"})}})},
          {"model_counting", section({"default_bound", "metric"})},
          {"filters", section({"run_weakening", "run_implication", "run_vacuity",
-                              "run_well_separation"})},
+                              "run_well_separation", "stream_implication"})},
          {"runtime", section({"black_timeout_ms", "ltlsynt_timeout_ms",
                               "ltl2tgba_timeout_ms", "ltlfilt_timeout_ms",
                               "ganak_timeout_ms", "parallel",
@@ -449,6 +449,9 @@ void apply_filters(const toml::table& tbl, Config& cfg) {
     }
     if (auto val = tbl["run_well_separation"].value<bool>()) {
         cfg.run_well_separation_filter = *val;
+    }
+    if (auto val = tbl["stream_implication"].value<bool>()) {
+        cfg.stream_implication_filter = *val;
     }
 }
 

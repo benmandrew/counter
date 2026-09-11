@@ -318,6 +318,7 @@ DEFAULT_FIELDS = {
     "filters.run_implication": "run_implication_filter",
     "filters.run_vacuity": "run_vacuity_filter",
     "filters.run_well_separation": "run_well_separation_filter",
+    "filters.stream_implication": "stream_implication_filter",
     "runtime.black_timeout_ms": "black_timeout",
     "runtime.ltlsynt_timeout_ms": "ltlsynt_timeout",
     "runtime.ltl2tgba_timeout_ms": "ltl2tgba_timeout",

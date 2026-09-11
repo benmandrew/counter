@@ -153,6 +153,7 @@ run_weakening   = false
 run_implication = true
 run_vacuity     = true
 run_well_separation = false
+stream_implication = false
 
 [runtime]
 # Per-call wall-clock budgets in ms; 0 disables one. Only ganak is unbounded:

@@ -5,6 +5,7 @@
 #include <exception>
 #include <iomanip>
 #include <iostream>
+#include <memory>
 #include <optional>
 #include <random>
 #include <sstream>
@@ -16,6 +17,7 @@
 #include "dashboard.hpp"
 #include "evolution.hpp"
 #include "filter/correctness.hpp"
+#include "filter/streaming_maximal.hpp"
 #include "fitness/function.hpp"
 #include "genetic/accumulator.hpp"
 #include "genetic/generation.hpp"
@@ -173,9 +175,20 @@ int run_fretish_repair(const Config& cfg, const std::string& input_path,
     // charged for loading its input.
     SearchBudget budget(cfg, wall_start);
     try {
+        // Null unless the key is on, and then the final screens run while the
+        // search does; destroyed unfinished if anything below throws.
+        const std::unique_ptr<StreamingMaximalFilter<Specification>> stream =
+            make_maximal_stream(cfg, original_spec, output_dir);
+        RepairAccumulator<Specification>::Sink sink;
+        if (stream) {
+            sink = [&stream](const Specification& spec,
+                             const std::string& name) {
+                stream->push(spec, name);
+            };
+        }
         EvolutionResult evolved = run_evolution(
             cfg, std::move(population), fitness_function, filter_functions,
-            random_source, dashboard, output_dir, budget);
+            random_source, dashboard, output_dir, budget, std::move(sink));
         population = std::move(evolved.population);
         std::vector<FilterRunStats> filter_stats =
             std::move(evolved.filter_stats);
@@ -187,7 +200,9 @@ int run_fretish_repair(const Config& cfg, const std::string& input_path,
         AccumulatorStats::n_contributed +=
             merge_accumulated(realizable_vec, evolved.accumulated);
         auto [maximal, final_filter_stats] =
-            filter_maximal_specifications(cfg, original_spec, realizable_vec);
+            stream ? finish_maximal_stream(cfg, *stream, realizable_vec)
+                   : filter_maximal_specifications(cfg, original_spec,
+                                                   realizable_vec);
         const std::vector<ScoredSpecification> scored_maximal =
             score_and_sort_specifications(cfg, maximal, fitness_function);
         write_specifications(scored_maximal, fitness_function, output_dir);

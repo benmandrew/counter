@@ -8,6 +8,7 @@
 
 #include "config.hpp"
 #include "evolve.hpp"
+#include "filter/streaming_maximal.hpp"
 #include "filter_report.hpp"
 #include "fitness/function.hpp"
 #include "genetic/accumulator.hpp"
@@ -40,8 +41,14 @@ std::vector<Scored<Specification>> run_monolithic(
     const RandomSource& random_source,
     const AggregateWeightedFitnessFunctionT<Specification>& fitness,
     const DashboardProgress& progress, const std::string& output_dir,
-    SearchBudget& budget) {
+    SearchBudget& budget, StreamingMaximalFilter<Specification>* stream) {
     std::vector<FilterRunStats> filter_stats;
+    RepairAccumulator<Specification>::Sink sink;
+    if (stream != nullptr) {
+        sink = [stream](const Specification& spec, const std::string& name) {
+            stream->push(spec, name);
+        };
+    }
     // The same serialiser repair_N.tlsf goes through, so an accumulated file
     // is a specification document and nothing else -- these are gate-passing
     // candidates, not the run's filtered output.
@@ -50,7 +57,8 @@ std::vector<Scored<Specification>> run_monolithic(
         AccumulatedRepairWriter<Specification>(
             output_dir, ".tlsf",
             [](const Specification& spec) { return write(spec); },
-            [&budget] { return budget.elapsed_s(); }));
+            [&budget] { return budget.elapsed_s(); }),
+        std::move(sink));
     const std::vector<Scored<Specification>> population =
         evolve_population(original, cfg, random_source, fitness, filter_stats,
                           progress, accumulator, budget);

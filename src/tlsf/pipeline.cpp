@@ -114,7 +114,7 @@ int run_repair(const std::string& input_path, const std::string& output_dir,
             : internal::run_monolithic(original, cfg, random_source, fitness,
                                        progress, output_dir, budget);
     const std::size_t n_realizable = survivors.size();
-    // Both final filters ask whole-specification implications, `(A) & !(B)`
+    // The final filter asks whole-specification implications, `(A) & !(B)`
     // over the lowered specifications, which the search's checker is not
     // tuned for. Measured on humanoid-531 at 6 generations of 100: this stage
     // was 264s of a 312s run, and 96.7% of its solver time (4955s of 5122s
@@ -129,10 +129,6 @@ int run_repair(const std::string& input_path, const std::string& output_dir,
     final_checker.set_timeout(cfg.black_timeout);
     final_checker.set_simplify(false);
     final_checker.set_spot_budget(cfg.black_timeout);
-    if (cfg.run_weakening_filter && !survivors.empty()) {
-        survivors =
-            internal::keep_weakenings(survivors, original, final_checker);
-    }
     if (cfg.run_implication_filter && survivors.size() > 1) {
         survivors =
             internal::keep_maximal(survivors, original, cfg, final_checker);

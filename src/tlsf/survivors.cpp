@@ -172,15 +172,6 @@ std::vector<Scored<Specification>> merge_accumulated_survivors(
     return survivors;
 }
 
-std::vector<Scored<Specification>> keep_weakenings(
-    const std::vector<Scored<Specification>>& survivors,
-    const Specification& original, SatisfiabilityChecker& checker) {
-    const std::vector<Specification> specs = specifications_of(survivors);
-    const std::vector<Specification> weakenings =
-        tlsf_make_weakening_filter(original, checker)(specs);
-    return keep_matching(survivors, weakenings);
-}
-
 std::vector<Scored<Specification>> keep_maximal(
     const std::vector<Scored<Specification>>& survivors,
     const Specification& original, const Config& cfg,

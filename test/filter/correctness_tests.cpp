@@ -74,7 +74,6 @@ tlsf::Specification tlsf_spec(const std::string& main_body) {
 void test_every_correctness_stage_has_a_gate_check() {
     Config cfg;
     cfg.run_vacuity_filter = true;
-    cfg.run_well_separation_filter = true;
     const Specification original = fretish_spec();
     const std::vector<std::string> stages = correctness_stage_names(
         get_filter_functions(cfg, original, global_sat_checker()));
@@ -94,7 +93,6 @@ void test_every_correctness_stage_has_a_gate_check() {
 void test_every_tlsf_correctness_stage_has_a_gate_check() {
     Config cfg;
     cfg.run_vacuity_filter = true;
-    cfg.run_well_separation_filter = true;
     const tlsf::Specification original =
         tlsf_spec("INPUTS { a; } OUTPUTS { b; } GUARANTEE { G (a -> b); }");
     const std::vector<std::string> stages = tlsf_correctness_stage_names(
@@ -146,7 +144,6 @@ void test_well_separation_is_the_last_check() {
 void test_flags_off_drop_the_stage_but_not_the_check() {
     Config cfg;
     cfg.run_vacuity_filter = false;
-    cfg.run_well_separation_filter = false;
     const Specification original = fretish_spec();
     expect(correctness_stage_names(
                get_filter_functions(cfg, original, global_sat_checker()))

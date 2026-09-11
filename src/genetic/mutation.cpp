@@ -549,13 +549,7 @@ Formula rewrite_field(const Formula& field,
                       const Config& cfg, const RandomSource& random_source) {
     if (cfg.p_monotone > 0.0 && direction.has_value() && !atoms.empty() &&
         random_source.next_real() < cfg.p_monotone) {
-        // Both menu widenings on, unlike the TLSF call site. The two gates
-        // exist to hold an archived draw stream byte-identical, which a new
-        // arm has nothing to preserve, and with atom_rules off the menu at a
-        // literal is the rewrite to a constant alone -- which guts a
-        // propositional field rather than moving it along the order.
-        return monotone_rewrite(field, *direction, MonotoneRules{true, true},
-                                atoms, random_source);
+        return monotone_rewrite(field, *direction, atoms, random_source);
     }
     return mutate_formula(field, atoms, random_source);
 }
@@ -688,8 +682,9 @@ bool creates_duplicate(const std::vector<Requirement>& requirements,
 // guarding on one
 // gives the synthesiser a self-referential condition it can discharge
 // vacuously), but under the flag that syntactic ban is lifted and well-
-// separation is delegated to the well-separation filter, which prunes any
-// assumption the system can force to fail. The draw order and count are
+// separation is delegated to the well-separation check, which the status
+// objective scores and the final gate enforces against any assumption the
+// system can force to fail. The draw order and count are
 // identical whether or not outputs are admitted, so the flag never perturbs a
 // run that leaves it off.
 std::vector<std::string> assumption_atom_pool(
@@ -727,10 +722,10 @@ Formula add_assumption_condition(const std::vector<std::string>& pool,
 // G(c -> F <atom>), a conditional fairness assumption (each of condition and
 // response is negated on a coin flip). By default the pool is the input atoms;
 // with allow_output_assumptions it also includes outputs, in which case the
-// well-separation filter (rather than a syntactic ban) is what keeps the system
-// from producing a vacuously-satisfiable assumption. Appending it strengthens
-// the environment, which is how the algorithm repairs unrealizability that the
-// rewrite-only operators cannot reach.
+// well-separation check at the final gate (rather than a syntactic ban) is
+// what keeps the system from producing a vacuously-satisfiable assumption.
+// Appending it strengthens the environment, which is how the algorithm repairs
+// unrealizability that the rewrite-only operators cannot reach.
 Specification add_assumption(const Specification& specification,
                              const RandomSource& random_source,
                              const Config& cfg) {

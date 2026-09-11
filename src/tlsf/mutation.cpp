@@ -66,25 +66,17 @@ Formula::Kind pick_binary_kind(const RandomSource& random_source) {
     }
 }
 
-// Connective used in case (2d), o2' ∈ {U, W, ∧, ∨}, to graft a fresh atom onto
-// the mutated child. Under @p connective_implies
-// (cfg.tlsf_connective_implies, default false) the menu gains →.
+// Connective used in case (2d), o2' ∈ {U, W, ∧, ∨, →}, to graft a fresh atom
+// onto the mutated child.
 //
-// This function kept the Brizzio-fragment exclusion pick_binary_kind shed on
-// 2026-08-21, and it is the arm that fires at an atom or a unary node — the
-// nodes where a guard has to be introduced. So `p → X φ`, the shape of every
-// minimal guarantee weakening and the shape tlsf_add_assumption hard-codes,
-// took more than one draw to reach at exactly those nodes. The caller passes
-// the drawn anchor first, so → yields `anchor → inner`, the guard-implies-
-// response direction.
-//
-// The arm is appended last so that off, next_index(4) and the case order are
-// what they were before the key existed, and the whole downstream draw stream
-// reproduces. Release stays out: it is already in pick_binary_kind and there is
-// nothing behind adding it here.
-Formula::Kind pick_connective_kind(const RandomSource& random_source,
-                                   bool connective_implies) {
-    switch (random_source.next_index(connective_implies ? 5 : 4)) {
+// → is here because this is the arm that fires at an atom or a unary node, the
+// nodes where a guard has to be introduced, so `p → X φ` -- the shape of every
+// minimal guarantee weakening and the shape tlsf_add_assumption hard-codes --
+// is one draw away. The caller passes the drawn anchor first, so → yields
+// `anchor → inner`, the guard-implies-response direction. Release stays out:
+// it is already in pick_binary_kind and there is nothing behind adding it here.
+Formula::Kind pick_connective_kind(const RandomSource& random_source) {
+    switch (random_source.next_index(5)) {
         case 0:
             return Formula::Kind::Until;
         case 1:
@@ -176,9 +168,7 @@ Formula mutate_temporal(const Formula& formula,
                     const Formula inner = Formula::make_unary(
                         pick_unary_kind(random_source), mutated_child);
                     return Formula::make_binary(
-                        pick_connective_kind(random_source,
-                                             cfg.tlsf_connective_implies),
-                        anchor, inner);
+                        pick_connective_kind(random_source), anchor, inner);
                 }
                 default:
                     assert(false);
@@ -698,8 +688,7 @@ tlsf::Specification tlsf_mutate_once(const tlsf::Specification& spec,
     // It is safe in an initial condition without a special case: the rules
     // that introduce a temporal operator fire only at a node that already
     // carries one, and an initial condition has none.
-    if (cfg.tlsf_p_monotone > 0.0 &&
-        random_source.next_real() < cfg.tlsf_p_monotone) {
+    if (cfg.p_monotone > 0.0 && random_source.next_real() < cfg.p_monotone) {
         // A fair coin rather than a side-aligned direction. Repairing
         // unrealizability does mean weakening the guarantee side and
         // strengthening the assumption side, but a search that can only move
@@ -716,8 +705,6 @@ tlsf::Specification tlsf_mutate_once(const tlsf::Specification& spec,
         entry.m_formula = monotone_rewrite(
             entry.m_formula,
             weaken ? MonotoneDirection::Weaken : MonotoneDirection::Strengthen,
-            MonotoneRules{cfg.tlsf_monotone_atom_rules,
-                          cfg.tlsf_monotone_extra_rules},
             pool, random_source);
         return mutated;
     }

@@ -119,9 +119,14 @@ struct Config {
     /// overruns by whatever the generation it was in had left.
     std::size_t max_wall_s = 0;
     std::size_t population_size = 200;
-    double fitness_weight_syntactic = 0.2;
-    double fitness_weight_semantic = 0.5;
-    double fitness_weight_status = 0.5;
+    /// Objective weights for the weighted scalar, matching AuRUS's
+    /// `Settings.java`: STATUS_FACTOR 0.7, LOST_MODELS_FACTOR and
+    /// WON_MODELS_FACTOR 0.1 each (0.2 together, counter's one semantic
+    /// objective), and SYNTACTIC_FACTOR 0.1. Only the weighted selection scheme
+    /// ranks by the scalar; the NSGA-II schemes read the objectives apart.
+    double fitness_weight_syntactic = 0.1;
+    double fitness_weight_semantic = 0.2;
+    double fitness_weight_status = 0.7;
     /// How the status objective grades below realizability (see StatusGrading).
     /// Mrs costs more realizability queries per candidate -- a median of 4.6x
     /// one whole-specification check across `examples/`, falling to 2.2x over a
@@ -159,47 +164,6 @@ struct Config {
     MrsAdmissionOrder mrs_admission_order = MrsAdmissionOrder::Degree;
     std::size_t default_model_counting_bound = 20;
     SimilarityMetric similarity_metric = SimilarityMetric::Logarithmic;
-    /// Keep only repairs the original logically implies -- genuine weakenings.
-    /// A *final* screen, not a per-generation filter: pruning non-weakenings
-    /// mid-search measurably costs repair quality and never gains it (over the
-    /// 9,796 paired runs of the cj-large campaign it lost 1,005 and won 410,
-    /// costing 20 points of implies-ideal on fsm), whereas screening the final
-    /// population leaves the search bit-identical.
-    ///
-    /// **Off by default since 2026-08-20**, on the measurement in
-    /// `experiments/2026-08-20-ops-weakening/REPORT.md`. Across 720 matched
-    /// runs of two paired campaigns, turning the screen off gained
-    /// `implies_ideal` on 38 of them and lost it on none, on both paths and
-    /// under both mutation grammars. That direction is close to structural
-    /// rather than discovered -- the screen draws nothing from the
-    /// `RandomSource`, so it cannot change the search and can only withhold
-    /// output -- so the counts are the finding and a significance test on them
-    /// would overstate it. It is not a strict superset either: `n_repairs`
-    /// fell on 27 of the 720, the implication filter below running afterwards
-    /// and letting a newly admitted non-weakening dominate several weakenings.
-    /// The earlier 2026-08-19-weakening-arbiter campaign found the same
-    /// direction at 9 of 120 paired repairs.
-    ///
-    /// What it costs when off is the only guarantee that a written repair does
-    /// not forbid behaviour the original allowed. Nothing constrains mutation
-    /// to weaken: it can delete a safety guarantee and add a stronger one,
-    /// reaching realizability while forbidding allowed behaviour. Turn it on
-    /// where that property is wanted over yield.
-    ///
-    /// Applies on both paths, and since 2026-09-11 the check behind it is the
-    /// same on both: `spec_implies` and `tlsf_spec_implies` each lower the
-    /// whole specification to one LTL formula and ask one query, so a
-    /// rejection is a fact about the two specs rather than a limit of the
-    /// check. The FRETISH side was an assume-guarantee decomposition pairing
-    /// each requirement against a single counterpart until then, and it
-    /// under-detected: a weakening holding only via several requirements
-    /// together read as no weakening at all. Archived FRETISH `n_repairs` and
-    /// `n_implies` were recorded under that weaker check and do not compare
-    /// against rows taken after it; over 25 paired runs the first fell 17.8%.
-    /// `implies_ideal` did not move over those runs, reading 15 of 25 under
-    /// both checks, so it is the one endpoint that still compares, and on 25
-    /// runs rather than by construction.
-    bool run_weakening_filter = false;
     bool run_implication_filter = true;
     /// Drop candidates that hold for free rather than because anything was
     /// repaired: ones carrying a requirement whose condition is the literal
@@ -216,41 +180,13 @@ struct Config {
     /// unconditionally on both paths, so turning this off never admits a
     /// vacuous repair to the output.
     bool run_vacuity_filter = true;
-    /// Drop candidates that are not well-separated: ones the system can satisfy
-    /// vacuously by forcing its own assumptions to fail. Realizability is
-    /// decided on (assumptions) -> (guarantees), so replacing the guarantees
-    /// with false and finding (assumptions) -> false realizable means the
-    /// system has a strategy that breaks the assumptions on its own.
-    /// Complementary to the vacuity check. Each test is a full ltlsynt query
-    /// (run only when an assumption references an output atom), which is why
-    /// this was off by default until the 2026-08-06 wellsep-timing campaign
-    /// priced it: over 7200 TLSF runs, filtering every generation came out 5%
-    /// *faster* than not filtering at all, because a candidate dropped before
-    /// the scoring stage never costs a model-count or a synthesis query. Unlike
-    /// run_weakening_filter this stays a per-generation filter rather than
-    /// becoming a final screen -- the same campaign measured an end-of-run pass
-    /// leaking 42.7% against 44.1% for no filter at all, since elites and
-    /// NSGA-II parent pooling re-admit whatever a late pass drops. It is the
-    /// counterpart to allow_output_assumptions, which without it admits
-    /// assumptions the system can defeat. A no-op for specs with no
-    /// assumptions, which short-circuit before any solver call.
-    ///
-    /// Off by default since well-separation joined the status score. Filters
-    /// run before scoring, so leaving this on drops an ill-separated candidate
-    /// before anything can score it, and the status tier that ranks it below a
-    /// genuine repair never fires -- the same way an earlier assumption-side
-    /// tier sat unreachable behind the vacuity filter. On costs less wall time
-    /// and gives the search no gradient off ill-separation; off pays to score
-    /// candidates the search then ranks down. Output correctness does not turn
-    /// on it either way: the gate screens every survivor whatever this says.
-    bool run_well_separation_filter = false;
     std::chrono::milliseconds black_timeout{1000};
     /// Per-call wall-clock budget for ltlsynt realizability checks. Unlike
     /// black, ltlsynt has no internal timeout, and the genetic search
     /// occasionally generates synthesis queries that run for minutes with no
     /// upper bound, stalling a run on the tail. A call exceeding this is killed
     /// and reported as undecided, which each caller resolves its own way: no
-    /// repair is admitted on it, and the well-separation filter drops the
+    /// repair is admitted on it, and the well-separation check rejects the
     /// candidate. 0 disables the timeout.
     ///
     /// 10 s by default. It was 500 ms, on the measurement that the call
@@ -446,35 +382,39 @@ struct Config {
     /// and every timing, so strengthening picks Continual and weakening
     /// Trigger. The two coincide at `always` under a plain scope and at
     /// `eventually` under an `only` one, and differ strictly elsewhere.
-    /// Defaults to 0,
-    /// where the arm costs no RNG draw at all and the breeding stream is
-    /// byte-identical to the one before it existed -- the p_remove_guarantee
-    /// discipline. No campaign has measured it off 0.
-    double p_condition_type = 0.0;
+    /// Defaults to 0.15, matching p_timing, the sibling arm on the same
+    /// requirement. No campaign has measured it.
+    double p_condition_type = 0.15;
     /// FRETISH only: per-requirement probability of moving the scope along its
     /// implication order. That order depends on the timing and the condition
     /// type, since a scope boundary relaxes a bounded obligation but tightens
     /// an unbounded one; scope_order in src/genetic/mutation.cpp holds the
     /// measured table. A move onto a non-Global scope needs a declared mode, so
     /// on a specification declaring none -- which is every example under
-    /// examples/ -- the arm can only reach Global and is a no-op. Defaults to 0
-    /// on the same terms as p_condition_type.
-    double p_scope = 0.0;
-    /// FRETISH only: probability that a condition or response rewrite is a
-    /// monotone one (monotone_rewrite, include/genetic/monotone.hpp) rather
-    /// than the general propositional rewrite. It is offered inside the
-    /// p_response and p_trigger arms rather than beside them, so it changes
-    /// which rewrite fires and not how often one does. The TLSF twin is
-    /// `tlsf_p_monotone`, which defaults to 0.25; this defaults to 0, where the
-    /// arm costs no RNG draw and the breeding stream is byte-identical to the
-    /// one before it existed -- the p_remove_guarantee discipline. No campaign
-    /// has measured it off 0.
+    /// examples/ but mode-arbiter -- the arm can only reach Global. Defaults to
+    /// 0.15 on the same terms as p_condition_type.
+    double p_scope = 0.15;
+    /// Probability that a rewrite is a *monotone* one (monotone_rewrite,
+    /// include/genetic/monotone.hpp), whose result is comparable to the formula
+    /// it replaces under implication. Shared by both paths since 2026-09-11,
+    /// when the TLSF-only `[tlsf.mutation] p_monotone` folded into this key.
     ///
-    /// The arm sits out a field whose polarity in the lowered requirement is
-    /// not determinate, monotonicity saying nothing there: a trigger's rising
-    /// edge `(!c & Xc)` holds its condition at both polarities, and
-    /// `after n ticks` does the same to its response.
-    double p_monotone = 0.0;
+    /// On the TLSF path it is a third rewrite arm for a chosen section formula,
+    /// offered ahead of the temporal and propositional ones, and the direction
+    /// is a fair coin. On the FRETISH path it is offered inside the p_response
+    /// and p_trigger arms, so it changes which rewrite fires and not how often
+    /// one does, and the direction is the requirement's own. The FRETISH arm
+    /// sits out a field whose polarity in the lowered requirement is not
+    /// determinate: a trigger's rising edge `(!c & Xc)` holds its condition at
+    /// both polarities, and `after n ticks` does the same to its response.
+    ///
+    /// This exists because the general rewriters leave the implication order:
+    /// the 2026-08-14 head-to-head audit measured them changing the AST shape
+    /// 93.6% of the time. AuRUS draws uniformly among three mutation visitors,
+    /// two of them monotone by construction, so its monotone share is 2 in 3,
+    /// and 0.25 is a conservative first value against that. The campaign that
+    /// tunes it is owed.
+    double p_monotone = 0.25;
     /// Low-probability structural mutation, shared by both modes: append a new
     /// environment assumption (over input atoms) rather than rewriting an
     /// existing requirement/formula. This is how the algorithm can repair
@@ -520,8 +460,8 @@ struct Config {
     /// construction, at the cost of the reactive-environment assumptions
     /// (`G(<output> -> F <input>)`) the wider draw can express. With it on,
     /// what keeps the system from writing itself an assumption it can force to
-    /// fail is the well-separation filter rather than the syntactic ban, so
-    /// pair it with run_well_separation_filter.
+    /// fail is well-separation: the status objective scores an ill-separated
+    /// candidate below a genuine repair, and the output gate rejects one.
     bool allow_output_assumptions = true;
     /// TLSF-mode mutation: probability of mutating an assumption-side section
     /// (INITIALLY/REQUIRE/ASSUME) rather than a guarantee-side one
@@ -536,46 +476,6 @@ struct Config {
     /// rewrite. At 0 the temporal skeleton of existing formulae is never
     /// altered.
     double tlsf_p_temporal = 0.2;
-    /// TLSF-mode mutation: whether the temporal rewrite's case (2d) graft may
-    /// draw an implication as its connective, beside `U`, `W`, `&` and `|`.
-    ///
-    /// Case (2d) is the arm that fires at an atom or a unary node, and it
-    /// grafts a drawn anchor onto the mutated child under a connective. Its
-    /// menu kept the exclusion `pick_binary_kind` shed on 2026-08-21, which
-    /// came from Brizzio's fragment -- Owl's negation normal form, where
-    /// `a -> b` is stored as a disjunction and there is no implication node to
-    /// re-emit. So `p -> X phi`, the shape of every minimal guarantee
-    /// weakening and the shape tlsf_add_assumption hard-codes, was out of
-    /// reach in one draw at exactly the nodes where a guard has to be
-    /// introduced.
-    ///
-    /// The wider draw is opt-in. The arm is appended last, so off -- the
-    /// default -- the case order and the draw's modulus are what they were
-    /// before the key existed, the shipping binary's behaviour is unchanged and
-    /// a seeded run reproduces its stream byte for byte.
-    bool tlsf_connective_implies = false;
-    /// TLSF-mode mutation: once a section formula has been chosen for
-    /// rewriting, the probability of applying a *monotone* rewrite -- one
-    /// whose result is comparable to the formula it replaces under implication
-    /// -- rather than either the temporal or the propositional rewrite. The
-    /// direction (weaker or stronger) is a fair coin; see
-    /// tlsf_monotone_rewrite.
-    ///
-    /// This exists because the general rewriters leave the implication order.
-    /// The 2026-08-14 head-to-head audit read `best_relation` as incomparable
-    /// on 238 of counter's 499 runs (47.7%) against 20 of AuRUS's 780 (2.6%),
-    /// and REPORT.md section 5 measures the general rewriter as changing the
-    /// AST shape 93.6% of the time. AuRUS draws uniformly among three mutation
-    /// visitors, two of which are monotone by construction, so its monotone
-    /// share is 2 in 3.
-    ///
-    /// The default is 0.25: a quarter is a conservative first value against
-    /// that 2-in-3, the general rewriter being the operator every measured
-    /// result so far was obtained with. The campaign that tunes it is owed.
-    /// Setting it to 0 restores the search exactly as it ran before the arm
-    /// existed -- the probability is read before the RNG is drawn, so a zero
-    /// never costs a draw.
-    double tlsf_p_monotone = 0.25;
     /// TLSF-mode mutation: of the assumptions p_add_assumption appends, the
     /// fraction that are a copy of an existing live ASSUME conjunct rather
     /// than a fresh one built from the template. Ordinary mutation then edits
@@ -623,7 +523,7 @@ struct Config {
     /// below it. Every one of the four is argued from the corpus rather than
     /// measured. Here the argument is that 3 is the width `lift` needs and
     /// the widest the corpus's ideals reach in plain literals, and that is
-    /// the whole case for it. tlsf_p_monotone and tlsf_p_clone_assumption
+    /// the whole case for it. p_monotone and tlsf_p_clone_assumption
     /// shipped on exactly that footing in August 2026. The campaign that
     /// tested them, `experiments/2026-08-23-monotone`, came back null, and
     /// its pre-registered rule had to be overridden to keep them, which that
@@ -712,44 +612,6 @@ struct Config {
     /// without it a continuation probability near 1 is an unbounded loop.
     double tlsf_p_burst_continue = 0.0;
 
-    /// TLSF-mode mutation: whether a monotone rewrite may add an operand at
-    /// any node, rather than at a conjunction or a disjunction alone.
-    ///
-    /// `Constant` and `AddOperand` are the two rules sound everywhere:
-    /// `phi -> true` and `phi -> phi | l` weaken anything, `phi -> false` and
-    /// `phi -> phi & l` strengthen anything. The arm nonetheless offered
-    /// `AddOperand` at `And` and `Or` alone, which left an atom with
-    /// `Constant` as its only move -- the one rule that grows a literal into a
-    /// disjunction was reachable only where a disjunction already stood.
-    /// Every assumption-shaped ideal in the corpus is a disjunction built out
-    /// of literals, and AuRUS reaches them because its `FormulaWeakening`
-    /// applies `a -> a | b` at a literal.
-    ///
-    /// The wider menu is opt-in. Off -- the default -- the rule list at every
-    /// node holds the same rules in the same order as it did before the key
-    /// existed, so the shipping binary's behaviour is unchanged and a seeded
-    /// run reproduces its stream byte for byte.
-    bool tlsf_monotone_atom_rules = false;
-    /// TLSF-mode mutation: whether the monotone rewrite covers `Release`,
-    /// `Next` and the strengthening of a biconditional.
-    ///
-    /// Three node kinds sat outside the menu. `Release` had no monotone rule
-    /// at all, while its duals `Until` and `WeakUntil` each carry one, so a
-    /// kind the temporal rewrite draws freely was a dead end for the arm whose
-    /// job is to stay on the implication order. `Next` was the same. `Iff`
-    /// carried the weakening to one of its implications and nothing in the
-    /// other direction. At all three the whole monotone menu was the rewrite
-    /// to a constant, which gutted the node.
-    ///
-    /// On, five rules join: `phi R psi -> psi` and `phi R psi -> G psi`,
-    /// `X phi -> F phi` and `X phi -> G phi`, and `a <-> b` to `a & b` or
-    /// `!a & !b` by a fair coin.
-    ///
-    /// The wider menu is opt-in. Off -- the default -- the rule list at every
-    /// node holds the same rules in the same order as it did before the key
-    /// existed, so the shipping binary's behaviour is unchanged and a seeded
-    /// run reproduces its stream byte for byte.
-    bool tlsf_monotone_extra_rules = false;
     /// TLSF repair strategy (see RepairMode). Muc mode caps its outer
     /// extract-repair-reintegrate loop at muc_max_iterations, so a spec whose
     /// core never becomes realizable ends the run without a repair rather than

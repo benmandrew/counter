@@ -31,9 +31,7 @@ namespace tlsf::internal {
 // The vacuity filter this builds carries all three tests the FRETISH one does:
 // the syntactic screen for a trivial section literal, the per-formula guarantee
 // validity check, and the assumption-satisfiability conjunction. The guarantee
-// half earns its place because nothing else rejects a gutted guarantee -- least
-// of all the final weakening screen, since `original implies true` holds
-// trivially and a no-op guarantee is therefore a perfect weakening.
+// half earns its place because nothing else rejects a gutted guarantee.
 std::vector<FilterFunctionT<Specification>> build_per_gen_filters(
     const Specification& spec, const Config& cfg) {
     const std::size_t max_in_flight = dispatch_window();
@@ -47,7 +45,8 @@ std::vector<FilterFunctionT<Specification>> build_per_gen_filters(
     // read the same rows.
     for (const CorrectnessCheckT<Specification>& check :
          tlsf_correctness_checks(global_sat_checker(), global_real_checker())) {
-        if (cfg.*check.per_generation_flag) {
+        if (check.per_generation_flag != nullptr &&
+            cfg.*check.per_generation_flag) {
             filters.push_back(tlsf_make_predicate_filter(
                 check.name, check.admissible, max_in_flight));
         }

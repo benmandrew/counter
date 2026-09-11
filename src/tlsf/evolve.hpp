@@ -33,7 +33,7 @@ struct DashboardProgress {
 };
 
 // The TLSF counterparts of the FRETISH per-generation filter set (dedup, bloat
-// cap, the optional assumption-vacuity and well-separation filters).
+// cap and the optional vacuity filter).
 std::vector<FilterFunctionT<Specification>> build_per_gen_filters(
     const Specification& spec, const Config& cfg);
 

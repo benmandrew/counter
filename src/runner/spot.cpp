@@ -465,7 +465,7 @@ std::optional<bool> RealizabilityChecker::check_realizability_ltl(
             .count();
     // A timed-out query is undecided, not unrealizable. Which of the two is
     // the safe reading depends on the question being asked -- admitting a
-    // repair wants "unrealizable", the well-separation filter wants
+    // repair wants "unrealizable", the well-separation check wants
     // "realizable" -- so the direction is the caller's to pick, and this
     // reports nullopt rather than picking one for everybody.
     const std::optional<bool> realizable =

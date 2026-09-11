@@ -260,7 +260,6 @@ void test_flag_gates_the_whole_filter() {
     const Specification vacuous = with_guarantees({conditional("req", "true")});
 
     Config cfg;
-    cfg.run_well_separation_filter = false;
     cfg.run_vacuity_filter = true;
     const std::vector<FilterFunction> enabled =
         get_filter_functions(cfg, original, checker);

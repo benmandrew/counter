@@ -58,9 +58,7 @@ p_timing   = 0.1
 default_bound = 10
 
 [filters]
-run_weakening       = true
-run_implication     = false
-run_well_separation = true
+run_implication = false
 
 [runtime]
 black_timeout_ms = 500
@@ -96,13 +94,8 @@ dashboard        = true
            "config_io: mutation p_timing should be parsed from TOML");
     expect(cfg.default_model_counting_bound == 10,
            "config_io: model_counting.default_bound should be parsed");
-    expect(cfg.run_weakening_filter,
-           "config_io: filters run_weakening should be true when the TOML says "
-           "so, the built-in default being false since 2026-08-20");
     expect(!cfg.run_implication_filter,
            "config_io: filters run_implication should be false");
-    expect(cfg.run_well_separation_filter,
-           "config_io: filters run_well_separation should be true");
     expect(cfg.black_timeout == std::chrono::milliseconds{500},
            "config_io: runtime black_timeout_ms should be parsed from TOML");
     expect(cfg.parallel == 4,
@@ -534,6 +527,7 @@ p_timing                 = 0.1
 p_add_assumption         = 0.05
 p_conditional_assumption = 0.25
 p_remove_guarantee       = 0.05
+p_monotone               = 0.25
 allow_output_assumptions = false
 
 [tlsf]
@@ -543,7 +537,6 @@ muc_max_iterations = 32
 [tlsf.mutation]
 p_assumption       = 0.3
 p_temporal         = 0.2
-p_monotone         = 0.25
 p_clone_assumption = 0.25
 
 [model_counting]
@@ -551,10 +544,8 @@ default_bound = 10
 metric        = "direct"
 
 [filters]
-run_weakening       = false
-run_implication     = false
-run_vacuity         = true
-run_well_separation = true
+run_implication = false
+run_vacuity     = true
 
 [runtime]
 black_timeout_ms             = 500

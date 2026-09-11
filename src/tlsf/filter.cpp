@@ -465,7 +465,7 @@ std::vector<CorrectnessCheckT<tlsf::Specification>> tlsf_correctness_checks(
                       [&real](const tlsf::Specification& spec) {
                           return !tlsf_is_not_well_separated(spec, real);
                       },
-                      &Config::run_well_separation_filter});
+                      nullptr});
     return checks;
 }
 
@@ -504,38 +504,6 @@ FilterFunctionT<tlsf::Specification> tlsf_make_bloat_cap_filter(
                 return survivors;
             },
             FilterKind::Preference};
-}
-
-FilterFunctionT<tlsf::Specification> tlsf_make_weakening_filter(
-    tlsf::Specification original, SatisfiabilityChecker& checker) {
-    return {"weakening", [original = std::move(original),
-                          &checker](std::vector<tlsf::Specification> pop) {
-                const std::size_t pop_size = pop.size();
-                std::vector<std::atomic<uint8_t>> keep(pop_size);
-                for (auto& flag : keep) {
-                    flag.store(0, std::memory_order_relaxed);
-                }
-                const std::size_t max_in_flight = dispatch_window();
-                run_bounded_async(
-                    pop_size, max_in_flight,
-                    [&checker, &pop, &original, &keep](std::size_t idx) {
-                        return [&checker, &pop, &original, &keep, idx] {
-                            if (tlsf_spec_implies(original, pop[idx], checker)
-                                    .value_or(true)) {
-                                keep[idx].store(1, std::memory_order_relaxed);
-                            }
-                        };
-                    },
-                    [](std::size_t) {});
-                std::vector<tlsf::Specification> survivors;
-                survivors.reserve(pop_size);
-                for (std::size_t i = 0; i < pop_size; ++i) {
-                    if (keep[i].load(std::memory_order_relaxed) != 0U) {
-                        survivors.push_back(std::move(pop[i]));
-                    }
-                }
-                return survivors;
-            }};
 }
 
 TlsfSimilarityKey tlsf_syntactic_similarity_key(tlsf::Specification original,

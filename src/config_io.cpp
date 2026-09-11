@@ -124,14 +124,11 @@ const KeySpec& config_key_spec() {
          {"tlsf",
           section({"repair_mode", "muc_max_iterations"},
                   {{"mutation",
-                    section({"p_assumption", "p_temporal", "connective_implies",
-                             "p_monotone", "monotone_atom_rules",
-                             "monotone_extra_rules", "p_clone_assumption",
+                    section({"p_assumption", "p_temporal", "p_clone_assumption",
                              "max_assumption_width", "p_bare_assumption",
                              "p_remove_assumption", "p_burst_continue"})}})},
          {"model_counting", section({"default_bound", "metric"})},
-         {"filters", section({"run_weakening", "run_implication", "run_vacuity",
-                              "run_well_separation"})},
+         {"filters", section({"run_implication", "run_vacuity"})},
          {"runtime", section({"black_timeout_ms", "ltlsynt_timeout_ms",
                               "ltl2tgba_timeout_ms", "ltlfilt_timeout_ms",
                               "ganak_timeout_ms", "parallel",
@@ -155,6 +152,23 @@ std::string retired_key_hint(const std::string& path) {
     }
     if (path == "tlsf.mutation.p_union_assumption") {
         return " (removed: the union crossover no longer exists)";
+    }
+    if (path == "tlsf.mutation.p_monotone") {
+        return " (removed: set [mutation] p_monotone, which both paths read)";
+    }
+    if (path == "tlsf.mutation.connective_implies") {
+        return " (removed: the case (2d) graft always offers ->)";
+    }
+    if (path == "tlsf.mutation.monotone_atom_rules" ||
+        path == "tlsf.mutation.monotone_extra_rules") {
+        return " (removed: the monotone rewrite always offers every rule)";
+    }
+    if (path == "filters.run_weakening") {
+        return " (removed: the final weakening screen no longer exists)";
+    }
+    if (path == "filters.run_well_separation") {
+        return " (removed: the status score and the output gate enforce"
+               " well-separation)";
     }
     return "";
 }
@@ -358,14 +372,13 @@ void apply_mutation(const toml::table& tbl, Config& cfg) {
 
 // The [tlsf.mutation] probabilities differ only in their key and the member
 // they land on, so they are driven from a table rather than a branch each.
-// Eight near-identical branches read as complexity to clang-tidy, and each was
+// Six near-identical branches read as complexity to clang-tidy, and each was
 // another chance to paste the wrong member name beside a key -- a mistake
 // nothing else here would catch, the types being identical.
-constexpr std::array<std::pair<const char*, double Config::*>, 7>
+constexpr std::array<std::pair<const char*, double Config::*>, 6>
     k_tlsf_mutation_probabilities{{
         {"p_assumption", &Config::tlsf_p_assumption},
         {"p_temporal", &Config::tlsf_p_temporal},
-        {"p_monotone", &Config::tlsf_p_monotone},
         {"p_clone_assumption", &Config::tlsf_p_clone_assumption},
         {"p_bare_assumption", &Config::tlsf_p_bare_assumption},
         {"p_remove_assumption", &Config::tlsf_p_remove_assumption},
@@ -387,15 +400,6 @@ void apply_tlsf_mutation(const toml::table& mutation, Config& cfg) {
                 "tlsf.mutation.max_assumption_width must be at least 1");
         }
         cfg.tlsf_max_assumption_width = static_cast<std::size_t>(*val);
-    }
-    if (auto val = mutation["connective_implies"].value<bool>()) {
-        cfg.tlsf_connective_implies = *val;
-    }
-    if (auto val = mutation["monotone_atom_rules"].value<bool>()) {
-        cfg.tlsf_monotone_atom_rules = *val;
-    }
-    if (auto val = mutation["monotone_extra_rules"].value<bool>()) {
-        cfg.tlsf_monotone_extra_rules = *val;
     }
 }
 
@@ -438,17 +442,11 @@ void apply_model_counting(const toml::table& tbl, Config& cfg) {
 }
 
 void apply_filters(const toml::table& tbl, Config& cfg) {
-    if (auto val = tbl["run_weakening"].value<bool>()) {
-        cfg.run_weakening_filter = *val;
-    }
     if (auto val = tbl["run_implication"].value<bool>()) {
         cfg.run_implication_filter = *val;
     }
     if (auto val = tbl["run_vacuity"].value<bool>()) {
         cfg.run_vacuity_filter = *val;
-    }
-    if (auto val = tbl["run_well_separation"].value<bool>()) {
-        cfg.run_well_separation_filter = *val;
     }
 }
 

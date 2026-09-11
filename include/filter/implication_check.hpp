@@ -2,7 +2,7 @@
 
 /// @file implication_check.hpp
 /// @brief Pairwise implication check between two whole specifications, used
-///        by the implication and weakening filters.
+///        by the implication filter.
 
 #include <optional>
 

@@ -99,22 +99,27 @@ Sweeps generated, each holding every other parameter at its default:
 | G | `default_bound` | 5, 10, 20, 40, 80, 160 |
 | H | `crossover_rate` | 0.0, 0.1, 0.25, 0.5, 0.75, 1.0 |
 | I | `mutation_rate` | 0.1, 0.25, 0.5, 0.75, 1.0 |
-| J | `run_weakening` | on, off |
 
-62 levels per scheme, 124 configs. Because each sweep holds the others at their
+60 levels per scheme, 120 configs. Because each sweep holds the others at their
 defaults, exactly one level of each is byte-identical to the `A/gen10` baseline
-— the aliasing below collapses those nine onto one run per scheme.
+— the aliasing below collapses those eight onto one run per scheme. Sweep J,
+which crossed `run_weakening`, retired with the key on 2026-09-11.
 
-`--weakening both` and `--metric both` cross `run_weakening` and
-`model_counting.metric` in as factors, nesting them under
-`<scheme>/[<wkon|wkoff>/][<direct|log>/]`. The directory label is the short
+`--weakening off` nests configs under `<scheme>/wkoff/` and writes no key, the
+weakening screen having been removed. It is the only value the flag accepts.
+The directory stays because `weakening` is one of `KEY_FIELDS`, and a flat
+config is attributed to the legacy `wkon`, so a new campaign should pass
+`--weakening off` to keep its rows from reading as the screen being on.
+
+`--metric both` crosses `model_counting.metric` in as a factor, nesting it
+under `<scheme>/[wkoff/][<direct|log>/]`. The directory label is the short
 `direct`/`log`; the TOML value written is the full `direct`/`logarithmic` the
 C++ parser accepts. Omitting a flag keeps the flat layout and takes that factor
 from the defaults, so a no-arg run reproduces the pre-factor grid.
 
 `--weights SYNTACTIC SEMANTIC STATUS` moves the baseline aggregate-fitness
 weights for one campaign. They are the one part of `DEFAULTS` deliberately not
-the binary's — 0.33 each against `config.hpp`'s 0.2 / 0.5 / 0.5, pinned so every
+the binary's — 0.33 each against `config.hpp`'s 0.1 / 0.2 / 0.7, pinned so every
 archived grid states the same triple — and the flag changes the baseline without
 touching that pin, so a run that omits it is byte-identical to what it always
 was. Sweep `C` still overrides them per level, exactly as `A` and `B` override
@@ -151,7 +156,7 @@ CSV it writes:
 | Profile | Schemes | Sweeps / levels | Seeds | Results CSV | Wall-clock at `--jobs 4` |
 |---|---|---|---|---|---|
 | `full` (default) | nsga2-truncate | the original 14 levels of A, B, C | 0–29 | `results.csv` | ~29 min (1440 runs) |
-| `factorial` | nsga2-truncate, weighted | every level of A–J | 0–99 | `results-factorial.csv` | ~14.6 h (43,200 runs) |
+| `factorial` | nsga2-truncate, weighted | every level of A–J (J since retired) | 0–99 | `results-factorial.csv` | ~14.6 h (43,200 runs) |
 | `metric` | nsga2-truncate | C/default only, `metric` crossed direct×log | 0–99 | `results-metric.csv` | ~1 h split across two machines (800 runs at generations=40/population=1000) |
 | `tlsf` | nsga2-truncate | A + B, coarse 4-level cross (7 operating points) | 0–59 (ceiling) | `results-tlsf.csv` | ~16 h split across av2+av3 (`--jobs 1`; the six TLSF specs) |
 
@@ -232,8 +237,8 @@ no internal timeout and the genetic search occasionally generates a synthesis
 query that runs for minutes; the campaign sets `runtime.ltlsynt_timeout_ms`
 (500 ms — call durations are sharply bimodal, 95% finishing under 50 ms with an
 almost-empty 0.5-1 s band) so such a query is killed and reported as undecided
-rather than stalling the run: it admits no repair, and drops its candidate at
-the well-separation filter — the count of these appears as `(N timeouts)` in
+rather than stalling the run: it admits no repair, and the well-separation
+check at the output gate refuses its candidate — the count of these appears as `(N timeouts)` in
 each run's `ltlsynt` timing row. `compare` decides implies-ideal on TLSF the
 same way it does on FRETISH, via the whole-formula implication check, so
 `results-tlsf.csv` carries the same columns.
@@ -263,8 +268,8 @@ runner caps each run's pool: it writes a derived config
 Every sweep holds the other parameters at their defaults, so each sweep's
 default level is byte-identical to the `A/gen10` baseline (generations 10,
 population 200, default weights): `B/pop200`, `C/default`, `D/ptrig0.5`,
-`E/presp0.5`, `F/ptim0.15`, `G/bound20`, `H/cross0.1`, `I/mut1.0` and
-`J/weaken-on`. The runner executes the canonical `A/gen10` run once per
+`E/presp0.5`, `F/ptim0.15`, `G/bound20`, `H/cross0.1` and `I/mut1.0`.
+The runner executes the canonical `A/gen10` run once per
 (scheme, spec, seed) and emits one CSV row per requested alias — the rows
 differ only in `sweep`/`level_name`/`level_value`. Identity is verified
 byte-for-byte before aliasing; if the files ever diverge the runner warns and
@@ -423,7 +428,8 @@ between schemes.
 
 `selection`, `weakening` and `metric` are part of the key because a profile may
 run every level under both selection schemes (`factorial`), both weakening
-states (`cj-large`), or both similarity metrics (`metric`); without them the
+states (`cj-large`, retired with the screen on 2026-09-11 but still merged),
+or both similarity metrics (`metric`); without them the
 crossed rows collapse onto one key and half are dropped in silence. Rows written
 before a column existed carry its legacy default — nsga2, wkon, direct — so both
 scripts read an absent value as that rather than empty, which keeps resume and

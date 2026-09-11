@@ -165,14 +165,6 @@ std::optional<bool> tlsf_spec_implies(const tlsf::Specification& from,
 FilterFunctionT<tlsf::Specification> tlsf_make_bloat_cap_filter(
     const tlsf::Specification& original, double max_ratio = 2.0);
 
-/// Returns a filter keeping only specifications that are logical weakenings of
-/// @p original — those that @p original implies (via tlsf_spec_implies). An
-/// uncertain (timed-out) check keeps the candidate. The TLSF counterpart of
-/// make_weakening_filter. @p checker is captured by reference and must outlive
-/// the filter.
-FilterFunctionT<tlsf::Specification> tlsf_make_weakening_filter(
-    tlsf::Specification original, SatisfiabilityChecker& checker);
-
 /// Ranks candidates within one equivalence class, higher surviving. Ties are
 /// broken on `tlsf::Specification::operator<`, so the survivor does not depend
 /// on the order the concurrent sweep finishes its pairs in.

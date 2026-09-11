@@ -132,7 +132,14 @@ namespace {
 // The same version is where the FRETISH implication check stopped decomposing
 // per requirement, so `comparisons`, `timeouts` and the repair counts beside
 // them are not comparable across it on that path.
-constexpr int k_schema_version = 26;
+//
+// 27 removed tlsf.mutation.p_monotone (folded into mutation.p_monotone, which
+// both paths now read), tlsf.mutation.connective_implies and the two
+// tlsf.mutation.monotone_*_rules gates (all now unconditional), and
+// filters.run_weakening and filters.run_well_separation (the stages are gone).
+// The same version moved the fitness weights to AuRUS's 0.1/0.2/0.7 and
+// mutation.p_condition_type, p_scope and p_monotone off 0.
+constexpr int k_schema_version = 27;
 
 // The inverse of the spellings config_io.cpp parses. It has no table to
 // borrow -- it only ever goes string to enum -- so these must be kept in step
@@ -293,10 +300,6 @@ nlohmann::json config_json(const Config& cfg) {
           {"mutation",
            {{"p_assumption", cfg.tlsf_p_assumption},
             {"p_temporal", cfg.tlsf_p_temporal},
-            {"connective_implies", cfg.tlsf_connective_implies},
-            {"p_monotone", cfg.tlsf_p_monotone},
-            {"monotone_atom_rules", cfg.tlsf_monotone_atom_rules},
-            {"monotone_extra_rules", cfg.tlsf_monotone_extra_rules},
             {"p_clone_assumption", cfg.tlsf_p_clone_assumption},
             {"max_assumption_width", cfg.tlsf_max_assumption_width},
             {"p_bare_assumption", cfg.tlsf_p_bare_assumption},
@@ -306,10 +309,8 @@ nlohmann::json config_json(const Config& cfg) {
          {{"default_bound", cfg.default_model_counting_bound},
           {"metric", metric_name(cfg.similarity_metric)}}},
         {"filters",
-         {{"run_weakening", cfg.run_weakening_filter},
-          {"run_implication", cfg.run_implication_filter},
-          {"run_vacuity", cfg.run_vacuity_filter},
-          {"run_well_separation", cfg.run_well_separation_filter}}},
+         {{"run_implication", cfg.run_implication_filter},
+          {"run_vacuity", cfg.run_vacuity_filter}}},
         {"runtime",
          {{"black_timeout_ms", cfg.black_timeout.count()},
           {"ltlsynt_timeout_ms", cfg.ltlsynt_timeout.count()},

@@ -29,16 +29,9 @@
 /// inputs and outputs. If no mutable formula exists the specification is
 /// returned unchanged.
 ///
-/// `cfg.tlsf_connective_implies` widens the temporal rewrite's case (2d)
-/// graft, which fires at an atom or a unary node, to draw an implication as
-/// its connective beside `U`, `W`, `&` and `|`. Off -- the default -- a
-/// guarded response such as `p -> X phi` takes more than one draw to reach at
-/// the nodes where a guard has to be introduced.
-///
-/// With probability `cfg.tlsf_p_monotone` the chosen formula takes a monotone
-/// rewrite (monotone_rewrite) instead of either of those two, its
-/// direction drawn as a fair coin and its rule menu widened by
-/// `cfg.tlsf_monotone_atom_rules` and `cfg.tlsf_monotone_extra_rules`.
+/// With probability `cfg.p_monotone` the chosen formula takes a monotone
+/// rewrite (monotone_rewrite) instead of either of those two, its direction
+/// drawn as a fair coin.
 ///
 /// With probability `cfg.p_add_assumption` the operator instead appends a new
 /// environment assumption to the ASSUME section (a conditional `G(c -> F r)`

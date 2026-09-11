@@ -110,10 +110,9 @@ bool specification_is_not_well_separated(const Specification& specification,
         WellSeparationStats::n_errors.fetch_add(1, std::memory_order_relaxed);
     }
     // An undecided query reads as not-well-separated, so the candidate is
-    // dropped. This filter inverts the usual reading of a failed synthesis:
-    // "unrealizable" is what keeps a candidate here, so defaulting a timeout to
-    // it would admit specifications nobody checked, and the filter's own cost
-    // is what makes timeouts more likely in the first place.
+    // rejected. This check inverts the usual reading of a failed synthesis:
+    // "unrealizable" is what passes a candidate here, so defaulting a timeout
+    // to it would admit specifications nobody checked.
     return realizable.value_or(true);
 }
 

@@ -94,8 +94,7 @@ bool contains_kind(const Formula& formula, Formula::Kind kind) {
 void test_mutation_preserves_temporal_skeleton() {
     Config cfg;
     cfg.tlsf_p_temporal = 0.0;  // isolate the skeleton-preserving rewrite
-    cfg.tlsf_p_monotone =
-        0.0;  // ... which the monotone arm is offered ahead of
+    cfg.p_monotone = 0.0;  // ... which the monotone arm is offered ahead of
     const tlsf::Specification original = parse(
         "INPUTS { req; } OUTPUTS { grant; } GUARANTEE { G(req -> F "
         "grant); }");
@@ -202,7 +201,7 @@ void test_temporal_mutation_changes_skeleton() {
     // change at least once, and every result must stay well-formed.
     Config cfg;
     cfg.tlsf_p_temporal = 1.0;
-    cfg.tlsf_p_monotone = 0.0;   // the monotone arm is offered ahead of it
+    cfg.p_monotone = 0.0;        // the monotone arm is offered ahead of it
     cfg.p_add_assumption = 0.0;  // isolate the rewrite path
     cfg.p_remove_guarantee = 0.0;
     const tlsf::Specification original = parse(
@@ -239,7 +238,7 @@ void test_temporal_mutation_can_emit_an_implication() {
     // produce one.
     Config cfg;
     cfg.tlsf_p_temporal = 1.0;
-    cfg.tlsf_p_monotone = 0.0;  // the monotone arm is offered ahead of it
+    cfg.p_monotone = 0.0;  // the monotone arm is offered ahead of it
     cfg.p_add_assumption = 0.0;
     cfg.p_remove_guarantee = 0.0;
     const tlsf::Specification original =
@@ -262,10 +261,9 @@ void test_temporal_mutation_can_emit_an_implication() {
 
 // Case (2d) of mutate_temporal is the arm firing at an atom or a unary node.
 // It grafts a drawn anchor onto the mutated child under a connective, and
-// that connective menu kept the Brizzio-fragment exclusion pick_binary_kind
-// shed on 2026-08-21 — so a guarded response, the shape of every minimal
-// guarantee weakening, was out of reach in one draw at exactly the nodes
-// where a guard has to be introduced.
+// that menu draws an implication, so a guarded response -- the shape of every
+// minimal guarantee weakening -- is one draw away at exactly the nodes where a
+// guard has to be introduced.
 //
 // `G g` is the subject that isolates the graft: its child is an atom, and
 // case (1) emits only an atom or a unary node, so pick_connective_kind is the
@@ -274,18 +272,17 @@ tlsf::Specification connective_subject() {
     return parse("INPUTS { r; } OUTPUTS { g; } GUARANTEE { G g; }");
 }
 
-Config connective_config(bool connective_implies) {
+Config connective_config() {
     Config cfg;
     cfg.tlsf_p_temporal = 1.0;
-    cfg.tlsf_p_monotone = 0.0;  // the monotone arm is offered ahead of it
+    cfg.p_monotone = 0.0;  // the monotone arm is offered ahead of it
     cfg.p_add_assumption = 0.0;
     cfg.p_remove_guarantee = 0.0;
-    cfg.tlsf_connective_implies = connective_implies;
     return cfg;
 }
 
 void test_connective_graft_can_emit_an_implication() {
-    const Config cfg = connective_config(true);
+    const Config cfg = connective_config();
     const tlsf::Specification original = connective_subject();
     bool grafted = false;
     for (std::size_t seed = 0; seed < 200 && !grafted; ++seed) {
@@ -302,30 +299,12 @@ void test_connective_graft_can_emit_an_implication() {
            "at least one seed");
 }
 
-// The property the gate exists to hold. Off, the graft draws from four kinds
-// in the order it always did, so next_index takes the same modulus and every
-// draw after it follows. An arm leaking into the off setting shows up here as
-// an implication in a subject that can produce one no other way.
-void test_connective_graft_off_emits_no_implication() {
-    const Config cfg = connective_config(false);
-    const tlsf::Specification original = connective_subject();
-    for (std::size_t seed = 0; seed < 200; ++seed) {
-        const RandomSource rng = make_random_source_from_seed(seed);
-        const tlsf::Specification mutated = tlsf_mutate(original, rng, cfg);
-        const Formula& formula = mutated.m_guarantee.front().m_formula;
-        expect(!contains_kind(formula, Formula::Kind::Implies),
-               "connective draw: with the key off the graft emits no "
-               "implication, got `" +
-                   formula.to_string() + "`");
-    }
-}
-
 void test_temporal_mutation_atoms_from_inputs_only() {
     // The temporal operator threads the side-appropriate atom pool through its
     // recursion, so an assumption-side rewrite must never draw an output atom.
     Config cfg;
     cfg.tlsf_p_temporal = 1.0;
-    cfg.tlsf_p_monotone = 0.0;  // the monotone arm is offered ahead of it
+    cfg.p_monotone = 0.0;  // the monotone arm is offered ahead of it
     cfg.p_add_assumption = 0.0;
     cfg.p_remove_guarantee = 0.0;
     cfg.allow_output_assumptions = false;
@@ -554,7 +533,7 @@ void test_weak_until_over_output_is_reachable() {
     cfg.p_remove_guarantee = 0.0;
     cfg.tlsf_p_assumption = 1.0;  // always mutate the assumption side
     cfg.tlsf_p_temporal = 1.0;    // always the temporal (skeleton) rewrite
-    cfg.tlsf_p_monotone = 0.0;    // which the monotone arm is offered ahead of
+    cfg.p_monotone = 0.0;         // which the monotone arm is offered ahead of
     cfg.allow_output_assumptions = true;
     tlsf::Specification seed_spec;
     seed_spec.m_inputs = {"r"};
@@ -585,8 +564,8 @@ void test_weak_until_over_output_is_reachable() {
 void test_add_assumption_can_reference_output_when_allowed() {
     // With allow_output_assumptions set, the appended assumption draws from
     // inputs ∪ outputs, so the output atom is reachable over a range of seeds.
-    // The well-separation filter, not a syntactic ban, is what then prunes any
-    // not-well-separated result.
+    // The well-separation check at the final gate, not a syntactic ban, is
+    // what then rejects any not-well-separated result.
     tlsf::Specification spec;
     spec.m_inputs = {"req"};
     spec.m_outputs = {"grant"};
@@ -761,7 +740,6 @@ void run_tlsf_genetic_tests() {
     test_temporal_mutation_changes_skeleton();
     test_temporal_mutation_can_emit_an_implication();
     test_connective_graft_can_emit_an_implication();
-    test_connective_graft_off_emits_no_implication();
     test_temporal_mutation_atoms_from_inputs_only();
     test_add_assumption_forms();
     test_add_assumption_never_obliges_an_output();

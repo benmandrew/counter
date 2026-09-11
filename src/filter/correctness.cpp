@@ -37,6 +37,6 @@ std::vector<CorrectnessCheck> correctness_checks(SatisfiabilityChecker& sat,
                           return !specification_is_not_well_separated(spec,
                                                                       real);
                       },
-                      &Config::run_well_separation_filter});
+                      nullptr});
     return checks;
 }

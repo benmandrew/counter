@@ -193,9 +193,12 @@ struct Config {
     /// check. The FRETISH side was an assume-guarantee decomposition pairing
     /// each requirement against a single counterpart until then, and it
     /// under-detected: a weakening holding only via several requirements
-    /// together read as no weakening at all. Archived FRETISH `n_repairs`,
-    /// `n_implies` and `implies_ideal` were recorded under that weaker check
-    /// and do not compare against rows taken after it.
+    /// together read as no weakening at all. Archived FRETISH `n_repairs` and
+    /// `n_implies` were recorded under that weaker check and do not compare
+    /// against rows taken after it; over 25 paired runs the first fell 17.8%.
+    /// `implies_ideal` did not move over those runs, reading 15 of 25 under
+    /// both checks, so it is the one endpoint that still compares, and on 25
+    /// runs rather than by construction.
     bool run_weakening_filter = false;
     bool run_implication_filter = true;
     /// Drop candidates that hold for free rather than because anything was

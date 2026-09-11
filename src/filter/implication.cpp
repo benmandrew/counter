@@ -10,6 +10,7 @@
 #include "bounded_async.hpp"
 #include "config.hpp"
 #include "filter/implication_check.hpp"
+#include "fingerprint/prefilter.hpp"
 #include "fitness/syntactic_similarity.hpp"
 #include "requirement.hpp"
 #include "thread_pool.hpp"
@@ -48,6 +49,7 @@ bool prefer_a(const Specification& spec_a, const Specification& spec_b,
 void check_pair(const std::vector<Specification>& pop,
                 const std::vector<std::size_t>& representatives,
                 const std::vector<double>& keys,
+                const std::vector<fingerprint::PackedFingerprint>& prints,
                 std::vector<std::atomic<uint8_t>>& subsumed,
                 SatisfiabilityChecker& checker, std::size_t a_pos,
                 std::size_t b_pos) {
@@ -65,10 +67,23 @@ void check_pair(const std::vector<Specification>& pop,
     // both endpoints. An equivalence that only one direction proves in time
     // therefore reads as strict domination, and one that neither proves keeps
     // both -- the collapse is best-effort, like the rest of the sweep.
+    //
+    // A sampled word one side accepts and the other rejects settles that
+    // direction as false, so the solver is asked only where no word separated
+    // them. value_or(false) reads a timeout the same way, so a refutation here
+    // can only replace an undecided verdict with the answer that verdict was
+    // already being given.
+    const bool have_prints = !prints.empty();
+    const bool a_refuted = have_prints && fingerprint::refutes_implication(
+                                              prints[a_pos], prints[b_pos]);
+    const bool b_refuted = have_prints && fingerprint::refutes_implication(
+                                              prints[b_pos], prints[a_pos]);
     const bool a_implies_b =
-        spec_implies(spec_a, spec_b, checker).value_or(false);
+        a_refuted ? false
+                  : spec_implies(spec_a, spec_b, checker).value_or(false);
     const bool b_implies_a =
-        spec_implies(spec_b, spec_a, checker).value_or(false);
+        b_refuted ? false
+                  : spec_implies(spec_b, spec_a, checker).value_or(false);
     if (a_implies_b && b_implies_a) {
         const bool keep_a = prefer_a(spec_a, spec_b, keys[a_pos], keys[b_pos]);
         subsumed[keep_a ? b_pos : a_pos].store(1, std::memory_order_relaxed);
@@ -118,13 +133,41 @@ std::vector<uint8_t> compute_subsumed(
         }
     }
 
+    // Once per representative, ahead of a sweep quadratic in them.
+    std::vector<Specification> rep_specs;
+    rep_specs.reserve(n_reps);
+    for (const std::size_t index : representatives) {
+        rep_specs.push_back(pop[index]);
+    }
+    const std::vector<fingerprint::PackedFingerprint> prints =
+        fingerprint::prefilter::fingerprints_of(rep_specs);
+    // A pair both of whose directions a word refutes is dropped here rather
+    // than dispatched and returned from. Dispatching it costs more than the
+    // two ANDs it saves: `run_bounded_async` bounds how many items are in
+    // flight, so a region that is mostly instant tasks keeps refilling its
+    // window with them and holds about one subprocess open at a time.
     std::vector<std::pair<std::size_t, std::size_t>> pairs;
     pairs.reserve(n_reps * (n_reps - 1) / 2);
+    std::size_t refuted_directions = 0;
     for (std::size_t i = 0; i < n_reps; ++i) {
         for (std::size_t j = i + 1; j < n_reps; ++j) {
-            pairs.emplace_back(i, j);
+            if (prints.empty()) {
+                pairs.emplace_back(i, j);
+                continue;
+            }
+            const bool forward =
+                fingerprint::refutes_implication(prints[i], prints[j]);
+            const bool backward =
+                fingerprint::refutes_implication(prints[j], prints[i]);
+            refuted_directions += static_cast<std::size_t>(forward) +
+                                  static_cast<std::size_t>(backward);
+            if (!forward || !backward) {
+                pairs.emplace_back(i, j);
+            }
         }
     }
+    ImplicationFilterStats::n_fingerprint_refuted.fetch_add(
+        refuted_directions, std::memory_order_relaxed);
     std::vector<std::atomic<uint8_t>> subsumed_reps(n_reps);
     for (auto& flag : subsumed_reps) {
         flag.store(0, std::memory_order_relaxed);
@@ -133,14 +176,14 @@ std::vector<uint8_t> compute_subsumed(
     std::size_t completed = 0;
     run_bounded_async(
         pairs.size(), max_in_flight,
-        [&checker, &pop, &representatives, &keys, &subsumed_reps,
+        [&checker, &pop, &representatives, &keys, &prints, &subsumed_reps,
          &pairs](std::size_t idx) {
             const std::size_t a_pos = pairs[idx].first;
             const std::size_t b_pos = pairs[idx].second;
-            return [&checker, &pop, &representatives, &keys, &subsumed_reps,
-                    a_pos, b_pos] {
-                check_pair(pop, representatives, keys, subsumed_reps, checker,
-                           a_pos, b_pos);
+            return [&checker, &pop, &representatives, &keys, &prints,
+                    &subsumed_reps, a_pos, b_pos] {
+                check_pair(pop, representatives, keys, prints, subsumed_reps,
+                           checker, a_pos, b_pos);
             };
         },
         [&on_progress, &completed, total = pairs.size()](std::size_t) {
@@ -242,6 +285,8 @@ FilterFunction make_implication_filter(
                 ImplicationFilterStats::n_timeouts.store(
                     0, std::memory_order_relaxed);
                 ImplicationFilterStats::n_equivalent_collapsed.store(
+                    0, std::memory_order_relaxed);
+                ImplicationFilterStats::n_fingerprint_refuted.store(
                     0, std::memory_order_relaxed);
                 if (pop.size() <= 1) {
                     return pop;

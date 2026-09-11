@@ -1,27 +1,28 @@
 #pragma once
 
 /// @file implication_check.hpp
-/// @brief Pairwise assume-guarantee implication check between two
-///        specifications, used by the implication and weakening filters.
+/// @brief Pairwise implication check between two whole specifications, used
+///        by the implication and weakening filters.
 
 #include <optional>
 
 #include "requirement.hpp"
 #include "runner/black.hpp"
 
-/// Returns whether spec `from` logically implies spec `dest`, using a
-/// sufficient assume-guarantee decomposition: each of from's assumptions must
-/// be implied by some assumption of dest (dest assumes no more than from
-/// requires), and each of dest's guarantees must be implied by some guarantee
-/// of from.
+/// Returns whether spec `from` logically implies spec `dest`, as one query
+/// over the two whole-specification lowerings: `from.to_ltl() & !dest.to_ltl()`
+/// is unsatisfiable exactly when the implication holds.
 ///
 /// Returns true if implication is confirmed, false if it is definitively
-/// refuted, or nullopt if some individual check timed out and the result is
-/// uncertain (the implication may or may not hold).
+/// refuted, or nullopt if the check timed out and the result is uncertain.
 ///
-/// Under-detects implication: implications that only hold via a combination of
-/// several requirements are missed. Definite false returns are conservative
-/// (a spec that is actually dominated may be retained), never false positives.
+/// Exact, so a false return is a fact about the two specifications rather than
+/// a limit of the check. It decomposed per requirement until 2026-09-11 --
+/// each of dest's guarantees implied by *some single* guarantee of from, and
+/// the assumptions the other way round -- which missed every implication
+/// holding only via several requirements together, and asked 9 to 26 queries
+/// per pair where this asks one. `tlsf_spec_implies` has had this shape since
+/// the TLSF path existed, and the two now agree.
 ///
 /// @param from     The candidate stronger specification.
 /// @param dest     The candidate weaker specification.

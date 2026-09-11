@@ -125,7 +125,14 @@ namespace {
 // 25 added mutation.p_monotone, the FRETISH monotone rewrite arm. Its TLSF
 // twin tlsf.mutation.p_monotone has been in the config block since the block
 // existed, so a reader keying on the name alone now finds two.
-constexpr int k_schema_version = 25;
+//
+// 26 added implication.fingerprint_refuted, the ordered pairs a sampled word
+// settled ahead of the solver. It is the only reading of whether the prefilter
+// worked on a given run, the pairs it refutes never reaching `comparisons`.
+// The same version is where the FRETISH implication check stopped decomposing
+// per requirement, so `comparisons`, `timeouts` and the repair counts beside
+// them are not comparable across it on that path.
+constexpr int k_schema_version = 26;
 
 // The inverse of the spellings config_io.cpp parses. It has no table to
 // borrow -- it only ever goes string to enum -- so these must be kept in step
@@ -356,14 +363,18 @@ nlohmann::json tool_calls_json() {
 // earlier verdict already settled, `duplicates` the specs excluded from the
 // sweep outright, and `timeouts` the checks that gave no verdict and so read
 // as non-implication. `equivalent_collapsed` counts the pairs found mutually
-// equivalent, a class of k members contributing k-1.
+// equivalent, a class of k members contributing k-1. `fingerprint_refuted`
+// counts ordered pairs, two per unordered pair, so a pair both directions of
+// which a sampled word refuted never reaches `comparisons` at all.
 nlohmann::json implication_json() {
     return {{"comparisons", ImplicationFilterStats::n_comparisons.load()},
             {"skipped", ImplicationFilterStats::n_skipped.load()},
             {"duplicates", ImplicationFilterStats::n_duplicates.load()},
             {"timeouts", ImplicationFilterStats::n_timeouts.load()},
             {"equivalent_collapsed",
-             ImplicationFilterStats::n_equivalent_collapsed.load()}};
+             ImplicationFilterStats::n_equivalent_collapsed.load()},
+            {"fingerprint_refuted",
+             ImplicationFilterStats::n_fingerprint_refuted.load()}};
 }
 
 nlohmann::json caches_json() {

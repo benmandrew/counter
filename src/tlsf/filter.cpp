@@ -19,11 +19,11 @@
 #include "filter/implication.hpp"
 #include "filter/well_separation.hpp"
 #include "fingerprint/lasso.hpp"
+#include "fingerprint/prefilter.hpp"
 #include "prop_formula.hpp"
 #include "runner/black.hpp"
 #include "runner/spot.hpp"
 #include "thread_pool.hpp"
-#include "tlsf/fingerprint_prefilter.hpp"
 #include "tlsf/fitness.hpp"
 #include "tlsf/specification.hpp"
 
@@ -207,7 +207,7 @@ std::vector<uint8_t> compute_subsumed(
         rep_specs.push_back(pop[index]);
     }
     const std::vector<fingerprint::PackedFingerprint> prints =
-        tlsf::prefilter::fingerprints_of(rep_specs);
+        fingerprint::prefilter::fingerprints_of(rep_specs);
     // A pair both of whose directions a word refutes is dropped here rather
     // than dispatched and returned from. Dispatching it costs more than the
     // two ANDs it saves: `run_bounded_async` bounds how many items are in

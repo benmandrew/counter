@@ -53,6 +53,15 @@ std::vector<LassoWord> sample_words(const std::vector<std::string>& signals,
 std::vector<bool> fingerprint_of(const Formula& formula,
                                  const std::vector<LassoWord>& words);
 
+/// The same, over an LTL string in SPOT syntax. The FRETISH lowering is
+/// assembled as a string by `requirement_to_ltl` rather than held as a
+/// `Formula`, so that path has nothing to render and reaches evaluation here.
+///
+/// @throws std::invalid_argument if @p ltl is not a string this codebase's own
+///         parser reads back.
+std::vector<bool> fingerprint_of(const std::string& ltl,
+                                 const std::vector<LassoWord>& words);
+
 /// A fingerprint packed for the pairwise test, 64 words to an element.
 using PackedFingerprint = std::vector<std::uint64_t>;
 

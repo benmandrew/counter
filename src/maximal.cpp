@@ -14,10 +14,10 @@
 #include "config.hpp"
 #include "driver_support.hpp"
 #include "fingerprint/lasso.hpp"
+#include "fingerprint/prefilter.hpp"
 #include "runner/black.hpp"
 #include "thread_pool.hpp"
 #include "tlsf/filter.hpp"
-#include "tlsf/fingerprint_prefilter.hpp"
 #include "tlsf/parser.hpp"
 #include "tlsf/specification.hpp"
 
@@ -308,7 +308,7 @@ int main(int argc, const char* const argv[]) {
     }
 
     const Quotient quotient = quotient_by_equivalence(
-        maximal, checker, tlsf::prefilter::fingerprints_of(maximal));
+        maximal, checker, fingerprint::prefilter::fingerprints_of(maximal));
     print_report(maximal, quotient, position_of, members, distinct.size(),
                  parse_failures);
     return 0;

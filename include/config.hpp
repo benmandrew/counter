@@ -186,14 +186,16 @@ struct Config {
     /// reaching realizability while forbidding allowed behaviour. Turn it on
     /// where that property is wanted over yield.
     ///
-    /// Applies on both paths, but the check behind it differs in strength. The
-    /// FRETISH spec_implies is an assume-guarantee decomposition that pairs
-    /// each requirement against a single counterpart, and so under-detects: it
-    /// can reject a genuine weakening that only holds via several requirements
-    /// together. The TLSF tlsf_spec_implies lowers the whole specification to
-    /// one LTL formula and is exact, so a rejection there is a fact about the
-    /// two specs. Expect the TLSF screen to reject more, and to be right when
-    /// it does.
+    /// Applies on both paths, and since 2026-09-11 the check behind it is the
+    /// same on both: `spec_implies` and `tlsf_spec_implies` each lower the
+    /// whole specification to one LTL formula and ask one query, so a
+    /// rejection is a fact about the two specs rather than a limit of the
+    /// check. The FRETISH side was an assume-guarantee decomposition pairing
+    /// each requirement against a single counterpart until then, and it
+    /// under-detected: a weakening holding only via several requirements
+    /// together read as no weakening at all. Archived FRETISH `n_repairs`,
+    /// `n_implies` and `implies_ideal` were recorded under that weaker check
+    /// and do not compare against rows taken after it.
     bool run_weakening_filter = false;
     bool run_implication_filter = true;
     /// Drop candidates that hold for free rather than because anything was

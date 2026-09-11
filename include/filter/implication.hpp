@@ -33,8 +33,8 @@ struct ImplicationFilterStats {
     /// side accepts a word the other rejects, which is a witness for
     /// `a & !b` and settles `a -> b` as false. Two of these per unordered
     /// pair, so a pair both directions of which are refuted costs no call at
-    /// all. TLSF only, the sampling being over a specification's declared
-    /// signals.
+    /// all. Both paths sample, over the specification's declared signals --
+    /// inputs, outputs, and on the FRETISH path the modes a scope names.
     inline static std::atomic<std::size_t> n_fingerprint_refuted{0};
     /// Pairs found mutually equivalent, each of which dropped one side. This
     /// is the width of the population's equivalence classes, which nothing

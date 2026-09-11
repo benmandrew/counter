@@ -105,41 +105,6 @@ std::string join_comma(const std::vector<std::string>& items) {
     return result;
 }
 
-// Removed requirements are skipped: they are not part of what the
-// specification says, so they must not reach a solver.
-void build_ltl_conjunction(const std::vector<Requirement>& reqs,
-                           std::string& out) {
-    bool first = true;
-    for (const Requirement& req : reqs) {
-        if (req.m_removed) {
-            continue;
-        }
-        if (!first) {
-            out += " & ";
-        }
-        out += "(" + req.m_ltl + ")";
-        first = false;
-    }
-    // An all-removed list conjoins to nothing. Emit the unit of conjunction
-    // rather than an empty string, which would produce `() -> ()`.
-    if (out.empty()) {
-        out = "true";
-    }
-}
-
-void build_specification_formula(const Specification& specification,
-                                 std::string& formula) {
-    if (count_live(specification.m_assumptions) == 0) {
-        build_ltl_conjunction(specification.m_guarantees, formula);
-        return;
-    }
-    std::string conj_a;
-    build_ltl_conjunction(specification.m_assumptions, conj_a);
-    std::string conj_g;
-    build_ltl_conjunction(specification.m_guarantees, conj_g);
-    formula = "(" + conj_a + ") -> (" + conj_g + ")";
-}
-
 // The universal (trivially-true) automaton, in the exact HOA shape ltl2tgba
 // itself emits for the constant `true`: one accepting state over zero atoms
 // with a `[t]` self-loop. Substituted for the exit-2-on-tautology bug below;
@@ -403,8 +368,7 @@ std::optional<bool> RealizabilityChecker::subsumed_verdict(
 
 std::optional<bool> RealizabilityChecker::check_realizability(
     const Specification& specification) {
-    std::string conj_ltl;
-    build_specification_formula(specification, conj_ltl);
+    const std::string conj_ltl = specification.to_ltl();
     SpecificationSides sides;
     for (const Requirement& requirement : specification.m_assumptions) {
         if (!requirement.m_removed) {

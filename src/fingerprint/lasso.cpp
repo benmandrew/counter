@@ -206,17 +206,20 @@ std::vector<LassoWord> sample_words(const std::vector<std::string>& signals,
 
 std::vector<bool> fingerprint_of(const Formula& formula,
                                  const std::vector<LassoWord>& words) {
-    // Parsed once rather than once per word: the arena is what evaluation
-    // walks, and a fingerprint is hundreds of words over one formula. The
-    // round trip through the rendered string is how a Formula's arena is
+    // The round trip through the rendered string is how a Formula's arena is
     // reached from outside the class, and is the same one formula_key's
     // renaming already relies on.
-    const std::string rendered = formula.to_string();
+    return fingerprint_of(formula.to_string(), words);
+}
+
+std::vector<bool> fingerprint_of(const std::string& ltl,
+                                 const std::vector<LassoWord>& words) {
+    // Parsed once rather than once per word: the arena is what evaluation
+    // walks, and a fingerprint is hundreds of words over one formula.
     const std::optional<std::vector<Node>> nodes =
-        prop_formula_internal::try_parse_formula(rendered);
+        prop_formula_internal::try_parse_formula(ltl);
     if (!nodes.has_value()) {
-        throw std::invalid_argument("cannot re-parse rendered formula: " +
-                                    rendered);
+        throw std::invalid_argument("cannot parse formula: " + ltl);
     }
     std::vector<bool> bits;
     bits.reserve(words.size());

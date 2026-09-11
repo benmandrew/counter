@@ -111,7 +111,7 @@ target_sources(counter_fitness PRIVATE
     src/tlsf/crossover.cpp
     src/tlsf/operators.cpp
     src/tlsf/filter.cpp
-    src/tlsf/fingerprint_prefilter.cpp
+    src/fingerprint/prefilter.cpp
     src/tlsf/mucs.cpp
     src/tlsf/guarantee_parts.cpp
     src/tlsf/pipeline.cpp
@@ -205,7 +205,7 @@ target_link_libraries(mucs PRIVATE counter_fitness)
 
 add_executable(maximal src/maximal.cpp)
 target_link_libraries(maximal PRIVATE counter_fitness)
-# maximal reaches one internal header, src/tlsf/fingerprint_prefilter.hpp, so
+# maximal reaches one internal header, src/fingerprint/prefilter.hpp, so
 # that its equivalence quotient prefilters on the same words the pairwise sweep
 # does. include/ stays the published surface.
 target_include_directories(maximal PRIVATE src)

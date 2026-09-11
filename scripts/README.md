@@ -228,11 +228,13 @@ depth it reached, and the disjoint 0-29 / 30-59 ranges merge to one balanced
 dataset whether or not either finishes.
 
 The profile runs at `--jobs 1`, unlike the FRETISH profiles' `--jobs 4`, for two
-reasons. First, `ltlsynt` turns multi-gigabyte resident on these specs, and its
-concurrency cap (`runtime.max_concurrent_realizability`) is per counter process,
-so one process per machine keeps that cap the machine-wide limit — the 128 GB
-av2/av3 grid is generated uncapped (32 cores × ~2.7 GB peaks near 86 GB), but a
-smaller-RAM box should pass `--tlsf --max-realizability 6`. Second, `ltlsynt` has
+reasons. First, `ltlsynt` turns multi-gigabyte resident on these specs, and
+nothing caps its concurrency except the counter process's `runtime.parallel`, so
+one process per machine keeps that the machine-wide limit — on the 128 GB
+av2/av3 grid, 32 cores × ~2.7 GB peaks near 86 GB, and a smaller-RAM box should
+lower `runtime.parallel`. (`runtime.max_concurrent_realizability` and
+`--max-realizability`, which capped it separately, were removed on 2026-09-11.)
+Second, `ltlsynt` has
 no internal timeout and the genetic search occasionally generates a synthesis
 query that runs for minutes; the campaign sets `runtime.ltlsynt_timeout_ms`
 (500 ms — call durations are sharply bimodal, 95% finishing under 50 ms with an

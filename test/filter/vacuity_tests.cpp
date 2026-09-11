@@ -253,29 +253,18 @@ bool chain_has_vacuity_stage(const std::vector<FilterFunction>& filters) {
                        });
 }
 
-void test_flag_gates_the_whole_filter() {
+void test_chain_always_carries_the_vacuity_stage() {
     SatisfiabilityChecker checker;
     const Specification original =
         with_guarantees({conditional("req", "grant")});
     const Specification vacuous = with_guarantees({conditional("req", "true")});
 
-    Config cfg;
-    cfg.run_vacuity_filter = true;
-    const std::vector<FilterFunction> enabled =
-        get_filter_functions(cfg, original, checker);
-    expect(chain_has_vacuity_stage(enabled),
-           "vacuity: the chain carries a vacuity stage when the flag is on");
-    expect(filter_population({original, vacuous}, enabled).size() == 1,
-           "vacuity: the vacuous candidate is dropped when the flag is on");
-
-    cfg.run_vacuity_filter = false;
-    const std::vector<FilterFunction> disabled =
-        get_filter_functions(cfg, original, checker);
-    expect(!chain_has_vacuity_stage(disabled),
-           "vacuity: the chain has no vacuity stage when the flag is off");
-    expect(filter_population({original, vacuous}, disabled).size() == 2,
-           "vacuity: no stage screens the syntactic cases when the flag is "
-           "off");
+    const std::vector<FilterFunction> filters =
+        get_filter_functions(original, checker);
+    expect(chain_has_vacuity_stage(filters),
+           "vacuity: the chain always carries a vacuity stage");
+    expect(filter_population({original, vacuous}, filters).size() == 1,
+           "vacuity: the vacuous candidate is dropped per generation");
 }
 
 }  // namespace
@@ -295,5 +284,5 @@ void run_vacuity_filter_tests() {
     test_substantive_guarantee_is_not_valid();
     test_one_valid_guarantee_among_substantive_ones_rejects();
     test_guarantee_timeout_keeps_the_candidate();
-    test_flag_gates_the_whole_filter();
+    test_chain_always_carries_the_vacuity_stage();
 }

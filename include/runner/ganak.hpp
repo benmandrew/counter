@@ -4,7 +4,6 @@
 /// @brief Wrapper around the Ganak weighted model counter, used to count
 ///        satisfying valuations for automaton transitions.
 
-#include <chrono>
 #include <cstddef>
 #include <stdexcept>
 #include <string>
@@ -41,15 +40,6 @@ class GanakTimeout : public std::runtime_error {
 /// GANAK_EXECUTABLE_PATH preprocessor definition baked in at build time. The
 /// environment is read once, on first use.
 std::string ganak_executable_path();
-
-/// Per-call wall-clock budget for the ganak exec (process-global, like the
-/// other tool budgets). A call exceeding it is killed and raised as an error,
-/// dropping the individual rather than stalling the run. Zero (the default)
-/// disables the timeout: counting is the fitness function's real work, so a
-/// slow count is usually a legitimately hard one, and abandoning it spends the
-/// run's scoring-failure tolerance. Set once at startup from
-/// Config::ganak_timeout.
-void set_ganak_timeout(std::chrono::milliseconds timeout);
 
 /// When cpu_s_out is non-null it receives the child's user+sys CPU time in
 /// seconds (from wait4), letting run_ganak_on_formula attribute CPU to ganak.

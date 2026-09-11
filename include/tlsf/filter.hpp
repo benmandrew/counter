@@ -80,9 +80,8 @@ bool tlsf_is_vacuous(const tlsf::Specification& spec,
 /// spec with no assumption formulae is kept; an uncertain (timed-out)
 /// satisfiability result is treated as satisfiable and the spec is kept.
 ///
-/// Gated by Config::run_vacuity_filter, as on the FRETISH path. The final
-/// repair screen applies the predicate unconditionally either way, so turning
-/// the filter off costs search pressure, never output correctness.
+/// Runs every generation, as on the FRETISH path, and the final repair screen
+/// applies the predicate again to whatever reaches it.
 ///
 /// @param max_in_flight Concurrent checks. Each spec carrying assumptions costs
 ///                      a `black` subprocess on a cache miss, and the miss rate
@@ -119,8 +118,7 @@ bool tlsf_is_not_well_separated(const tlsf::Specification& spec,
 ///
 /// @param checker       Realizability checker for the ltlsynt query; must be
 ///                      thread-safe when max_in_flight exceeds 1
-/// @param max_in_flight Concurrent checks. Each is a full ltlsynt query, itself
-///                      gated by Config::max_concurrent_realizability.
+/// @param max_in_flight Concurrent checks. Each is a full ltlsynt query.
 FilterFunctionT<tlsf::Specification> tlsf_make_well_separation_filter(
     RealizabilityChecker& checker, std::size_t max_in_flight = 1);
 

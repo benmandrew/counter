@@ -3,6 +3,8 @@
 #include <sstream>
 #include <stdexcept>
 #include <string>
+#include <utility>
+#include <vector>
 
 #include "config.hpp"
 #include "config_io.hpp"
@@ -528,7 +530,6 @@ p_add_assumption         = 0.05
 p_conditional_assumption = 0.25
 p_remove_guarantee       = 0.05
 p_monotone               = 0.25
-allow_output_assumptions = false
 
 [tlsf]
 repair_mode        = "muc"
@@ -545,16 +546,13 @@ metric        = "direct"
 
 [filters]
 run_implication = false
-run_vacuity     = true
 
 [runtime]
 black_timeout_ms             = 500
 ltlsynt_timeout_ms           = 30000
 ltl2tgba_timeout_ms          = 1000
 ltlfilt_timeout_ms           = 2000
-ganak_timeout_ms             = 4000
 parallel                     = 4
-max_concurrent_realizability = 6
 max_scoring_failure_rate     = 0.05
 dashboard                    = true
 )";
@@ -577,6 +575,40 @@ void test_config_io_retired_key_warns_with_hint() {
            "config_io: a removed key's warning should say why it is gone, "
            "got: " +
                warnings);
+}
+
+// The keys removed with their operators or gates take the same path: each is
+// warned about by its full path with a removal hint, and ignored rather than
+// rejected, so an archived config that sets one still loads.
+void test_config_io_removed_operator_keys_warn_and_are_ignored() {
+    const std::vector<std::pair<std::string, std::string>> removed = {
+        {"filters", "run_vacuity = false"},
+        {"mutation", "allow_output_assumptions = false"},
+        {"tlsf.mutation", "p_remove_assumption = 0.5"},
+        {"tlsf.mutation", "p_burst_continue = 0.5"},
+        {"runtime", "ganak_timeout_ms = 4000"},
+        {"runtime", "max_concurrent_realizability = 6"},
+    };
+    for (const auto& [section, line] : removed) {
+        const std::string key = line.substr(0, line.find(' '));
+        std::string path = section;
+        path += '.';
+        path += key;
+        std::string toml = "[";
+        toml += section;
+        toml += "]\n";
+        toml += line;
+        toml += '\n';
+        const std::string warnings = warnings_from(toml);
+        std::string prefix = "config_io: removed key ";
+        prefix += path;
+        expect(warnings.find("unknown key " + path) != std::string::npos,
+               prefix + " should be named by its full path");
+        std::string hint_message = prefix;
+        hint_message += " should carry a removal hint, got: ";
+        hint_message += warnings;
+        expect(warnings.find("(removed") != std::string::npos, hint_message);
+    }
 }
 
 void test_config_io_unknown_section_warns() {
@@ -682,6 +714,7 @@ void run_config_io_tests() {
     test_config_io_muc_max_iterations_nonpositive_throws();
     test_config_io_known_keys_do_not_warn();
     test_config_io_retired_key_warns_with_hint();
+    test_config_io_removed_operator_keys_warn_and_are_ignored();
     test_config_io_unknown_section_warns();
     test_config_io_unknown_key_warns();
     test_config_io_unknown_top_level_key_warns();

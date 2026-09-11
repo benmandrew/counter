@@ -96,7 +96,6 @@ p_conditional_assumption = 0.25
 # Some repairs are unreachable without it. Set to 0 to reproduce a run from
 # before the operator existed.
 p_remove_guarantee       = 0.05
-allow_output_assumptions = true  # guarded by the status score, not by a filter
 
 [tlsf]
 # TLSF mode only (a .tlsf input or --format tlsf); ignored on the FRETISH path.
@@ -110,7 +109,7 @@ p_temporal   = 0.2
 # an existing one instead of building from the template, which emits at most
 # seven nodes where the assumption-shaped ideals run to thirty.
 p_clone_assumption = 0.25
-# The four keys below stand at their no-op values. The campaign that measured
+# The two keys below stand at their no-op values. The campaign that measured
 # them (experiments/2026-08-26-assumption-reach) read null on its registered
 # primary, so each stays off. At these values the RNG stream is what it was
 # before the keys existed, and no archived config changes meaning.
@@ -123,14 +122,6 @@ max_assumption_width = 1
 # `G F body`. lily11's whole ideal is a bare `F req`, which no G-wrapped
 # assumption rewrites into. 0 is the no-op.
 p_bare_assumption = 0.0
-# Probability of deleting one live ASSUME conjunct -- the mirror of
-# p_add_assumption, and the one assumption-side move that can make a candidate
-# less realizable. 0 is the no-op.
-p_remove_assumption = 0.0
-# Mutation applies 1 + Geometric(p) edits, capped at 8, so an ideal needing
-# several coordinated slots is reachable without crossing a fitness valley one
-# slot at a time. 0 makes every mutation single, which is the no-op.
-p_burst_continue = 0.0
 
 [model_counting]
 default_bound = 20
@@ -138,10 +129,9 @@ metric        = "logarithmic"  # or "direct"
 
 [filters]
 run_implication = true
-run_vacuity     = true
 
 [runtime]
-# Per-call wall-clock budgets in ms; 0 disables one. Only ganak is unbounded:
+# Per-call wall-clock budgets in ms; 0 disables one. Ganak takes none:
 # counting is the fitness function's real work, so a slow count is usually a
 # legitimately hard one rather than a blowup. The rest are bounded because an
 # unbounded call can stall a whole run.
@@ -149,8 +139,6 @@ black_timeout_ms    = 1000
 ltlsynt_timeout_ms  = 10000
 ltl2tgba_timeout_ms = 60000
 ltlfilt_timeout_ms  = 10000
-ganak_timeout_ms    = 0
-max_concurrent_realizability = 0
 # 0.15, not 0.05: the ltl2tgba budget drops individuals by design, and enough
 # land in one generation on the heavy TLSF specs to trip a tighter bound.
 max_scoring_failure_rate     = 0.15

@@ -518,17 +518,15 @@ std::vector<Spec> filter_population(
 }
 
 /// Returns the standard set of filter functions used during evolution, in
-/// order: deduplication, a bloat cap and a vacuity filter (if enabled).
+/// order: deduplication, a bloat cap and the vacuity filter.
 /// Every one runs on every generation; the implication screen is not here but
 /// in get_final_filter_functions, which runs once over the survivors.
 ///
-/// @param cfg       Algorithm configuration (the filter enable flags)
 /// @param original  The reference specification the bloat cap is sized against
 /// @param checker   Satisfiability checker; captured by reference, must
 ///                  outlive the returned filters
 std::vector<FilterFunction> get_filter_functions(
-    const Config& cfg, const Specification& original,
-    SatisfiabilityChecker& checker);
+    const Specification& original, SatisfiabilityChecker& checker);
 
 /// Returns the set of filter functions applied to the final realizable
 /// population after evolution: deduplication, then (if run_implication_filter)

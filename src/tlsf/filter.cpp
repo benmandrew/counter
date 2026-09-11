@@ -460,12 +460,12 @@ std::vector<CorrectnessCheckT<tlsf::Specification>> tlsf_correctness_checks(
                       [&sat](const tlsf::Specification& spec) {
                           return !tlsf_is_vacuous(spec, sat);
                       },
-                      &Config::run_vacuity_filter});
+                      true});
     checks.push_back({"not-well-separated",
                       [&real](const tlsf::Specification& spec) {
                           return !tlsf_is_not_well_separated(spec, real);
                       },
-                      nullptr});
+                      false});
     return checks;
 }
 

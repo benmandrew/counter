@@ -239,8 +239,6 @@ void test_zero_probability_costs_no_draw() {
     // these is a no-op at the value set here and costs no draw.
     off.tlsf_max_assumption_width = 1;
     off.tlsf_p_bare_assumption = 0.0;
-    off.tlsf_p_remove_assumption = 0.0;
-    off.tlsf_p_burst_continue = 0.0;
     std::size_t drawn = 0;
     for (std::size_t seed = 0; seed < 8; ++seed) {
         const auto counter = std::make_shared<std::size_t>(0);

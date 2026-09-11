@@ -107,8 +107,7 @@ std::vector<ScoredSpecification> evolve_generation(
 }
 
 std::vector<FilterFunction> get_filter_functions(
-    const Config& cfg, const Specification& original,
-    SatisfiabilityChecker& checker) {
+    const Specification& original, SatisfiabilityChecker& checker) {
     const std::size_t max_in_flight = dispatch_window();
     std::vector<FilterFunction> filters;
     FilterFunction dedup = make_dedup_filter();
@@ -122,8 +121,7 @@ std::vector<FilterFunction> get_filter_functions(
     // ones the gate later hits in cache.
     for (const CorrectnessCheck& check :
          correctness_checks(checker, global_real_checker())) {
-        if (check.per_generation_flag != nullptr &&
-            cfg.*check.per_generation_flag) {
+        if (check.per_generation) {
             filters.push_back(make_predicate_filter(
                 check.name, check.admissible, max_in_flight));
         }

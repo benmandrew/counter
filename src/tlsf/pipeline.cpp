@@ -99,7 +99,7 @@ int run_repair(const std::string& input_path, const std::string& output_dir,
     dashboard.run_start(
         input_path, cfg.generations, cfg.population_size,
         maybe_seed.value_or(0), progress.objective_names,
-        generation_stage_names(internal::build_per_gen_filters(original, cfg)));
+        generation_stage_names(internal::build_per_gen_filters(original)));
     const auto wall_start = std::chrono::steady_clock::now();
     if (!dashboard.write_page().empty()) {
         std::cout << "Progress: " << dashboard.path() << "\n"

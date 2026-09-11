@@ -137,11 +137,6 @@ Config golden_config() {
     // returns to mutate_formula without drawing, so the goldens hold what they
     // held before the arm existed.
     cfg.p_monotone = 0.0;
-    // Pinned to the production default. It is also the value the goldens below
-    // were recorded under: with it off, an assumption-side rewrite draws from
-    // the inputs alone, so next_index sees a narrower bound and the trace hash
-    // moves without a single draw being added, removed or reordered.
-    cfg.allow_output_assumptions = true;
     cfg.parallel = 1;
     return cfg;
 }

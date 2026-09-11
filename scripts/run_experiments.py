@@ -635,9 +635,8 @@ PROFILES: dict[str, dict] = {
         "results_dir": EXPERIMENTS_DIR / "results-muc",
         "results_csv": EXPERIMENTS_DIR / "results-muc.csv",
         # jobs=1: one counter process per machine using its full 32-worker pool.
-        # ltlsynt is multi-GB resident per call and max_concurrent_realizability
-        # is per-process, so jobs>1 would multiply peak RAM and risk OOM; a single
-        # process keeps the (uncapped, 128 GB) limit machine-wide.
+        # ltlsynt is multi-GB resident per call, so jobs>1 would multiply peak
+        # RAM and risk OOM.
         "default_jobs": 1,
     },
     # Follow-up to the muc campaign: sweep p_add_assumption (sweep P: 0.05, 0.15,
@@ -710,11 +709,9 @@ PROFILES: dict[str, dict] = {
         "results_dir": EXPERIMENTS_DIR / "results-tlsf",
         "results_csv": EXPERIMENTS_DIR / "results-tlsf.csv",
         # jobs=1: one counter process per machine, using its full internal
-        # thread pool. The configs cap concurrent ltlsynt
-        # (max_concurrent_realizability) to bound peak RAM, and that cap is
-        # per-process, so a single process keeps it the machine-wide limit —
-        # running several counter processes at once (jobs>1) would multiply the
-        # ltlsynt count by jobs and risk the OOM the cap exists to prevent.
+        # thread pool. ltlsynt is multi-GB resident per call on these specs, so
+        # running several counter processes at once (jobs>1) would multiply
+        # peak RAM by jobs and risk an OOM.
         "default_jobs": 1,
     },
     # FRETISH arm of the ablation campaign (PLAN §1): a 2x2 factorial of
@@ -938,11 +935,10 @@ PROFILES: dict[str, dict] = {
     # measured on its own by `2026-08-19-accumulator` and this campaign holds it
     # on, so the level is a way to state the key in the archived config rather
     # than a factor. `--weakening off` does the same job for `run_weakening`.
-    # `run_well_separation` and `allow_output_assumptions` are the two keys
-    # nothing states: they ride the binary defaults (false since b101ada, true)
-    # and PLAN.md records the values, since `--pin-vintage` would write
-    # `run_well_separation = true` from a `gen_configs.DEFAULTS` entry stale
-    # since 2026-08-10 -- the same defect that put that filter into the
+    # `run_well_separation` is the one key nothing states: it rides the binary
+    # default (false since b101ada) and PLAN.md records the value, since
+    # `--pin-vintage` would write `run_well_separation = true` from a
+    # `gen_configs.DEFAULTS` entry stale since 2026-08-10 -- the same defect that put that filter into the
     # archived arm against the `aurus-h2h` profile's own stated intent.
     "aurus-h2h-ship": {
         "schemes": ["nsga2-apportion"],

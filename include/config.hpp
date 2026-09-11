@@ -165,21 +165,6 @@ struct Config {
     std::size_t default_model_counting_bound = 20;
     SimilarityMetric similarity_metric = SimilarityMetric::Logarithmic;
     bool run_implication_filter = true;
-    /// Drop candidates that hold for free rather than because anything was
-    /// repaired: ones carrying a requirement whose condition is the literal
-    /// `false`, ones with a *valid* guarantee, which demands nothing, and ones
-    /// whose assumptions are jointly
-    /// unsatisfiable, since a false antecedent makes
-    /// (assumptions) -> (guarantees) a tautology. Applied in that order, which
-    /// is cheapest first: the syntactic screen costs no solver call, the
-    /// guarantee queries are small and cached per requirement, and the
-    /// assumption query is one large one, skipped entirely when a specification
-    /// has no assumptions.
-    ///
-    /// Search pressure only. Collecting the repairs applies the same predicate
-    /// unconditionally on both paths, so turning this off never admits a
-    /// vacuous repair to the output.
-    bool run_vacuity_filter = true;
     std::chrono::milliseconds black_timeout{1000};
     /// Per-call wall-clock budget for ltlsynt realizability checks. Unlike
     /// black, ltlsynt has no internal timeout, and the genetic search
@@ -236,11 +221,6 @@ struct Config {
     /// and an abandoned call costs only a missed simplification, never an
     /// individual.
     std::chrono::milliseconds ltlfilt_timeout{10'000};
-    /// Per-call wall-clock budget for each ganak model-counting exec. 0 (the
-    /// default) disables it: counting is the fitness function's real work, so a
-    /// slow count is usually a legitimately hard one rather than a blowup, and
-    /// abandoning it drops the individual against max_scoring_failure_rate.
-    std::chrono::milliseconds ganak_timeout{0};
     /// When true, print the CPU-attribution report (your code vs. the external
     /// CLI tools, via getrusage + per-tool wait4). Set by `counter
     /// --cpu-report` alone; deliberately not a TOML key, because it asks a
@@ -453,16 +433,6 @@ struct Config {
     /// is why the
     /// unconditional form keeps the majority of the draw.
     double p_conditional_assumption = 0.25;
-    /// When true (the default), environment assumptions may reference output
-    /// atoms as well as inputs — both a freshly added assumption and a rewrite
-    /// of an existing one, on the FRETISH and TLSF paths alike. Setting it
-    /// false keeps every assumption input-only and so well-separated by
-    /// construction, at the cost of the reactive-environment assumptions
-    /// (`G(<output> -> F <input>)`) the wider draw can express. With it on,
-    /// what keeps the system from writing itself an assumption it can force to
-    /// fail is well-separation: the status objective scores an ill-separated
-    /// candidate below a genuine repair, and the output gate rejects one.
-    bool allow_output_assumptions = true;
     /// TLSF-mode mutation: probability of mutating an assumption-side section
     /// (INITIALLY/REQUIRE/ASSUME) rather than a guarantee-side one
     /// (PRESET/ASSERT/GUARANTEE) when mutating a tlsf::Specification. The
@@ -519,32 +489,32 @@ struct Config {
     /// count are clamped to it, there being no fourth distinct literal to draw
     /// from three inputs.
     ///
-    /// It defaults to 1, its no-op value, and so does each of the three keys
-    /// below it. Every one of the four is argued from the corpus rather than
-    /// measured. Here the argument is that 3 is the width `lift` needs and
-    /// the widest the corpus's ideals reach in plain literals, and that is
-    /// the whole case for it. p_monotone and tlsf_p_clone_assumption
-    /// shipped on exactly that footing in August 2026. The campaign that
-    /// tested them, `experiments/2026-08-23-monotone`, came back null, and
-    /// its pre-registered rule had to be overridden to keep them, which that
-    /// archive's `REPORT.md` records. Shipping four more the same way would
-    /// repeat that knowingly, so all four stay off until a campaign decides
-    /// them.
+    /// It defaults to 1, its no-op value, and so does the key below it. Both
+    /// are argued from the corpus rather than measured. Here the argument is
+    /// that 3 is the width `lift` needs and the widest the corpus's ideals
+    /// reach in plain literals, and that is the whole case for it. p_monotone
+    /// and tlsf_p_clone_assumption shipped on exactly that footing in August
+    /// 2026. The campaign that tested them, `experiments/2026-08-23-monotone`,
+    /// came back null, and its pre-registered rule had to be overridden to keep
+    /// them, which that archive's `REPORT.md` records. Shipping more the same
+    /// way would repeat that knowingly, so both stay off until a campaign
+    /// decides them.
     ///
     /// Two consequences follow, both of them gains. No "Config vintage" entry
-    /// is owed for any of the four: every archived config omits all four keys
-    /// and, at these defaults, still means exactly what it meant. And each
+    /// is owed for either: every archived config omits both keys and, at
+    /// these defaults, still means exactly what it meant. And each
     /// key costs no `RandomSource` draw at its no-op value, so the shipped
     /// binary's breeding stream is byte-identical to what it was before the
-    /// keys existed; `test/tlsf/assumption_tests.cpp` asserts that each of
-    /// the four draws only above that value.
+    /// keys existed; `test/tlsf/assumption_tests.cpp` asserts that each
+    /// draws only above that value.
     ///
     /// `experiments/2026-08-26-assumption-reach` measured them, at five keys:
     /// a fifth, `tlsf.mutation.p_union_assumption`, was removed rather than
     /// kept at its no-op, because it cannot reach what it was written for.
-    /// See the "Assumption construction" section of CLAUDE.md. The four that
+    /// See the "Assumption construction" section of CLAUDE.md. The two that
     /// remain stay at their no-op defaults, that campaign's registered
-    /// primary having read null.
+    /// primary having read null; p_remove_assumption and p_burst_continue
+    /// were removed with their operators.
     std::size_t tlsf_max_assumption_width = 1;
 
     /// Probability that an appended unconditional assumption is left as
@@ -562,56 +532,6 @@ struct Config {
     /// argument recorded at tlsf_max_assumption_width.
     double tlsf_p_bare_assumption = 0.0;
 
-    /// Probability that TLSF mutation deletes one live ASSUME conjunct, the
-    /// mirror of p_add_assumption.
-    ///
-    /// counter could append an assumption and clone one and never delete one,
-    /// while `p_remove_guarantee` has done the mirror job on the other side
-    /// since 2026-08-13; the asymmetry looks unintended rather than argued.
-    /// Five of the corpus's ideals replace an assumption rather than adding
-    /// beside it.
-    ///
-    /// Deleting an assumption strengthens what the system must achieve, so
-    /// this is the one assumption-side operator that can make a candidate less
-    /// realizable, and the value argued for it is the lowest of the five.
-    /// The conjunct is tombstoned rather than erased (see "Removable
-    /// guarantees"), and unlike the guarantee side there is no floor of one: a
-    /// specification that assumes nothing of its environment is meaningful.
-    ///
-    /// Read before the `RandomSource` is touched, so at 0 it costs no draw. It
-    /// defaults to 0, off, on the argument recorded at
-    /// tlsf_max_assumption_width.
-    double tlsf_p_remove_assumption = 0.0;
-
-    /// Continuation probability of a mutation burst: `tlsf_mutate` applies
-    /// `1 + Geometric(tlsf_p_burst_continue)` single mutations, capped at 8.
-    ///
-    /// A single mutation edits one slot, so an ideal needing several
-    /// coordinated edits is reachable only across as many generations with
-    /// every intermediate surviving selection, and where the intermediates are
-    /// worse than the parent the search cannot cross at all.
-    /// `examples/lily02/fixes/lilydemo05.tlsf` is two added assumptions and
-    /// four rewritten guarantees, six slots at once.
-    ///
-    /// Geometric rather than the power law of the fast-GA literature, which is
-    /// the right choice when the width a jump must cross is unknown; here it
-    /// is measured. Over the 40 ideals under `examples/` whose delta parses,
-    /// the edit width runs 0.475 at one slot, 0.200 at two, 0.200 at three and
-    /// 0.125 at four or more. `1 + Geometric(0.5)` puts 0.125 at four or more
-    /// and fits that at a KL of 0.066, against 0.163 for a power law at
-    /// \f$\beta = 1.5\f$, which would spend 0.245 of every mutation on a tail
-    /// the corpus needs half that much of -- and each surplus candidate costs
-    /// a scoring pass carrying a model count and a realizability query.
-    ///
-    /// At 0 no draw is taken and every mutation is single, which is what an
-    /// archived campaign reproduces at and what this key defaults to, off, on
-    /// the argument recorded at tlsf_max_assumption_width. The fit above
-    /// argues the value a campaign should cross the key at, and leaves the
-    /// operator off until one does. The cap of 8 is a backstop rather than a
-    /// parameter: it sits above the widest ideal the corpus holds, and
-    /// without it a continuation probability near 1 is an unbounded loop.
-    double tlsf_p_burst_continue = 0.0;
-
     /// TLSF repair strategy (see RepairMode). Muc mode caps its outer
     /// extract-repair-reintegrate loop at muc_max_iterations, so a spec whose
     /// core never becomes realizable ends the run without a repair rather than
@@ -623,26 +543,6 @@ struct Config {
     /// cgroup CPU quota where those apply -- so a containerised run is sized by
     /// what the container was given rather than by what the host has.
     std::size_t parallel = available_parallelism();
-    /// Upper bound on ltlsynt processes running concurrently across the whole
-    /// program, independent of `parallel`. 0 means unlimited (the default); a
-    /// positive value serialises the surplus while the other workers keep doing
-    /// non-ltlsynt work.
-    ///
-    /// Added on the premise that ltlsynt is *the* memory hog; measurement
-    /// qualified that. Over 149,153 tool invocations on 2026-08-05, ltlsynt
-    /// peaked at 260 MB (21.3 MB mean) against ltlfilt's 3.4 GB and ltl2tgba's
-    /// 1.8 GB. On the calls that sample captured, ltlfilt is the hog.
-    ///
-    /// But that sample cannot bound ltlsynt: it is censored exactly where the
-    /// blowups are, since 6 of the heaviest runs died on a 600 s cap before the
-    /// atexit report and wrote no profile at all. Rare multi-GB ltlsynt calls
-    /// do happen and are absent from those figures. So this stays a safety
-    /// valve for a rare tail, and stays unlimited by default because
-    /// serialising every realizability query would cost throughput on every run
-    /// to bound a few. Set it on a memory-constrained machine. Do not size it
-    /// off the figures above -- the max is censored and the tail swings 26x
-    /// between seeds on one example.
-    std::size_t max_concurrent_realizability = 0;
     /// A fitness function that throws (in practice an external tool failing on
     /// one evolved formula) costs that individual rather than the whole run:
     /// the search is stochastic, so one candidate lost out of a population is
@@ -651,7 +551,7 @@ struct Config {
     /// formula, and the run aborts instead of evolving noise into the output.
     /// A single failure is always tolerated, whatever the population size.
     ///
-    /// 0.15 rather than 0.05 because the ltl2tgba and ganak budgets now drop
+    /// 0.15 rather than 0.05 because the ltl2tgba budget now drops
     /// individuals by design: an abandoned call is a lost candidate, and on the
     /// heavy TLSF specifications enough of them land in one generation to trip
     /// a 5% bound. Every archived TLSF campaign raised it to 0.15 for that

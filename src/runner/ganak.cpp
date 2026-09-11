@@ -2,7 +2,6 @@
 
 #include <unistd.h>
 
-#include <atomic>
 #include <cassert>
 #include <cctype>
 #include <chrono>
@@ -25,14 +24,6 @@
 #include "tool_paths.hpp"
 
 namespace {
-
-// Per-call wall-clock budget for the ganak exec, in milliseconds; 0 disables
-// it. Set once at startup from Config::ganak_timeout, read by every scoring
-// worker, hence atomic. Defaults to off, unlike the ltlfilt budget: counting is
-// the fitness function's real work, a slow count is usually a legitimately hard
-// one rather than a blowup, and abandoning it throws — which drops the
-// individual and spends the run's max_scoring_failure_rate tolerance.
-std::atomic<std::int64_t> g_ganak_timeout_ms{0};
 
 // Removes the temporary DIMACS file however the enclosing scope exits.
 // run_ganak_on_dimacs throws on a non-zero exit or a timeout, which otherwise
@@ -105,10 +96,6 @@ Count parse_ganak_exact_count(const std::string& output) {
 
 }  // namespace
 
-void set_ganak_timeout(std::chrono::milliseconds timeout) {
-    g_ganak_timeout_ms.store(timeout.count());
-}
-
 std::string ganak_executable_path() {
 #ifdef GANAK_EXECUTABLE_PATH
     static const ToolPath k_path =
@@ -131,8 +118,10 @@ Count run_ganak_on_dimacs(const std::string& dimacs_path, unsigned seed,
         std::to_string(seed),
         dimacs_path,
     };
-    const ProcessResult result = execute_and_capture(
-        command, std::chrono::milliseconds(g_ganak_timeout_ms.load()));
+    // Untimed: counting is the fitness function's real work, so a slow count
+    // is usually a legitimately hard one rather than a blowup.
+    const ProcessResult result =
+        execute_and_capture(command, std::chrono::milliseconds::zero());
     if (cpu_s_out != nullptr) {
         *cpu_s_out = result.m_cpu_s;
     }

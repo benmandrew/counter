@@ -137,6 +137,11 @@ namespace {
 // both paths now read), tlsf.mutation.connective_implies and the two
 // tlsf.mutation.monotone_*_rules gates (all now unconditional), and
 // filters.run_weakening and filters.run_well_separation (the stages are gone).
+// It also removed filters.run_vacuity (vacuity always runs per generation),
+// mutation.allow_output_assumptions (always allowed),
+// tlsf.mutation.p_remove_assumption and p_burst_continue (their operators are
+// gone), runtime.ganak_timeout_ms (ganak runs untimed) and
+// runtime.max_concurrent_realizability (no ltlsynt concurrency cap).
 // The same version moved the fitness weights to AuRUS's 0.1/0.2/0.7 and
 // mutation.p_condition_type, p_scope and p_monotone off 0.
 constexpr int k_schema_version = 27;
@@ -259,68 +264,60 @@ std::size_t count_repairs(const std::filesystem::path& dir) {
 nlohmann::json config_json(const Config& cfg) {
     // Mirrors the TOML section layout so a manifest diffs directly against a
     // config file rather than needing a key-by-key translation.
-    return {
-        {"genetic",
-         {{"generations", cfg.generations},
-          {"population_size", cfg.population_size},
-          {"selection_rate", cfg.selection_rate},
-          {"elitism_rate", cfg.elitism_rate},
-          {"crossover_rate", cfg.crossover_rate},
-          {"mutation_rate", cfg.mutation_rate},
-          {"selection_scheme", scheme_name(cfg.selection_scheme)},
-          {"termination", termination_name(cfg.termination)},
-          {"max_individuals", cfg.max_individuals},
-          {"max_wall_s", cfg.max_wall_s},
-          {"accumulate_repairs", cfg.accumulate_repairs}}},
-        {"fitness",
-         {{"weight_syntactic", cfg.fitness_weight_syntactic},
-          {"weight_semantic", cfg.fitness_weight_semantic},
-          {"weight_status", cfg.fitness_weight_status},
-          {"status_grading", status_grading_name(cfg.status_grading)},
-          {"mrs_admission_order",
-           mrs_admission_order_name(cfg.mrs_admission_order)}}},
-        {"mutation",
-         {{"p_trigger", cfg.p_trigger},
-          {"p_response", cfg.p_response},
-          {"p_timing", cfg.p_timing},
-          {"p_condition_type", cfg.p_condition_type},
-          {"p_scope", cfg.p_scope},
-          {"p_monotone", cfg.p_monotone},
-          {"p_add_assumption", cfg.p_add_assumption},
-          {"p_remove_guarantee", cfg.p_remove_guarantee},
-          {"p_conditional_assumption", cfg.p_conditional_assumption},
-          {"allow_output_assumptions", cfg.allow_output_assumptions}}},
-        {"tlsf",
-         {{"repair_mode", repair_mode_name(cfg.repair_mode)},
-          {"muc_max_iterations", cfg.muc_max_iterations},
-          // Every key of [tlsf.mutation], not the two this block reported
-          // until 2026-08-26. A campaign reads its arms out of run.json, and
-          // the ones that were missing are exactly those the recent operator
-          // work added.
-          {"mutation",
-           {{"p_assumption", cfg.tlsf_p_assumption},
-            {"p_temporal", cfg.tlsf_p_temporal},
-            {"p_clone_assumption", cfg.tlsf_p_clone_assumption},
-            {"max_assumption_width", cfg.tlsf_max_assumption_width},
-            {"p_bare_assumption", cfg.tlsf_p_bare_assumption},
-            {"p_remove_assumption", cfg.tlsf_p_remove_assumption},
-            {"p_burst_continue", cfg.tlsf_p_burst_continue}}}}},
-        {"model_counting",
-         {{"default_bound", cfg.default_model_counting_bound},
-          {"metric", metric_name(cfg.similarity_metric)}}},
-        {"filters",
-         {{"run_implication", cfg.run_implication_filter},
-          {"run_vacuity", cfg.run_vacuity_filter}}},
-        {"runtime",
-         {{"black_timeout_ms", cfg.black_timeout.count()},
-          {"ltlsynt_timeout_ms", cfg.ltlsynt_timeout.count()},
-          {"ltl2tgba_timeout_ms", cfg.ltl2tgba_timeout.count()},
-          {"ltlfilt_timeout_ms", cfg.ltlfilt_timeout.count()},
-          {"ganak_timeout_ms", cfg.ganak_timeout.count()},
-          {"parallel", cfg.parallel},
-          {"max_concurrent_realizability", cfg.max_concurrent_realizability},
-          {"max_scoring_failure_rate", cfg.max_scoring_failure_rate},
-          {"dashboard", cfg.dashboard}}}};
+    return {{"genetic",
+             {{"generations", cfg.generations},
+              {"population_size", cfg.population_size},
+              {"selection_rate", cfg.selection_rate},
+              {"elitism_rate", cfg.elitism_rate},
+              {"crossover_rate", cfg.crossover_rate},
+              {"mutation_rate", cfg.mutation_rate},
+              {"selection_scheme", scheme_name(cfg.selection_scheme)},
+              {"termination", termination_name(cfg.termination)},
+              {"max_individuals", cfg.max_individuals},
+              {"max_wall_s", cfg.max_wall_s},
+              {"accumulate_repairs", cfg.accumulate_repairs}}},
+            {"fitness",
+             {{"weight_syntactic", cfg.fitness_weight_syntactic},
+              {"weight_semantic", cfg.fitness_weight_semantic},
+              {"weight_status", cfg.fitness_weight_status},
+              {"status_grading", status_grading_name(cfg.status_grading)},
+              {"mrs_admission_order",
+               mrs_admission_order_name(cfg.mrs_admission_order)}}},
+            {"mutation",
+             {{"p_trigger", cfg.p_trigger},
+              {"p_response", cfg.p_response},
+              {"p_timing", cfg.p_timing},
+              {"p_condition_type", cfg.p_condition_type},
+              {"p_scope", cfg.p_scope},
+              {"p_monotone", cfg.p_monotone},
+              {"p_add_assumption", cfg.p_add_assumption},
+              {"p_remove_guarantee", cfg.p_remove_guarantee},
+              {"p_conditional_assumption", cfg.p_conditional_assumption}}},
+            {"tlsf",
+             {{"repair_mode", repair_mode_name(cfg.repair_mode)},
+              {"muc_max_iterations", cfg.muc_max_iterations},
+              // Every key of [tlsf.mutation], not the two this block reported
+              // until 2026-08-26. A campaign reads its arms out of run.json,
+              // and the ones that were missing are exactly those the recent
+              // operator work added.
+              {"mutation",
+               {{"p_assumption", cfg.tlsf_p_assumption},
+                {"p_temporal", cfg.tlsf_p_temporal},
+                {"p_clone_assumption", cfg.tlsf_p_clone_assumption},
+                {"max_assumption_width", cfg.tlsf_max_assumption_width},
+                {"p_bare_assumption", cfg.tlsf_p_bare_assumption}}}}},
+            {"model_counting",
+             {{"default_bound", cfg.default_model_counting_bound},
+              {"metric", metric_name(cfg.similarity_metric)}}},
+            {"filters", {{"run_implication", cfg.run_implication_filter}}},
+            {"runtime",
+             {{"black_timeout_ms", cfg.black_timeout.count()},
+              {"ltlsynt_timeout_ms", cfg.ltlsynt_timeout.count()},
+              {"ltl2tgba_timeout_ms", cfg.ltl2tgba_timeout.count()},
+              {"ltlfilt_timeout_ms", cfg.ltlfilt_timeout.count()},
+              {"parallel", cfg.parallel},
+              {"max_scoring_failure_rate", cfg.max_scoring_failure_rate},
+              {"dashboard", cfg.dashboard}}}};
 }
 
 nlohmann::json tool_calls_json() {

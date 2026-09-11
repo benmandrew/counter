@@ -7,7 +7,6 @@
 #include <atomic>
 #include <cassert>
 #include <chrono>
-#include <condition_variable>
 #include <cstdlib>
 #include <fstream>
 #include <functional>
@@ -29,44 +28,6 @@
 
 namespace {
 
-// Process-global counting gate limiting concurrent ltlsynt executions. C++17
-// has no counting_semaphore, so this is a mutex + condition_variable. A limit
-// of 0 means unlimited, so acquire()/release() are no-ops in that case and the
-// pre-cap behaviour is preserved exactly.
-class ConcurrencyGate {
-   public:
-    void set_limit(std::size_t limit) {
-        {
-            const std::scoped_lock lock(m_mutex);
-            m_limit = limit;
-        }
-        m_cv.notify_all();
-    }
-    void acquire() {
-        std::unique_lock<std::mutex> lock(m_mutex);
-        m_cv.wait(lock, [this] { return m_limit == 0 || m_active < m_limit; });
-        ++m_active;
-    }
-    void release() {
-        {
-            const std::scoped_lock lock(m_mutex);
-            --m_active;
-        }
-        m_cv.notify_one();
-    }
-
-   private:
-    std::mutex m_mutex;
-    std::condition_variable m_cv;
-    std::size_t m_limit = 0;
-    std::size_t m_active = 0;
-};
-
-ConcurrencyGate& ltlsynt_gate() {
-    static ConcurrencyGate gate;
-    return gate;
-}
-
 // Per-call wall-clock budget for the ltlsynt exec, in milliseconds; 0 disables
 // the timeout. Set once at startup from Config::ltlsynt_timeout, read by every
 // worker, hence atomic. ltlsynt normally decides in milliseconds, but hard
@@ -81,16 +42,6 @@ std::atomic<std::int64_t> g_ltlsynt_timeout_ms{0};
 // deeply nested formulae the search builds, orphaning a multi-GB process when
 // the run is torn down.
 std::atomic<std::int64_t> g_ltl2tgba_timeout_ms{0};
-
-// RAII acquire/release around the ltlsynt exec, so a throwing execute call
-// (or parse) never leaks a permit and deadlocks the remaining workers.
-class GateGuard {
-   public:
-    GateGuard() { ltlsynt_gate().acquire(); }
-    ~GateGuard() { ltlsynt_gate().release(); }
-    GateGuard(const GateGuard&) = delete;
-    GateGuard& operator=(const GateGuard&) = delete;
-};
 
 std::string join_comma(const std::vector<std::string>& items) {
     std::string result;
@@ -181,10 +132,6 @@ std::string spot_bin_dir() {
 }
 
 std::string ltlsynt_path() { return spot_bin_dir() + "/ltlsynt"; }
-
-void RealizabilityChecker::set_max_concurrency(std::size_t limit) {
-    ltlsynt_gate().set_limit(limit);
-}
 
 void RealizabilityChecker::set_timeout(std::chrono::milliseconds timeout) {
     g_ltlsynt_timeout_ms.store(timeout.count());
@@ -452,14 +399,7 @@ std::optional<bool> RealizabilityChecker::check_realizability_ltl(
     }
     const auto timeout = std::chrono::milliseconds(g_ltlsynt_timeout_ms.load());
     const auto start = std::chrono::steady_clock::now();
-    ProcessResult result;
-    {
-        // Hold a permit only for the exec: the child's multi-GB footprint is
-        // freed once execute_and_capture reaps it, so parsing and cache updates
-        // run outside the gate.
-        const GateGuard gate_guard;
-        result = execute_and_capture(command, timeout);
-    }
+    const ProcessResult result = execute_and_capture(command, timeout);
     const double elapsed =
         std::chrono::duration<double>(std::chrono::steady_clock::now() - start)
             .count();

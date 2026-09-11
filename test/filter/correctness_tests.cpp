@@ -68,18 +68,16 @@ tlsf::Specification tlsf_spec(const std::string& main_body) {
 // through elites and the seed population.
 //
 // One direction only, deliberately. A row without a stage is a property checked
-// at the gate alone, which is a supported configuration (any per-generation
-// flag turned off produces it) and is where a future change may deliberately
-// move a check.
+// at the gate alone, which is a supported configuration (well-separation's row
+// is one) and is where a future change may deliberately move a check.
 void test_every_correctness_stage_has_a_gate_check() {
-    Config cfg;
-    cfg.run_vacuity_filter = true;
+    const Config cfg;
     const Specification original = fretish_spec();
     const std::vector<std::string> stages = correctness_stage_names(
-        get_filter_functions(cfg, original, global_sat_checker()));
+        get_filter_functions(original, global_sat_checker()));
     expect(!stages.empty(),
-           "correctness: the generation chain should run correctness stages "
-           "with every filter flag on");
+           "correctness: the generation chain should run correctness "
+           "stages");
     const std::vector<CorrectnessCheck> checks =
         correctness_checks(global_sat_checker(), global_real_checker());
     for (const std::string& stage : stages) {
@@ -91,15 +89,14 @@ void test_every_correctness_stage_has_a_gate_check() {
 }
 
 void test_every_tlsf_correctness_stage_has_a_gate_check() {
-    Config cfg;
-    cfg.run_vacuity_filter = true;
+    const Config cfg;
     const tlsf::Specification original =
         tlsf_spec("INPUTS { a; } OUTPUTS { b; } GUARANTEE { G (a -> b); }");
     const std::vector<std::string> stages = tlsf_correctness_stage_names(
-        tlsf::internal::build_per_gen_filters(original, cfg));
+        tlsf::internal::build_per_gen_filters(original));
     expect(!stages.empty(),
            "correctness: the TLSF generation chain should run correctness "
-           "stages with every filter flag on");
+           "stages");
     const std::vector<CorrectnessCheckT<tlsf::Specification>> checks =
         tlsf_correctness_checks(global_sat_checker(), global_real_checker());
     for (const std::string& stage : stages) {
@@ -138,22 +135,22 @@ void test_well_separation_is_the_last_check() {
            "rejected candidate never pays for its query");
 }
 
-// Turning a per-generation flag off drops the stage and leaves the table
-// untouched, which is what makes the gate unconditional: the flag is search
-// pressure, never output correctness.
-void test_flags_off_drop_the_stage_but_not_the_check() {
-    Config cfg;
-    cfg.run_vacuity_filter = false;
+// A row without a per-generation stage still sits in the table, which is what
+// makes the gate unconditional: the stage is search pressure, never output
+// correctness. Well-separation is that row.
+void test_gate_only_row_has_no_stage_but_keeps_its_check() {
+    const Config cfg;
     const Specification original = fretish_spec();
-    expect(correctness_stage_names(
-               get_filter_functions(cfg, original, global_sat_checker()))
-               .empty(),
-           "correctness: no correctness stage should run with every filter "
-           "flag off");
-    expect(!correctness_checks(global_sat_checker(), global_real_checker())
-                .empty(),
-           "correctness: the gate's checks should not depend on the "
-           "per-generation flags");
+    const std::vector<std::string> stages = correctness_stage_names(
+        get_filter_functions(original, global_sat_checker()));
+    expect(std::find(stages.begin(), stages.end(), "not-well-separated") ==
+               stages.end(),
+           "correctness: well-separation should run no per-generation stage");
+    expect(has_check_named(
+               correctness_checks(global_sat_checker(), global_real_checker()),
+               "not-well-separated"),
+           "correctness: the gate should still carry the well-separation "
+           "check");
 }
 
 // The gate's own predicate, on the case that reaches it: a specification that
@@ -191,7 +188,7 @@ void run_correctness_tests() {
     test_every_tlsf_correctness_stage_has_a_gate_check();
     test_both_paths_name_the_same_checks_in_the_same_order();
     test_well_separation_is_the_last_check();
-    test_flags_off_drop_the_stage_but_not_the_check();
+    test_gate_only_row_has_no_stage_but_keeps_its_check();
     test_gate_rejects_a_not_well_separated_specification();
     test_gate_keeps_a_well_separated_specification();
 }

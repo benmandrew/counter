@@ -157,20 +157,12 @@ DEFAULTS: dict = {
     "default_bound": 20,
     "metric": "direct",
     "run_implication": True,
-    # Output-atom assumptions (PR #34). Emitted into the TOML only when a sweep
-    # overrides it (see make_toml), so every existing grid stays byte-identical.
-    # This entry does not drive the binary: a grid that does not override it
-    # emits no key and takes whatever the binary defaults to at run time, which
-    # is why re-running an archived config does not reproduce it. See "Config
-    # vintage" in experiments/README.md.
-    #
-    # Keys like this one must follow config.hpp rather than be pinned, because
+    # Keys in VINTAGE_KEYS must follow config.hpp rather than be pinned, because
     # VINTAGE_KEYS sources its written-out values from this table -- a stale
     # entry here is a wrong value written into every config generated with
     # --pin-vintage, by the mechanism that exists to stop a moved default going
     # unrecorded. check_config_schema.py enforces the agreement for every key
     # of this table that is not deliberately exempt.
-    "allow_output_assumptions": True,
     # Report every gate-passing candidate of every generation rather than only
     # the final population's. On in the binary since 2026-08-25, and emitted
     # into [genetic] only when a sweep overrides it (see make_toml), so every
@@ -216,21 +208,16 @@ DEFAULTS: dict = {
     "p_monotone": 0.25,
     "p_clone_assumption": 0.25,
     # The 2026-08-25 assumption-reach keys (see config.hpp): a width for the
-    # disjunctive body tlsf_add_assumption draws, a bare-F form for an appended
-    # assumption, an assumption removal and a mutation burst. All four default
-    # to their no-op value in the binary, so a campaign archived before
-    # 2026-08-25 that omits them means exactly what it always meant and no
-    # "Config vintage" entry is owed. A fifth key, p_union_assumption, was
-    # removed rather than kept at its no-op; a config that still sets it is
-    # rejected, so reproduce such a campaign from its vendored scripts/.
+    # disjunctive body tlsf_add_assumption draws and a bare-F form for an
+    # appended assumption. Both default to their no-op value in the binary, so
+    # a campaign archived before 2026-08-25 that omits them means exactly what
+    # it always meant and no "Config vintage" entry is owed. p_remove_assumption
+    # and p_burst_continue were removed with their operators on 2026-09-11. A
+    # fifth key, p_union_assumption, was removed rather than kept at its no-op;
+    # a config that still sets it is warned about and ignored, so reproduce
+    # such a campaign from its vendored scripts/.
     "max_assumption_width": 1,
     "p_bare_assumption": 0.0,
-    "p_remove_assumption": 0.0,
-    "p_burst_continue": 0.0,
-    # 0 = unlimited, matching config.hpp. Emitted into [runtime] only when
-    # positive (see make_toml), so the standard grids stay byte-identical to the
-    # pre-cap output; the TLSF campaign sets it to bound ltlsynt's peak RAM.
-    "max_concurrent_realizability": 0,
     # Per-call ltlsynt timeout in ms; 0 = no timeout, matching config.hpp.
     # Emitted only when positive, so the standard grids stay byte-identical. The
     # heavy TLSF specs set it to cut ltlsynt's multi-minute realizability tail.
@@ -340,9 +327,7 @@ def make_toml(overrides: dict, defaults: dict = DEFAULTS) -> str:
         [f"p_add_assumption = {_fmt(d['p_add_assumption'])}"]
         if "p_add_assumption" in overrides else []) + (
         [f"p_remove_guarantee = {_fmt(d['p_remove_guarantee'])}"]
-        if "p_remove_guarantee" in overrides else []) + (
-        [f"allow_output_assumptions = {_fmt(d['allow_output_assumptions'])}"]
-        if "allow_output_assumptions" in overrides else []) + [
+        if "p_remove_guarantee" in overrides else []) + [
         "",
         "[model_counting]",
         f"default_bound = {d['default_bound']}",
@@ -355,8 +340,6 @@ def make_toml(overrides: dict, defaults: dict = DEFAULTS) -> str:
         f"black_timeout_ms = {d['black_timeout_ms']}",
     ] + ([f"parallel = {d['parallel']}"]
          if d.get("parallel") else []) + (
-        [f"max_concurrent_realizability = {d['max_concurrent_realizability']}"]
-        if d.get("max_concurrent_realizability") else []) + (
         [f"ltlsynt_timeout_ms = {d['ltlsynt_timeout_ms']}"]
         if d.get("ltlsynt_timeout_ms") else []) + (
         [f"ltl2tgba_timeout_ms = {d['ltl2tgba_timeout_ms']}"]
@@ -378,16 +361,11 @@ def make_toml(overrides: dict, defaults: dict = DEFAULTS) -> str:
         [f"max_assumption_width = {d['max_assumption_width']}"]
         if "max_assumption_width" in overrides else []) + (
         [f"p_bare_assumption = {_fmt(d['p_bare_assumption'])}"]
-        if "p_bare_assumption" in overrides else []) + (
-        [f"p_remove_assumption = {_fmt(d['p_remove_assumption'])}"]
-        if "p_remove_assumption" in overrides else []) + (
-        [f"p_burst_continue = {_fmt(d['p_burst_continue'])}"]
-        if "p_burst_continue" in overrides else [])
+        if "p_bare_assumption" in overrides else [])
         if overrides.keys() & {"p_assumption", "p_temporal",
                                "p_clone_assumption",
                                "max_assumption_width",
-                               "p_bare_assumption", "p_remove_assumption",
-                               "p_burst_continue"}
+                               "p_bare_assumption"}
         else []) + [
         "",
     ])
@@ -551,20 +529,21 @@ DEFAULT_COMPUTE_MATCH_FACTOR = 1.5
 # being archived. A generated config states a key only where a sweep overrides
 # it, so everything else is inherited from the binary at run time — which means
 # changing a C++ default silently changes what every archived config *means*.
-# These have crossed that line: allow_output_assumptions moved twice,
-# status_grading went tiered -> mrs on 2026-08-12, swapping the status objective
-# outright rather than shifting a threshold, mrs_admission_order went spec ->
+# These have crossed that line: status_grading went tiered -> mrs on
+# 2026-08-12, swapping the status objective outright rather than shifting a
+# threshold, mrs_admission_order went spec ->
 # degree on 2026-08-14, which reorders the greedy walk inside that objective and
 # so moves the score of every candidate the walk grades, and p_condition_type,
 # p_scope and the FRETISH p_monotone went 0 -> 0.15, 0.15 and 0.25 on
-# 2026-09-11. run_well_separation was here until its key was removed on
-# 2026-09-11; the binary now warns on a config stating it and ignores the key.
+# 2026-09-11. run_well_separation and allow_output_assumptions (which moved
+# twice) were here until their keys were removed on 2026-09-11; the binary now
+# warns on a config stating either and ignores the key.
 # --pin-vintage writes these explicitly so a campaign archived today still
 # describes the run it was, whatever the defaults do afterwards. Add a key here when its default moves; the cost of a spurious
 # entry is one redundant line per config, and the cost of a missing one is an
 # archive that cannot be reproduced.
 VINTAGE_KEYS: tuple[str, ...] = (
-    "status_grading", "mrs_admission_order", "allow_output_assumptions",
+    "status_grading", "mrs_admission_order",
     "p_condition_type", "p_scope", "p_monotone",
 )
 
@@ -665,9 +644,10 @@ TLSF_SWEEP_D: list[tuple[str, dict]] = [
 # TLSF sweeps W and Q are retired. W crossed [filters] run_well_separation
 # against allow_output_assumptions as a 2x2, and Q spread p_add_assumption over
 # the two run_well_separation = true arms for the arbiter follow-up; that key
-# was removed on 2026-09-11 with the per-generation well-separation filter, so
-# neither sweep is expressible. The well-separation row of the correctness
-# table still drives the final gate and the input screen. Their archived
+# was removed on 2026-09-11 with the per-generation well-separation filter, and
+# allow_output_assumptions with it, so neither sweep is expressible. The
+# well-separation row of the correctness table still drives the final gate and
+# the input screen. Their archived
 # campaigns (wellsep, arbiter-hp, arbiter-padd) reproduce from their vendored
 # per-campaign scripts/ at the commit their PROVENANCE.json names.
 
@@ -788,15 +768,6 @@ TLSF_SWEEPS: list[tuple[str, list]] = [
 ]
 
 TLSF_CONFIGS_DIR = Path(__file__).parent.parent / "experiments" / "configs-tlsf"
-
-# Default ltlsynt concurrency cap for the TLSF campaign. 0 = uncapped, which
-# suits the 128 GB av2/av3 machines the campaign targets (32 cores * ~2.7 GB per
-# ltlsynt ~= 86 GB peak, comfortably within RAM). ltlsynt is multi-GB resident
-# per call on these specs, so on a smaller-RAM box pass e.g.
-# `--max-realizability 6` to bound peak RAM (~16 GB) and avoid an OOM. The cap
-# is per counter process, so keep the campaign at --jobs 1 (the tlsf profile's
-# default) for it to remain the machine-wide limit.
-TLSF_MAX_REALIZABILITY = 0
 
 # Default per-call ltlsynt timeout (ms) for the TLSF campaign. ltlsynt has no
 # internal timeout, and these specs occasionally produce synthesis queries that
@@ -975,16 +946,6 @@ def parse_args() -> argparse.Namespace:
                              "run_experiments.py deriving its own per-run cap "
                              "over it, so pass 1 for a campaign whose runs are "
                              "meant to be single-threaded")
-    parser.add_argument("--max-realizability", type=int, default=None,
-                        metavar="N",
-                        help="Cap concurrent ltlsynt processes "
-                             "(runtime.max_concurrent_realizability). 0 = "
-                             "unlimited; the key is omitted from the emitted "
-                             "TOML when 0, keeping the standard grids "
-                             "byte-identical. Bounds ltlsynt peak RAM on a "
-                             "smaller-RAM box (e.g. 6 ~= 16 GB); the TLSF "
-                             "campaign defaults to uncapped for the 128 GB "
-                             "av2/av3 machines")
     parser.add_argument("--ltlsynt-timeout", type=int, default=None,
                         metavar="MS",
                         help="Per-call ltlsynt timeout in ms "
@@ -1040,7 +1001,6 @@ def main() -> None:
     sweep_table = SWEEPS
     schemes = args.schemes
     out_dir = args.out_dir
-    max_realizability = args.max_realizability
     ltlsynt_timeout = args.ltlsynt_timeout
     ltl2tgba_timeout = args.ltl2tgba_timeout
     max_scoring_failure_rate = args.max_scoring_failure_rate
@@ -1050,8 +1010,6 @@ def main() -> None:
             schemes = ["nsga2-truncate"]
         if out_dir == CONFIGS_DIR:
             out_dir = TLSF_CONFIGS_DIR
-        if max_realizability is None:
-            max_realizability = TLSF_MAX_REALIZABILITY
         if ltlsynt_timeout is None:
             ltlsynt_timeout = TLSF_LTLSYNT_TIMEOUT_MS
         if ltl2tgba_timeout is None:
@@ -1065,7 +1023,6 @@ def main() -> None:
     defaults["termination"] = args.termination or "generations"
     defaults["max_individuals"] = args.max_individuals or 0
     defaults["parallel"] = args.parallel or 0
-    defaults["max_concurrent_realizability"] = max_realizability or 0
     defaults["ltlsynt_timeout_ms"] = ltlsynt_timeout or 0
     defaults["ltl2tgba_timeout_ms"] = ltl2tgba_timeout or 0
     defaults["max_scoring_failure_rate"] = max_scoring_failure_rate or 0.0

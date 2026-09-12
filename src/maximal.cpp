@@ -447,9 +447,11 @@ int main(int argc, const char* const argv[]) {
     // `ExpectUnsat` query keeps both sides. Giving SPOT black's budget instead
     // restored agreement on 264 of 264 cut-values across a 10-run sample. The
     // FRETISH path takes the same two settings, which is what its own final
-    // filters run under (src/repair/evolution.cpp): its queries are per
-    // requirement rather than whole-spec, and measured at 40 generations of
-    // 1000 the simplify pass was still 59-61% of every ltlfilt exec a run made.
+    // filters run under (src/repair/evolution.cpp). Its queries were per
+    // requirement rather than whole-spec until ed5413f, and measured at 40
+    // generations of 1000 the simplify pass was 59-61% of every ltlfilt exec a
+    // run made even at that shape; it now asks the whole-spec query this
+    // paragraph measures.
     checker.set_simplify(false);
     checker.set_spot_budget(cfg.black_timeout);
 

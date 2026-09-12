@@ -39,4 +39,10 @@ Count run_ganak_on_dimacs(const std::string& dimacs_path, unsigned seed = 1,
 /// only in operand order, association or atom naming therefore share one
 /// exec, which over nine specifications is 20.3% to 49.5% of the execs a run
 /// makes.
+///
+/// What reaches ganak is `formula_key::canonical`'s rendering rather than the
+/// caller's spelling, which keeps the variable set: the caller multiplies the
+/// count by two per variable of the wider alphabet, so a normalisation that
+/// dropped one would undercount the result by that factor. `simplify_ltl` is
+/// such a normalisation and is deliberately not used here.
 Count run_ganak_on_formula(const std::string& formula, unsigned seed = 1);

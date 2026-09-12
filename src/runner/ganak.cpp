@@ -18,7 +18,6 @@
 
 #include "formula_key.hpp"
 #include "prop_formula.hpp"
-#include "runner/ltlfilt.hpp"
 #include "runner/process.hpp"
 #include "tool_paths.hpp"
 
@@ -132,7 +131,18 @@ Count run_ganak_on_dimacs(const std::string& dimacs_path, unsigned seed,
 }
 
 Count run_ganak_on_formula(const std::string& formula, unsigned seed) {
-    const std::string normalised = normalize_ltl(formula);
+    // The canonical form rather than an `ltlfilt --simplify` pass. Both
+    // collapse spellings, and only this one is guaranteed to keep the
+    // variable set. The simplifier eliminates a variable wherever a term
+    // subsumes another -- SPOT 2.15.1 returns `a` for `a | (a & b)` -- while
+    // count_guard_models computed its 2^free_count multiplier from the atoms
+    // the HOA label mentions, before the pass, so a dropped variable would
+    // undercount the guard by that factor with nothing to catch it.
+    // Canonicalisation flattens, orders and deduplicates the operands of a
+    // commutative chain and drops double negation, none of which removes an
+    // atom. It costs no subprocess either, where the pass cost one exec per
+    // distinct spelling.
+    const std::string& canonical_formula = formula_key::canonical(formula);
     static std::unordered_map<std::string, Count> cache;
     static std::mutex cache_mutex;
     // Keyed on the canonical renamed form rather than on the caller's
@@ -140,10 +150,13 @@ Count run_ganak_on_formula(const std::string& formula, unsigned seed) {
     // ganak counts over the variables the formula mentions, and the free
     // variables are multiplied back in by count_guard_models outside this
     // cache -- so two guards differing only in operand order, association or
-    // atom naming share one exec. Measured over nine specifications that is
-    // 20.3% to 49.5% of the execs a run makes.
+    // atom naming share one exec. Measured over nine specifications the
+    // renaming was 20.3% to 49.5% of the execs a run makes, against a key
+    // that was the simplifier's output; this one gives up whatever ltlfilt
+    // collapsed beyond the canonical form, which no measured specification
+    // exercises since every guard they produce is counted in process.
     const std::string key =
-        formula_key::renamed(normalised) + "|" + std::to_string(seed);
+        formula_key::renamed(formula) + "|" + std::to_string(seed);
     {
         std::scoped_lock lock(cache_mutex);
         const auto found = cache.find(key);
@@ -153,7 +166,7 @@ Count run_ganak_on_formula(const std::string& formula, unsigned seed) {
         }
         GanakStats::n_cache_misses++;
     }
-    const Formula parsed = Formula(normalised);
+    const Formula parsed = Formula(canonical_formula);
     const std::string formula_dimacs_path =
         write_temporary_dimacs(parsed.to_dimacs());
     const TempFileGuard dimacs_guard(formula_dimacs_path);

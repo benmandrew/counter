@@ -57,9 +57,10 @@ void set_ltlfilt_timeout(std::chrono::milliseconds timeout);
 /// Returns the ltlfilt-simplified form of `formula` verbatim, including SPOT's
 /// boolean constants "0" (false) and "1" (true) when the formula reduces to
 /// one. A constant result settles satisfiability outright, so callers able to
-/// act on it can skip a solver entirely; callers that must hand the result to
-/// a downstream tool want normalize_ltl instead. Returns `formula` unchanged
-/// if the binary is inaccessible or exits non-zero.
+/// act on it can skip a solver entirely; a caller that must hand the result to
+/// a downstream tool has to fold the constant itself, no single spelling of
+/// one being accepted by every tool this codebase drives. Returns `formula`
+/// unchanged if the binary is inaccessible or exits non-zero.
 ///
 /// Memoised twice over: once on the input string, and behind that on the
 /// canonical key (`formula_key::canonical`), which is what the subprocess is
@@ -75,14 +76,6 @@ void set_ltlfilt_timeout(std::chrono::milliseconds timeout);
 /// tokenisation of that output separates.
 std::string simplify_ltl(const std::string& formula);
 
-/// Returns the ltlfilt-simplified canonical form of `formula`. The result is
-/// memoised: the subprocess is launched at most once per unique input string.
-/// Returns `formula` unchanged if the binary is inaccessible or exits
-/// non-zero, or if the formula reduces to a boolean constant (see
-/// simplify_ltl) — no single constant spelling is accepted by every downstream
-/// tool, so the original formula is returned to keep the result tool-safe.
-std::string normalize_ltl(const std::string& formula);
-
 /// Whether `formula` carries a weak-until (`W`) or strong-release (`M`)
 /// operator token. Purely lexical -- a bare `W`/`M` not flanked by identifier
 /// characters -- so it costs nothing and can guard the subprocess below.
@@ -97,8 +90,8 @@ bool has_weak_operator(const std::string& formula);
 /// std::nullopt if the binary is inaccessible, the call fails or times out, or
 /// the result still carries either operator.
 ///
-/// Unlike simplify_ltl and normalize_ltl this never falls back to returning
-/// `formula` unchanged. Its caller needs the rewrite to have actually
+/// Unlike simplify_ltl this never falls back to returning `formula`
+/// unchanged. Its caller needs the rewrite to have actually
 /// happened: handing the original back would pass black exactly the operator
 /// the rewrite exists to keep away from it, and a wrong answer is worse than
 /// no answer. See check_satisfiability for what black does with them.

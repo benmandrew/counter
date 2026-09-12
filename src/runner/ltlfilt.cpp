@@ -138,18 +138,6 @@ std::string simplify_ltl(const std::string& formula) {
     return simplified;
 }
 
-std::string normalize_ltl(const std::string& formula) {
-    std::string simplified = simplify_ltl(formula);
-    // SPOT uses "0"/"1" for the boolean constants false/true. There is no
-    // single keyword accepted by all downstream tools (black treats "false" as
-    // an atom, not a constant), so fall back to the original formula in these
-    // cases to preserve correctness.
-    if (simplified == "0" || simplified == "1") {
-        return formula;
-    }
-    return simplified;
-}
-
 bool has_weak_operator(const std::string& formula) {
     for (std::size_t pos = 0; pos < formula.size(); ++pos) {
         if (formula[pos] != 'W' && formula[pos] != 'M') {

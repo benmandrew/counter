@@ -12,22 +12,22 @@ namespace {
 
 void test_idempotent() {
     const std::string formula = "G(p -> F(q))";
-    const std::string once = normalize_ltl(formula);
-    const std::string twice = normalize_ltl(once);
-    expect(once == twice, "ltlfilt-runner: normalize_ltl should be idempotent");
+    const std::string once = simplify_ltl(formula);
+    const std::string twice = simplify_ltl(once);
+    expect(once == twice, "ltlfilt-runner: simplify_ltl should be idempotent");
 }
 
 void test_reorders_atomic_propositions() {
     // These formulae differ only in the order of their conjuncts — no
     // simplification could make them identical.  If ltlfilt canonicalises
     // the AP order both must produce the same string.
-    const std::string norm_pq = normalize_ltl("p & q");
-    const std::string norm_qp = normalize_ltl("q & p");
+    const std::string norm_pq = simplify_ltl("p & q");
+    const std::string norm_qp = simplify_ltl("q & p");
     expect(norm_pq == norm_qp,
            "ltlfilt-runner: p & q and q & p should normalise to the same form");
-    const std::string norm_pqr = normalize_ltl("p & q & r");
-    const std::string norm_rpq = normalize_ltl("r & p & q");
-    const std::string norm_qrp = normalize_ltl("q & r & p");
+    const std::string norm_pqr = simplify_ltl("p & q & r");
+    const std::string norm_rpq = simplify_ltl("r & p & q");
+    const std::string norm_qrp = simplify_ltl("q & r & p");
     expect(norm_pqr == norm_rpq,
            "ltlfilt-runner: p&q&r and r&p&q should normalise to the same form");
     expect(norm_pqr == norm_qrp,
@@ -37,7 +37,7 @@ void test_reorders_atomic_propositions() {
 void test_invalid_formula_returns_original() {
     // An unparseable formula must not throw; it returns the original string.
     const std::string bad = "G(";
-    const std::string result = normalize_ltl(bad);
+    const std::string result = simplify_ltl(bad);
     expect(result == bad,
            "ltlfilt-runner: invalid formula should be returned unchanged");
 }
@@ -46,25 +46,21 @@ void test_valid_ltl_formula_normalises() {
     // A well-formed LTL formula should survive normalisation and remain
     // non-empty.
     const std::string formula = "G(F(p))";
-    const std::string result = normalize_ltl(formula);
+    const std::string result = simplify_ltl(formula);
     expect(!result.empty(),
            "ltlfilt-runner: normalised formula should be non-empty");
 }
 
-// simplify_ltl surfaces SPOT's boolean constants so callers can decide the
-// formula without a solver; normalize_ltl hides them behind the original
-// formula so its result stays safe to hand to a downstream tool.
-void test_constants_surface_only_in_simplify() {
+// simplify_ltl surfaces SPOT's boolean constants verbatim, which is what lets
+// check_satisfiability decide the formula without reaching a solver at all. A
+// caller handing the result onward has to fold them itself: black reads
+// "false" as an atom rather than as a constant, so there is no one spelling to
+// return here that every downstream tool accepts.
+void test_constants_surface_in_simplify() {
     expect(simplify_ltl("p & !p") == "0",
            "ltlfilt-runner: a contradiction should simplify to \"0\"");
     expect(simplify_ltl("p | !p") == "1",
            "ltlfilt-runner: a tautology should simplify to \"1\"");
-    expect(normalize_ltl("p & !p") == "p & !p",
-           "ltlfilt-runner: normalize_ltl should fall back to the original "
-           "formula when it reduces to a constant");
-    expect(normalize_ltl("p | !p") == "p | !p",
-           "ltlfilt-runner: normalize_ltl should fall back to the original "
-           "formula when it reduces to a constant");
 }
 
 // The "true"/"false" atoms this codebase uses for its boolean constants are
@@ -131,6 +127,6 @@ void run_ltlfilt_runner_tests() {
     test_reorders_atomic_propositions();
     test_invalid_formula_returns_original();
     test_valid_ltl_formula_normalises();
-    test_constants_surface_only_in_simplify();
+    test_constants_surface_in_simplify();
     test_boolean_constant_atoms_fold();
 }

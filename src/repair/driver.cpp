@@ -142,7 +142,7 @@ int run_fretish_repair(const Config& cfg, const std::string& input_path,
     AggregateWeightedFitnessFunction fitness_function =
         get_fitness_function(original_spec, cfg);
     const std::vector<FilterFunction> filter_functions =
-        get_filter_functions(cfg, original_spec, global_sat_checker());
+        get_filter_functions(original_spec, global_sat_checker());
     std::vector<ScoredSpecification> population = original_population(
         original_spec, fitness_function, cfg.population_size);
     RandomSource random_source = init_random_source(seed);
@@ -200,7 +200,7 @@ int run_fretish_repair(const Config& cfg, const std::string& input_path,
         AccumulatorStats::n_contributed +=
             merge_accumulated(realizable_vec, evolved.accumulated);
         auto [maximal, final_filter_stats] =
-            stream ? finish_maximal_stream(cfg, *stream, realizable_vec)
+            stream ? finish_maximal_stream(*stream, realizable_vec)
                    : filter_maximal_specifications(cfg, original_spec,
                                                    realizable_vec);
         const std::vector<ScoredSpecification> scored_maximal =

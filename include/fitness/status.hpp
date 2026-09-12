@@ -52,9 +52,9 @@ inline constexpr double k_status_realizable = 1.0;
 /// assumption-side tier never fired at all, and could not have: its predicate
 /// is exactly the vacuity filter's, and candidate filters run on offspring
 /// *before* those offspring are scored, so such a candidate is discarded
-/// before it reaches this function. The tier was unreachable in any run
-/// leaving run_vacuity_filter on, which is the default -- it re-asked a
-/// question a filter had already acted on.
+/// before it reaches this function. The vacuity filter always runs, so the
+/// tier was unreachable -- it re-asked a question a filter had already acted
+/// on.
 ///
 /// Grading *within* unrealizability needs a measure of how far a candidate is
 /// from realizable, which a satisfiability query cannot express.

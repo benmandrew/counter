@@ -409,13 +409,6 @@ std::unique_ptr<StreamingMaximalFilter<Specification>> make_maximal_stream(
                        SatisfiabilityChecker& checker) {
         return spec_implies(lhs, rhs, checker).value_or(false);
     };
-    // A timeout keeps the candidate, as make_weakening_filter's does.
-    if (cfg.run_weakening_filter) {
-        rules.admits = [original](const Specification& spec,
-                                  SatisfiabilityChecker& checker) {
-            return spec_implies(original, spec, checker).value_or(true);
-        };
-    }
     rules.similarity = syntactic_similarity_key(original, cfg);
     rules.fingerprints = [](const std::vector<Specification>& specs) {
         return fingerprint::prefilter::fingerprints_of(specs);
@@ -428,8 +421,7 @@ std::unique_ptr<StreamingMaximalFilter<Specification>> make_maximal_stream(
 }
 
 std::pair<std::vector<Specification>, std::vector<FilterRunStats>>
-finish_maximal_stream(const Config& cfg,
-                      StreamingMaximalFilter<Specification>& stream,
+finish_maximal_stream(StreamingMaximalFilter<Specification>& stream,
                       const std::vector<Specification>& realizable_vec) {
     const auto drain_start = std::chrono::steady_clock::now();
     // Every accumulated specification is already in the stream, and the
@@ -455,11 +447,7 @@ finish_maximal_stream(const Config& cfg,
     const MaximalStreamCounts& counts = stream.counts();
     std::vector<FilterRunStats> stats;
     stats.push_back({"final/dedup", realizable_vec.size(), counts.n_distinct});
-    if (cfg.run_weakening_filter) {
-        stats.push_back(
-            {"final/weakening", counts.n_distinct, counts.n_admitted});
-    }
-    stats.push_back({"final/implication", counts.n_admitted, maximal.size()});
+    stats.push_back({"final/implication", counts.n_distinct, maximal.size()});
     print_implication_summary(
         std::chrono::duration<double>(std::chrono::steady_clock::now() -
                                       drain_start)

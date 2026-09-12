@@ -49,41 +49,6 @@ FilterFunction make_dedup_filter() {
             FilterKind::Preference};
 }
 
-FilterFunction make_weakening_filter(Specification original,
-                                     SatisfiabilityChecker& checker) {
-    return {"weakening", [original = std::move(original),
-                          &checker](std::vector<Specification> pop) {
-                const std::size_t pop_size = pop.size();
-                std::vector<std::atomic<uint8_t>> keep(pop_size);
-                for (auto& flag : keep) {
-                    flag.store(0, std::memory_order_relaxed);
-                }
-                const std::size_t max_in_flight = dispatch_window();
-                run_bounded_async(
-                    pop_size, max_in_flight,
-                    [&checker, &pop, &original, &keep](std::size_t idx) {
-                        return [&checker, &pop, &original, &keep, idx] {
-                            // A timed-out check retains the candidate: dropping
-                            // on an unknown answer would make survival depend
-                            // on machine load.
-                            if (spec_implies(original, pop[idx], checker)
-                                    .value_or(true)) {
-                                keep[idx].store(1, std::memory_order_relaxed);
-                            }
-                        };
-                    },
-                    [](std::size_t) {});
-                std::vector<Specification> survivors;
-                survivors.reserve(pop_size);
-                for (std::size_t i = 0; i < pop_size; ++i) {
-                    if (keep[i].load(std::memory_order_relaxed) != 0U) {
-                        survivors.push_back(std::move(pop[i]));
-                    }
-                }
-                return survivors;
-            }};
-}
-
 FilterFunction make_implication_filter(
     SatisfiabilityChecker& checker, SimilarityKey similarity,
     const GenerationProgressCallback& on_progress) {

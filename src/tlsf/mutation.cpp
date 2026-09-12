@@ -66,25 +66,17 @@ Formula::Kind pick_binary_kind(const RandomSource& random_source) {
     }
 }
 
-// Connective used in case (2d), o2' ∈ {U, W, ∧, ∨}, to graft a fresh atom onto
-// the mutated child. Under @p connective_implies
-// (cfg.tlsf_connective_implies, default false) the menu gains →.
+// Connective used in case (2d), o2' ∈ {U, W, ∧, ∨, →}, to graft a fresh atom
+// onto the mutated child.
 //
-// This function kept the Brizzio-fragment exclusion pick_binary_kind shed on
-// 2026-08-21, and it is the arm that fires at an atom or a unary node — the
-// nodes where a guard has to be introduced. So `p → X φ`, the shape of every
-// minimal guarantee weakening and the shape tlsf_add_assumption hard-codes,
-// took more than one draw to reach at exactly those nodes. The caller passes
-// the drawn anchor first, so → yields `anchor → inner`, the guard-implies-
-// response direction.
-//
-// The arm is appended last so that off, next_index(4) and the case order are
-// what they were before the key existed, and the whole downstream draw stream
-// reproduces. Release stays out: it is already in pick_binary_kind and there is
-// nothing behind adding it here.
-Formula::Kind pick_connective_kind(const RandomSource& random_source,
-                                   bool connective_implies) {
-    switch (random_source.next_index(connective_implies ? 5 : 4)) {
+// → is here because this is the arm that fires at an atom or a unary node, the
+// nodes where a guard has to be introduced, so `p → X φ` -- the shape of every
+// minimal guarantee weakening and the shape tlsf_add_assumption hard-codes --
+// is one draw away. The caller passes the drawn anchor first, so → yields
+// `anchor → inner`, the guard-implies-response direction. Release stays out:
+// it is already in pick_binary_kind and there is nothing behind adding it here.
+Formula::Kind pick_connective_kind(const RandomSource& random_source) {
+    switch (random_source.next_index(5)) {
         case 0:
             return Formula::Kind::Until;
         case 1:
@@ -127,10 +119,8 @@ std::string flip_or_replace_atom(const std::string& atom,
 // temporal operators, so it changes a formula's temporal skeleton. At each node
 // one rewrite rule is drawn uniformly and applied, recursing into children; the
 // three top-level cases mirror the paper's (1) atom/constant, (2) unary
-// operator, (3) binary operator. @p atoms is the side-appropriate atom pool
-// (inputs on the assumption side — or inputs ∪ outputs there too under
-// allow_output_assumptions — and inputs ∪ outputs on the guarantee side),
-// assumed non-empty.
+// operator, (3) binary operator. @p atoms is the section-appropriate atom pool
+// (inputs ∪ outputs outside an initial condition), assumed non-empty.
 Formula mutate_temporal(const Formula& formula,
                         const std::vector<std::string>& atoms,
                         const RandomSource& random_source, const Config& cfg) {
@@ -176,9 +166,7 @@ Formula mutate_temporal(const Formula& formula,
                     const Formula inner = Formula::make_unary(
                         pick_unary_kind(random_source), mutated_child);
                     return Formula::make_binary(
-                        pick_connective_kind(random_source,
-                                             cfg.tlsf_connective_implies),
-                        anchor, inner);
+                        pick_connective_kind(random_source), anchor, inner);
                 }
                 default:
                     assert(false);
@@ -434,8 +422,8 @@ Formula apply_consequent_modality(const Formula& body,
 // p_conditional_assumption a guarded form `G(<guard> -> o <input>)` is drawn
 // instead, o coming from apply_consequent_modality.
 //
-// The obliged literal is always an *input*, whatever allow_output_assumptions
-// says. An assumption that obliges an output is one the system can defeat by
+// The obliged literal is always an *input*, though the guard may be an output.
+// An assumption that obliges an output is one the system can defeat by
 // withholding its own signal, which discharges every guarantee at a stroke.
 // Well-separation was documented as the safeguard against that, and it only
 // half is: it catches the unconditional `G F <output>`, of which the
@@ -445,9 +433,9 @@ Formula apply_consequent_modality(const Formula& body,
 // assumptions, and an environment that never raises the guard can. Drawing the
 // consequent from the inputs closes the gap without a new solver query.
 //
-// allow_output_assumptions here governs the guard alone, which is the reactive
-// shape it exists for: conditioning on system behaviour adds no obligation the
-// system can dodge. `G(<output> -> F <input>)` stays reachable, and
+// The guard draws from inputs ∪ outputs, which is the reactive shape output
+// assumptions exist for: conditioning on system behaviour adds no obligation
+// the system can dodge. `G(<output> -> F <input>)` stays reachable, and
 // `G(<input> -> F <output>)` does not.
 tlsf::Specification tlsf_add_assumption(const tlsf::Specification& spec,
                                         const RandomSource& random_source,
@@ -517,10 +505,8 @@ tlsf::Specification tlsf_add_assumption(const tlsf::Specification& spec,
         return mutated;
     }
     std::vector<std::string> guard_pool = spec.m_inputs;
-    if (cfg.allow_output_assumptions) {
-        guard_pool.insert(guard_pool.end(), spec.m_outputs.begin(),
-                          spec.m_outputs.end());
-    }
+    guard_pool.insert(guard_pool.end(), spec.m_outputs.begin(),
+                      spec.m_outputs.end());
     Formula guard = draw_literal(guard_pool, random_source);
     const Formula consequent = apply_consequent_modality(body, random_source);
     // `G(l -> F l)` and `G(l -> l)` are tautologies, and 30 of the corpus's
@@ -552,28 +538,6 @@ tlsf::Specification tlsf_add_assumption(const tlsf::Specification& spec,
 // and then needs gone is otherwise permanent -- but it is why the probability
 // defaults low.
 //
-// Tombstoned rather than erased, for the reason "Removable guarantees" gives:
-// every comparison pairs specifications by position, so a shifted section
-// would score slot i against the original's slot i+1. Unlike the guarantee
-// side there is no floor of one: a specification with no assumptions at all is
-// meaningful, being one that assumes nothing of its environment.
-tlsf::Specification tlsf_remove_assumption(const tlsf::Specification& spec,
-                                           const RandomSource& random_source) {
-    std::vector<std::size_t> live;
-    for (std::size_t index = 0; index < spec.m_assume.size(); ++index) {
-        if (!spec.m_assume[index].m_removed) {
-            live.push_back(index);
-        }
-    }
-    if (live.empty()) {
-        return spec;
-    }
-    tlsf::Specification mutated = spec;
-    const std::size_t choice = random_source.next_index(live.size());
-    mutated.m_assume[live[choice]].m_removed = true;
-    return mutated;
-}
-
 // Deletes one guarantee-side conjunct (PRESET, ASSERT or GUARANTEE) by
 // tombstoning it in place. The slot stays so that crossover still sees a
 // matching shape and the similarity objectives keep pairing the same conjuncts;
@@ -596,18 +560,12 @@ tlsf::Specification tlsf_remove_guarantee(const tlsf::Specification& spec,
     return mutated;
 }
 
-// The atom pool the grammar before 2026-08-19 drew from: the guarantee side
-// takes inputs ∪ outputs, the assumption side the inputs, widened to
-// inputs ∪ outputs under allow_output_assumptions so a rewrite can keep or
+// Both sides take inputs ∪ outputs, so an assumption-side rewrite can keep or
 // introduce an output atom (letting a guard drawn by tlsf_add_assumption be
 // reshaped rather than overwritten).
-std::vector<std::string> side_atom_pool(const tlsf::Specification& spec,
-                                        bool assumption_side,
-                                        const Config& cfg) {
+std::vector<std::string> side_atom_pool(const tlsf::Specification& spec) {
     std::vector<std::string> pool = spec.m_inputs;
-    if (!assumption_side || cfg.allow_output_assumptions) {
-        pool.insert(pool.end(), spec.m_outputs.begin(), spec.m_outputs.end());
-    }
+    pool.insert(pool.end(), spec.m_outputs.begin(), spec.m_outputs.end());
     return pool;
 }
 
@@ -616,36 +574,26 @@ std::vector<std::string> side_atom_pool(const tlsf::Specification& spec,
 // the outputs. Every other section keeps the side pool above.
 std::vector<std::string> section_atom_pool(const tlsf::Specification& spec,
                                            bool assumption_side,
-                                           std::size_t section_index,
-                                           const Config& cfg) {
+                                           std::size_t section_index) {
     if (is_initial_condition_section(section_index)) {
         return assumption_side ? spec.m_inputs : spec.m_outputs;
     }
-    return side_atom_pool(spec, assumption_side, cfg);
+    return side_atom_pool(spec);
 }
 
 }  // namespace
 
-// One mutation. tlsf_mutate below applies a burst of these.
-tlsf::Specification tlsf_mutate_once(const tlsf::Specification& spec,
-                                     const RandomSource& random_source,
-                                     const Config& cfg) {
+tlsf::Specification tlsf_mutate(const tlsf::Specification& spec,
+                                const RandomSource& random_source,
+                                const Config& cfg) {
     // Low-probability structural action: add a new environment assumption.
-    // Available whenever the assumption atom pool is non-empty: inputs, plus
-    // outputs when allow_output_assumptions is set (so a spec with outputs but
-    // no inputs can still gain an assumption).
+    // Available whenever the assumption atom pool (inputs ∪ outputs) is
+    // non-empty, so a spec with outputs but no inputs can still gain one.
     const bool have_assumption_pool =
-        !spec.m_inputs.empty() ||
-        (cfg.allow_output_assumptions && !spec.m_outputs.empty());
+        !spec.m_inputs.empty() || !spec.m_outputs.empty();
     if (have_assumption_pool &&
         random_source.next_real() < cfg.p_add_assumption) {
         return tlsf_add_assumption(spec, random_source, cfg);
-    }
-    // And its own mirror: delete one. Read before the draw so a zero costs no
-    // draw, which is what lets a config reproduce a run from before it existed.
-    if (cfg.tlsf_p_remove_assumption > 0.0 &&
-        random_source.next_real() < cfg.tlsf_p_remove_assumption) {
-        return tlsf_remove_assumption(spec, random_source);
     }
     // The mirror action: delete a guarantee-side conjunct. Never the last live
     // one, since a specification with nothing left to guarantee is realizable
@@ -681,7 +629,7 @@ tlsf::Specification tlsf_mutate_once(const tlsf::Specification& spec,
     // pool can be built.
     const std::size_t slot_index = random_source.next_index(slots.size());
     const std::vector<std::string> pool = section_atom_pool(
-        mutated, assumption_side, slots[slot_index].m_section_index, cfg);
+        mutated, assumption_side, slots[slot_index].m_section_index);
     if (pool.empty()) {
         // Without atoms, mutate_formula's structural rewrites cannot draw a
         // replacement atom; leave the specification unchanged.
@@ -698,8 +646,7 @@ tlsf::Specification tlsf_mutate_once(const tlsf::Specification& spec,
     // It is safe in an initial condition without a special case: the rules
     // that introduce a temporal operator fire only at a node that already
     // carries one, and an initial condition has none.
-    if (cfg.tlsf_p_monotone > 0.0 &&
-        random_source.next_real() < cfg.tlsf_p_monotone) {
+    if (cfg.p_monotone > 0.0 && random_source.next_real() < cfg.p_monotone) {
         // A fair coin rather than a side-aligned direction. Repairing
         // unrealizability does mean weakening the guarantee side and
         // strengthening the assumption side, but a search that can only move
@@ -716,8 +663,6 @@ tlsf::Specification tlsf_mutate_once(const tlsf::Specification& spec,
         entry.m_formula = monotone_rewrite(
             entry.m_formula,
             weaken ? MonotoneDirection::Weaken : MonotoneDirection::Strengthen,
-            MonotoneRules{cfg.tlsf_monotone_atom_rules,
-                          cfg.tlsf_monotone_extra_rules},
             pool, random_source);
         return mutated;
     }
@@ -733,49 +678,5 @@ tlsf::Specification tlsf_mutate_once(const tlsf::Specification& spec,
         temporal ? mutate_temporal(entry.m_formula, pool, random_source, cfg)
                  : mutate_propositional_parts(entry.m_formula, pool,
                                               random_source, cfg);
-    return mutated;
-}
-
-// A burst of mutations rather than one, the count drawn as 1 + Geometric.
-//
-// A single mutation edits one slot, so an ideal needing several coordinated
-// edits is reachable only through as many generations, each intermediate
-// having to survive selection. Where the intermediates are worse than the
-// parent the search cannot cross at all, and the corpus has such ideals:
-// examples/lily02/fixes/lilydemo05.tlsf is two added assumptions and four
-// rewritten guarantees, six slots at once.
-//
-// Geometric rather than the power law of the fast-GA literature (Doerr et al.,
-// GECCO 2017), which is the right choice when the width a jump must cross is
-// unknown. Here it is measured. Over the 40 ideals under examples/ whose delta
-// parses, the edit width runs 0.475 at one slot, 0.200 at two, 0.200 at three
-// and 0.125 at four or more; 1 + Geometric(0.5) puts 0.125 at four or more and
-// fits that target at a KL of 0.066, against 0.163 for a power law at beta =
-// 1.5, which would spend 0.245 of every mutation on a tail the corpus needs a
-// half of. The overspend is the expensive kind, each surplus candidate costing
-// a scoring pass with a model count and a realizability query in it.
-//
-// tlsf_p_burst_continue is the continuation probability, so the width is
-// 1 + Geometric and never 0: a mutation always mutates. At 0 no draw is taken
-// and the stream is what it was before this existed, the discipline
-// p_remove_guarantee and p_monotone follow.
-//
-// The cap is a backstop and not a parameter. Eight is above the widest ideal
-// the corpus holds, and without it a continuation probability set near 1 is an
-// unbounded loop rather than a slow one.
-tlsf::Specification tlsf_mutate(const tlsf::Specification& spec,
-                                const RandomSource& random_source,
-                                const Config& cfg) {
-    constexpr std::size_t k_max_burst = 8;
-    tlsf::Specification mutated = tlsf_mutate_once(spec, random_source, cfg);
-    if (cfg.tlsf_p_burst_continue <= 0.0) {
-        return mutated;
-    }
-    for (std::size_t applied = 1; applied < k_max_burst; ++applied) {
-        if (random_source.next_real() >= cfg.tlsf_p_burst_continue) {
-            break;
-        }
-        mutated = tlsf_mutate_once(mutated, random_source, cfg);
-    }
     return mutated;
 }

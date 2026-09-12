@@ -80,9 +80,8 @@ bool tlsf_is_vacuous(const tlsf::Specification& spec,
 /// spec with no assumption formulae is kept; an uncertain (timed-out)
 /// satisfiability result is treated as satisfiable and the spec is kept.
 ///
-/// Gated by Config::run_vacuity_filter, as on the FRETISH path. The final
-/// repair screen applies the predicate unconditionally either way, so turning
-/// the filter off costs search pressure, never output correctness.
+/// Runs every generation, as on the FRETISH path, and the final repair screen
+/// applies the predicate again to whatever reaches it.
 ///
 /// @param max_in_flight Concurrent checks. Each spec carrying assumptions costs
 ///                      a `black` subprocess on a cache miss, and the miss rate
@@ -119,8 +118,7 @@ bool tlsf_is_not_well_separated(const tlsf::Specification& spec,
 ///
 /// @param checker       Realizability checker for the ltlsynt query; must be
 ///                      thread-safe when max_in_flight exceeds 1
-/// @param max_in_flight Concurrent checks. Each is a full ltlsynt query, itself
-///                      gated by Config::max_concurrent_realizability.
+/// @param max_in_flight Concurrent checks. Each is a full ltlsynt query.
 FilterFunctionT<tlsf::Specification> tlsf_make_well_separation_filter(
     RealizabilityChecker& checker, std::size_t max_in_flight = 1);
 
@@ -164,14 +162,6 @@ std::optional<bool> tlsf_spec_implies(const tlsf::Specification& from,
 /// make_bloat_cap_filter.
 FilterFunctionT<tlsf::Specification> tlsf_make_bloat_cap_filter(
     const tlsf::Specification& original, double max_ratio = 2.0);
-
-/// Returns a filter keeping only specifications that are logical weakenings of
-/// @p original — those that @p original implies (via tlsf_spec_implies). An
-/// uncertain (timed-out) check keeps the candidate. The TLSF counterpart of
-/// make_weakening_filter. @p checker is captured by reference and must outlive
-/// the filter.
-FilterFunctionT<tlsf::Specification> tlsf_make_weakening_filter(
-    tlsf::Specification original, SatisfiabilityChecker& checker);
 
 /// Ranks candidates within one equivalence class, higher surviving. Ties are
 /// broken on `tlsf::Specification::operator<`, so the survivor does not depend

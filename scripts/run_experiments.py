@@ -4,9 +4,6 @@
 A profile selects which (sweep, level, spec, seed) combinations run and which
 CSV they land in (see scripts/README.md):
     full     — every level, all 4 specs, seeds 0-29 → experiments/results.csv
-    cj-large — sweeps C/D/E/F/I, nsga2 only, run_weakening crossed on/off, all
-               4 specs, seeds 0-89, at generations=40/population_size=1000 →
-               experiments/results-cj-large.csv
 
 Usage:
     python scripts/run_experiments.py                    # the full sweep
@@ -140,9 +137,9 @@ TLSF_SPECS: dict[str, dict[str, Path]] = {
 }
 
 # The original six-family TLSF corpus. The pre-ablation TLSF profiles (tlsf,
-# muc, padd, wellsep) pin this list rather than list(TLSF_SPECS), so extending
-# the table above does not silently grow what they run — their results CSVs
-# are already recorded against exactly these six.
+# muc, padd, and the retired wellsep) pin this list rather than
+# list(TLSF_SPECS), so extending the table above does not silently grow what
+# they run — their results CSVs are already recorded against exactly these six.
 TLSF_CORE_SPECS: list[str] = [
     "arbiter", "gyro-var1", "humanoid-531", "lift", "lily02", "minepump",
 ]
@@ -499,19 +496,6 @@ BASELINE_ALIASES: dict[tuple[str, str], tuple[str, str]] = {
     ("G", "bound20"): ("A", "gen10"),
     ("H", "cross0.1"): ("A", "gen10"),
     ("I", "mut1.0"): ("A", "gen10"),
-    ("J", "weaken-on"): ("A", "gen10"),
-}
-
-# Sweeps A and B are not run at all in the C-J campaign, so its baseline has to
-# be C/default — the profile's only remaining all-defaults level. G and H are
-# dropped for want of signal, and J is gone entirely: run_weakening is a crossed
-# factor of this campaign, not a sweep, so both its states are run against every
-# level and the alias holds within a (scheme, weakening) pair.
-CJ_LARGE_ALIASES: dict[tuple[str, str], tuple[str, str]] = {
-    ("D", "ptrig0.5"): ("C", "default"),
-    ("E", "presp0.5"): ("C", "default"),
-    ("F", "ptim0.15"): ("C", "default"),
-    ("I", "mut1.0"): ("C", "default"),
 }
 
 # The TLSF campaign runs only sweeps A (generations) and B (population), which
@@ -587,32 +571,6 @@ PROFILES: dict[str, dict] = {
         "results_csv": EXPERIMENTS_DIR / "results-factorial.csv",
         "default_jobs": 4,
     },
-    # Sweeps C, D, E, F, I at a larger operating point (generations=40,
-    # population_size=1000), NSGA-II only, crossed with run_weakening. A and B
-    # are excluded because they vary exactly the two parameters this campaign
-    # pins, so they would contradict the operating point rather than sweep
-    # around it; G and H are excluded for want of signal at the smaller one.
-    "cj-large": {
-        "schemes": ["nsga2-truncate"],
-        "weakenings": ["wkon", "wkoff"],
-        "metrics": None,
-        "repair_modes": None,
-        "sweeps": ["C", "D", "E", "F", "I"],
-        "levels": {},
-        "specs": list(FRETISH_SPECS),
-        "seeds": list(range(90)),
-        # Measured worst case at this operating point is ~41s, so these are
-        # 15-20x margin. A cap that bites records implies_ideal = 0 for a run
-        # that was merely slow, which corrupts the response variable — strictly
-        # worse than paying for the slow run.
-        "timeout_caps": {"takeoff": 600, "fsm": 600, "fsm-timing": 600,
-                         "fsm-combined": 900},
-        "baseline_aliases": CJ_LARGE_ALIASES,
-        "configs_dir": EXPERIMENTS_DIR / "configs-cj-large",
-        "results_dir": EXPERIMENTS_DIR / "results-cj-large",
-        "results_csv": EXPERIMENTS_DIR / "results-cj-large.csv",
-        "default_jobs": 4,
-    },
     # Direct-vs-log similarity metric as the sole crossed factor, at the same
     # large operating point as cj-large (generations=40, population_size=1000)
     # where repairs are strong enough for the metric to move outcomes. Only the
@@ -677,9 +635,8 @@ PROFILES: dict[str, dict] = {
         "results_dir": EXPERIMENTS_DIR / "results-muc",
         "results_csv": EXPERIMENTS_DIR / "results-muc.csv",
         # jobs=1: one counter process per machine using its full 32-worker pool.
-        # ltlsynt is multi-GB resident per call and max_concurrent_realizability
-        # is per-process, so jobs>1 would multiply peak RAM and risk OOM; a single
-        # process keeps the (uncapped, 128 GB) limit machine-wide.
+        # ltlsynt is multi-GB resident per call, so jobs>1 would multiply peak
+        # RAM and risk OOM.
         "default_jobs": 1,
     },
     # Follow-up to the muc campaign: sweep p_add_assumption (sweep P: 0.05, 0.15,
@@ -713,131 +670,6 @@ PROFILES: dict[str, dict] = {
         "configs_dir": EXPERIMENTS_DIR / "configs-padd",
         "results_dir": EXPERIMENTS_DIR / "results-padd",
         "results_csv": EXPERIMENTS_DIR / "results-padd.csv",
-        "default_jobs": 1,
-    },
-    # Well-separation / output-assumption 2x2 (PR #34). The four arms are carried
-    # as the levels of TLSF sweep W (gen_configs.TLSF_SWEEP_W), exactly as sweep
-    # J carries the weakening ablation — so the arm lands in the level_name CSV
-    # column and needs no crossed-factor plumbing. wsoff-oaoff is the
-    # current-default control; wson-oaon the proposed configuration (output
-    # assumptions admitted, the filter pruning the not-well-separated ones);
-    # wsoff-oaon isolates output assumptions with no filter (the vacuous-repair
-    # regression the filter is meant to prevent); wson-oaoff is a negative control
-    # where the filter is inert without output-referencing assumptions to catch.
-    # Runs the TLSF corpus, where an assumption can reference an output the system
-    # controls so the filter actually fires (23.8% drop measured on arbiter),
-    # unlike the FRETISH corpus where input-only assumptions leave it inert.
-    # humanoid-531 is dropped as in padd (~88% of per-seed cost, no headroom).
-    # Operating point gen10/pop200 (the TLSF config default). Generate with:
-    #   python scripts/gen_configs.py --tlsf --sweeps W \
-    #       --out-dir experiments/configs-wellsep
-    "wellsep": {
-        "schemes": ["nsga2-truncate"],
-        "weakenings": None,
-        "metrics": None,
-        "repair_modes": None,
-        "sweeps": ["W"],
-        "levels": {"W": ["wsoff-oaoff", "wsoff-oaon",
-                         "wson-oaoff", "wson-oaon"]},
-        "specs": [s for s in TLSF_CORE_SPECS if s != "humanoid-531"],
-        # Ceiling, not a target: seed-major so a wall-clock kill leaves a
-        # balanced design. Calibration (2026-07-22) measured ~204 s per seed
-        # (4 arms x 5 specs, jobs=1), so ~160 seeds/machine fits a 12 h budget
-        # with margin and 320 total is a strong paired design; the original
-        # 160-total design finishes in ~6 h. Split 0-159 / 160-319 across
-        # av2/av3 (pass --seeds on launch).
-        "seeds": list(range(320)),
-        # Sized from a calibration on av2/av3 (2026-07-22): the heaviest arm
-        # (wson-oaon) at gen10/pop200 maxed at arbiter 3s, gyro-var1 16s, lift
-        # 27s, lily02 4s, minepump 8s over three seeds — the well-separation
-        # query rarely fires (few candidates carry an output-referencing
-        # assumption at p_add_assumption=0.05), so the overhead over baseline is
-        # 0-30%. Caps are ~6-20x that max: generous enough never to censor a
-        # slow-but-progressing run, tight enough to kill a true runaway in
-        # minutes. Those caps were sized while ltlsynt_timeout_ms was 500, so
-        # each query was bounded at half a second; it is 10000 from 2026-08-11
-        # (see TLSF_LTLSYNT_TIMEOUT_MS in gen_configs.py), which raises the
-        # per-query bound 20x. This profile's spec set is light enough that the
-        # caps still hold, but any profile covering amba is not — recalibrate
-        # before reusing a cap table across that change.
-        # lift has a heavy runtime tail the 3-seed calibration missed (hard
-        # seeds run 100-600s+ across all arms, intrinsic to the spec, not the
-        # well-sep/output-assumption feature), so it gets the muc/padd 600s cap
-        # rather than the calibrated 180s; the rest keep their calibrated caps.
-        "timeout_caps": {"arbiter": 60, "gyro-var1": 120, "lift": 600,
-                         "lily02": 60, "minepump": 60},
-        "baseline_aliases": {},
-        "configs_dir": EXPERIMENTS_DIR / "configs-wellsep",
-        "results_dir": EXPERIMENTS_DIR / "results-wellsep",
-        "results_csv": EXPERIMENTS_DIR / "results-wellsep.csv",
-        "default_jobs": 1,
-    },
-    # Focused arbiter follow-up to the 2026-07-23 wellsep campaign. That run
-    # showed the well-separation filter rejects *every* output-assumption repair
-    # arbiter finds at gen10/pop200 (320/320 dropped) — all vacuous — but the
-    # genuine well-separated repair (G(r -> F g), which the filter would KEEP)
-    # was never reached at that budget. This asks whether a much larger operating
-    # point (generations=40, population_size=2000; ~40x the work) lets the GA
-    # find a well-separated output-assumption repair the filter keeps, i.e.
-    # arbiter's wson-oaon found_repair rising above 0. Only two arms: wson-oaon
-    # (treatment) and wson-oaoff (control — guarantee-only, isolates whether the
-    # gain is the output-assumption path rather than higher-budget guarantee
-    # weakening). arbiter only. Generate the pop2000/gen40 grid with:
-    #   python scripts/gen_configs.py --tlsf --sweeps W \
-    #       --generations 40 --population-size 2000 \
-    #       --out-dir experiments/configs-arbiter-hp
-    "arbiter-hp": {
-        "schemes": ["nsga2-truncate"],
-        "weakenings": None,
-        "metrics": None,
-        "repair_modes": None,
-        "sweeps": ["W"],
-        "levels": {"W": ["wson-oaoff", "wson-oaon"]},
-        "specs": ["arbiter"],
-        # Ceiling, not a target: seed-major so a 20 h/box kill leaves a balanced
-        # two-arm design at whatever seed depth it reached. Operating point is
-        # pop10000/gen100 (configs generated with --generations 100
-        # --population-size 10000); calibration on av2 (2026-07-23) measured
-        # ~171 s/run control, ~190 s treatment (~360 s/seed), so 20 h/box reaches
-        # ~200 seeds. Split 0-199 / 200-399 across av2/av3 (pass --seeds).
-        "seeds": list(range(400)),
-        # Calibrated to ~600 s ≈ 3x the ~190 s/run wall time: arbiter has no heavy
-        # runtime tail (unlike lift), so a run exceeding 600 s is a true ltlsynt
-        # hang, not a slow-but-progressing seed. ltlsynt_timeout_ms=500 bounds
-        # each per-candidate well-separation query.
-        "timeout_caps": {"arbiter": 600},
-        "baseline_aliases": {},
-        "configs_dir": EXPERIMENTS_DIR / "configs-arbiter-hp",
-        "results_dir": EXPERIMENTS_DIR / "results-arbiter-hp",
-        "results_csv": EXPERIMENTS_DIR / "results-arbiter-hp.csv",
-        "default_jobs": 1,
-    },
-    # Redistribution of the arbiter-hp budget after that run finished 0/~350 at
-    # the fixed p_add_assumption=0.05. arbiter's only fix is the assumption pair
-    # G F r0 & G F r1, and a single assumption yields no realizability payoff to
-    # select on, so 0.05 leaves the pair unreachable. Sweep Q spreads seeds over
-    # p_add_assumption in {0.1, 0.2, 0.4, 0.6, 0.8}, crossed with the two wson
-    # arms (10 levels), at the same pop10000/gen100 operating point. The ~800-run
-    # arbiter-hp budget is conserved: 80 seeds x 10 levels = 800 runs, split
-    # 0-39 / 40-79 across av2/av3 (~400 runs/box, matching arbiter-hp's per-box
-    # load), so each (padd, arm) cell gets 80 seed replications. Generate with:
-    #   python scripts/gen_configs.py --tlsf --sweeps Q \
-    #       --generations 100 --population-size 10000 \
-    #       --out-dir experiments/configs-arbiter-padd
-    "arbiter-padd": {
-        "schemes": ["nsga2-truncate"],
-        "weakenings": None,
-        "metrics": None,
-        "repair_modes": None,
-        "sweeps": ["Q"],
-        "levels": {},  # every generated Q level (all 10 padd x arm combos)
-        "specs": ["arbiter"],
-        "seeds": list(range(80)),
-        "timeout_caps": {"arbiter": 600},
-        "baseline_aliases": {},
-        "configs_dir": EXPERIMENTS_DIR / "configs-arbiter-padd",
-        "results_dir": EXPERIMENTS_DIR / "results-arbiter-padd",
-        "results_csv": EXPERIMENTS_DIR / "results-arbiter-padd.csv",
         "default_jobs": 1,
     },
     # The basic-TLSF examples swept over generations (A) and population (B), the
@@ -877,11 +709,9 @@ PROFILES: dict[str, dict] = {
         "results_dir": EXPERIMENTS_DIR / "results-tlsf",
         "results_csv": EXPERIMENTS_DIR / "results-tlsf.csv",
         # jobs=1: one counter process per machine, using its full internal
-        # thread pool. The configs cap concurrent ltlsynt
-        # (max_concurrent_realizability) to bound peak RAM, and that cap is
-        # per-process, so a single process keeps it the machine-wide limit —
-        # running several counter processes at once (jobs>1) would multiply the
-        # ltlsynt count by jobs and risk the OOM the cap exists to prevent.
+        # thread pool. ltlsynt is multi-GB resident per call on these specs, so
+        # running several counter processes at once (jobs>1) would multiply
+        # peak RAM by jobs and risk an OOM.
         "default_jobs": 1,
     },
     # FRETISH arm of the ablation campaign (PLAN §1): a 2x2 factorial of
@@ -1105,11 +935,10 @@ PROFILES: dict[str, dict] = {
     # measured on its own by `2026-08-19-accumulator` and this campaign holds it
     # on, so the level is a way to state the key in the archived config rather
     # than a factor. `--weakening off` does the same job for `run_weakening`.
-    # `run_well_separation` and `allow_output_assumptions` are the two keys
-    # nothing states: they ride the binary defaults (false since b101ada, true)
-    # and PLAN.md records the values, since `--pin-vintage` would write
-    # `run_well_separation = true` from a `gen_configs.DEFAULTS` entry stale
-    # since 2026-08-10 -- the same defect that put that filter into the
+    # `run_well_separation` is the one key nothing states: it rides the binary
+    # default (false since b101ada) and PLAN.md records the value, since
+    # `--pin-vintage` would write `run_well_separation = true` from a
+    # `gen_configs.DEFAULTS` entry stale since 2026-08-10 -- the same defect that put that filter into the
     # archived arm against the `aurus-h2h` profile's own stated intent.
     "aurus-h2h-ship": {
         "schemes": ["nsga2-apportion"],
@@ -1725,64 +1554,6 @@ PROFILES: dict[str, dict] = {
         # jobs=1 for the same RAM reason as every other TLSF profile.
         "default_jobs": 1,
     },
-    # ── 2026-08-19-weakening-arbiter ────────────────────────────────────────
-    # Does the weakening restriction cost reachable repairs on the arbiter
-    # families? run_weakening is a *final* screen (include/config.hpp:111-118),
-    # so the two arms share a seed and a search and differ only in what
-    # survives step 6. Any repair the wkoff arm returns that its wkon twin does
-    # not is therefore incomparable to the original by construction, and no new
-    # metric is needed to identify one -- best_relation compares a repair
-    # against an *ideal* (src/compare.cpp:366-368), not against the input, so
-    # the yield difference is the response variable and n_repairs carries it.
-    #
-    # Same 10 families as arbiter-probe, whose 2026-08-10 archive is the cost
-    # model: 131 s of counter per seed summed over the specs, no run within 5x
-    # of the 900 s cap (worst was amba at 190 s). 10 seeds per host at jobs=1
-    # is ~44 min of counter plus compare, which is the hour asked for.
-    #
-    # Power, against arbiter-probe's wkon yields: prioritized-arbiter ran 0/40
-    # and full-arbiter 1/40, so a wkoff rate of 15% shows at least one repair in
-    # 20 seeds with probability 0.96. This sizes a *reachability* probe -- it
-    # answers whether incomparable repairs exist on a family, not at what rate.
-    # A null is not evidence of absence at this seed count.
-    #
-    # Caveat recorded here because the result cannot be read without it: tier-1
-    # fitness work is unfixed, so the wkoff arm is scored by objectives that
-    # under-price deletion (Logarithmic containment saturates,
-    # src/fitness/semantic_similarity.cpp:35-45; a tombstone contributes a flat
-    # 0 at :228-231; MRS normalises by the candidate's own live guarantee
-    # count, src/fitness/status.cpp:263-265). Expect its output to skew towards
-    # gutted rewrites. Read the arm for reachability, never for quality.
-    #
-    # Generate the configs with
-    #   python3 scripts/gen_configs.py --tlsf --weakening both \
-    #       --sweeps A --levels gen10 --out-dir experiments/configs-wkarb
-    "weakening-arbiter": {
-        "schemes": ["nsga2-truncate"],
-        "weakenings": ["wkon", "wkoff"],
-        "metrics": None,
-        "repair_modes": None,
-        "sweeps": ["A"],
-        "levels": {"A": ["gen10"]},
-        "specs": list(ARBITER_PROBE_SPECS),
-        # 10 per host, seed-major disjoint across av2/av3.
-        "seeds": list(range(20)),
-        # arbiter-probe's flat 900 s on this operating point and these hosts,
-        # where the worst observed run was 190 s. Sized never to bite: a cap
-        # that fires records n_repairs = 0, which is indistinguishable from the
-        # finding this campaign is looking for.
-        "timeout_caps": {spec: 900 for spec in ARBITER_PROBE_SPECS},
-        # wkoff returns strictly more repairs than wkon by construction and
-        # compare's cost scales with them, the same asymmetry that censored
-        # replicate's comparisons at the 600 s default.
-        "compare_timeout": 1800,
-        "baseline_aliases": {},
-        "configs_dir": EXPERIMENTS_DIR / "configs-wkarb",
-        "results_dir": EXPERIMENTS_DIR / "results-wkarb",
-        "results_csv": EXPERIMENTS_DIR / "results-wkarb.csv",
-        # jobs=1 for the same RAM reason as every other TLSF profile.
-        "default_jobs": 1,
-    },
     # ── 2026-08-11-selection-default ────────────────────────────────────────
     # Whether nsga2-apportion should replace nsga2-truncate as the shipped
     # default. See experiments/2026-08-11-selection-default/PLAN.md for the
@@ -1927,6 +1698,16 @@ PROFILES: dict[str, dict] = {
     # so the sweep cannot be generated and neither can this profile.
     # `experiments/2026-08-26-assumption-reach` is the record, and it reproduces
     # from its own vendored scripts/ at the commit its PROVENANCE.json names.
+    #
+    # Five more retired on 2026-09-11, when `[filters] run_weakening` and
+    # `[filters] run_well_separation` were removed with the filters they
+    # switched. cj-large and weakening-arbiter crossed the weakening filter on
+    # and off through gen_configs --weakening, which now emits the wkoff
+    # directory alone; wellsep, arbiter-hp and arbiter-padd ran TLSF sweeps W
+    # and Q, whose every level states run_well_separation. None of the five can
+    # be regenerated, and merge_experiments.py keeps its entries for them so the
+    # archived CSVs stay mergeable. Each archive reproduces from its own
+    # vendored scripts/ at the commit its PROVENANCE.json names.
 }
 
 

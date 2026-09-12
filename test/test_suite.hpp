@@ -7,6 +7,7 @@ void run_realize_driver_tests();
 void run_ltl_driver_tests();
 void run_mucs_driver_tests();
 void run_compare_driver_tests();
+void run_maximal_driver_tests();
 void run_lint_ideals_driver_tests();
 void run_signal_tracer_driver_tests();
 void run_fingerprint_lasso_tests();

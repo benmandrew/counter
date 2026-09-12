@@ -30,19 +30,17 @@
 #include <utility>
 #include <vector>
 
-#include "bounded_async.hpp"
 #include "config.hpp"
 #include "filter/antichain.hpp"
 #include "fingerprint/lasso.hpp"
 #include "runner/black.hpp"
 #include "thread_pool.hpp"
 
-// Whether @p cfg streams the implication filter. There is nothing to stream
-// without the accumulator and nothing to run without the filter, so the key
-// is inert unless both are on.
+// Whether @p cfg streams the implication filter. Streaming is the route
+// whenever both its inputs are there: nothing queues without the accumulator,
+// and there is nothing to run without the filter.
 inline bool implication_streams(const Config& cfg) {
-    return cfg.stream_implication_filter && cfg.accumulate_repairs &&
-           cfg.run_implication_filter;
+    return cfg.accumulate_repairs && cfg.run_implication_filter;
 }
 
 // What the streaming filter asks of a specification, per front end. Every
@@ -53,10 +51,6 @@ struct MaximalStreamRules {
     // batch filter reads one.
     std::function<bool(const Spec&, const Spec&, SatisfiabilityChecker&)>
         implies;
-    // The weakening screen, applied to each specification before it can join
-    // the maximal set. A timeout keeps it, as the batch screen does. Empty
-    // admits everything.
-    std::function<bool(const Spec&, SatisfiabilityChecker&)> admits;
     // Ranks the members of an equivalence class. May be empty.
     std::function<double(const Spec&)> similarity;
     // May be empty, which skips the sampled-word prefilter.
@@ -69,7 +63,6 @@ struct MaximalStreamRules {
 struct MaximalStreamCounts {
     std::size_t n_pushed{0};
     std::size_t n_distinct{0};
-    std::size_t n_admitted{0};
 };
 
 template <typename Spec>
@@ -204,39 +197,9 @@ class StreamingMaximalFilter {
         return m_abandoned.load(std::memory_order_relaxed);
     }
 
-    std::vector<Entry> admitted_of(std::vector<Entry> batch) {
-        if (!m_rules.admits) {
-            return batch;
-        }
-        std::vector<std::uint8_t> keep(batch.size(), 0);
-        run_bounded_async(
-            batch.size(), dispatch_window(),
-            [this, &batch](std::size_t idx) {
-                return [this, &spec = batch[idx].spec] {
-                    return abandoned() || m_rules.admits(spec, m_checker);
-                };
-            },
-            [&keep](std::size_t idx, bool admitted) {
-                keep[idx] = admitted ? 1 : 0;
-            },
-            {}, TaskPriority::Background);
-        std::vector<Entry> admitted;
-        for (std::size_t idx = 0; idx < batch.size(); ++idx) {
-            if (keep[idx] != 0U) {
-                admitted.push_back(std::move(batch[idx]));
-            }
-        }
-        return admitted;
-    }
-
     void merge(std::vector<Entry> batch) {
         for (const Entry& entry : batch) {
             m_any_named = m_any_named || !entry.name.empty();
-        }
-        batch = admitted_of(std::move(batch));
-        m_counts.n_admitted += batch.size();
-        if (batch.empty()) {
-            return;
         }
         std::vector<Spec> incoming;
         incoming.reserve(batch.size());
@@ -362,8 +325,7 @@ class StreamingMaximalFilter {
     bool m_any_named{false};
     bool m_listing_failed{false};
 
-    // n_pushed and n_distinct are the pushing thread's, n_admitted the
-    // coordinator's.
+    // The pushing thread's alone, both fields being counted in push().
     MaximalStreamCounts m_counts;
 
     // Last, so every member it reads is constructed before it starts.

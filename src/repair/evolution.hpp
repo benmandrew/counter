@@ -52,9 +52,8 @@ EvolutionResult run_evolution(
     const std::string& output_dir, SearchBudget& budget,
     RepairAccumulator<Specification>::Sink sink = {});
 
-// The final screens run during the search, fed from the accumulator, or null
-// where implication_streams(cfg) is false. The weakening screen joins it when
-// cfg.run_weakening_filter is set.
+// The final screen runs during the search, fed from the accumulator, or null
+// where implication_streams(cfg) is false.
 std::unique_ptr<StreamingMaximalFilter<Specification>> make_maximal_stream(
     const Config& cfg, const Specification& original,
     const std::string& output_dir);
@@ -65,8 +64,7 @@ std::vector<Specification> collect_realizable_specifications(
     const Config& cfg, const std::vector<ScoredSpecification>& population);
 
 // Applies the final screens to the realizable specifications: deduplication,
-// then the weakening filter against @p original when run_weakening_filter is
-// set, then the implication (maximality) filter when run_implication_filter is.
+// then the implication (maximality) filter when run_implication_filter is set.
 std::pair<std::vector<Specification>, std::vector<FilterRunStats>>
 filter_maximal_specifications(const Config& cfg, const Specification& original,
                               const std::vector<Specification>& realizable_vec);
@@ -76,8 +74,7 @@ filter_maximal_specifications(const Config& cfg, const Specification& original,
 // for the last batch, and returns the maximal set in @p realizable_vec's order
 // with the same per-screen accounting.
 std::pair<std::vector<Specification>, std::vector<FilterRunStats>>
-finish_maximal_stream(const Config& cfg,
-                      StreamingMaximalFilter<Specification>& stream,
+finish_maximal_stream(StreamingMaximalFilter<Specification>& stream,
                       const std::vector<Specification>& realizable_vec);
 
 void write_specifications(

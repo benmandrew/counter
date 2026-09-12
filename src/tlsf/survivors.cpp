@@ -177,15 +177,6 @@ std::vector<Scored<Specification>> merge_accumulated_survivors(
     return survivors;
 }
 
-std::vector<Scored<Specification>> keep_weakenings(
-    const std::vector<Scored<Specification>>& survivors,
-    const Specification& original, SatisfiabilityChecker& checker) {
-    const std::vector<Specification> specs = specifications_of(survivors);
-    const std::vector<Specification> weakenings =
-        tlsf_make_weakening_filter(original, checker)(specs);
-    return keep_matching(survivors, weakenings);
-}
-
 std::vector<Scored<Specification>> keep_maximal(
     const std::vector<Scored<Specification>>& survivors,
     const Specification& original, const Config& cfg,
@@ -208,13 +199,6 @@ std::unique_ptr<StreamingMaximalFilter<Specification>> make_maximal_stream(
                        SatisfiabilityChecker& checker) {
         return tlsf_spec_implies(lhs, rhs, checker).value_or(false);
     };
-    // A timeout keeps the candidate, as tlsf_make_weakening_filter's does.
-    if (cfg.run_weakening_filter) {
-        rules.admits = [original](const Specification& spec,
-                                  SatisfiabilityChecker& checker) {
-            return tlsf_spec_implies(original, spec, checker).value_or(true);
-        };
-    }
     rules.similarity = tlsf_syntactic_similarity_key(original, cfg);
     rules.fingerprints = [](const std::vector<Specification>& specs) {
         return fingerprint::prefilter::fingerprints_of(specs);

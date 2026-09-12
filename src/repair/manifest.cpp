@@ -133,17 +133,31 @@ namespace {
 // per requirement, so `comparisons`, `timeouts` and the repair counts beside
 // them are not comparable across it on that path.
 //
-// 27 moved both paths onto one implication sweep. On TLSF, `comparisons`,
-// `skipped` and `duplicates` read 0 on every earlier manifest, the TLSF sweep
-// having counted none of them, and `fingerprint_refuted` was never reset; all
-// four now carry the sweep's own figures, as they already did on FRETISH.
-// `timeouts` still reads 0 there, tlsf_spec_implies counting none.
+// 27 removed tlsf.mutation.p_monotone (folded into mutation.p_monotone, which
+// both paths now read), tlsf.mutation.connective_implies and the two
+// tlsf.mutation.monotone_*_rules gates (all now unconditional), and
+// filters.run_weakening and filters.run_well_separation (the stages are gone).
+// It also removed filters.run_vacuity (vacuity always runs per generation),
+// mutation.allow_output_assumptions (always allowed),
+// tlsf.mutation.p_remove_assumption and p_burst_continue (their operators are
+// gone), runtime.ganak_timeout_ms (ganak runs untimed) and
+// runtime.max_concurrent_realizability (no ltlsynt concurrency cap), and
+// dropped tool_calls.ganak.timeouts with the timeout it counted.
+// The same version moved the fitness weights to AuRUS's 0.1/0.2/0.7 and
+// mutation.p_condition_type, p_scope and p_monotone off 0.
 //
-// 28 added filters.stream_implication. Under it the implication figures count
-// the streaming sweep, whose batches ask the pairs within a batch and between
-// it and the maximal set so far, so `comparisons` and `skipped` do not compare
-// with a batch run's; `duplicates` reads 0, the stream deduplicating before
-// its sweep sees anything.
+// 28 moved both paths onto one implication sweep and runs it during the
+// search. On TLSF, `comparisons`, `skipped` and `duplicates` read 0 on every
+// earlier manifest, the TLSF sweep having counted none of them, and
+// `fingerprint_refuted` was never reset; all four now carry the sweep's own
+// figures, as they already did on FRETISH. `timeouts` still reads 0 there,
+// tlsf_spec_implies counting none. Wherever the run accumulates, the
+// implication figures are the streamed sweep's, whose batches ask the pairs
+// within a batch and between it and the maximal set so far, so `comparisons`
+// and `skipped` do not compare with any earlier run's; `duplicates` reads 0,
+// the stream deduplicating before its sweep sees anything. No key selects
+// between the two routes, so a manifest at 28 or above carries the streamed
+// figures whenever accumulate_repairs and filters.run_implication are both on.
 constexpr int k_schema_version = 28;
 
 // The inverse of the spellings config_io.cpp parses. It has no table to
@@ -264,75 +278,60 @@ std::size_t count_repairs(const std::filesystem::path& dir) {
 nlohmann::json config_json(const Config& cfg) {
     // Mirrors the TOML section layout so a manifest diffs directly against a
     // config file rather than needing a key-by-key translation.
-    return {
-        {"genetic",
-         {{"generations", cfg.generations},
-          {"population_size", cfg.population_size},
-          {"selection_rate", cfg.selection_rate},
-          {"elitism_rate", cfg.elitism_rate},
-          {"crossover_rate", cfg.crossover_rate},
-          {"mutation_rate", cfg.mutation_rate},
-          {"selection_scheme", scheme_name(cfg.selection_scheme)},
-          {"termination", termination_name(cfg.termination)},
-          {"max_individuals", cfg.max_individuals},
-          {"max_wall_s", cfg.max_wall_s},
-          {"accumulate_repairs", cfg.accumulate_repairs}}},
-        {"fitness",
-         {{"weight_syntactic", cfg.fitness_weight_syntactic},
-          {"weight_semantic", cfg.fitness_weight_semantic},
-          {"weight_status", cfg.fitness_weight_status},
-          {"status_grading", status_grading_name(cfg.status_grading)},
-          {"mrs_admission_order",
-           mrs_admission_order_name(cfg.mrs_admission_order)}}},
-        {"mutation",
-         {{"p_trigger", cfg.p_trigger},
-          {"p_response", cfg.p_response},
-          {"p_timing", cfg.p_timing},
-          {"p_condition_type", cfg.p_condition_type},
-          {"p_scope", cfg.p_scope},
-          {"p_monotone", cfg.p_monotone},
-          {"p_add_assumption", cfg.p_add_assumption},
-          {"p_remove_guarantee", cfg.p_remove_guarantee},
-          {"p_conditional_assumption", cfg.p_conditional_assumption},
-          {"allow_output_assumptions", cfg.allow_output_assumptions}}},
-        {"tlsf",
-         {{"repair_mode", repair_mode_name(cfg.repair_mode)},
-          {"muc_max_iterations", cfg.muc_max_iterations},
-          // Every key of [tlsf.mutation], not the two this block reported
-          // until 2026-08-26. A campaign reads its arms out of run.json, and
-          // the ones that were missing are exactly those the recent operator
-          // work added.
-          {"mutation",
-           {{"p_assumption", cfg.tlsf_p_assumption},
-            {"p_temporal", cfg.tlsf_p_temporal},
-            {"connective_implies", cfg.tlsf_connective_implies},
-            {"p_monotone", cfg.tlsf_p_monotone},
-            {"monotone_atom_rules", cfg.tlsf_monotone_atom_rules},
-            {"monotone_extra_rules", cfg.tlsf_monotone_extra_rules},
-            {"p_clone_assumption", cfg.tlsf_p_clone_assumption},
-            {"max_assumption_width", cfg.tlsf_max_assumption_width},
-            {"p_bare_assumption", cfg.tlsf_p_bare_assumption},
-            {"p_remove_assumption", cfg.tlsf_p_remove_assumption},
-            {"p_burst_continue", cfg.tlsf_p_burst_continue}}}}},
-        {"model_counting",
-         {{"default_bound", cfg.default_model_counting_bound},
-          {"metric", metric_name(cfg.similarity_metric)}}},
-        {"filters",
-         {{"run_weakening", cfg.run_weakening_filter},
-          {"run_implication", cfg.run_implication_filter},
-          {"run_vacuity", cfg.run_vacuity_filter},
-          {"run_well_separation", cfg.run_well_separation_filter},
-          {"stream_implication", cfg.stream_implication_filter}}},
-        {"runtime",
-         {{"black_timeout_ms", cfg.black_timeout.count()},
-          {"ltlsynt_timeout_ms", cfg.ltlsynt_timeout.count()},
-          {"ltl2tgba_timeout_ms", cfg.ltl2tgba_timeout.count()},
-          {"ltlfilt_timeout_ms", cfg.ltlfilt_timeout.count()},
-          {"ganak_timeout_ms", cfg.ganak_timeout.count()},
-          {"parallel", cfg.parallel},
-          {"max_concurrent_realizability", cfg.max_concurrent_realizability},
-          {"max_scoring_failure_rate", cfg.max_scoring_failure_rate},
-          {"dashboard", cfg.dashboard}}}};
+    return {{"genetic",
+             {{"generations", cfg.generations},
+              {"population_size", cfg.population_size},
+              {"selection_rate", cfg.selection_rate},
+              {"elitism_rate", cfg.elitism_rate},
+              {"crossover_rate", cfg.crossover_rate},
+              {"mutation_rate", cfg.mutation_rate},
+              {"selection_scheme", scheme_name(cfg.selection_scheme)},
+              {"termination", termination_name(cfg.termination)},
+              {"max_individuals", cfg.max_individuals},
+              {"max_wall_s", cfg.max_wall_s},
+              {"accumulate_repairs", cfg.accumulate_repairs}}},
+            {"fitness",
+             {{"weight_syntactic", cfg.fitness_weight_syntactic},
+              {"weight_semantic", cfg.fitness_weight_semantic},
+              {"weight_status", cfg.fitness_weight_status},
+              {"status_grading", status_grading_name(cfg.status_grading)},
+              {"mrs_admission_order",
+               mrs_admission_order_name(cfg.mrs_admission_order)}}},
+            {"mutation",
+             {{"p_trigger", cfg.p_trigger},
+              {"p_response", cfg.p_response},
+              {"p_timing", cfg.p_timing},
+              {"p_condition_type", cfg.p_condition_type},
+              {"p_scope", cfg.p_scope},
+              {"p_monotone", cfg.p_monotone},
+              {"p_add_assumption", cfg.p_add_assumption},
+              {"p_remove_guarantee", cfg.p_remove_guarantee},
+              {"p_conditional_assumption", cfg.p_conditional_assumption}}},
+            {"tlsf",
+             {{"repair_mode", repair_mode_name(cfg.repair_mode)},
+              {"muc_max_iterations", cfg.muc_max_iterations},
+              // Every key of [tlsf.mutation], not the two this block reported
+              // until 2026-08-26. A campaign reads its arms out of run.json,
+              // and the ones that were missing are exactly those the recent
+              // operator work added.
+              {"mutation",
+               {{"p_assumption", cfg.tlsf_p_assumption},
+                {"p_temporal", cfg.tlsf_p_temporal},
+                {"p_clone_assumption", cfg.tlsf_p_clone_assumption},
+                {"max_assumption_width", cfg.tlsf_max_assumption_width},
+                {"p_bare_assumption", cfg.tlsf_p_bare_assumption}}}}},
+            {"model_counting",
+             {{"default_bound", cfg.default_model_counting_bound},
+              {"metric", metric_name(cfg.similarity_metric)}}},
+            {"filters", {{"run_implication", cfg.run_implication_filter}}},
+            {"runtime",
+             {{"black_timeout_ms", cfg.black_timeout.count()},
+              {"ltlsynt_timeout_ms", cfg.ltlsynt_timeout.count()},
+              {"ltl2tgba_timeout_ms", cfg.ltl2tgba_timeout.count()},
+              {"ltlfilt_timeout_ms", cfg.ltlfilt_timeout.count()},
+              {"parallel", cfg.parallel},
+              {"max_scoring_failure_rate", cfg.max_scoring_failure_rate},
+              {"dashboard", cfg.dashboard}}}};
 }
 
 nlohmann::json tool_calls_json() {
@@ -363,8 +362,11 @@ nlohmann::json tool_calls_json() {
                       SatisfiabilityChecker::n_cache_hits,
                       SatisfiabilityChecker::n_timeouts,
                       SatisfiabilityChecker::total_time_s)},
-        {"ganak", row(GanakStats::n_cache_misses, GanakStats::n_cache_hits,
-                      GanakStats::n_timeouts, GanakStats::total_time_s)}};
+        // No timeouts field: ganak runs untimed, so it could only ever read 0.
+        {"ganak",
+         {{"calls", GanakStats::n_cache_misses},
+          {"cache_hits", GanakStats::n_cache_hits},
+          {"total_s", GanakStats::total_time_s}}}};
 }
 
 // Every memoisation cache in the run, so that a hit rate is derivable for each

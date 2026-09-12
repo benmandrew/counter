@@ -72,7 +72,6 @@ bool specification_is_not_well_separated(const Specification& specification,
 ///
 /// @param checker       Realizability checker for the ltlsynt query; must be
 ///                      thread-safe when max_in_flight exceeds 1
-/// @param max_in_flight Concurrent checks. Each is a full ltlsynt query, itself
-///                      gated by Config::max_concurrent_realizability.
+/// @param max_in_flight Concurrent checks. Each is a full ltlsynt query.
 FilterFunction make_well_separation_filter(RealizabilityChecker& checker,
                                            std::size_t max_in_flight = 1);

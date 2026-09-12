@@ -354,9 +354,8 @@ void test_streaming_matches_batch_filter() {
                streamed[1] == specs[5],
            "streaming_maximal: should return the maximal set in push order");
     const MaximalStreamCounts& counts = stream.counts();
-    expect(counts.n_pushed == 7 && counts.n_distinct == 6 &&
-               counts.n_admitted == 6,
-           "streaming_maximal: should count 7 pushed, 6 distinct, 6 admitted");
+    expect(counts.n_pushed == 7 && counts.n_distinct == 6,
+           "streaming_maximal: should count 7 pushed and 6 distinct");
     expect(read_whole(dir.listing()) == "file\nr3.json\nr5.json\n",
            "streaming_maximal: the listing should name r3 and r5 alone");
     expect(!std::filesystem::exists(dir.listing() + ".tmp"),
@@ -382,26 +381,6 @@ void test_streaming_rethrows_a_failed_check() {
         threw = true;
     }
     expect(threw, "streaming_maximal: finish() should rethrow a failed check");
-}
-
-// A specification the weakening screen refuses never joins the set, so it
-// cannot subsume anything either: here G a would have removed GF a.
-void test_streaming_screens_before_merging() {
-    const Specification strong = make_spec({g_req("a")});
-    const Specification weak = make_spec({f_req("a")});
-    MaximalStreamRules<Specification> rules = fretish_rules();
-    rules.admits = [strong](const Specification& spec, SatisfiabilityChecker&) {
-        return !(spec == strong);
-    };
-    const Config cfg;
-    StreamingMaximalFilter<Specification> stream(cfg, std::move(rules), {});
-    stream.push(strong, {});
-    stream.push(weak, {});
-    const std::vector<Specification> streamed = stream.finish();
-    expect(streamed.size() == 1 && streamed[0] == weak,
-           "streaming_maximal: a refused specification should not subsume");
-    expect(stream.counts().n_admitted == 1,
-           "streaming_maximal: should count one admitted specification");
 }
 
 // Unwinding past an unfinished filter must not wait on the solver or hang.
@@ -474,6 +453,5 @@ void run_implication_filter_tests() {
     test_batched_merge_matches_one_sweep();
     test_streaming_matches_batch_filter();
     test_streaming_rethrows_a_failed_check();
-    test_streaming_screens_before_merging();
     test_streaming_destroyed_unfinished();
 }

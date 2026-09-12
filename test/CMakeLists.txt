@@ -65,7 +65,7 @@ target_link_libraries(counter_tests PRIVATE counter_fitness)
 # where they landed. Every driver is built into the same directory, so one
 # generator expression covers all of them.
 add_dependencies(counter_tests
-    counter compare lint-ideals ltl mucs realize signal_tracer)
+    counter compare lint-ideals ltl maximal mucs realize signal_tracer)
 target_compile_definitions(counter_tests PRIVATE
     COUNTER_DRIVER_DIR="$<TARGET_FILE_DIR:counter>")
 
@@ -141,12 +141,13 @@ add_test(NAME counter_tests.tlsf_pipeline COMMAND counter_tests tlsf_pipeline)
 
 # One end-to-end entry per built driver, each running the binary the way a user
 # would. They are registered separately so a failure names the driver rather
-# than a suite covering seven of them.
+# than a suite covering eight of them.
 add_test(NAME counter_tests.driver_counter COMMAND counter_tests driver_counter)
 add_test(NAME counter_tests.driver_realize COMMAND counter_tests driver_realize)
 add_test(NAME counter_tests.driver_ltl COMMAND counter_tests driver_ltl)
 add_test(NAME counter_tests.driver_mucs COMMAND counter_tests driver_mucs)
 add_test(NAME counter_tests.driver_compare COMMAND counter_tests driver_compare)
+add_test(NAME counter_tests.driver_maximal COMMAND counter_tests driver_maximal)
 add_test(NAME counter_tests.driver_lint_ideals
          COMMAND counter_tests driver_lint_ideals)
 add_test(NAME counter_tests.driver_signal_tracer

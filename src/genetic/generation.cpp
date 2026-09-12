@@ -107,8 +107,7 @@ std::vector<ScoredSpecification> evolve_generation(
 }
 
 std::vector<FilterFunction> get_filter_functions(
-    const Config& cfg, const Specification& original,
-    SatisfiabilityChecker& checker) {
+    const Specification& original, SatisfiabilityChecker& checker) {
     const std::size_t max_in_flight = dispatch_window();
     std::vector<FilterFunction> filters;
     FilterFunction dedup = make_dedup_filter();
@@ -122,7 +121,7 @@ std::vector<FilterFunction> get_filter_functions(
     // ones the gate later hits in cache.
     for (const CorrectnessCheck& check :
          correctness_checks(checker, global_real_checker())) {
-        if (cfg.*check.per_generation_flag) {
+        if (check.per_generation) {
             filters.push_back(make_predicate_filter(
                 check.name, check.admissible, max_in_flight));
         }
@@ -135,16 +134,10 @@ std::vector<FilterFunction> get_final_filter_functions(
     const GenerationProgressCallback& on_impl_progress) {
     std::vector<FilterFunction> filters;
     filters.push_back(make_dedup_filter());
-    // Built before the weakening filter, which moves `original` out.
-    SimilarityKey similarity = cfg.run_implication_filter
-                                   ? syntactic_similarity_key(original, cfg)
-                                   : SimilarityKey{};
-    if (cfg.run_weakening_filter) {
-        filters.push_back(make_weakening_filter(std::move(original), checker));
-    }
     if (cfg.run_implication_filter) {
         filters.push_back(make_implication_filter(
-            checker, std::move(similarity), on_impl_progress));
+            checker, syntactic_similarity_key(std::move(original), cfg),
+            on_impl_progress));
     }
     return filters;
 }

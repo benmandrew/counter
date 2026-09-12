@@ -10,7 +10,6 @@
 #include "driver_support.hpp"
 #include "repair/cli.hpp"
 #include "repair/driver.hpp"
-#include "runner/spot.hpp"
 #include "thread_pool.hpp"
 
 int main(int argc, const char* const argv[]) {
@@ -54,7 +53,6 @@ int main(int argc, const char* const argv[]) {
     cfg.report_cpu_timing = has_flag(argc, argv, "--cpu-report");
     cfg.report_diagnostics = has_flag(argc, argv, "--diagnostics");
     apply_tool_timeouts(cfg);
-    RealizabilityChecker::set_max_concurrency(cfg.max_concurrent_realizability);
     set_thread_pool_size(cfg.parallel);
 
     const std::optional<std::string> input_path =

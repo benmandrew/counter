@@ -17,7 +17,7 @@ Usage:
                                                         # specific levels only
     python scripts/gen_configs.py --generations 40 --population-size 1000 \\
         --out-dir experiments/configs-cj-large          # a larger operating point
-    python scripts/gen_configs.py --weakening both      # cross run_weakening in
+    python scripts/gen_configs.py --weakening off       # nest under <scheme>/wkoff/
     python scripts/gen_configs.py --metric both         # cross direct/log metric in
     python scripts/gen_configs.py --tlsf                # the TLSF campaign grid
 """
@@ -47,21 +47,17 @@ CONFIGS_DIR = Path(__file__).parent.parent / "experiments" / "configs"
 # read back; nothing else here may depend on the old spellings.
 SCHEMES: list[str] = ["nsga2-truncate", "weighted", "nsga2-apportion"]
 
-# run_weakening as a crossed factor: each (scheme, sweep, level) is emitted once
-# per weakening state into its own <scheme>/<wkon|wkoff>/ directory. The state
-# lives in the directory for the same reason the scheme does — level_value_of()
-# in run_experiments.py parses a trailing number off level_name, so folding it
-# into the filename would corrupt the level value.
-#
-# --weakening defaults to None rather than a state, because passing it is what
-# introduces the extra directory level. Without it the layout stays flat
-# (<scheme>/sweep_X_level.toml) and run_weakening comes from DEFAULTS or the
-# level's own override, which is what keeps the no-arg output byte-identical to
-# the grids generated before this factor existed.
-WEAKENINGS: dict[str, list[tuple[str, bool]]] = {
-    "on":   [("wkon", True)],
-    "off":  [("wkoff", False)],
-    "both": [("wkon", True), ("wkoff", False)],
+# The weakening directory, which names a state and no longer sets one. The
+# weakening filter and its [filters] run_weakening key were removed on
+# 2026-09-11, so the binary never weakens and no config states the key. The
+# directory stays because `weakening` is one of merge_experiments.KEY_FIELDS:
+# weakening_of() in run_experiments.py reads it back into that column, and a
+# flat config with no weakening directory is attributed to LEGACY_WEAKENING
+# ("wkon"), which was true of every run before 2026-08-20 and is false of every
+# run since. A new campaign therefore passes --weakening off, as every one since
+# 2026-08-20 has, so its rows say what the binary did.
+WEAKENINGS: dict[str, list[str]] = {
+    "off": ["wkoff"],
 }
 
 # model_counting.metric as a crossed factor, exactly like WEAKENINGS above.
@@ -89,7 +85,7 @@ REPAIRS: dict[str, list[tuple[str, str]]] = {
 }
 
 # Mirrors the built-in defaults from include/config.hpp. Every entry tracks the
-# binary except the nine enumerated below, and check_config_schema.py enforces
+# binary except the eight enumerated below, and check_config_schema.py enforces
 # that: it walks this table against config.hpp's in-class initialisers and fails
 # on any key that is neither mapped to a member nor listed there as exempt. A
 # key whose C++ default moves is therefore corrected here rather than noticed
@@ -98,16 +94,12 @@ REPAIRS: dict[str, list[tuple[str, str]]] = {
 #
 # The deliberate divergences, and why each one does not follow the binary:
 #
-#   * run_weakening — pinned True; the binary has defaulted it False since
-#     2026-08-20. It is a crossed factor (wkon/wkoff) whose flat, non-crossed
-#     configs are attributed to LEGACY_WEAKENING ("wkon") by run_experiments.py,
-#     and `weakening` is one of merge_experiments.KEY_FIELDS, so the emitted
-#     value has to keep matching that recorded CSV column or ~225k archived rows
-#     stop joining their own key.
-#   * metric — pinned "direct"; config.hpp defaults it to "logarithmic". Same
-#     argument: a flat config carries no metric directory, so metric_of()
-#     attributes it to LEGACY_METRIC ("direct"), and `metric` is a CSV key
-#     column. Cross the metric explicitly with --metric to exercise
+#   * metric — pinned "direct"; config.hpp defaults it to "logarithmic". A flat
+#     config carries no metric directory, so metric_of() in run_experiments.py
+#     attributes it to LEGACY_METRIC ("direct"), and `metric` is one of
+#     merge_experiments.KEY_FIELDS, so the emitted value has to keep matching
+#     that recorded CSV column or ~225k archived rows stop joining their own
+#     key. Cross the metric explicitly with --metric to exercise
 #     "logarithmic".
 #   * selection_scheme — pinned "nsga2-truncate"; config.hpp defaults it to
 #     "nsga2-apportion". Same argument again: the scheme is the config
@@ -115,7 +107,7 @@ REPAIRS: dict[str, list[tuple[str, str]]] = {
 #     column, and every generated config pins it explicitly, so the first entry
 #     of SCHEMES has to stay the one past grids were generated under.
 #   * weight_syntactic / weight_semantic / weight_status — pinned 0.33 each;
-#     config.hpp reads 0.2 / 0.5 / 0.5. These three are emitted
+#     config.hpp reads 0.1 / 0.2 / 0.7, AuRUS's weights. These three are emitted
 #     *unconditionally* into every config, so every archived config states them
 #     and is self-describing about them. Following the binary would change the
 #     emitted values and break comparability with every past grid, and would buy
@@ -145,13 +137,14 @@ DEFAULTS: dict = {
     "p_response": 0.5,
     "p_timing": 0.15,
     # FRETISH only: probability a mutation moves the condition type, and the
-    # scope, along its implication order. Both ship at 0, where neither arm
-    # costs an RNG draw, so a run reproduces one from before scopes existed.
-    # Emitted into [mutation] only when a sweep overrides them (see make_toml),
-    # so the standard grids stay byte-identical. No sweep crosses them yet; the
-    # campaign that would is owed.
-    "p_condition_type": 0.0,
-    "p_scope": 0.0,
+    # scope, along its implication order. Both default to p_timing's 0.15 since
+    # 2026-09-11 and were 0 before, where neither arm costs an RNG draw. Emitted
+    # into [mutation] only when a sweep overrides them (see make_toml), so the
+    # standard grids stay byte-identical, which makes the move a "Config
+    # vintage" entry in experiments/README.md; both are in VINTAGE_KEYS. No
+    # sweep crosses them yet.
+    "p_condition_type": 0.15,
+    "p_scope": 0.15,
     # Probability a mutation appends a new environment (fairness) assumption
     # rather than rewriting an existing requirement/section. Emitted into
     # [mutation] only when a sweep overrides it (see make_toml), so the standard
@@ -163,29 +156,13 @@ DEFAULTS: dict = {
     "p_remove_guarantee": 0.05,
     "default_bound": 20,
     "metric": "direct",
-    "run_weakening": True,
     "run_implication": True,
-    # Well-separation filter and output-atom assumptions (PR #34). These two
-    # track the binary and do not agree with each other:
-    # allow_output_assumptions defaults true, and run_well_separation defaults
-    # *false* -- config.hpp's run_well_separation_filter has been false since
-    # b101ada (2026-08-10), the status objective having absorbed the property,
-    # so the filter now only costs the search its gradient off ill-separation.
-    # Both are emitted into the TOML only when a sweep overrides them (see
-    # make_toml), so every existing grid stays byte-identical; the wellsep
-    # sweep (W) crosses them as a 2x2. Neither entry drives the binary: a grid
-    # that does not override them emits no key and takes whatever the binary
-    # defaults to at run time, which is why re-running an archived config does
-    # not reproduce it. See "Config vintage" in experiments/README.md.
-    #
-    # These are exactly the entries that must follow config.hpp rather than be
-    # pinned, and both are in VINTAGE_KEYS, which sources its written-out values
-    # from this table -- a stale entry here is a wrong value written into every
-    # config generated with --pin-vintage, by the mechanism that exists to stop
-    # a moved default going unrecorded. check_config_schema.py enforces the
-    # agreement for every key of this table that is not deliberately exempt.
-    "run_well_separation": False,
-    "allow_output_assumptions": True,
+    # Keys in VINTAGE_KEYS must follow config.hpp rather than be pinned, because
+    # VINTAGE_KEYS sources its written-out values from this table -- a stale
+    # entry here is a wrong value written into every config generated with
+    # --pin-vintage, by the mechanism that exists to stop a moved default going
+    # unrecorded. check_config_schema.py enforces the agreement for every key
+    # of this table that is not deliberately exempt.
     # Report every gate-passing candidate of every generation rather than only
     # the final population's. On in the binary since 2026-08-25, and emitted
     # into [genetic] only when a sweep overrides it (see make_toml), so every
@@ -218,32 +195,29 @@ DEFAULTS: dict = {
     # (assumption) and guarantee sides.
     "p_assumption": 0.3,
     "p_temporal": 0.2,
-    # The 2026-08-21 monotone arm and the clone-an-assumption branch of
-    # p_add_assumption (see config.hpp). Both default on in the binary, and both
-    # are emitted only when a sweep overrides one of the four [tlsf.mutation]
-    # keys (see make_toml), so every grid generated before they existed stays
-    # byte-identical; TLSF sweep T crosses them. Every campaign archived before
-    # 2026-08-21 ran without either operator and cannot state so, which makes
-    # this a "Config vintage" entry in experiments/README.md rather than a
-    # silent one -- reproducing such a campaign means writing both keys to 0.
+    # The monotone arm and the clone-an-assumption branch of p_add_assumption
+    # (see config.hpp). Both default on in the binary and each is emitted only
+    # when a sweep overrides it (see make_toml), so every grid generated before
+    # they existed stays byte-identical; TLSF sweep T crosses them. p_monotone
+    # sits under [mutation] and is read by both paths since 2026-09-11; it was
+    # TLSF-only under [tlsf.mutation] before, and the FRETISH arm defaulted to
+    # 0. Every campaign archived before 2026-08-21 ran without either operator
+    # and cannot state so, which makes this a "Config vintage" entry in
+    # experiments/README.md rather than a silent one -- reproducing such a
+    # campaign means writing both keys to 0. p_monotone is in VINTAGE_KEYS.
     "p_monotone": 0.25,
     "p_clone_assumption": 0.25,
     # The 2026-08-25 assumption-reach keys (see config.hpp): a width for the
-    # disjunctive body tlsf_add_assumption draws, a bare-F form for an appended
-    # assumption, an assumption removal and a mutation burst. All four default
-    # to their no-op value in the binary, so a campaign archived before
-    # 2026-08-25 that omits them means exactly what it always meant and no
-    # "Config vintage" entry is owed. A fifth key, p_union_assumption, was
-    # removed rather than kept at its no-op; a config that still sets it is
-    # rejected, so reproduce such a campaign from its vendored scripts/.
+    # disjunctive body tlsf_add_assumption draws and a bare-F form for an
+    # appended assumption. Both default to their no-op value in the binary, so
+    # a campaign archived before 2026-08-25 that omits them means exactly what
+    # it always meant and no "Config vintage" entry is owed. p_remove_assumption
+    # and p_burst_continue were removed with their operators on 2026-09-11. A
+    # fifth key, p_union_assumption, was removed rather than kept at its no-op;
+    # a config that still sets it is warned about and ignored, so reproduce
+    # such a campaign from its vendored scripts/.
     "max_assumption_width": 1,
     "p_bare_assumption": 0.0,
-    "p_remove_assumption": 0.0,
-    "p_burst_continue": 0.0,
-    # 0 = unlimited, matching config.hpp. Emitted into [runtime] only when
-    # positive (see make_toml), so the standard grids stay byte-identical to the
-    # pre-cap output; the TLSF campaign sets it to bound ltlsynt's peak RAM.
-    "max_concurrent_realizability": 0,
     # Per-call ltlsynt timeout in ms; 0 = no timeout, matching config.hpp.
     # Emitted only when positive, so the standard grids stay byte-identical. The
     # heavy TLSF specs set it to cut ltlsynt's multi-minute realizability tail.
@@ -348,29 +322,24 @@ def make_toml(overrides: dict, defaults: dict = DEFAULTS) -> str:
          if "p_condition_type" in overrides else []) + (
         [f"p_scope = {_fmt(d['p_scope'])}"]
         if "p_scope" in overrides else []) + (
+        [f"p_monotone = {_fmt(d['p_monotone'])}"]
+        if "p_monotone" in overrides else []) + (
         [f"p_add_assumption = {_fmt(d['p_add_assumption'])}"]
         if "p_add_assumption" in overrides else []) + (
         [f"p_remove_guarantee = {_fmt(d['p_remove_guarantee'])}"]
-        if "p_remove_guarantee" in overrides else []) + (
-        [f"allow_output_assumptions = {_fmt(d['allow_output_assumptions'])}"]
-        if "allow_output_assumptions" in overrides else []) + [
+        if "p_remove_guarantee" in overrides else []) + [
         "",
         "[model_counting]",
         f"default_bound = {d['default_bound']}",
         f'metric = "{d["metric"]}"',
         "",
         "[filters]",
-        f"run_weakening   = {_fmt(d['run_weakening'])}",
         f"run_implication = {_fmt(d['run_implication'])}",
-    ] + ([f"run_well_separation = {_fmt(d['run_well_separation'])}"]
-         if "run_well_separation" in overrides else []) + [
         "",
         "[runtime]",
         f"black_timeout_ms = {d['black_timeout_ms']}",
     ] + ([f"parallel = {d['parallel']}"]
          if d.get("parallel") else []) + (
-        [f"max_concurrent_realizability = {d['max_concurrent_realizability']}"]
-        if d.get("max_concurrent_realizability") else []) + (
         [f"ltlsynt_timeout_ms = {d['ltlsynt_timeout_ms']}"]
         if d.get("ltlsynt_timeout_ms") else []) + (
         [f"ltl2tgba_timeout_ms = {d['ltl2tgba_timeout_ms']}"]
@@ -387,23 +356,16 @@ def make_toml(overrides: dict, defaults: dict = DEFAULTS) -> str:
         "[tlsf.mutation]",
         f"p_assumption = {_fmt(d['p_assumption'])}",
         f"p_temporal   = {_fmt(d['p_temporal'])}",
-    ] + ([f"p_monotone   = {_fmt(d['p_monotone'])}"]
-         if "p_monotone" in overrides else []) + (
-        [f"p_clone_assumption = {_fmt(d['p_clone_assumption'])}"]
+    ] + ([f"p_clone_assumption = {_fmt(d['p_clone_assumption'])}"]
         if "p_clone_assumption" in overrides else []) + (
         [f"max_assumption_width = {d['max_assumption_width']}"]
         if "max_assumption_width" in overrides else []) + (
         [f"p_bare_assumption = {_fmt(d['p_bare_assumption'])}"]
-        if "p_bare_assumption" in overrides else []) + (
-        [f"p_remove_assumption = {_fmt(d['p_remove_assumption'])}"]
-        if "p_remove_assumption" in overrides else []) + (
-        [f"p_burst_continue = {_fmt(d['p_burst_continue'])}"]
-        if "p_burst_continue" in overrides else [])
+        if "p_bare_assumption" in overrides else [])
         if overrides.keys() & {"p_assumption", "p_temporal",
-                               "p_monotone", "p_clone_assumption",
+                               "p_clone_assumption",
                                "max_assumption_width",
-                               "p_bare_assumption", "p_remove_assumption",
-                               "p_burst_continue"}
+                               "p_bare_assumption"}
         else []) + [
         "",
     ])
@@ -525,11 +487,11 @@ SWEEP_I: list[tuple[str, dict]] = [
     ("mut1.0",  {"mutation_rate": 1.0}),   # baseline
 ]
 
-# Sweep J: ablate the weakening filter
-SWEEP_J: list[tuple[str, dict]] = [
-    ("weaken-on",  {"run_weakening": True}),   # baseline
-    ("weaken-off", {"run_weakening": False}),
-]
+# Sweep J is retired. It ablated the weakening filter through [filters]
+# run_weakening, which was removed on 2026-09-11 with the filter itself, so
+# neither arm is expressible. Its archived campaigns reproduce from their
+# vendored per-campaign scripts/ at the commit their PROVENANCE.json names, as
+# sweeps C, O and V do.
 
 # Sweep R: vary elitism, for the nsga2-vs-nsga2-replicate campaign. Elitism
 # carries the top fraction over verbatim, which re-injects exact duplicates into
@@ -567,19 +529,22 @@ DEFAULT_COMPUTE_MATCH_FACTOR = 1.5
 # being archived. A generated config states a key only where a sweep overrides
 # it, so everything else is inherited from the binary at run time — which means
 # changing a C++ default silently changes what every archived config *means*.
-# These four have crossed that line: allow_output_assumptions and
-# run_well_separation each moved twice, status_grading went tiered -> mrs on
+# These have crossed that line: status_grading went tiered -> mrs on
 # 2026-08-12, swapping the status objective outright rather than shifting a
-# threshold, and mrs_admission_order went spec -> degree on 2026-08-14, which
-# reorders the greedy walk inside that objective and so moves the score of every
-# candidate the walk grades. --pin-vintage writes them explicitly so a campaign
-# archived today still describes the run it was, whatever the defaults do
-# afterwards. Add a key here when its default moves; the cost of a spurious
+# threshold, mrs_admission_order went spec ->
+# degree on 2026-08-14, which reorders the greedy walk inside that objective and
+# so moves the score of every candidate the walk grades, and p_condition_type,
+# p_scope and the FRETISH p_monotone went 0 -> 0.15, 0.15 and 0.25 on
+# 2026-09-11. run_well_separation and allow_output_assumptions (which moved
+# twice) were here until their keys were removed on 2026-09-11; the binary now
+# warns on a config stating either and ignores the key.
+# --pin-vintage writes these explicitly so a campaign archived today still
+# describes the run it was, whatever the defaults do afterwards. Add a key here when its default moves; the cost of a spurious
 # entry is one redundant line per config, and the cost of a missing one is an
 # archive that cannot be reproduced.
 VINTAGE_KEYS: tuple[str, ...] = (
-    "status_grading", "mrs_admission_order", "allow_output_assumptions",
-    "run_well_separation",
+    "status_grading", "mrs_admission_order",
+    "p_condition_type", "p_scope", "p_monotone",
 )
 
 
@@ -599,7 +564,6 @@ SWEEPS: list[tuple[str, list]] = [
     ("G", SWEEP_G),
     ("H", SWEEP_H),
     ("I", SWEEP_I),
-    ("J", SWEEP_J),
     ("R", SWEEP_R),
     # Placeholder levels at the default operating point and match factor: main()
     # rebuilds this entry from --generations/--compute-match-factor. It is
@@ -677,54 +641,15 @@ TLSF_SWEEP_D: list[tuple[str, dict]] = [
     ("prem0.3",  {"p_remove_guarantee": 0.3}),
 ]
 
-# TLSF sweep W: the well-separation / output-assumption 2x2 (PR #34). Each level
-# sets the (run_well_separation, allow_output_assumptions) pair, so the four arms
-# ride the sweep/level machinery exactly as sweep J's weakening ablation does —
-# no crossed-factor plumbing, and the arm lands in the level_name CSV column.
-# wsoff-oaoff is the current-default control; wson-oaon is the proposed
-# configuration (output assumptions admitted, the filter pruning the
-# not-well-separated ones); wson-oaoff is a negative control, where the filter is
-# inert because nothing produces an output-referencing assumption to catch.
-TLSF_SWEEP_W: list[tuple[str, dict]] = [
-    ("wsoff-oaoff", {"run_well_separation": False,
-                     "allow_output_assumptions": False}),   # control
-    ("wsoff-oaon",  {"run_well_separation": False,
-                     "allow_output_assumptions": True}),
-    ("wson-oaoff",  {"run_well_separation": True,
-                     "allow_output_assumptions": False}),
-    ("wson-oaon",   {"run_well_separation": True,
-                     "allow_output_assumptions": True}),
-]
-
-# TLSF sweep Q: arbiter p_add_assumption spread x the two wson output-assumption
-# arms — the follow-up to arbiter-hp. That pop10000/gen100 run left
-# p_add_assumption at the config.hpp default 0.05 and never reached arbiter's
-# genuine fix, the *pair* G F r0 & G F r1: adding one fairness assumption leaves
-# the spec unrealizable, so under the binary realizable/not signal there is no
-# selection gradient assembling the pair, and 0.05 makes even the blind
-# double-draw vanishingly rare. This spreads seeds across higher rates to locate
-# the p_add_assumption at which the pair assembles. The sweep machinery is a
-# single named-level dimension (no crossed-factor plumbing), so the padd x arm
-# cross is pre-expanded here into 10 levels and the combined arm name lands in
-# the level_name CSV column. Both arms keep run_well_separation=True (the filter
-# rejects vacuous output-assumption cheats); oaon vs oaoff isolates whether
-# admitting output atoms helps or just dilutes the population with
-# filter-rejected cheats. Generate at the arbiter-hp operating point:
-#   python scripts/gen_configs.py --tlsf --sweeps Q \
-#       --generations 100 --population-size 10000 \
-#       --out-dir experiments/configs-arbiter-padd
-_ARBITER_PADD_SPREAD = [0.1, 0.2, 0.4, 0.6, 0.8]
-_ARBITER_WSON_ARMS: list[tuple[str, dict]] = [
-    ("wson-oaoff", {"run_well_separation": True,
-                    "allow_output_assumptions": False}),
-    ("wson-oaon",  {"run_well_separation": True,
-                    "allow_output_assumptions": True}),
-]
-TLSF_SWEEP_Q: list[tuple[str, dict]] = [
-    (f"padd{padd}-{arm_name}", {"p_add_assumption": padd, **arm_overrides})
-    for padd in _ARBITER_PADD_SPREAD
-    for arm_name, arm_overrides in _ARBITER_WSON_ARMS
-]
+# TLSF sweeps W and Q are retired. W crossed [filters] run_well_separation
+# against allow_output_assumptions as a 2x2, and Q spread p_add_assumption over
+# the two run_well_separation = true arms for the arbiter follow-up; that key
+# was removed on 2026-09-11 with the per-generation well-separation filter, and
+# allow_output_assumptions with it, so neither sweep is expressible. The
+# well-separation row of the correctness table still drives the final gate and
+# the input screen. Their archived
+# campaigns (wellsep, arbiter-hp, arbiter-padd) reproduce from their vendored
+# per-campaign scripts/ at the commit their PROVENANCE.json names.
 
 # TLSF sweep R: the elitism cross of the FRETISH sweep R, at the TLSF baseline
 # operating point (gen10/pop200) and carrying the TLSF runtime settings --tlsf
@@ -829,8 +754,6 @@ TLSF_SWEEPS: list[tuple[str, list]] = [
     ("M", TLSF_SWEEP_M),
     ("P", TLSF_SWEEP_P),
     ("D", TLSF_SWEEP_D),
-    ("W", TLSF_SWEEP_W),
-    ("Q", TLSF_SWEEP_Q),
     ("R", TLSF_SWEEP_R),
     ("G", TLSF_SWEEP_G),
     ("N", TLSF_SWEEP_N),
@@ -845,15 +768,6 @@ TLSF_SWEEPS: list[tuple[str, list]] = [
 ]
 
 TLSF_CONFIGS_DIR = Path(__file__).parent.parent / "experiments" / "configs-tlsf"
-
-# Default ltlsynt concurrency cap for the TLSF campaign. 0 = uncapped, which
-# suits the 128 GB av2/av3 machines the campaign targets (32 cores * ~2.7 GB per
-# ltlsynt ~= 86 GB peak, comfortably within RAM). ltlsynt is multi-GB resident
-# per call on these specs, so on a smaller-RAM box pass e.g.
-# `--max-realizability 6` to bound peak RAM (~16 GB) and avoid an OOM. The cap
-# is per counter process, so keep the campaign at --jobs 1 (the tlsf profile's
-# default) for it to remain the machine-wide limit.
-TLSF_MAX_REALIZABILITY = 0
 
 # Default per-call ltlsynt timeout (ms) for the TLSF campaign. ltlsynt has no
 # internal timeout, and these specs occasionally produce synthesis queries that
@@ -948,10 +862,13 @@ def parse_args() -> argparse.Namespace:
                              "every level")
     parser.add_argument("--weakening", choices=list(WEAKENINGS), default=None,
                         metavar="STATE",
-                        help="Cross run_weakening in as a factor, writing "
-                             "<scheme>/<wkon|wkoff>/ (choices: "
-                             f"{', '.join(WEAKENINGS)}). Omit to keep the flat "
-                             "layout and take run_weakening from the defaults")
+                        help="Nest configs under <scheme>/wkoff/ so the "
+                             "results' weakening column reads wkoff. Names the "
+                             "directory only: the weakening filter no longer "
+                             "exists and no key is written (choices: "
+                             f"{', '.join(WEAKENINGS)}). Omit for the flat "
+                             "layout, which run_experiments.py attributes to "
+                             "the legacy wkon")
     parser.add_argument("--metric", choices=list(METRICS), default=None,
                         metavar="METRIC",
                         help="Cross model_counting.metric in as a factor, "
@@ -1029,16 +946,6 @@ def parse_args() -> argparse.Namespace:
                              "run_experiments.py deriving its own per-run cap "
                              "over it, so pass 1 for a campaign whose runs are "
                              "meant to be single-threaded")
-    parser.add_argument("--max-realizability", type=int, default=None,
-                        metavar="N",
-                        help="Cap concurrent ltlsynt processes "
-                             "(runtime.max_concurrent_realizability). 0 = "
-                             "unlimited; the key is omitted from the emitted "
-                             "TOML when 0, keeping the standard grids "
-                             "byte-identical. Bounds ltlsynt peak RAM on a "
-                             "smaller-RAM box (e.g. 6 ~= 16 GB); the TLSF "
-                             "campaign defaults to uncapped for the 128 GB "
-                             "av2/av3 machines")
     parser.add_argument("--ltlsynt-timeout", type=int, default=None,
                         metavar="MS",
                         help="Per-call ltlsynt timeout in ms "
@@ -1094,7 +1001,6 @@ def main() -> None:
     sweep_table = SWEEPS
     schemes = args.schemes
     out_dir = args.out_dir
-    max_realizability = args.max_realizability
     ltlsynt_timeout = args.ltlsynt_timeout
     ltl2tgba_timeout = args.ltl2tgba_timeout
     max_scoring_failure_rate = args.max_scoring_failure_rate
@@ -1104,8 +1010,6 @@ def main() -> None:
             schemes = ["nsga2-truncate"]
         if out_dir == CONFIGS_DIR:
             out_dir = TLSF_CONFIGS_DIR
-        if max_realizability is None:
-            max_realizability = TLSF_MAX_REALIZABILITY
         if ltlsynt_timeout is None:
             ltlsynt_timeout = TLSF_LTLSYNT_TIMEOUT_MS
         if ltl2tgba_timeout is None:
@@ -1119,7 +1023,6 @@ def main() -> None:
     defaults["termination"] = args.termination or "generations"
     defaults["max_individuals"] = args.max_individuals or 0
     defaults["parallel"] = args.parallel or 0
-    defaults["max_concurrent_realizability"] = max_realizability or 0
     defaults["ltlsynt_timeout_ms"] = ltlsynt_timeout or 0
     defaults["ltl2tgba_timeout_ms"] = ltl2tgba_timeout or 0
     defaults["max_scoring_failure_rate"] = max_scoring_failure_rate or 0.0
@@ -1146,10 +1049,10 @@ def main() -> None:
         if missing:
             raise SystemExit(f"--levels: no such level(s) in the selected "
                              f"sweeps: {', '.join(sorted(missing))}")
-    # (subdirectory, run_weakening override). The flat case carries no override,
-    # so sweep J's per-level run_weakening still reaches the emitted TOML.
+    # (subdirectory, override). The weakening directory writes no key; see
+    # WEAKENINGS.
     weakenings: list[tuple[str | None, dict]] = (
-        [(d, {"run_weakening": v}) for d, v in WEAKENINGS[args.weakening]]
+        [(d, {}) for d in WEAKENINGS[args.weakening]]
         if args.weakening else [(None, {})]
     )
     # (subdirectory, metric override). None ⇒ flat layout with the metric from
@@ -1170,7 +1073,7 @@ def main() -> None:
     # Keys whose C++ default has moved at least once, written out explicitly so
     # the archive states them rather than inheriting whatever the binary means
     # by them next year. Merged first, so a sweep varying one of these on
-    # purpose still wins — sweeps G, W and Q each do.
+    # purpose still wins — sweeps G and T each do.
     pinned = {k: defaults[k] for k in VINTAGE_KEYS} if args.pin_vintage else {}
 
     count = 0

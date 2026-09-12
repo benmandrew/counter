@@ -31,12 +31,12 @@ std::vector<CorrectnessCheck> correctness_checks(SatisfiabilityChecker& sat,
                       [&sat](const Specification& spec) {
                           return !specification_is_vacuous(spec, sat);
                       },
-                      &Config::run_vacuity_filter});
+                      true});
     checks.push_back({"not-well-separated",
                       [&real](const Specification& spec) {
                           return !specification_is_not_well_separated(spec,
                                                                       real);
                       },
-                      &Config::run_well_separation_filter});
+                      false});
     return checks;
 }

@@ -3,9 +3,6 @@ filter/implication.hpp
 
 Population filters based on the logical implication partial order between specifications:
 
-``make_weakening_filter``
-  Per-generation filter. Discards any candidate that is not logically implied by the original specification (i.e. it preserves only weakenings).
-
 ``make_dedup_filter``
   Drops structurally identical duplicate specifications, keeping the first occurrence in input order.
 

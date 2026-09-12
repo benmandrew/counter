@@ -128,21 +128,15 @@ Config golden_config() {
     // rather than silently re-record it.
     cfg.p_remove_guarantee = 0.05;
     cfg.p_conditional_assumption = 0.25;
-    // Pinned at their shipping default of 0, where each arm returns before
-    // touching the RandomSource. That is what keeps the counts below equal to
-    // the ones recorded before scopes existed, so moving either default fails
-    // this suite rather than silently re-recording the goldens.
+    // Pinned at 0 rather than their 0.15 default: at 0 each arm returns before
+    // touching the RandomSource, which keeps the counts below equal to the ones
+    // recorded before scopes existed.
     cfg.p_condition_type = 0.0;
     cfg.p_scope = 0.0;
-    // The same, for the monotone arm: at 0 rewrite_field returns to
-    // mutate_formula without drawing, so the goldens hold what they held
-    // before the arm existed.
+    // The same, for the monotone arm and its 0.25 default: at 0 rewrite_field
+    // returns to mutate_formula without drawing, so the goldens hold what they
+    // held before the arm existed.
     cfg.p_monotone = 0.0;
-    // Pinned to the production default. It is also the value the goldens below
-    // were recorded under: with it off, an assumption-side rewrite draws from
-    // the inputs alone, so next_index sees a narrower bound and the trace hash
-    // moves without a single draw being added, removed or reordered.
-    cfg.allow_output_assumptions = true;
     cfg.parallel = 1;
     return cfg;
 }
@@ -264,8 +258,8 @@ void test_trace_hash_distinguishes_order_and_bounds() {
            "trace hash: should be stable for an unchanged trace");
 }
 
-// The two arms default to 0 and cost no draw there, which is what keeps the
-// goldens above where they were. A guard written that way passes just as
+// The arms cost no draw at 0, which is what keeps the goldens above where they
+// were. A guard written that way passes just as
 // happily when the arm is dead, so this counts the draws of a single
 // mutate_requirement call with each arm off and then on.
 //
@@ -295,6 +289,7 @@ void test_new_arms_cost_no_draw_at_zero() {
     off.p_timing = 0.0;
     off.p_condition_type = 0.0;
     off.p_scope = 0.0;
+    off.p_monotone = 0.0;
     const std::size_t baseline = count_draws(off);
 
     Config condition_type_on = off;

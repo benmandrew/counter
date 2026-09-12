@@ -300,30 +300,18 @@ DEFAULT_FIELDS = {
     "mutation.p_add_assumption": "p_add_assumption",
     "mutation.p_remove_guarantee": "p_remove_guarantee",
     "mutation.p_conditional_assumption": "p_conditional_assumption",
-    "mutation.allow_output_assumptions": "allow_output_assumptions",
     "tlsf.muc_max_iterations": "muc_max_iterations",
     "tlsf.mutation.p_assumption": "tlsf_p_assumption",
     "tlsf.mutation.p_temporal": "tlsf_p_temporal",
-    "tlsf.mutation.connective_implies": "tlsf_connective_implies",
-    "tlsf.mutation.p_monotone": "tlsf_p_monotone",
-    "tlsf.mutation.monotone_atom_rules": "tlsf_monotone_atom_rules",
-    "tlsf.mutation.monotone_extra_rules": "tlsf_monotone_extra_rules",
     "tlsf.mutation.p_clone_assumption": "tlsf_p_clone_assumption",
     "tlsf.mutation.max_assumption_width": "tlsf_max_assumption_width",
     "tlsf.mutation.p_bare_assumption": "tlsf_p_bare_assumption",
-    "tlsf.mutation.p_remove_assumption": "tlsf_p_remove_assumption",
-    "tlsf.mutation.p_burst_continue": "tlsf_p_burst_continue",
     "model_counting.default_bound": "default_model_counting_bound",
-    "filters.run_weakening": "run_weakening_filter",
     "filters.run_implication": "run_implication_filter",
-    "filters.run_vacuity": "run_vacuity_filter",
-    "filters.run_well_separation": "run_well_separation_filter",
     "runtime.black_timeout_ms": "black_timeout",
     "runtime.ltlsynt_timeout_ms": "ltlsynt_timeout",
     "runtime.ltl2tgba_timeout_ms": "ltl2tgba_timeout",
     "runtime.ltlfilt_timeout_ms": "ltlfilt_timeout",
-    "runtime.ganak_timeout_ms": "ganak_timeout",
-    "runtime.max_concurrent_realizability": "max_concurrent_realizability",
     "runtime.max_scoring_failure_rate": "max_scoring_failure_rate",
     "runtime.dashboard": "dashboard",
 }
@@ -403,8 +391,6 @@ GEN_CONFIGS_FIELDS = {
     "p_remove_guarantee": "p_remove_guarantee",
     "default_bound": "default_model_counting_bound",
     "run_implication": "run_implication_filter",
-    "run_well_separation": "run_well_separation_filter",
-    "allow_output_assumptions": "allow_output_assumptions",
     "accumulate_repairs": "accumulate_repairs",
     "black_timeout_ms": "black_timeout",
     "status_grading": "status_grading",
@@ -412,28 +398,22 @@ GEN_CONFIGS_FIELDS = {
     "repair_mode": "repair_mode",
     "p_assumption": "tlsf_p_assumption",
     "p_temporal": "tlsf_p_temporal",
-    "p_monotone": "tlsf_p_monotone",
+    "p_monotone": "p_monotone",
     "p_clone_assumption": "tlsf_p_clone_assumption",
     "max_assumption_width": "tlsf_max_assumption_width",
     "p_bare_assumption": "tlsf_p_bare_assumption",
-    "p_remove_assumption": "tlsf_p_remove_assumption",
-    "p_burst_continue": "tlsf_p_burst_continue",
-    "max_concurrent_realizability": "max_concurrent_realizability",
     "max_wall_s": "max_wall_s",
     "termination": "termination",
     "max_individuals": "max_individuals",
 }
 
 # Entries that deliberately do not track config.hpp, each with the reason it
-# must not be "corrected" into agreement. The first three are results-CSV key
+# must not be "corrected" into agreement. The first two are results-CSV key
 # columns and the next three are emitted unconditionally, so following the
 # binary would put every new row at odds with roughly 225k archived ones; the
 # last four are sentinels make_toml reads as "emit nothing", not mirrors of a
 # C++ value at all.
 GEN_CONFIGS_EXEMPT = {
-    "run_weakening":
-        "pinned True: `weakening` is a merge_experiments.KEY_FIELDS column and "
-        "flat configs are attributed to wkon",
     "metric":
         "pinned 'direct': `metric` is a KEY_FIELDS column and flat configs are "
         "attributed to LEGACY_METRIC",

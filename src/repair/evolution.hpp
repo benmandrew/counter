@@ -53,8 +53,7 @@ std::vector<Specification> collect_realizable_specifications(
     const Config& cfg, const std::vector<ScoredSpecification>& population);
 
 // Applies the final screens to the realizable specifications: deduplication,
-// then the weakening filter against @p original when run_weakening_filter is
-// set, then the implication (maximality) filter when run_implication_filter is.
+// then the implication (maximality) filter when run_implication_filter is set.
 std::pair<std::vector<Specification>, std::vector<FilterRunStats>>
 filter_maximal_specifications(const Config& cfg, const Specification& original,
                               const std::vector<Specification>& realizable_vec);

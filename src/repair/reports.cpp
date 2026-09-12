@@ -131,8 +131,9 @@ void print_diagnostics_report() {
               SatisfiabilityChecker::total_time_s,
               SatisfiabilityChecker::n_cache_hits,
               SatisfiabilityChecker::n_timeouts);
+    // Untimed, so there is never a timeout to report.
     print_row("ganak", GanakStats::n_cache_misses, GanakStats::total_time_s,
-              GanakStats::n_cache_hits, GanakStats::n_timeouts);
+              GanakStats::n_cache_hits, 0);
     if (Ltl2tgbaStats::n_tautology_substitutions > 0) {
         std::cout << "\nltl2tgba tautology substitutions (SPOT exit-2 bug, "
                      "treated as trivially true): "

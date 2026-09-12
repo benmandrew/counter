@@ -549,13 +549,7 @@ Formula rewrite_field(const Formula& field,
                       const Config& cfg, const RandomSource& random_source) {
     if (cfg.p_monotone > 0.0 && direction.has_value() && !atoms.empty() &&
         random_source.next_real() < cfg.p_monotone) {
-        // Both menu widenings on, unlike the TLSF call site. The two gates
-        // exist to hold an archived draw stream byte-identical, which a new
-        // arm has nothing to preserve, and with atom_rules off the menu at a
-        // literal is the rewrite to a constant alone -- which guts a
-        // propositional field rather than moving it along the order.
-        return monotone_rewrite(field, *direction, MonotoneRules{true, true},
-                                atoms, random_source);
+        return monotone_rewrite(field, *direction, atoms, random_source);
     }
     return mutate_formula(field, atoms, random_source);
 }
@@ -682,23 +676,18 @@ bool creates_duplicate(const std::vector<Requirement>& requirements,
 }
 
 // The atom pool a freshly added assumption draws its condition and response
-// from. Inputs plus outputs under allow_output_assumptions (the default);
-// inputs alone with it off. Historically outputs were excluded on the same
+// from: inputs plus outputs. Historically outputs were excluded on the same
 // reasoning as the trigger restriction (an output denotes the next state, so
-// guarding on one
-// gives the synthesiser a self-referential condition it can discharge
-// vacuously), but under the flag that syntactic ban is lifted and well-
-// separation is delegated to the well-separation filter, which prunes any
-// assumption the system can force to fail. The draw order and count are
-// identical whether or not outputs are admitted, so the flag never perturbs a
-// run that leaves it off.
+// guarding on one gives the synthesiser a self-referential condition it can
+// discharge vacuously); that syntactic ban is lifted and well-separation is
+// delegated to the well-separation check, which the status objective scores
+// and the final gate enforces against any assumption the system can force to
+// fail.
 std::vector<std::string> assumption_atom_pool(
-    const Specification& specification, const Config& cfg) {
+    const Specification& specification) {
     std::vector<std::string> pool = specification.m_in_atoms;
-    if (cfg.allow_output_assumptions) {
-        pool.insert(pool.end(), specification.m_out_atoms.begin(),
-                    specification.m_out_atoms.end());
-    }
+    pool.insert(pool.end(), specification.m_out_atoms.begin(),
+                specification.m_out_atoms.end());
     return pool;
 }
 
@@ -725,17 +714,15 @@ Formula add_assumption_condition(const std::vector<std::string>& pool,
 // Builds a new environment assumption over the specification's atom pool:
 // `whenever <atom|true> C shall eventually satisfy <atom>` — i.e.
 // G(c -> F <atom>), a conditional fairness assumption (each of condition and
-// response is negated on a coin flip). By default the pool is the input atoms;
-// with allow_output_assumptions it also includes outputs, in which case the
-// well-separation filter (rather than a syntactic ban) is what keeps the system
-// from producing a vacuously-satisfiable assumption. Appending it strengthens
-// the environment, which is how the algorithm repairs unrealizability that the
-// rewrite-only operators cannot reach.
+// response is negated on a coin flip). The pool is the input and output atoms;
+// the well-separation check at the final gate (rather than a syntactic ban) is
+// what keeps the system from producing a vacuously-satisfiable assumption.
+// Appending it strengthens the environment, which is how the algorithm repairs
+// unrealizability that the rewrite-only operators cannot reach.
 Specification add_assumption(const Specification& specification,
                              const RandomSource& random_source,
                              const Config& cfg) {
-    const std::vector<std::string> pool =
-        assumption_atom_pool(specification, cfg);
+    const std::vector<std::string> pool = assumption_atom_pool(specification);
     Formula response =
         Formula::make_atom(pool[random_source.next_index(pool.size())]);
     if (random_source.next_bool()) {
@@ -795,11 +782,10 @@ Specification mutate_specification(const Specification& specification,
     // Low-probability structural action: add a new environment assumption. The
     // Specification constructor deduplicates, so re-adding an existing
     // assumption is a harmless no-op. Available whenever the assumption atom
-    // pool is non-empty: inputs, plus outputs when allow_output_assumptions is
-    // set (so a spec with outputs but no inputs can still gain an assumption).
+    // pool (inputs plus outputs) is non-empty, so a spec with outputs but no
+    // inputs can still gain an assumption.
     const bool have_assumption_pool =
-        !specification.m_in_atoms.empty() ||
-        (cfg.allow_output_assumptions && !specification.m_out_atoms.empty());
+        !specification.m_in_atoms.empty() || !specification.m_out_atoms.empty();
     if (have_assumption_pool &&
         random_source.next_real() < cfg.p_add_assumption) {
         return add_assumption(specification, random_source, cfg);
@@ -842,16 +828,9 @@ Specification mutate_specification(const Specification& specification,
     const bool is_assumption = idx < n_assumptions;
     const Direction direction =
         is_assumption ? Direction::Strengthen : Direction::Weaken;
-    // An existing assumption is held to the same pool rule as a freshly added
-    // one: with allow_output_assumptions off it draws from inputs only, so no
-    // rewrite can smuggle an output atom into the environment side and defeat
-    // the input-only-by-construction well-separation the flag promises. The
-    // TLSF path already gates its rewrite this way (src/tlsf/mutation.cpp);
-    // this is the FRETISH half. Guarantees keep the full pool either way.
-    const std::vector<std::string>& mutation_atoms =
-        (is_assumption && !cfg.allow_output_assumptions)
-            ? specification.m_in_atoms
-            : atoms;
+    // An existing assumption draws from the same pool as a freshly added one,
+    // inputs plus outputs, as guarantees do.
+    const std::vector<std::string>& mutation_atoms = atoms;
     if (mutation_atoms.empty()) {
         // Without atoms, mutate_formula's structural rewrites cannot draw a
         // replacement atom; leave the specification unchanged.

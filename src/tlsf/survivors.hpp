@@ -37,14 +37,6 @@ std::vector<Scored<Specification>> merge_accumulated_survivors(
     const std::vector<Specification>& accumulated, const Config& cfg,
     const AggregateWeightedFitnessFunctionT<Specification>& fitness);
 
-// Keeps the survivors the original logically implies. The check is exact rather
-// than the FRETISH assume-guarantee decomposition -- a tlsf::Specification
-// lowers to one LTL formula -- so a rejection means the candidate genuinely
-// forbids behaviour the original allowed, not that the decomposition lost it.
-std::vector<Scored<Specification>> keep_weakenings(
-    const std::vector<Scored<Specification>>& survivors,
-    const Specification& original, SatisfiabilityChecker& checker);
-
 // Keeps the survivors not dominated by another, mirroring the FRETISH final
 // implication filter. Equivalent survivors collapse to the one closest to
 // @p original under syntactic similarity.

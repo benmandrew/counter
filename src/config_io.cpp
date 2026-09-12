@@ -15,7 +15,6 @@
 #include <toml++/toml.hpp>
 
 #include "runner/black.hpp"
-#include "runner/ganak.hpp"
 #include "runner/ltlfilt.hpp"
 #include "runner/spot.hpp"
 
@@ -70,22 +69,6 @@ void require_nonnegative(double value, const char* name) {
     }
 }
 
-// Reads a non-negative [runtime] count into `out`, leaving it alone when the
-// key is absent. A free function because apply_runtime is a list of these and
-// the nested range check in each one counts against its cognitive complexity.
-void read_runtime_count(const toml::table& tbl, const char* key,
-                        std::size_t& out) {
-    auto val = tbl[key].value<int64_t>();
-    if (!val) {
-        return;
-    }
-    if (*val < 0) {
-        throw std::runtime_error(std::string("config: runtime.") + key +
-                                 " must be >= 0");
-    }
-    out = static_cast<std::size_t>(*val);
-}
-
 // Mirrors the keys the apply_* functions below read, so that a typo in a
 // config file is reported rather than silently ignored. A key needs three
 // edits, none of which the compiler ties together: the apply_* function that
@@ -119,24 +102,18 @@ const KeySpec& config_key_spec() {
          {"mutation",
           section({"p_trigger", "p_response", "p_timing", "p_condition_type",
                    "p_scope", "p_monotone", "p_add_assumption",
-                   "p_remove_guarantee", "p_conditional_assumption",
-                   "allow_output_assumptions"})},
+                   "p_remove_guarantee", "p_conditional_assumption"})},
          {"tlsf",
           section({"repair_mode", "muc_max_iterations"},
                   {{"mutation",
-                    section({"p_assumption", "p_temporal", "connective_implies",
-                             "p_monotone", "monotone_atom_rules",
-                             "monotone_extra_rules", "p_clone_assumption",
-                             "max_assumption_width", "p_bare_assumption",
-                             "p_remove_assumption", "p_burst_continue"})}})},
+                    section({"p_assumption", "p_temporal", "p_clone_assumption",
+                             "max_assumption_width", "p_bare_assumption"})}})},
          {"model_counting", section({"default_bound", "metric"})},
-         {"filters", section({"run_weakening", "run_implication", "run_vacuity",
-                              "run_well_separation"})},
-         {"runtime", section({"black_timeout_ms", "ltlsynt_timeout_ms",
-                              "ltl2tgba_timeout_ms", "ltlfilt_timeout_ms",
-                              "ganak_timeout_ms", "parallel",
-                              "max_concurrent_realizability",
-                              "max_scoring_failure_rate", "dashboard"})}});
+         {"filters", section({"run_implication"})},
+         {"runtime",
+          section({"black_timeout_ms", "ltlsynt_timeout_ms",
+                   "ltl2tgba_timeout_ms", "ltlfilt_timeout_ms", "parallel",
+                   "max_scoring_failure_rate", "dashboard"})}});
     return spec;
 }
 
@@ -155,6 +132,40 @@ std::string retired_key_hint(const std::string& path) {
     }
     if (path == "tlsf.mutation.p_union_assumption") {
         return " (removed: the union crossover no longer exists)";
+    }
+    if (path == "tlsf.mutation.p_monotone") {
+        return " (removed: set [mutation] p_monotone, which both paths read)";
+    }
+    if (path == "tlsf.mutation.connective_implies") {
+        return " (removed: the case (2d) graft always offers ->)";
+    }
+    if (path == "tlsf.mutation.monotone_atom_rules" ||
+        path == "tlsf.mutation.monotone_extra_rules") {
+        return " (removed: the monotone rewrite always offers every rule)";
+    }
+    if (path == "filters.run_weakening") {
+        return " (removed: the final weakening screen no longer exists)";
+    }
+    if (path == "filters.run_well_separation") {
+        return " (removed: the status score and the output gate enforce"
+               " well-separation)";
+    }
+    if (path == "filters.run_vacuity") {
+        return " (removed: vacuity now always runs per generation)";
+    }
+    if (path == "mutation.allow_output_assumptions") {
+        return " (removed: output assumptions are always allowed)";
+    }
+    if (path == "tlsf.mutation.p_remove_assumption" ||
+        path == "tlsf.mutation.p_burst_continue") {
+        return " (removed with its operator)";
+    }
+    if (path == "runtime.ganak_timeout_ms") {
+        return " (removed: ganak runs without a timeout)";
+    }
+    if (path == "runtime.max_concurrent_realizability") {
+        return " (removed: no concurrency cap; bound RAM with"
+               " runtime.parallel)";
     }
     return "";
 }
@@ -351,25 +362,19 @@ void apply_mutation(const toml::table& tbl, Config& cfg) {
         require_probability(*val, "mutation.p_conditional_assumption");
         cfg.p_conditional_assumption = *val;
     }
-    if (auto val = tbl["allow_output_assumptions"].value<bool>()) {
-        cfg.allow_output_assumptions = *val;
-    }
 }
 
 // The [tlsf.mutation] probabilities differ only in their key and the member
 // they land on, so they are driven from a table rather than a branch each.
-// Eight near-identical branches read as complexity to clang-tidy, and each was
+// Four near-identical branches read as complexity to clang-tidy, and each was
 // another chance to paste the wrong member name beside a key -- a mistake
 // nothing else here would catch, the types being identical.
-constexpr std::array<std::pair<const char*, double Config::*>, 7>
+constexpr std::array<std::pair<const char*, double Config::*>, 4>
     k_tlsf_mutation_probabilities{{
         {"p_assumption", &Config::tlsf_p_assumption},
         {"p_temporal", &Config::tlsf_p_temporal},
-        {"p_monotone", &Config::tlsf_p_monotone},
         {"p_clone_assumption", &Config::tlsf_p_clone_assumption},
         {"p_bare_assumption", &Config::tlsf_p_bare_assumption},
-        {"p_remove_assumption", &Config::tlsf_p_remove_assumption},
-        {"p_burst_continue", &Config::tlsf_p_burst_continue},
     }};
 
 void apply_tlsf_mutation(const toml::table& mutation, Config& cfg) {
@@ -387,15 +392,6 @@ void apply_tlsf_mutation(const toml::table& mutation, Config& cfg) {
                 "tlsf.mutation.max_assumption_width must be at least 1");
         }
         cfg.tlsf_max_assumption_width = static_cast<std::size_t>(*val);
-    }
-    if (auto val = mutation["connective_implies"].value<bool>()) {
-        cfg.tlsf_connective_implies = *val;
-    }
-    if (auto val = mutation["monotone_atom_rules"].value<bool>()) {
-        cfg.tlsf_monotone_atom_rules = *val;
-    }
-    if (auto val = mutation["monotone_extra_rules"].value<bool>()) {
-        cfg.tlsf_monotone_extra_rules = *val;
     }
 }
 
@@ -438,17 +434,8 @@ void apply_model_counting(const toml::table& tbl, Config& cfg) {
 }
 
 void apply_filters(const toml::table& tbl, Config& cfg) {
-    if (auto val = tbl["run_weakening"].value<bool>()) {
-        cfg.run_weakening_filter = *val;
-    }
     if (auto val = tbl["run_implication"].value<bool>()) {
         cfg.run_implication_filter = *val;
-    }
-    if (auto val = tbl["run_vacuity"].value<bool>()) {
-        cfg.run_vacuity_filter = *val;
-    }
-    if (auto val = tbl["run_well_separation"].value<bool>()) {
-        cfg.run_well_separation_filter = *val;
     }
 }
 
@@ -481,21 +468,12 @@ void apply_runtime(const toml::table& tbl, Config& cfg) {
         }
         cfg.ltlfilt_timeout = std::chrono::milliseconds{*val};
     }
-    if (auto val = tbl["ganak_timeout_ms"].value<int64_t>()) {
-        if (*val < 0) {
-            throw std::runtime_error(
-                "config: runtime.ganak_timeout_ms must be >= 0");
-        }
-        cfg.ganak_timeout = std::chrono::milliseconds{*val};
-    }
     if (auto val = tbl["parallel"].value<int64_t>()) {
         if (*val <= 0) {
             throw std::runtime_error("config: runtime.parallel must be >= 1");
         }
         cfg.parallel = static_cast<std::size_t>(*val);
     }
-    read_runtime_count(tbl, "max_concurrent_realizability",
-                       cfg.max_concurrent_realizability);
     if (auto val = tbl["dashboard"].value<bool>()) {
         cfg.dashboard = *val;
     }
@@ -565,5 +543,4 @@ void apply_tool_timeouts(const Config& cfg) {
     RealizabilityChecker::set_timeout(cfg.ltlsynt_timeout);
     set_ltl2tgba_timeout(cfg.ltl2tgba_timeout);
     set_ltlfilt_timeout(cfg.ltlfilt_timeout);
-    set_ganak_timeout(cfg.ganak_timeout);
 }

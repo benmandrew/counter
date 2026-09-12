@@ -2,7 +2,6 @@
 
 #include <unistd.h>
 
-#include <atomic>
 #include <cassert>
 #include <cctype>
 #include <chrono>
@@ -14,7 +13,6 @@
 #include <stdexcept>
 #include <string>
 #include <unordered_map>
-#include <unordered_set>
 #include <utility>
 #include <vector>
 
@@ -25,17 +23,9 @@
 
 namespace {
 
-// Per-call wall-clock budget for the ganak exec, in milliseconds; 0 disables
-// it. Set once at startup from Config::ganak_timeout, read by every scoring
-// worker, hence atomic. Defaults to off, unlike the ltlfilt budget: counting is
-// the fitness function's real work, a slow count is usually a legitimately hard
-// one rather than a blowup, and abandoning it throws — which drops the
-// individual and spends the run's max_scoring_failure_rate tolerance.
-std::atomic<std::int64_t> g_ganak_timeout_ms{0};
-
 // Removes the temporary DIMACS file however the enclosing scope exits.
-// run_ganak_on_dimacs throws on a non-zero exit or a timeout, which otherwise
-// leaks the file into the system temp directory for every abandoned count.
+// run_ganak_on_dimacs throws on a non-zero exit, which otherwise leaks the
+// file into the system temp directory for every failed count.
 class TempFileGuard {
    public:
     explicit TempFileGuard(std::string path) : m_path(std::move(path)) {}
@@ -104,10 +94,6 @@ Count parse_ganak_exact_count(const std::string& output) {
 
 }  // namespace
 
-void set_ganak_timeout(std::chrono::milliseconds timeout) {
-    g_ganak_timeout_ms.store(timeout.count());
-}
-
 std::string ganak_executable_path() {
 #ifdef GANAK_EXECUTABLE_PATH
     static const ToolPath k_path =
@@ -130,16 +116,12 @@ Count run_ganak_on_dimacs(const std::string& dimacs_path, unsigned seed,
         std::to_string(seed),
         dimacs_path,
     };
-    const ProcessResult result = execute_and_capture(
-        command, std::chrono::milliseconds(g_ganak_timeout_ms.load()));
+    // Untimed: counting is the fitness function's real work, so a slow count
+    // is usually a legitimately hard one rather than a blowup.
+    const ProcessResult result =
+        execute_and_capture(command, std::chrono::milliseconds::zero());
     if (cpu_s_out != nullptr) {
         *cpu_s_out = result.m_cpu_s;
-    }
-    if (result.m_timed_out) {
-        // Reported separately from a non-zero exit so the run's failure budget
-        // can be read against the timeout rather than against ganak errors.
-        GanakStats::n_timeouts++;
-        throw GanakTimeout("ganak timed out for " + dimacs_path);
     }
     if (result.m_exit_code != 0) {
         throw std::runtime_error("ganak exited with code " +
@@ -162,11 +144,6 @@ Count run_ganak_on_formula(const std::string& formula, unsigned seed) {
     // distinct spelling.
     const std::string& canonical_formula = formula_key::canonical(formula);
     static std::unordered_map<std::string, Count> cache;
-    // Keys whose count was abandoned at the budget. Memoised like the counts
-    // themselves: a formula hard enough to blow the budget is hard every time,
-    // and the individual is dropped either way, so re-running it spends the
-    // budget for a result already known.
-    static std::unordered_set<std::string> timed_out;
     static std::mutex cache_mutex;
     // Keyed on the canonical renamed form rather than on the caller's
     // spelling. A model count is invariant under a bijection on the atoms --
@@ -187,12 +164,6 @@ Count run_ganak_on_formula(const std::string& formula, unsigned seed) {
             GanakStats::n_cache_hits++;
             return found->second;
         }
-        if (timed_out.count(key) != 0) {
-            // Same error the exec would have raised, so a caller sees one
-            // behaviour whether or not this key has been tried before.
-            GanakStats::n_cache_hits++;
-            throw GanakTimeout("ganak timed out for " + canonical_formula);
-        }
         GanakStats::n_cache_misses++;
     }
     const Formula parsed = Formula(canonical_formula);
@@ -206,18 +177,7 @@ Count run_ganak_on_formula(const std::string& formula, unsigned seed) {
             .count();
     };
     double cpu_s = 0.0;
-    Count count = 0;
-    try {
-        count = run_ganak_on_dimacs(formula_dimacs_path, seed, &cpu_s);
-    } catch (const GanakTimeout&) {
-        // run_ganak_on_dimacs writes cpu_s before it raises, so the abandoned
-        // exec is billed to the totals rather than vanishing from them.
-        const std::scoped_lock lock(cache_mutex);
-        GanakStats::total_time_s += elapsed_since_start();
-        GanakStats::total_cpu_s += cpu_s;
-        timed_out.insert(key);
-        throw;
-    }
+    const Count count = run_ganak_on_dimacs(formula_dimacs_path, seed, &cpu_s);
     const double elapsed = elapsed_since_start();
     std::scoped_lock lock(cache_mutex);
     GanakStats::total_time_s += elapsed;

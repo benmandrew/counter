@@ -18,7 +18,7 @@ Algorithm flow
 
 5. **Collect** the realisable survivors from the final population, re-checked with ``black`` + ``ltlsynt``.
 
-6. **Screen** those survivors: deduplicate, then apply the optional weakening filter (keep only genuine weakenings of the original), then the optional implication filter (keep only the maximal specs under the implication partial order).
+6. **Screen** those survivors: deduplicate, then apply the optional implication filter (keep only the maximal specs under the implication partial order).
 
 7. **Score, sort, and write** each surviving spec to the output directory — ``repair_N.json`` on the FRETISH path, ``repair_N.tlsf`` on the TLSF path, each paired with a ``repair_N.fitness.json`` holding its score.
 
@@ -54,9 +54,9 @@ The generation pipeline
 
 Filters run *before* scoring, so a dropped candidate never costs a model-count or a synthesis query, and a filter's own solver calls warm the caches that scoring then hits. A stage that re-tests a filter's predicate on a population that filter already judged is therefore dead code rather than a safety net.
 
-The filters run in the order ``dedup``, ``bloat-cap``, then the optional ``vacuity`` and ``not-well-separated``. The same list on both paths. The two optional stages are built from the shared correctness table — ``correctness_checks`` in ``include/filter/correctness.hpp``, with its TLSF twin in ``include/tlsf/filter.hpp`` — one stage per row whose config flag is set. Step 5 applies every row of that same table to every survivor it collects, flags or no flags, so a correctness property cannot be enforced during the search and then dropped at the output. Each filter is tagged with a ``FilterKind`` (``include/genetic/generation.hpp``). ``filter-fallback`` re-applies only the ``Correctness`` filters, and only to offspring those filters never saw, because ``dedup`` and ``bloat-cap`` run first and shadow them. It re-admits candidates dropped as duplicates or as oversized, and none of those dropped as unfit to breed from. The default kind is ``Correctness``, so a filter added without a tag costs a wasted re-test rather than a re-admitted bad candidate.
+The filters run in the order ``dedup``, ``bloat-cap``, then ``vacuity``. The same list on both paths. The ``vacuity`` stage is built from the shared correctness table — ``correctness_checks`` in ``include/filter/correctness.hpp``, with its TLSF twin in ``include/tlsf/filter.hpp`` — one stage per row whose ``per_generation`` bool is set. Since 2026-09-11 that bool is fixed on the row rather than read from a config flag, and the ``not-well-separated`` row sets it false, so it builds no stage. Step 5 applies every row of that same table to every survivor it collects, whatever its ``per_generation`` says, so a correctness property cannot be enforced during the search and then dropped at the output. Each filter is tagged with a ``FilterKind`` (``include/genetic/generation.hpp``). ``filter-fallback`` re-applies only the ``Correctness`` filters, and only to offspring those filters never saw, because ``dedup`` and ``bloat-cap`` run first and shadow them. It re-admits candidates dropped as duplicates or as oversized, and none of those dropped as unfit to breed from. The default kind is ``Correctness``, so a filter added without a tag costs a wasted re-test rather than a re-admitted bad candidate.
 
-The weakening filter is not in that list. It is a final screen over the realisable survivors, at step 6, rather than a per-generation filter; :doc:`configuration` gives the measurement behind that.
+A final weakening screen at step 6 was removed on 2026-09-11, having defaulted off since 2026-08-20; :doc:`configuration` gives the measurement behind that.
 
 Breeding is a single stage by design. Crossover and mutation interleave per offspring slot, so splitting them would reorder every RNG draw after the first and break seed reproducibility. The ``determinism`` test suite pins the draw stream against exactly that.
 

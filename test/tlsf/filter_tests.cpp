@@ -225,29 +225,6 @@ void test_assumption_side_stays_a_joint_query() {
            "vacuity: 'G a' and 'G !a' are jointly unsatisfiable");
 }
 
-// --- weakening filter ---
-
-void test_weakening_filter_keeps_only_weakenings() {
-    SatisfiabilityChecker& checker = global_sat_checker();
-    const tlsf::Specification base = base_spec();
-    const tlsf::Specification weaker = weaker_spec();
-    // A strengthening: an extra guarantee the original does not impose.
-    const tlsf::Specification stronger = parse_spec(
-        "INPUTS { a; } OUTPUTS { b; } GUARANTEE { G (a -> b); G b; }");
-    const FilterFunctionT<tlsf::Specification> filter =
-        tlsf_make_weakening_filter(base, checker);
-    const std::vector<tlsf::Specification> survivors =
-        filter({base, weaker, stronger});
-    const auto has = [&survivors](const tlsf::Specification& spec) {
-        return std::any_of(
-            survivors.begin(), survivors.end(),
-            [&spec](const tlsf::Specification& kept) { return kept == spec; });
-    };
-    expect(has(base), "weakening: the original itself is kept");
-    expect(has(weaker), "weakening: a weakening of the original is kept");
-    expect(!has(stronger), "weakening: a strengthening is dropped");
-}
-
 // --- bloat cap filter ---
 
 void test_bloat_cap_filter_drops_oversized() {
@@ -415,7 +392,6 @@ void run_tlsf_filter_tests() {
     test_one_valid_guarantee_among_substantive_ones_rejects();
     test_guarantee_timeout_keeps_the_candidate();
     test_assumption_side_stays_a_joint_query();
-    test_weakening_filter_keeps_only_weakenings();
     test_bloat_cap_filter_drops_oversized();
     test_implication_filter_keeps_maximal();
     test_well_separation_drops_output_liveness_assumption();

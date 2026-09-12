@@ -185,6 +185,9 @@ add_executable(counter
     src/repair/reports.cpp
 )
 target_link_libraries(counter PRIVATE counter_fitness cpptrace::cpptrace)
+# The FRETISH driver reaches src/filter/streaming_maximal.hpp and the
+# fingerprint prefilter behind it, as maximal does below.
+target_include_directories(counter PRIVATE src)
 
 add_executable(signal_tracer src/crash/signal_tracer.cpp)
 target_link_libraries(signal_tracer PRIVATE cpptrace::cpptrace)

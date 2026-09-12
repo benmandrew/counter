@@ -142,6 +142,9 @@ std::vector<std::size_t> cost_ordered_indices(std::size_t n_items,
 /// repeating permutation would silently drop or double-run items, so it is
 /// asserted to be one.
 ///
+/// @p priority picks the pool queue every task of the region joins; see
+/// TaskPriority.
+///
 /// A task that throws has its exception rethrown here, after every other
 /// outstanding task has been waited for. Tasks capture references to
 /// caller-owned data, so propagating earlier would unwind past that data and
@@ -149,7 +152,8 @@ std::vector<std::size_t> cost_ordered_indices(std::size_t n_items,
 template <typename MakeTask, typename OnComplete>
 void run_bounded_async(std::size_t n_items, std::size_t max_in_flight,
                        MakeTask make_task, OnComplete on_complete,
-                       const std::vector<std::size_t>& launch_order) {
+                       const std::vector<std::size_t>& launch_order,
+                       TaskPriority priority = TaskPriority::Foreground) {
     bounded_async_detail::assert_permutation(launch_order, n_items);
     using Task = decltype(make_task(std::size_t{0}));
     using Result = std::invoke_result_t<Task>;
@@ -166,7 +170,7 @@ void run_bounded_async(std::size_t n_items, std::size_t max_in_flight,
         max_in_flight = 1;
     }
 
-    auto launch = [&queue, &make_task](std::size_t idx) {
+    auto launch = [&queue, &make_task, priority](std::size_t idx) {
         // Built before the counter moves, and the submit guarded after it.
         // Only a task that is actually queued will ever push a result, so a
         // throw from either step with the counter already raised would leave
@@ -192,7 +196,8 @@ void run_bounded_async(std::size_t n_items, std::size_t max_in_flight,
                         entry.m_error = std::current_exception();
                     }
                     queue->push(std::move(entry));
-                });
+                },
+                priority);
         } catch (...) {
             {
                 const std::scoped_lock lock(queue->m_mutex);

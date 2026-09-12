@@ -12,8 +12,11 @@
 #include "genetic/generation.hpp"
 #include "runner/black.hpp"
 
-/// Counters for the most recent make_implication_filter pairwise sweep, reset
-/// at the start of each invocation of the returned FilterFunction.
+/// Counters for the most recent implication sweep, on either path, reset at
+/// the start of each invocation of the returned FilterFunction. n_timeouts is
+/// the exception: the FRETISH spec_implies increments it wherever it is
+/// called, and tlsf_spec_implies does not count at all, so it reads 0 on the
+/// TLSF path.
 struct ImplicationFilterStats {
     /// Unordered pairs for which the dominance check actually ran.
     inline static std::atomic<std::size_t> n_comparisons{0};

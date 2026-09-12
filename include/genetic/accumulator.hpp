@@ -77,13 +77,14 @@ class AccumulatedRepairWriter {
     /// @p generation is 1-indexed and names the file, so the origin of an
     /// accumulated repair is legible without opening it; a run-wide sequence
     /// number follows it, which makes a collision impossible whatever order the
-    /// generations contribute in.
-    void write(std::size_t generation, const Spec& spec) {
+    /// generations contribute in. Returns the file's name within the
+    /// accumulated directory, or an empty string where nothing was written.
+    std::string write(std::size_t generation, const Spec& spec) {
         if (!m_serialise || m_failed) {
-            return;
+            return {};
         }
         if (!m_created && !create_directory()) {
-            return;
+            return {};
         }
         std::ostringstream name;
         name << "gen" << std::setw(2) << std::setfill('0') << generation << "_"
@@ -93,7 +94,7 @@ class AccumulatedRepairWriter {
         std::ofstream file(path, std::ios::out | std::ios::trunc);
         if (!file) {
             warn("could not open " + path);
-            return;
+            return {};
         }
         file << m_serialise(spec);
         // Closed here rather than left to the destructor: the buffer has to
@@ -102,14 +103,17 @@ class AccumulatedRepairWriter {
         file.close();
         if (!file) {
             warn("could not write " + path);
-            return;
+            return {};
         }
         append_index_row(name.str(), generation);
         ++m_sequence;
+        return name.str();
     }
 
-   private:
+    /// The directory under `<output-dir>` the files go into.
     static constexpr const char* k_subdirectory = "accumulated";
+
+   private:
     static constexpr const char* k_index_name = "index.tsv";
 
     /// One flushed row per accumulated candidate: which file, which generation,
@@ -188,9 +192,17 @@ class AccumulatedRepairWriter {
 template <typename Spec>
 class RepairAccumulator {
    public:
+    /// Called once per newly accumulated specification, after its file is
+    /// written, with the file's name, or an empty string where the writer wrote
+    /// none. The streaming implication filter is fed through this.
+    using Sink = std::function<void(const Spec&, const std::string&)>;
+
     explicit RepairAccumulator(bool enabled,
-                               AccumulatedRepairWriter<Spec> writer = {})
-        : m_enabled(enabled), m_writer(std::move(writer)) {}
+                               AccumulatedRepairWriter<Spec> writer = {},
+                               Sink sink = {})
+        : m_enabled(enabled),
+          m_writer(std::move(writer)),
+          m_sink(std::move(sink)) {}
 
     [[nodiscard]] bool enabled() const { return m_enabled; }
 
@@ -206,7 +218,10 @@ class RepairAccumulator {
             return;
         }
         m_specifications.push_back(spec);
-        m_writer.write(generation, spec);
+        const std::string name = m_writer.write(generation, spec);
+        if (m_sink) {
+            m_sink(spec, name);
+        }
     }
 
     /// First-seen order rather than the hash set's, so what comes back is a
@@ -218,6 +233,7 @@ class RepairAccumulator {
    private:
     bool m_enabled;
     AccumulatedRepairWriter<Spec> m_writer;
+    Sink m_sink;
     std::unordered_set<Spec> m_seen;
     std::vector<Spec> m_specifications;
 };

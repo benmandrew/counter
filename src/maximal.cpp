@@ -249,8 +249,8 @@ std::vector<std::string> expand_paths(const std::vector<std::string>& paths,
 
 // Structural duplicates cost nothing to remove and would each pay for a full
 // row of the pairwise sweep, so they are collapsed before any solver call.
-// compute_subsumed does this internally too; doing it here as well is what lets
-// the report name the files behind each survivor.
+// The implication filter does this internally too; doing it here as well is
+// what lets the report name the files behind each survivor.
 template <typename Spec>
 struct Corpus {
     std::vector<Spec> m_distinct;

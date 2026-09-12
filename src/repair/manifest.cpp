@@ -145,7 +145,20 @@ namespace {
 // dropped tool_calls.ganak.timeouts with the timeout it counted.
 // The same version moved the fitness weights to AuRUS's 0.1/0.2/0.7 and
 // mutation.p_condition_type, p_scope and p_monotone off 0.
-constexpr int k_schema_version = 27;
+//
+// 28 moved both paths onto one implication sweep and runs it during the
+// search. On TLSF, `comparisons`, `skipped` and `duplicates` read 0 on every
+// earlier manifest, the TLSF sweep having counted none of them, and
+// `fingerprint_refuted` was never reset; all four now carry the sweep's own
+// figures, as they already did on FRETISH. `timeouts` still reads 0 there,
+// tlsf_spec_implies counting none. Wherever the run accumulates, the
+// implication figures are the streamed sweep's, whose batches ask the pairs
+// within a batch and between it and the maximal set so far, so `comparisons`
+// and `skipped` do not compare with any earlier run's; `duplicates` reads 0,
+// the stream deduplicating before its sweep sees anything. No key selects
+// between the two routes, so a manifest at 28 or above carries the streamed
+// figures whenever accumulate_repairs and filters.run_implication are both on.
+constexpr int k_schema_version = 28;
 
 // The inverse of the spellings config_io.cpp parses. It has no table to
 // borrow -- it only ever goes string to enum -- so these must be kept in step

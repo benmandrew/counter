@@ -3,9 +3,12 @@
 // Screens over a scored population: which candidates count as repairs, and the
 // two final passes that reduce the repairs to the ones worth writing out.
 
+#include <memory>
+#include <string>
 #include <vector>
 
 #include "config.hpp"
+#include "filter/streaming_maximal.hpp"
 #include "fitness/function.hpp"
 #include "genetic/scored.hpp"
 #include "runner/black.hpp"
@@ -44,5 +47,18 @@ std::vector<Scored<Specification>> keep_maximal(
     const std::vector<Scored<Specification>>& survivors,
     const Specification& original, const Config& cfg,
     SatisfiabilityChecker& checker);
+
+// keep_maximal runs during the search, fed from the accumulator, or null
+// where the key is off or cfg.repair_mode is MUC, whose loop accumulates
+// nothing.
+std::unique_ptr<StreamingMaximalFilter<Specification>> make_maximal_stream(
+    const Specification& original, const Config& cfg,
+    const std::string& output_dir);
+
+// What keep_maximal returns, from @p stream instead: pushes the survivors
+// the accumulator did not already hand it and waits for the last batch.
+std::vector<Scored<Specification>> finish_maximal_stream(
+    const std::vector<Scored<Specification>>& survivors,
+    StreamingMaximalFilter<Specification>& stream);
 
 }  // namespace tlsf::internal

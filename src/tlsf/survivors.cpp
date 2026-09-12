@@ -2,12 +2,17 @@
 
 #include <algorithm>
 #include <cstddef>
+#include <filesystem>
+#include <memory>
+#include <string>
 #include <utility>
 #include <vector>
 
 #include "bounded_async.hpp"
 #include "config.hpp"
 #include "filter/correctness.hpp"
+#include "filter/streaming_maximal.hpp"
+#include "fingerprint/prefilter.hpp"
 #include "fitness/function.hpp"
 #include "genetic/accumulator.hpp"
 #include "genetic/pipeline.hpp"
@@ -180,6 +185,38 @@ std::vector<Scored<Specification>> keep_maximal(
     const std::vector<Specification> maximal = tlsf_make_implication_filter(
         checker, tlsf_syntactic_similarity_key(original, cfg))(specs);
     return keep_matching(survivors, maximal);
+}
+
+std::unique_ptr<StreamingMaximalFilter<Specification>> make_maximal_stream(
+    const Specification& original, const Config& cfg,
+    const std::string& output_dir) {
+    if (!implication_streams(cfg) ||
+        cfg.repair_mode != RepairMode::Monolithic) {
+        return nullptr;
+    }
+    MaximalStreamRules<Specification> rules;
+    rules.implies = [](const Specification& lhs, const Specification& rhs,
+                       SatisfiabilityChecker& checker) {
+        return tlsf_spec_implies(lhs, rhs, checker).value_or(false);
+    };
+    rules.similarity = tlsf_syntactic_similarity_key(original, cfg);
+    rules.fingerprints = [](const std::vector<Specification>& specs) {
+        return fingerprint::prefilter::fingerprints_of(specs);
+    };
+    return std::make_unique<StreamingMaximalFilter<Specification>>(
+        cfg, std::move(rules),
+        (std::filesystem::path(output_dir) /
+         AccumulatedRepairWriter<Specification>::k_subdirectory / "maximal.tsv")
+            .string());
+}
+
+std::vector<Scored<Specification>> finish_maximal_stream(
+    const std::vector<Scored<Specification>>& survivors,
+    StreamingMaximalFilter<Specification>& stream) {
+    for (const Scored<Specification>& scored : survivors) {
+        stream.push(scored.specification, {});
+    }
+    return keep_matching(survivors, stream.finish());
 }
 
 }  // namespace tlsf::internal

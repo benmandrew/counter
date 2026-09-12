@@ -13,9 +13,11 @@
 #include <cstdlib>
 #include <exception>
 #include <future>
+#include <mutex>
 #include <optional>
 #include <string>
 #include <string_view>
+#include <utility>
 #include <vector>
 
 #include "bounded_async.hpp"
@@ -170,6 +172,54 @@ void test_every_submitted_task_runs() {
     }
 }
 
+// One worker, held busy while both queues fill, so the order the queued tasks
+// run in is the order the worker chose them in and nothing else.
+void test_foreground_tasks_run_before_queued_background_ones() {
+    ThreadPool pool(1);
+    std::promise<void> release;
+    std::shared_future<void> gate = release.get_future().share();
+    std::future<void> held = pool.submit([gate] { gate.wait(); });
+
+    std::mutex order_mutex;
+    std::vector<std::string> order;
+    const auto record = [&order_mutex, &order](std::string name) {
+        return [&order_mutex, &order, name = std::move(name)] {
+            const std::scoped_lock lock(order_mutex);
+            order.push_back(name);
+        };
+    };
+    std::vector<std::future<void>> results;
+    results.push_back(pool.submit(record("b1"), TaskPriority::Background));
+    results.push_back(pool.submit(record("b2"), TaskPriority::Background));
+    results.push_back(pool.submit(record("f1")));
+    results.push_back(pool.submit(record("f2"), TaskPriority::Foreground));
+    release.set_value();
+    held.get();
+    for (std::future<void>& result : results) {
+        result.get();
+    }
+
+    const std::vector<std::string> expected{"f1", "f2", "b1", "b2"};
+    expect(order == expected,
+           "priority: a queued foreground task should run before every queued "
+           "background one, each queue keeping its own submission order");
+}
+
+void test_background_region_collects_every_item() {
+    constexpr std::size_t k_n_items = 32;
+    std::vector<std::size_t> values(k_n_items, 0);
+    run_bounded_async(
+        k_n_items, dispatch_window(),
+        [](std::size_t idx) { return [idx] { return idx + 1; }; },
+        [&values](std::size_t idx, std::size_t value) { values[idx] = value; },
+        {}, TaskPriority::Background);
+    for (std::size_t idx = 0; idx < k_n_items; ++idx) {
+        expect(values[idx] == idx + 1,
+               "priority: a background region should run and collect every "
+               "item under its own index");
+    }
+}
+
 void test_dispatch_window_is_twice_the_pool() {
     expect(dispatch_window() >= 1,
            "the dispatch window should always admit at least one task");
@@ -233,6 +283,8 @@ void run_thread_pool_tests() {
     test_malformed_cgroup_v2_cpu_max_bounds_nothing();
     test_cgroup_v1_cpu_quota_parses();
     test_every_submitted_task_runs();
+    test_foreground_tasks_run_before_queued_background_ones();
+    test_background_region_collects_every_item();
     test_dispatch_window_is_twice_the_pool();
     test_cost_ordered_indices_is_longest_first();
     test_cost_ordered_dispatch_pairs_results_with_their_own_index();

@@ -3,13 +3,16 @@
 #include <algorithm>
 #include <chrono>
 #include <cstddef>
+#include <filesystem>
 #include <fstream>
 #include <iomanip>
 #include <iostream>
+#include <memory>
 #include <optional>
 #include <sstream>
 #include <stdexcept>
 #include <string>
+#include <unordered_set>
 #include <utility>
 #include <vector>
 
@@ -18,6 +21,8 @@
 #include "bounded_async.hpp"
 #include "filter/correctness.hpp"
 #include "filter/implication.hpp"
+#include "filter/implication_check.hpp"
+#include "fingerprint/prefilter.hpp"
 #include "fitness/status.hpp"
 #include "genetic/accumulator.hpp"
 #include "runner/black.hpp"
@@ -87,6 +92,23 @@ std::optional<std::size_t> accumulate_gate_passing(
     return n_gate_passing;
 }
 
+// The committed line of the implication filter, the same on both routes to it
+// so a log reads alike whichever ran. @p elapsed is the time the run waited on
+// the filter: the whole sweep in batch, the last batch when streamed.
+void print_implication_summary(double elapsed) {
+    if (stdout_is_tty()) {
+        std::cout << "\r\033[K";
+    }
+    std::cout << "Implication filter: 100%  " << std::fixed
+              << std::setprecision(2) << elapsed << "s  ("
+              << ImplicationFilterStats::n_comparisons << " cmp, "
+              << ImplicationFilterStats::n_skipped << " skip, "
+              << ImplicationFilterStats::n_duplicates << " dup, "
+              << ImplicationFilterStats::n_equivalent_collapsed << " equiv, "
+              << ImplicationFilterStats::n_timeouts << " timeout, "
+              << ImplicationFilterStats::n_fingerprint_refuted << " refuted)\n";
+}
+
 }  // namespace
 
 std::vector<std::string> fitness_objective_names(
@@ -121,18 +143,21 @@ EvolutionResult run_evolution(
     const AggregateWeightedFitnessFunction& fitness_function,
     const std::vector<FilterFunction>& filter_functions,
     RandomSource& random_source, DashboardWriter& dashboard,
-    const std::string& output_dir, SearchBudget& budget) {
+    const std::string& output_dir, SearchBudget& budget,
+    RepairAccumulator<Specification>::Sink sink) {
     // The same serialiser repair_N.json goes through, so an accumulated file
     // is a specification document and nothing else -- no fitness record, since
     // these are gate-passing candidates rather than the run's filtered output.
     RepairAccumulator<Specification> accumulator(
-        cfg.accumulate_repairs, AccumulatedRepairWriter<Specification>(
-                                    output_dir, ".json",
-                                    [](const Specification& spec) {
-                                        const nlohmann::json jobj = spec;
-                                        return jobj.dump(2) + "\n";
-                                    },
-                                    [&budget] { return budget.elapsed_s(); }));
+        cfg.accumulate_repairs,
+        AccumulatedRepairWriter<Specification>(
+            output_dir, ".json",
+            [](const Specification& spec) {
+                const nlohmann::json jobj = spec;
+                return jobj.dump(2) + "\n";
+            },
+            [&budget] { return budget.elapsed_s(); }),
+        std::move(sink));
     const std::vector<std::string> objective_names =
         fitness_objective_names(fitness_function);
     std::vector<FilterRunStats> filter_stats;
@@ -365,25 +390,69 @@ filter_maximal_specifications(
         stats.push_back({"final/" + flt.name(), flt.n_in(), flt.n_out()});
     }
     if (cfg.run_implication_filter) {
-        const double impl_elapsed =
+        print_implication_summary(
             std::chrono::duration<double>(std::chrono::steady_clock::now() -
                                           impl_start)
-                .count();
-        if (stdout_is_tty()) {
-            std::cout << "\r\033[K";
-        }
-        std::cout << "Implication filter: 100%  " << std::fixed
-                  << std::setprecision(2) << impl_elapsed << "s  ("
-                  << ImplicationFilterStats::n_comparisons << " cmp, "
-                  << ImplicationFilterStats::n_skipped << " skip, "
-                  << ImplicationFilterStats::n_duplicates << " dup, "
-                  << ImplicationFilterStats::n_equivalent_collapsed
-                  << " equiv, " << ImplicationFilterStats::n_timeouts
-                  << " timeout, "
-                  << ImplicationFilterStats::n_fingerprint_refuted
-                  << " refuted)\n";
+                .count());
     }
     return {result, std::move(stats)};
+}
+
+std::unique_ptr<StreamingMaximalFilter<Specification>> make_maximal_stream(
+    const Config& cfg, const Specification& original,
+    const std::string& output_dir) {
+    if (!implication_streams(cfg)) {
+        return nullptr;
+    }
+    MaximalStreamRules<Specification> rules;
+    rules.implies = [](const Specification& lhs, const Specification& rhs,
+                       SatisfiabilityChecker& checker) {
+        return spec_implies(lhs, rhs, checker).value_or(false);
+    };
+    rules.similarity = syntactic_similarity_key(original, cfg);
+    rules.fingerprints = [](const std::vector<Specification>& specs) {
+        return fingerprint::prefilter::fingerprints_of(specs);
+    };
+    return std::make_unique<StreamingMaximalFilter<Specification>>(
+        cfg, std::move(rules),
+        (std::filesystem::path(output_dir) /
+         AccumulatedRepairWriter<Specification>::k_subdirectory / "maximal.tsv")
+            .string());
+}
+
+std::pair<std::vector<Specification>, std::vector<FilterRunStats>>
+finish_maximal_stream(StreamingMaximalFilter<Specification>& stream,
+                      const std::vector<Specification>& realizable_vec) {
+    const auto drain_start = std::chrono::steady_clock::now();
+    // Every accumulated specification is already in the stream, and the
+    // stream deduplicates, so this adds only what the final population's own
+    // collection found that no generation's sweep had accumulated.
+    for (const Specification& spec : realizable_vec) {
+        stream.push(spec, {});
+    }
+    const std::vector<Specification> streamed = stream.finish();
+    // The stream returns push order, accumulated specifications first. The
+    // batch filters return @p realizable_vec's, and repair_N is numbered after
+    // a sort that keeps the order of fitness ties, so the order is restored.
+    const std::unordered_set<Specification> kept(streamed.begin(),
+                                                 streamed.end());
+    std::unordered_set<Specification> emitted;
+    std::vector<Specification> maximal;
+    maximal.reserve(streamed.size());
+    for (const Specification& spec : realizable_vec) {
+        if (kept.count(spec) != 0 && emitted.insert(spec).second) {
+            maximal.push_back(spec);
+        }
+    }
+    const MaximalStreamCounts& counts = stream.counts();
+    std::vector<FilterRunStats> stats;
+    stats.push_back({"final/dedup", realizable_vec.size(), counts.n_distinct});
+    stats.push_back({"final/implication", counts.n_distinct, maximal.size()});
+    print_implication_summary(
+        std::chrono::duration<double>(std::chrono::steady_clock::now() -
+                                      drain_start)
+            .count());
+    return {std::move(maximal), std::move(stats)};
 }
 
 void write_specifications(

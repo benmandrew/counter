@@ -8,6 +8,7 @@
 
 #include "config.hpp"
 #include "evolve.hpp"
+#include "filter/streaming_maximal.hpp"
 #include "fitness/function.hpp"
 #include "genetic/pipeline.hpp"
 #include "genetic/random_source.hpp"
@@ -19,13 +20,14 @@ namespace tlsf::internal {
 // Monolithic repair: evolve the whole spec once, collect realizable survivors.
 // @p output_dir is where the accumulator streams each gate-passing candidate as
 // it finds it, under cfg.accumulate_repairs; nothing is created there
-// otherwise.
+// otherwise. A non-null @p stream is handed each candidate as it is
+// accumulated.
 std::vector<Scored<Specification>> run_monolithic(
     const Specification& original, const Config& cfg,
     const RandomSource& random_source,
     const AggregateWeightedFitnessFunctionT<Specification>& fitness,
     const DashboardProgress& progress, const std::string& output_dir,
-    SearchBudget& budget);
+    SearchBudget& budget, StreamingMaximalFilter<Specification>* stream);
 
 // MUC repair: iteratively extract a minimal unrealizable core, evolve only that
 // sub-specification, reintegrate the best realizable-on-sub-spec repair with

@@ -9,17 +9,15 @@
 #include <functional>
 #include <optional>
 #include <string>
-#include <unordered_map>
 #include <unordered_set>
 #include <utility>
 #include <vector>
 
 #include "bounded_async.hpp"
 #include "config.hpp"
+#include "filter/antichain.hpp"
 #include "filter/implication.hpp"
 #include "filter/well_separation.hpp"
-#include "fingerprint/lasso.hpp"
-#include "fingerprint/prefilter.hpp"
 #include "prop_formula.hpp"
 #include "runner/black.hpp"
 #include "runner/spot.hpp"
@@ -114,162 +112,6 @@ bool any_formula_exceeds(const tlsf::Specification& spec, std::size_t cap) {
         }
     }
     return false;
-}
-
-// Orders the two members of an equivalence class so exactly one survives. The
-// FRETISH twin in src/filter/implication.cpp carries the argument for the
-// tie-break being total rather than "whichever pair finished first".
-bool prefer_a(const tlsf::Specification& spec_a,
-              const tlsf::Specification& spec_b, double key_a, double key_b) {
-    if (key_a != key_b) {
-        return key_a > key_b;
-    }
-    return spec_b < spec_a;
-}
-
-// Marks the dominated side of the unordered pair of representative positions
-// {a, b}, if any: the weaker side under strict implication, or the side
-// `prefer_a` ranks lower when the two are equivalent. Short-circuits once
-// either endpoint is already known subsumed, which stays sound because the
-// combined relation is transitive (see the FRETISH twin).
-void check_pair(const std::vector<tlsf::Specification>& pop,
-                const std::vector<std::size_t>& representatives,
-                const std::vector<double>& keys,
-                const std::vector<fingerprint::PackedFingerprint>& prints,
-                std::vector<std::atomic<uint8_t>>& subsumed,
-                SatisfiabilityChecker& checker, std::size_t pos_a,
-                std::size_t pos_b) {
-    if (subsumed[pos_a].load(std::memory_order_relaxed) != 0U ||
-        subsumed[pos_b].load(std::memory_order_relaxed) != 0U) {
-        return;
-    }
-    const tlsf::Specification& spec_a = pop[representatives[pos_a]];
-    const tlsf::Specification& spec_b = pop[representatives[pos_b]];
-    // A sampled word one side accepts and the other rejects settles that
-    // direction as false, so the solver is asked only where no word separated
-    // them. value_or(false) below reads a timeout the same way, so a
-    // refutation here can only replace an undecided verdict with the answer
-    // that verdict was already being given.
-    const bool have_prints = !prints.empty();
-    const bool a_refuted = have_prints && fingerprint::refutes_implication(
-                                              prints[pos_a], prints[pos_b]);
-    const bool b_refuted = have_prints && fingerprint::refutes_implication(
-                                              prints[pos_b], prints[pos_a]);
-    const bool a_implies_b =
-        a_refuted ? false
-                  : tlsf_spec_implies(spec_a, spec_b, checker).value_or(false);
-    const bool b_implies_a =
-        b_refuted ? false
-                  : tlsf_spec_implies(spec_b, spec_a, checker).value_or(false);
-    if (a_implies_b && b_implies_a) {
-        const bool keep_a = prefer_a(spec_a, spec_b, keys[pos_a], keys[pos_b]);
-        subsumed[keep_a ? pos_b : pos_a].store(1, std::memory_order_relaxed);
-        ImplicationFilterStats::n_equivalent_collapsed.fetch_add(
-            1, std::memory_order_relaxed);
-    } else if (a_implies_b) {
-        subsumed[pos_b].store(1, std::memory_order_relaxed);
-    } else if (b_implies_a) {
-        subsumed[pos_a].store(1, std::memory_order_relaxed);
-    }
-}
-
-// Computes subsumed[j] = 1 iff some spec dominates pop[j]: implies it without
-// being implied back, or is equivalent to it and outranks it under `prefer_a`.
-// Exact duplicates relate identically to every other spec (the implication
-// check depends only on the lowered LTL formula), so only one representative
-// per group of equal specs is run through the pairwise sweep, and only that
-// representative can survive the group.
-std::vector<uint8_t> compute_subsumed(
-    const std::vector<tlsf::Specification>& pop, SatisfiabilityChecker& checker,
-    const TlsfSimilarityKey& similarity,
-    const GenerationProgressCallback& on_progress) {
-    const std::size_t pop_size = pop.size();
-    std::unordered_map<tlsf::Specification, std::size_t> rep_position_of;
-    std::vector<std::size_t> representatives;
-    for (std::size_t i = 0; i < pop_size; ++i) {
-        if (rep_position_of.try_emplace(pop[i], representatives.size())
-                .second) {
-            representatives.push_back(i);
-        }
-    }
-    const std::size_t n_reps = representatives.size();
-    // One similarity call per representative: the sweep below is quadratic.
-    std::vector<double> keys(n_reps, 0.0);
-    if (similarity) {
-        for (std::size_t rep_pos = 0; rep_pos < n_reps; ++rep_pos) {
-            keys[rep_pos] = similarity(pop[representatives[rep_pos]]);
-        }
-    }
-    // Once per representative, ahead of a sweep quadratic in them.
-    std::vector<tlsf::Specification> rep_specs;
-    rep_specs.reserve(n_reps);
-    for (const std::size_t index : representatives) {
-        rep_specs.push_back(pop[index]);
-    }
-    const std::vector<fingerprint::PackedFingerprint> prints =
-        fingerprint::prefilter::fingerprints_of(rep_specs);
-    // A pair both of whose directions a word refutes is dropped here rather
-    // than dispatched and returned from. Dispatching it costs more than the
-    // two ANDs it saves: `run_bounded_async` bounds how many items are in
-    // flight, so a region that is 96% instant tasks keeps refilling its window
-    // with them and holds about one subprocess open at a time. Measured over
-    // 80 candidates, skipping inside the task left 1033 ltlfilt calls running
-    // at 1.07x concurrency for 21.5s of wall, against the unfiltered sweep's
-    // 3361 calls at 18x for 6.4s -- fewer calls and three times the wall.
-    std::vector<std::pair<std::size_t, std::size_t>> pairs;
-    pairs.reserve(n_reps * (n_reps - 1) / 2);
-    std::size_t refuted_directions = 0;
-    for (std::size_t i = 0; i < n_reps; ++i) {
-        for (std::size_t j = i + 1; j < n_reps; ++j) {
-            if (prints.empty()) {
-                pairs.emplace_back(i, j);
-                continue;
-            }
-            const bool forward =
-                fingerprint::refutes_implication(prints[i], prints[j]);
-            const bool backward =
-                fingerprint::refutes_implication(prints[j], prints[i]);
-            refuted_directions += static_cast<std::size_t>(forward) +
-                                  static_cast<std::size_t>(backward);
-            if (!forward || !backward) {
-                pairs.emplace_back(i, j);
-            }
-        }
-    }
-    ImplicationFilterStats::n_fingerprint_refuted.fetch_add(
-        refuted_directions, std::memory_order_relaxed);
-    std::vector<std::atomic<uint8_t>> subsumed(n_reps);
-    for (auto& flag : subsumed) {
-        flag.store(0, std::memory_order_relaxed);
-    }
-    const std::size_t max_in_flight = dispatch_window();
-    std::size_t completed = 0;
-    run_bounded_async(
-        pairs.size(), max_in_flight,
-        [&checker, &pop, &representatives, &keys, &prints, &subsumed,
-         &pairs](std::size_t idx) {
-            const std::size_t pos_a = pairs[idx].first;
-            const std::size_t pos_b = pairs[idx].second;
-            return [&checker, &pop, &representatives, &keys, &prints, &subsumed,
-                    pos_a, pos_b] {
-                check_pair(pop, representatives, keys, prints, subsumed,
-                           checker, pos_a, pos_b);
-            };
-        },
-        [&on_progress, &completed, total = pairs.size()](std::size_t) {
-            if (on_progress) {
-                on_progress(++completed, total);
-            }
-        });
-    std::vector<uint8_t> result(pop_size, 1);
-    for (std::size_t rep_pos = 0; rep_pos < n_reps; ++rep_pos) {
-        // Only the representative can survive a group of structurally equal
-        // specs; the rest are an equivalence class no solver call is needed to
-        // recognise.
-        result[representatives[rep_pos]] =
-            subsumed[rep_pos].load(std::memory_order_relaxed);
-    }
-    return result;
 }
 
 // FRETISH routes every element-wise filter through make_predicate_filter, so
@@ -518,23 +360,28 @@ TlsfSimilarityKey tlsf_syntactic_similarity_key(tlsf::Specification original,
 FilterFunctionT<tlsf::Specification> tlsf_make_implication_filter(
     SatisfiabilityChecker& checker, TlsfSimilarityKey similarity,
     const GenerationProgressCallback& on_progress) {
-    return {"implication",
-            [&checker, similarity = std::move(similarity),
-             on_progress](std::vector<tlsf::Specification> pop) {
-                ImplicationFilterStats::n_equivalent_collapsed.store(
-                    0, std::memory_order_relaxed);
-                if (pop.size() <= 1) {
-                    return pop;
+    return {
+        "implication",
+        [&checker, similarity = std::move(similarity),
+         on_progress](std::vector<tlsf::Specification> pop) {
+            antichain::reset_stats();
+            if (pop.size() <= 1) {
+                return pop;
+            }
+            const std::vector<uint8_t> subsumed = antichain::subsumed_in(
+                pop,
+                [&checker](const tlsf::Specification& lhs,
+                           const tlsf::Specification& rhs) {
+                    return tlsf_spec_implies(lhs, rhs, checker).value_or(false);
+                },
+                similarity, on_progress);
+            std::vector<tlsf::Specification> maximal;
+            for (std::size_t i = 0; i < pop.size(); ++i) {
+                if (subsumed[i] == 0U) {
+                    maximal.push_back(std::move(pop[i]));
                 }
-                const std::vector<uint8_t> subsumed =
-                    compute_subsumed(pop, checker, similarity, on_progress);
-                std::vector<tlsf::Specification> maximal;
-                for (std::size_t i = 0; i < pop.size(); ++i) {
-                    if (subsumed[i] == 0U) {
-                        maximal.push_back(std::move(pop[i]));
-                    }
-                }
-                return maximal;
-            },
-            FilterKind::Preference};
+            }
+            return maximal;
+        },
+        FilterKind::Preference};
 }

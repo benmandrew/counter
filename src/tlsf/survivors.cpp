@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cstddef>
 #include <filesystem>
+#include <functional>
 #include <memory>
 #include <string>
 #include <utility>
@@ -189,7 +190,7 @@ std::vector<Scored<Specification>> keep_maximal(
 
 std::unique_ptr<StreamingMaximalFilter<Specification>> make_maximal_stream(
     const Specification& original, const Config& cfg,
-    const std::string& output_dir) {
+    const std::string& output_dir, std::function<double()> elapsed) {
     if (!implication_streams(cfg) ||
         cfg.repair_mode != RepairMode::Monolithic) {
         return nullptr;
@@ -205,9 +206,10 @@ std::unique_ptr<StreamingMaximalFilter<Specification>> make_maximal_stream(
     };
     return std::make_unique<StreamingMaximalFilter<Specification>>(
         cfg, std::move(rules),
-        (std::filesystem::path(output_dir) /
-         AccumulatedRepairWriter<Specification>::k_subdirectory / "maximal.tsv")
-            .string());
+        maximal_stream_output(
+            std::filesystem::path(output_dir) /
+                AccumulatedRepairWriter<Specification>::k_subdirectory,
+            std::move(elapsed)));
 }
 
 std::vector<Scored<Specification>> finish_maximal_stream(

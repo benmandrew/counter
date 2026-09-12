@@ -5,6 +5,7 @@
 #include <cstddef>
 #include <filesystem>
 #include <fstream>
+#include <functional>
 #include <iomanip>
 #include <iostream>
 #include <memory>
@@ -400,7 +401,7 @@ filter_maximal_specifications(
 
 std::unique_ptr<StreamingMaximalFilter<Specification>> make_maximal_stream(
     const Config& cfg, const Specification& original,
-    const std::string& output_dir) {
+    const std::string& output_dir, std::function<double()> elapsed) {
     if (!implication_streams(cfg)) {
         return nullptr;
     }
@@ -415,9 +416,10 @@ std::unique_ptr<StreamingMaximalFilter<Specification>> make_maximal_stream(
     };
     return std::make_unique<StreamingMaximalFilter<Specification>>(
         cfg, std::move(rules),
-        (std::filesystem::path(output_dir) /
-         AccumulatedRepairWriter<Specification>::k_subdirectory / "maximal.tsv")
-            .string());
+        maximal_stream_output(
+            std::filesystem::path(output_dir) /
+                AccumulatedRepairWriter<Specification>::k_subdirectory,
+            std::move(elapsed)));
 }
 
 std::pair<std::vector<Specification>, std::vector<FilterRunStats>>

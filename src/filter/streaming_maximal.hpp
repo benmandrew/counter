@@ -10,7 +10,10 @@
 //
 // Nothing is deleted. Every accumulated file stays where the accumulator
 // wrote it, and `maximal.tsv` beside them names the ones currently maximal,
-// rewritten after each batch.
+// rewritten after each batch. `maximal_curve.tsv` records how large that set
+// was after each batch, appended to rather than rewritten: maximality is not
+// monotone, so the sizes before the last one cannot be recovered from the
+// listing afterwards.
 
 #include <atomic>
 #include <cassert>
@@ -21,6 +24,7 @@
 #include <filesystem>
 #include <fstream>
 #include <functional>
+#include <iomanip>
 #include <iostream>
 #include <mutex>
 #include <string>
@@ -65,15 +69,39 @@ struct MaximalStreamCounts {
     std::size_t n_distinct{0};
 };
 
+// Where the stream records the maximal set, and the clock its rows are stamped
+// from. An empty path writes nothing, which is what the tests take.
+struct MaximalStreamOutput {
+    // Rewritten whole after each batch, naming the files currently maximal.
+    std::string listing_path;
+    // One row appended per batch, the size of the maximal set over time.
+    std::string curve_path;
+    // Seconds since the search began. The accumulator's index is stamped from
+    // the same clock, so a curve row and an index row sit on one timeline. An
+    // empty clock stamps every row zero, as the accumulator's writer does.
+    std::function<double()> elapsed;
+};
+
+// The two records under @p accumulated_dir, which is where they have to live:
+// the listing names files relative to it, and nothing creates it but the
+// accumulator.
+inline MaximalStreamOutput maximal_stream_output(
+    const std::filesystem::path& accumulated_dir,
+    std::function<double()> elapsed) {
+    return {(accumulated_dir / "maximal.tsv").string(),
+            (accumulated_dir / "maximal_curve.tsv").string(),
+            std::move(elapsed)};
+}
+
 template <typename Spec>
 class StreamingMaximalFilter {
    public:
-    // @p listing_path is where the names of the maximal members go; empty
-    // writes no listing. Resets ImplicationFilterStats, which from here on
-    // count this filter's sweep alone.
+    // @p output names the two files the maximal set is recorded in and carries
+    // the clock that stamps them. Resets ImplicationFilterStats, which from
+    // here on count this filter's sweep alone.
     StreamingMaximalFilter(const Config& cfg, MaximalStreamRules<Spec> rules,
-                           std::string listing_path)
-        : m_rules(std::move(rules)), m_listing_path(std::move(listing_path)) {
+                           MaximalStreamOutput output)
+        : m_rules(std::move(rules)), m_output(std::move(output)) {
         assert(m_rules.implies);
         // The batch filters' settings (src/repair/evolution.cpp explains
         // them). Set before the coordinator starts, which is the only other
@@ -184,9 +212,15 @@ class StreamingMaximalFilter {
             if (m_error) {
                 continue;
             }
+            // The queue is pushed in sequence order and swapped whole, so the
+            // last entry's sequence counts every distinct specification pushed
+            // so far. Read from the batch rather than from m_next_sequence,
+            // which belongs to the pushing thread.
+            const std::size_t n_pushed = batch.back().sequence + 1;
             try {
                 merge(std::move(batch));
                 write_listing();
+                append_curve_row(n_pushed);
             } catch (...) {
                 m_error = std::current_exception();
             }
@@ -268,10 +302,10 @@ class StreamingMaximalFilter {
     // specification has arrived, which is also what guarantees the
     // accumulator has created the directory.
     void write_listing() {
-        if (m_listing_path.empty() || m_listing_failed || !m_any_named) {
+        if (m_output.listing_path.empty() || m_listing_failed || !m_any_named) {
             return;
         }
-        const std::string temporary = m_listing_path + ".tmp";
+        const std::string temporary = m_output.listing_path + ".tmp";
         std::ofstream listing(temporary, std::ios::out | std::ios::trunc);
         if (!listing) {
             warn_listing("could not open " + temporary);
@@ -289,11 +323,62 @@ class StreamingMaximalFilter {
             return;
         }
         std::error_code error;
-        std::filesystem::rename(temporary, m_listing_path, error);
+        std::filesystem::rename(temporary, m_output.listing_path, error);
         if (error) {
             warn_listing("could not rename " + temporary + ": " +
                          error.message());
         }
+    }
+
+    // One row per merged batch: how many distinct specifications had been
+    // pushed by then, and how large the maximal set over them was once the
+    // batch settled. Appended and closed per row, as the accumulator's index
+    // is, so a run killed by a wall-clock cap keeps the rows already written.
+    //
+    // The listing cannot stand in for this. A member leaves the set when a
+    // later batch subsumes it, so the size at an earlier moment is not a
+    // function of the final listing, and an anytime curve over maximal repairs
+    // is exactly that size against time. Deriving one from the listing and the
+    // index instead counts the finally-maximal repairs found by each moment,
+    // which is a lower bound on the antichain and cannot fall.
+    //
+    // The stamp is when the batch settled rather than when its candidates were
+    // accumulated, that being the moment the count became true; each
+    // candidate's own arrival time is in the index.
+    void append_curve_row(std::size_t n_pushed) {
+        if (m_output.curve_path.empty() || m_curve_failed || !m_any_named) {
+            return;
+        }
+        const bool first = !m_curve_started;
+        std::ofstream curve(m_output.curve_path, std::ios::out | std::ios::app);
+        if (!curve) {
+            warn_curve("could not open " + m_output.curve_path);
+            return;
+        }
+        if (first) {
+            curve << "elapsed_s\tn_pushed\tn_maximal\tn_named\n";
+        }
+        curve << std::fixed << std::setprecision(6)
+              << (m_output.elapsed ? m_output.elapsed() : 0.0) << "\t"
+              << n_pushed << "\t" << m_members.size() << "\t" << n_named()
+              << "\n";
+        curve.close();
+        if (!curve) {
+            warn_curve("could not write " + m_output.curve_path);
+            return;
+        }
+        m_curve_started = true;
+    }
+
+    // Maximal members that a file holds, which is what joins a curve row to the
+    // index and the listing. Equal to the whole set on every row but the last,
+    // the final population's own pushes carrying no name.
+    [[nodiscard]] std::size_t n_named() const {
+        std::size_t named = 0;
+        for (const Member& member : m_members) {
+            named += member.name.empty() ? 0 : 1;
+        }
+        return named;
     }
 
     // Reports once and then stops trying, as the accumulator's own writer
@@ -304,9 +389,15 @@ class StreamingMaximalFilter {
                   << "; the run continues without a maximal listing\n";
     }
 
+    void warn_curve(const std::string& message) {
+        m_curve_failed = true;
+        std::cerr << "warning: " << message
+                  << "; the run continues without a maximal curve\n";
+    }
+
     SatisfiabilityChecker m_checker;
     MaximalStreamRules<Spec> m_rules;
-    std::string m_listing_path;
+    MaximalStreamOutput m_output;
 
     std::mutex m_mutex;
     std::condition_variable m_ready;
@@ -324,6 +415,8 @@ class StreamingMaximalFilter {
     std::exception_ptr m_error;
     bool m_any_named{false};
     bool m_listing_failed{false};
+    bool m_curve_failed{false};
+    bool m_curve_started{false};
 
     // The pushing thread's alone, both fields being counted in push().
     MaximalStreamCounts m_counts;

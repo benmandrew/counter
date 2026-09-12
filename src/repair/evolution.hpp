@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstddef>
+#include <functional>
 #include <memory>
 #include <string>
 #include <utility>
@@ -53,10 +54,12 @@ EvolutionResult run_evolution(
     RepairAccumulator<Specification>::Sink sink = {});
 
 // The final screen runs during the search, fed from the accumulator, or null
-// where implication_streams(cfg) is false.
+// where implication_streams(cfg) is false. @p elapsed stamps the curve the
+// stream writes, and must be the clock the accumulator's index is stamped from,
+// or the two records read against different timelines.
 std::unique_ptr<StreamingMaximalFilter<Specification>> make_maximal_stream(
     const Config& cfg, const Specification& original,
-    const std::string& output_dir);
+    const std::string& output_dir, std::function<double()> elapsed);
 
 // The gate. @p cfg supplies the status grading, which is the run's rather than
 // a fixed one, so the output is judged on the scale the search scored on.

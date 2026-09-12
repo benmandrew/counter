@@ -1,12 +1,15 @@
 #include <algorithm>
+#include <chrono>
 #include <cstddef>
 #include <cstdint>
 #include <filesystem>
 #include <fstream>
+#include <functional>
 #include <optional>
 #include <sstream>
 #include <stdexcept>
 #include <string>
+#include <thread>
 #include <utility>
 #include <vector>
 
@@ -298,6 +301,15 @@ class TempDir {
         return (m_path / "maximal.tsv").string();
     }
 
+    [[nodiscard]] std::string curve() const {
+        return (m_path / "maximal_curve.tsv").string();
+    }
+
+    [[nodiscard]] MaximalStreamOutput output(
+        std::function<double()> elapsed = {}) const {
+        return {listing(), curve(), std::move(elapsed)};
+    }
+
    private:
     std::filesystem::path m_path;
 };
@@ -321,6 +333,35 @@ std::string read_whole(const std::string& path) {
     return contents.str();
 }
 
+std::vector<std::string> read_lines(const std::string& path) {
+    std::istringstream text(read_whole(path));
+    std::vector<std::string> lines;
+    for (std::string line; std::getline(text, line);) {
+        lines.push_back(line);
+    }
+    return lines;
+}
+
+// Blocks until the curve holds @p rows complete data rows, so that the next
+// push lands in a batch of its own. Only the coordinator's own progress is
+// waited on, and the bound turns a row that never arrives into a failed
+// assertion rather than a hung suite. A row still being written ends in no
+// newline, so the trailing-newline test is what keeps a partial row from
+// counting.
+bool curve_reaches(const std::string& path, std::size_t rows) {
+    const auto deadline =
+        std::chrono::steady_clock::now() + std::chrono::seconds(30);
+    while (std::chrono::steady_clock::now() < deadline) {
+        const std::string text = read_whole(path);
+        if (!text.empty() && text.back() == '\n' &&
+            read_lines(path).size() >= rows + 1) {
+            return true;
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    }
+    return false;
+}
+
 // The batches of test_batched_merge_matches_one_sweep, pushed one at a time
 // with a name each and G a pushed twice. The result has to match the batch
 // filter whatever batches the coordinator happened to form, and the listing
@@ -341,7 +382,7 @@ void test_streaming_matches_batch_filter() {
     const TempDir dir;
     const Config cfg;
     StreamingMaximalFilter<Specification> stream(cfg, fretish_rules(),
-                                                 dir.listing());
+                                                 dir.output());
     for (std::size_t idx = 0; idx < specs.size(); ++idx) {
         stream.push(specs[idx], "r" + std::to_string(idx) + ".json");
     }
@@ -360,6 +401,62 @@ void test_streaming_matches_batch_filter() {
            "streaming_maximal: the listing should name r3 and r5 alone");
     expect(!std::filesystem::exists(dir.listing() + ".tmp"),
            "streaming_maximal: no temporary listing should be left behind");
+    // How many batches the coordinator formed is its own business, so only the
+    // last row is a function of the pushes: it reports the six distinct
+    // specifications and the two maximal over them that finish() just returned.
+    const std::vector<std::string> curve = read_lines(dir.curve());
+    expect(curve.size() >= 2 &&
+               curve.front() == "elapsed_s\tn_pushed\tn_maximal\tn_named",
+           "streaming_maximal: the curve should carry a header and a row");
+    expect(curve.back() == "0.000000\t6\t2\t2",
+           "streaming_maximal: the last curve row should report 6 pushed and 2 "
+           "maximal");
+}
+
+// A member leaves the maximal set when a later batch subsumes it, so the curve
+// falls where the listing cannot show it -- the whole reason that file is
+// appended to rather than rewritten. The rule is structural so that waiting for
+// a batch costs no subprocess: one specification implies another when it
+// carries every one of that one's guarantees.
+void test_streaming_curve_records_a_drop() {
+    MaximalStreamRules<Specification> rules;
+    rules.implies = [](const Specification& lhs, const Specification& rhs,
+                       SatisfiabilityChecker&) {
+        return std::all_of(rhs.m_guarantees.begin(), rhs.m_guarantees.end(),
+                           [&lhs](const Requirement& req) {
+                               return std::find(lhs.m_guarantees.begin(),
+                                                lhs.m_guarantees.end(),
+                                                req) != lhs.m_guarantees.end();
+                           });
+    };
+
+    const TempDir dir;
+    const Config cfg;
+    {
+        // A second per row, so a stamp says which row was written when.
+        StreamingMaximalFilter<Specification> stream(
+            cfg, std::move(rules),
+            dir.output([seconds = 0.0]() mutable { return seconds += 1.0; }));
+        stream.push(make_spec({g_req("a")}), "a.json");
+        expect(curve_reaches(dir.curve(), 1),
+               "streaming_maximal: the first push should write a curve row");
+        stream.push(make_spec({g_req("b")}), "b.json");
+        expect(curve_reaches(dir.curve(), 2),
+               "streaming_maximal: the second push should write a curve row");
+        // Implies both of the others, so the set falls from two to one.
+        stream.push(make_spec({g_req("a"), g_req("b")}), "ab.json");
+        const std::vector<Specification> streamed = stream.finish();
+        expect(streamed.size() == 1,
+               "streaming_maximal: ab should subsume a and b");
+    }
+    expect(read_whole(dir.curve()) ==
+               "elapsed_s\tn_pushed\tn_maximal\tn_named\n"
+               "1.000000\t1\t1\t1\n"
+               "2.000000\t2\t2\t2\n"
+               "3.000000\t3\t1\t1\n",
+           "streaming_maximal: the curve should record the fall from 2 to 1");
+    expect(read_whole(dir.listing()) == "file\nab.json\n",
+           "streaming_maximal: the listing should name the surviving file");
 }
 
 // A failed check must reach the caller rather than leave a smaller set that
@@ -452,6 +549,7 @@ void run_implication_filter_tests() {
     test_fretish_prefilter_refutes_only_non_implications();
     test_batched_merge_matches_one_sweep();
     test_streaming_matches_batch_filter();
+    test_streaming_curve_records_a_drop();
     test_streaming_rethrows_a_failed_check();
     test_streaming_destroyed_unfinished();
 }

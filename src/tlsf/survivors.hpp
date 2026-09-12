@@ -3,6 +3,7 @@
 // Screens over a scored population: which candidates count as repairs, and the
 // two final passes that reduce the repairs to the ones worth writing out.
 
+#include <functional>
 #include <memory>
 #include <string>
 #include <vector>
@@ -50,10 +51,12 @@ std::vector<Scored<Specification>> keep_maximal(
 
 // keep_maximal runs during the search, fed from the accumulator, or null
 // where the key is off or cfg.repair_mode is MUC, whose loop accumulates
-// nothing.
+// nothing. @p elapsed stamps the curve the stream writes, and must be the clock
+// the accumulator's index is stamped from, or the two records read against
+// different timelines.
 std::unique_ptr<StreamingMaximalFilter<Specification>> make_maximal_stream(
     const Specification& original, const Config& cfg,
-    const std::string& output_dir);
+    const std::string& output_dir, std::function<double()> elapsed);
 
 // What keep_maximal returns, from @p stream instead: pushes the survivors
 // the accumulator did not already hand it and waits for the last batch.

@@ -178,7 +178,8 @@ int run_fretish_repair(const Config& cfg, const std::string& input_path,
         // Null unless the key is on, and then the final screens run while the
         // search does; destroyed unfinished if anything below throws.
         const std::unique_ptr<StreamingMaximalFilter<Specification>> stream =
-            make_maximal_stream(cfg, original_spec, output_dir);
+            make_maximal_stream(cfg, original_spec, output_dir,
+                                [&budget] { return budget.elapsed_s(); });
         RepairAccumulator<Specification>::Sink sink;
         if (stream) {
             sink = [&stream](const Specification& spec,

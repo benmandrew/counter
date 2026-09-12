@@ -136,7 +136,8 @@ int run_repair(const std::string& input_path, const std::string& output_dir,
     // Null unless the key is on, and then the final screens run while the
     // search does; destroyed unfinished if anything below throws.
     const std::unique_ptr<StreamingMaximalFilter<Specification>> stream =
-        internal::make_maximal_stream(original, cfg, output_dir);
+        internal::make_maximal_stream(original, cfg, output_dir,
+                                      [&budget] { return budget.elapsed_s(); });
     std::vector<Scored<Specification>> survivors =
         cfg.repair_mode == RepairMode::Muc
             ? internal::run_muc(original, cfg, random_source, fitness, progress,
